@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="accordion" id="sessions_accordion">
+    {% for session_id in sessions %}
+    <div class="accordion-item">
+      <h2 class="accordion-header">
+        <button class="accordion-button {% if loop.index != 1 %}collapsed{% endif %}"
+            type="button" data-bs-toggle="collapse" data-bs-target="#collapse_{{ loop.index }}"
+            aria-expanded="{% if loop.index == 1 %}true{% else %}false{% endif %}"
+            aria-controls="collapse_{{ loop.index }}">
+            Session {{ session_id }} for {{ sessions[session_id]['name'] }}
+            in {{ sessions[session_id]['source'] }}
+        </button>
+      </h2>
+      <div id="collapse_{{ loop.index }}"
+        class="accordion-collapse collapse {% if loop.index == 1 %}show{% endif %}"
+        data-bs-parent="#sessions_accordion" style="">
+        <div class="accordion-body">
+            <button type="button" class="btn btn-danger" onclick='terminate("{{ session_id }}");'>
+                Terminate session
+            </button>
+
+            <table id="data" class="table table-sm table-striped">
+                <thead>
+                    <tr>
+                        <th>Node / PID</th>
+                        <th>Created</th>
+                        <th>Client</th>
+                        <th>Connection ID</th>
+                        <th>Channel Type</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for channel in sessions[session_id]['channels'] %}
+                    <tr>
+                        <td>{{ channel.node }} pid {{ channel.pid }}</td>
+                        <td>{{ channel.created }}</td>
+                        <td>{{ channel.client_ip }}:{{ channel.client_port }}</td>
+                        <td>{{ channel.connection_id }}</td>
+                        <td>{{ channel.channel_type }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+      </div>
+    </div>
+
+    {% endfor %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    function terminate(session) {
+        axios.get("/session/" + session + "/terminate",).then(function (response) {
+            window.location.href = "/session";
+        }).catch(function (error) {
+        });
+    }
+</script>
+{% endblock %}

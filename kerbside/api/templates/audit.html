@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h3>Audit events for {{ console.source }} {{ console.name }} ({{ console.uuid }})</h3>
+<table id="data" class="table table-sm table-striped">
+    <thead>
+        <tr>
+            <th>Timestamp</th>
+            <th>Session ID</th>
+            <th>Channel</th>
+            <th>Node</th>
+            <th>PID</th>
+            <th>Message</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for event in events %}
+        <tr>
+            <td>{{ event.timestamp }}</td>
+            <td>{{ event.session_id }}</td>
+            <td>{{ event.channel }}</td>
+            <td>{{ event.node }}</td>
+            <td>{{ event.pid }}</td>
+            <td>{{ event.message }}</td>
+            </td>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

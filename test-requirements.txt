@@ -1,0 +1,14 @@
+coverage                        # apache2
+testtools                       # mit
+mock                            # bsd
+stestr                          # apache2
+flake8                          # mit
+
+shakenfist-client>=0.7.0.0rc6   # apache2
+ovirt-engine-sdk-python>=4.6.1  # apache2
+keystoneauth1                   # apache2
+
+
+# We currently use a local version of openstacksdk so that we have our patches.
+# openstacksdk                    # apache2
+#git+file:///home/mikal/src/openstack/openstacksdk#openstacksdk

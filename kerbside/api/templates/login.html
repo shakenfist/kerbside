@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-5" style="width: 400px">
+    <div class="row align-items-center">
+        <div class="card" style="border-radius: 1rem;">
+            <div class="row g-0">
+                <div class="card-body text-black">
+                    <p class="h1 fw-bold text-center ml-4 mr-4">Kerbside Login</span>
+
+                    <form>
+                        <div class="form-outline  mt-4 ml-4 mr-4">
+                            <label class="form-label" for="username">Username</label>
+                            <input type="username" id="username" class="form-control" />
+                        </div>
+
+                        <div class="form-outline mt-4 ml-4 mr-4">
+                            <label class="form-label" for="password">Password</label>
+                            <input type="password" id="password" class="form-control" />
+                        </div>
+
+                        <div class="container mt-4 mb-4 text-center">
+                            <font color="red"><span id="error"></span></font>
+                            </div>
+
+                            <div class="container mt-4 mb-4 text-center is-invalid">
+                            <button type="button" id="submit" class="btn btn-primary" onclick="login();">
+                                Sign in
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    document.addEventListener("keypress", function(event) {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            login();
+        }
+    });
+
+    function login() {
+        var username = document.getElementById("username").value;
+        var password = document.getElementById("password").value;
+        var error_span = document.getElementById("error");
+
+        error_span.textContent = "";
+        axios.post("/auth", {
+            username: username,
+            password: password,
+            as_cookie: true
+        }).then(function (response) {
+            window.location.href = "/source";
+        }).catch(function (error) {
+            if (error.response) {
+                if (error.response.status == 400) {
+                    error_span.textContent = "Bad request.";
+                }
+                else if (error.response.status == 401) {
+                    error_span.textContent = "Unauthorized.";
+                }
+                else if (error.response.status == 500) {
+                    error_span.textContent = "Server error.";
+                }
+                else {
+                    error_span.textContent = (
+                        "Unknown error: " + error.response.data + "(" +
+                        error.response.status + ")");
+                }
+            } else if (error.request) {
+                error_span.textContent = "Request error.";
+            } else {
+                error_span.textContent = "Unknown error: " + error.message;
+            }
+        });
+    }
+</script>
+{% endblock %}

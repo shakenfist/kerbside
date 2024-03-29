@@ -1,0 +1,81 @@
+<html>
+
+<body>
+  The schema for the Kerbside MySQL database is as follows:
+
+  <pre class="mermaid">
+      erDiagram
+      sources {
+          string name PK
+          string type
+          datetime last_seen
+          string seen_by
+          boolean errored
+          string url
+          string ca_cert
+          string username
+          string password
+          string project_name "OpenStack only"
+          string user_domain_id "OpenStack only"
+          string project_domain_id "OpenStack only"
+          string flavor "OpenStack only"
+      }
+
+      sources ||--o{ consoles : "sources provide consoles"
+      consoles {
+          string uuid PK
+          string source FK
+          datetime discovered
+          string hypervisor
+          string hypervisor_ip
+          integer insecure_port
+          integer secure_port
+          string name
+          string host_subject
+          string ticket
+      }
+
+      sources ||--o{ consoletokens: "sources enable consoletokens"
+      consoles ||--o{ consoletokens: "consoles own consoletokens"
+      consoletokens {
+          string token PK
+          string session_id
+          string uuid FK
+          string source FK
+          integer created "epoch seconds"
+          integer expired "epoch seconds"
+      }
+
+      consoletokens ||--o{ proxychannels: "consoletokens authenticate proxychannels"
+      proxychannels {
+          string node PK
+          string pid PK
+          datetime created
+          string client_ip
+          integer client_port
+          integer connection_id
+          string channel_type
+          integer channel_id
+          string session_id FK
+      }
+
+      consoles ||--o{ auditevents: "consoles create auditevents"
+      auditevents {
+          string source PK "No FK to avoid cascading delete"
+          string uuid PK "No FK to avoid cascading delete"
+          string session_id "No FK to avoid cascading delete"
+          string channel
+          timestamp timestamp PK
+          string node
+          integer pid
+          string message
+      }
+    </pre>
+
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true });
+  </script>
+</body>
+
+</html>

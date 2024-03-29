@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block content %}
+<table id="data" class="table table-sm table-striped">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Last Seen</th>
+            <th>Seen By</th>
+            <th>Errored</th>
+            <th>CA Certificate</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for source in sources %}
+        <tr>
+            <td>{{ source.name }}</td>
+            <td>{{ source.type }}</td>
+            <td>{{ source.last_seen }}</td>
+            <td>{{ source.seen_by }}</td>
+            <td>{{ source.errored }}</td>
+            <td>
+                <a tabindex="0" class="btn btn-sm btn-outline-primary" data-bs-toggle="popover"
+                    title="CA Certificate" data-bs-placement="left" data-bs-html="true"
+                    data-bs-trigger="focus" role="button"
+                    data-bs-content="<pre>{{ source.ca_cert }}</pre>">
+                    Certificate
+                </a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+
+<head>
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="/static/css/bootstrap.min.css">
+    <script src="/static/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/axios.min.js"></script>
+    <link href="">
+    {% if refresh %}
+    <meta http-equiv="refresh" content="30">
+    {% endif %}
+
+    <style type="text/css">
+        .popover{
+            max-width:100%;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar" style="background-color: #1d6d87;">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="https://shakenfist.com">
+                <div class="text-light">
+                    <img src="/static/logo.svg" width="32" height="32" class="d-inline-block align-top"
+                        alt="Shaken Fist logo">
+                    Kerbside VDI Proxy
+                </div>
+            </a>
+
+            <ul class="nav nav-tabs">
+                {% for navitem in navitems %}
+                <li class="nav-item">
+                    {% if navitem.active %}
+                    <a class="nav-link active" aria-current="page" href="#">{{ navitem.name }}</a>
+                    {% else %}
+                    <a class="nav-link text-light" href="{{ navitem.href }}">{{ navitem.name }}</a>
+                    {% endif %}
+                </li>
+                {% endfor %}
+                <li class="nav-item">
+                    <a class="nav-link text-light" onclick="logout();">Logout</a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="col-xs-12" style="height:25px;"></div>
+    <div class="container-fluid">
+        {% block content %}{% endblock %}
+    </div>
+
+    {% block scripts %}{% endblock %}
+    <script>
+        function logout() {
+            axios.delete("/auth").then(function (response) {
+                window.location.href = "/";
+            })
+        }
+    </script>
+
+    {% if refresh %}
+    <div class="fixed-bottom">
+        Content refreshed at {{ when }}.
+    </div>
+    {% endif %}
+
+    <script>
+        var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'))
+        var popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
+          return new bootstrap.Popover(popoverTriggerEl)
+        })
+    </script>
+</body>
+
+</html>

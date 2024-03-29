@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block content %}
+<table id="data" class="table table-sm table-striped">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Source</th>
+            <th>UUID</th>
+            <th>Hypervisor</th>
+            <th>Insecure Port</th>
+            <th>Secure Port</th>
+            <th colspan="4">Admin</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for console in consoles %}
+        <tr>
+            <td>{{ console.name }}</td>
+            <td>{{ console.source }}</td>
+            <td>{{ console.uuid }}</td>
+            <td>
+                {% if console.hypervisor %}
+                {{ console.hypervisor }} ({{ console.hypervisor_ip }})
+                {% else %}
+                {{ console.hypervisor_ip }}
+                {% endif %}
+            </td>
+            <td>{{ console.insecure_port }}</td>
+            <td>{{ console.secure_port }}</td>
+            <td>
+                <a tabindex="0" class="btn btn-sm btn-outline-primary text-dark" data-bs-toggle="popover"
+                    title="Recent audit events" data-bs-placement="left" data-bs-html="true"
+                    data-bs-trigger="focus" role="button"
+                    data-bs-content="
+                        <p>
+                            Here are the 20 most recent audit events for this console.
+                        </p>
+
+                        <ul>
+                            {% for event in console.audit %}
+                            <li>{{ event.timestamp }}:
+                                {% if event.session_id %}{{ event.session_id }}{% endif %}
+                                {% if event.channel %}{{ event.channel }}{% endif %}
+                                {{ event.message }}
+                            {% endfor %}
+                        </ul>
+
+                        <p>
+                            <a href='/console/{{ console.source }}/{{ console.uuid }}/audit?limit=200'>See more events</a>.
+                        </p>">
+                    <img src="/static/icons/audit.svg" width="21" height="21" class="d-inline-block align-top" alt="Audit events">
+                </a>
+            </td>
+            <td>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle text-dark" data-bs-toggle="dropdown" aria-expanded="false">
+                        <img src="/static/icons/connect.svg" width="21" height="21" class="d-inline-block align-top" alt="Connect">
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="/console/proxy/{{ console.source }}/{{ console.uuid }}/console.vv">Connect via proxy</a></li>
+                        <li><a class="dropdown-item" href="/console/direct/{{ console.source }}/{{ console.uuid }}/console.vv">Connect directly</a></li>
+                    </ul>
+                </div>
+            </td>
+            <td>
+                <a tabindex="0" class="btn btn-sm btn-outline-primary text-dark" data-bs-toggle="popover"
+                    title="Active authentication tokens" data-bs-placement="left" data-bs-html="true"
+                    data-bs-trigger="focus" role="button"
+                    data-bs-content="
+                        <p>
+                            There are {{ console.token_count }} active authentication tokens for this<br/>
+                            console.
+                        </p>
+
+                        <p><i>
+                            An active authentication token is an opportunity<br/>
+                            to connect to the console. Sessions which were<br/>
+                            already open survive the expiration of their<br/>
+                            authentication token.
+                        </i></p>">
+                    <b>{{ console.token_count }}</b> <img src="/static/icons/tokens.svg" width="21" height="21" class="d-inline-block align-top" alt="Tokens">
+                </a>
+            </td>
+            <td>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-sm btn-outline-danger dropdown-toggle text-dark" data-bs-toggle="dropdown" aria-expanded="false" {% if console.sessions | length == 0 %}disabled{% endif %}>
+                        <b>{{ console.sessions | length }}</b> <img src="/static/icons/sessions.svg" width="21" height="21" class="d-inline-block align-top" alt="Disconnect">
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="/console/{{ console.source }}/{{ console.uuid }}/terminate">Terminate all sessions</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        {% for session_id in console.sessions %}
+                        <li><a class="dropdown-item" href="/session/{{ session_id }}/terminate">Terminate session {{ session_id }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </td>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

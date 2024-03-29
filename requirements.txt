@@ -1,0 +1,32 @@
+click>=8.0.0                # bsd
+cryptography                # apache2
+pylogrus                    # mit
+setproctitle                # bsd
+shakenfist-utilities>=0.6.9 # apache2
+prometheus-client           # apache2
+flask_restful               # bsd
+flasgger                    # mit
+flask-jwt-extended          # mit
+bcrypt                      # apache2
+gunicorn                    # mit
+flask-request-id-middleware # mit
+pydantic                    # mit
+pydantic_settings           # mit
+pyyaml                      # mit
+psutil>=5.9.0               # bsd
+pymysql                     # mit
+webargs==8.3.0              # mit
+
+alembic                     # mit
+sqlalchemy                  # mit
+mysqlclient                 # gpl
+
+# Version 2.3.0 has problems importing Markup from flask
+flask<2.3.0                 # bsd
+
+# Optional dependancies, depending on what clouds you want to provide access to
+# shakenfist-client               # apache2
+# ovirt-engine-sdk-python>=4.6.1  # apache2
+# keystoneauth1                   # apache2
+# openstacksdk                    # apache2
+# python-keystoneclient           # apache2
