@@ -26,7 +26,7 @@ support to other platforms that support SPICE.
 
 ### Web Interface
 For administrators of the proxy, a web interface shows information about all
-of the avaialble consoles. This includes logging events, direct connections,
+of the available consoles. This includes logging events, direct connections,
 information about connected users, the ability to terminate sessions, and more. 
 
 #### Bootstrap CSS
