@@ -47,7 +47,20 @@ The following options are provided by Kerbside.
 | VDI_SECURE_PORT  | Integer  (defaults to 5898)   | The port the VDI proxy will serve SPICE TLS SPICE sessions over.    |
 | VDI_INSECURE_PORT | Integer  (defaults to 5988)  | The port the VDI proxy will serve insecure SPICE sessions over. These insecure sessions are only used to redirect the user to the secure port.    |
 
-## Traffic Inspection Feature
+## Traffic Inspection
+Being able to inspect traffic being passed by the proxy is useful during both development and whilst
+ diagnosing issues in production but has obvious privacy concerns. The VDI proxy may be configured
+to log details of traffic for all sessions by setting the `KERBSIDE_TRAFFIC_INSPECTION` environment
+variable to “1”. This will write session traffic details to the directory configured by 
+`KERBSIDE_TRAFFIC_OUTPUT_PATH`, in a sub directory per session identifier. Additionally, more
+detailed information can be logged by also setting `KERBSIDE_TRAFFIC_INSPECTION_INTIMATE` to “1”.
+
+Traffic inspection is per proxy not per session and implies a restart of the proxy before it is
+enabled. This ensures that users are aware that traffic inspection has been enabled. If traffic
+inspection is enabled, audit messages are recorded per channel logged (as not all channels need to
+flow through the same proxy machine). Additionally, the display channel is altered to show a
+dashed red and yellow border to provide a visual warning that this inspection is occurring.
+
 | Configuration option  | Type  | Description  |
 |-----------------------|-------|--------------|
 | TRAFFIC_INSPECTION  | Boolean  (default False)  | Whether to log detailed traffic information. Defaults to false, but can be useful for debugging service issues in production.    |
@@ -55,10 +68,18 @@ The following options are provided by Kerbside.
 | TRAFFIC_OUTPUT_PATH  | String  (default /tmp)  | Where to write traffic inspection logs to if enabled.      |
 
 ## Logging and Monitoring Settings
+The VDI proxy provides Prometheus style metrics on port 9999 (configurable using the 
+`PROMETHEUS_METRICS_PORT` configuration option). These metric values are also be logged for later
+processing if desired. Values tracked include: 
+* Number of active console sessions. 
+* Number of active console channels. 
+* Bandwidth and latency information for each console channel. 
+* REST API request statuses as a metric with labels for each HTTP status code. 
+* REST API request response latency as a histogram per HTTP status code. 
+
 | Configuration option  | Type  | Description  |
 |-----------------------|-------|--------------|
 | LOG_OUTPUT_PATH  | String    | Where to write logs to. If stdout, then stdout is used, if blank syslog is used.  |
 | LOG_OUTPUT_JSON  | Boolean  (default False)  | If true, log entries are in JSON. |
 | LOG_VERBOSE  | Boolean  (default False)  | Whether to log verbose debugging information.      |
 | PROMETHEUS_METRICS_PORT  | Integer  (default 13003)  | The TCP port that the prometheus metrics HTTP server will listen on.    |
-
