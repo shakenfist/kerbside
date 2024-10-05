@@ -553,6 +553,7 @@ def run():
 
     os.makedirs(config.PID_FILE_LOCATION, exist_ok=True)
     command = config.API_COMMAND_LINE % {
+        'address': config.API_ADDRESS,
         'port': config.API_PORT,
         'timeout': config.API_TIMEOUT,
         'pid_file_dir': config.PID_FILE_LOCATION,
