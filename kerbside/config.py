@@ -45,6 +45,9 @@ class Config(BaseSettings):
     )
 
     # API / admin server options
+    API_ADDRESS: str = Field(
+        '0.0.0.0',
+        description='The IPv4 address to bind the REST API to')
     API_PORT: int = Field(
         13002,
         description='Port for the REST API')
@@ -53,7 +56,7 @@ class Config(BaseSettings):
         description='How long gunicorn processes can use for a single request')
     API_COMMAND_LINE: str = Field(
         (
-            '%(install_dir)s/gunicorn --workers %(workers)d --bind 0.0.0.0:%(port)d '
+            '%(install_dir)s/gunicorn --workers %(workers)d --bind %(address)s:%(port)d '
             '--log-syslog --log-syslog-prefix kerbside --timeout %(timeout)s --name "%(name)s" '
             '--pid %(pid_file_dir)s/gunicorn.pid kerbside.api:app'
         ),
