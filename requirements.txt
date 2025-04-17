@@ -18,7 +18,7 @@ pymysql                     # mit
 webargs==8.3.0              # mit
 
 alembic                     # mit
-sqlalchemy                  # mit
+sqlalchemy==2.0.29          # mit
 mysqlclient                 # gpl
 
 # Version 2.3.0 has problems importing Markup from flask
@@ -30,3 +30,6 @@ flask<2.3.0                 # bsd
 # keystoneauth1                   # apache2
 # openstacksdk                    # apache2
 # python-keystoneclient           # apache2
+
+# Indirect dependencies. We do not track license for these.
+marshmallow==3.21.1
