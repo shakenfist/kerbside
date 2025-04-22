@@ -6,6 +6,9 @@
 name: Pin indirect dependencies
 
 on:
+  pull_request:
+    paths:
+      - .github/workflows/pin-indirect-dependencies.yml
   workflow_dispatch:
   schedule:
     - cron: '00 00 * * *'        # utc
@@ -33,10 +36,16 @@ jobs:
           path: kerbside
           fetch-depth: 0
 
+      - name: Install CI dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y pkg-config build-essential python3-dev \
+              default-libmysqlclient-dev
+
       - name: Install the github command line
         run: |
           sudo apt update
-          sudo apt install -y curl pkg-config build-essential python3-dev
+          sudo apt install -y curl
 
           curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
           sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
