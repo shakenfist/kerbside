@@ -1,0 +1,124 @@
+name: Test cloud compatability
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - develop
+
+jobs:
+  functional_matrix:
+    name: "${{ matrix.test.description }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        test: [
+          {
+            'name': 'ovirt-44-rocky-8',
+            'description': 'oVirt 4.4 on Rocky 8',
+            'base': 'rocky:8',
+            'baseuser': 'cloud-user'
+          },
+        ]
+    runs-on: [self-hosted, vm]
+    timeout-minutes: 120
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.test.name }}
+      cancel-in-progress: true
+
+    # NOTE(mikal): git repos are checked out to /srv/github/_work/{org}/{repo}
+    # which is available as GITHUB_WORKSPACE. You can find other environment
+    # variables at https://docs.github.com/en/actions/learn-github-actions/environment-variables
+
+    steps:
+      - name: Set environment variables
+        shell: bash
+        run: |
+          echo "SF_HEAD_SHA=${{ github.event.pull_request.head.sha }}" >> $GITHUB_ENV
+          echo "SHAKENFIST_NAMESPACE=$(hostname)" >> $GITHUB_ENV
+
+      - name: Checkout the actions repository
+        uses: actions/checkout@v4
+        with:
+          repository: shakenfist/actions
+          path: actions
+          fetch-depth: 0
+
+      - name: Checkout kerbside
+        uses: actions/checkout@v4
+        with:
+          path: kerbside
+          fetch-depth: 0
+
+      - name: Build infrastructure
+        shell: bash
+        run: |
+          . $GITHUB_ENV
+          ansible-playbook -i /home/debian/ansible-hosts \
+              --extra-vars "identifier=${SHAKENFIST_NAMESPACE} base=${{ matrix.test.base }}" \
+              --tags all ${GITHUB_WORKSPACE}/actions/ansible/kerbside-single-node.yml
+
+      - name: Install base packages
+        run: |
+          . $GITHUB_ENV
+
+          script="sudo dnf update -y;"
+          script="${script} sudo dnf install -y epel-release;"
+          script="${script} sudo crb enable;"
+          script="${script} sudo dnf update -y;"
+          script="${script} sudo dnf install -y vim patch;"
+          script="${script} sudo chown ${{ matrix.test.baseuser }}:${{ matrix.test.baseuser }} /srv;"
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "${script}"
+
+      - name: Install upstream oVirt release package
+        run: |
+          . $GITHUB_ENV
+
+          script="sudo dnf install -y https://resources.ovirt.org/pub/yum-repo/ovirt-release44.rpm;"
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "${script}"
+
+      - name: Copy oVirt yum repos patch to target node
+        run: |
+          . $GITHUB_ENV
+
+          scp -rp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            ${GITHUB_WORKSPACE}/kerbside/etc/ovirt-4.4-yum-repos.patch \
+            ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
+
+      - name: Apply repos patch
+        run: |
+          . $GITHUB_ENV
+
+          script="cd /etc/yum.repos.d;"
+          script="${script} sudo patch -p1 < /srv/ovirt-4.4-yum-repos.patch;"
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "${script}"
+
+      - name: Further package configuration
+        run: |
+          . $GITHUB_ENV
+
+          script="sudo dnf update -y;"
+          script="${script} sudo dnf module -y enable javapackages-tools;"
+          script="${script} sudo dnf module -y enable postgresql:12;"
+          script="${script} sudo dnf module -y enable mod_auth_openidc:2.3;"
+          script="${script} sudo dnf module -y enable nodejs:14;"
+          script="${script} sudo dnf module -y enable pki-deps;"
+          script="${script} sudo dnf distro-sync --nobest;"
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "${script}"

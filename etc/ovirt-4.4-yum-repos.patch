@@ -1,0 +1,95 @@
+diff --git a/ovirt-4.4-dependencies.repo b/ovirt-4.4-dependencies.repo
+index 3b3cd77..21cd793 100644
+--- a/ovirt-4.4-dependencies.repo
++++ b/ovirt-4.4-dependencies.repo
+@@ -1,7 +1,6 @@
+ [ovirt-4.4-epel]
+ name=Extra Packages for Enterprise Linux 8 - $basearch
+-#baseurl=https://download.fedoraproject.org/pub/epel/8/Everything/$basearch
+-metalink=https://mirrors.fedoraproject.org/metalink?repo=epel-8&arch=$basearch&infra=$infra&content=$contentdir
++baseurl=https://download.fedoraproject.org/pub/epel/8/Everything/$basearch
+ enabled=1
+ includepkgs=
+  ansible-doc
+@@ -43,8 +42,7 @@ gpgkey=https://download.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-8
+
+ [ovirt-4.4-centos-gluster8]
+ name=CentOS-$stream - Gluster 8
+-mirrorlist=http://mirrorlist.centos.org?arch=$basearch&release=$stream&repo=storage-gluster-8
+-#baseurl=http://mirror.centos.org/$contentdir/$stream/storage/$basearch/gluster-8/
++baseurl=http://vault.centos.org/centos/8-stream/storage/$basearch/gluster-8/
+ gpgcheck=1
+ enabled=1
+ gpgkey=https://www.centos.org/keys/RPM-GPG-KEY-CentOS-SIG-Storage
+@@ -77,8 +75,7 @@ enabled_metadata=1
+
+ [ovirt-4.4-centos-advanced-virtualization]
+ name=CentOS-$releasever - Advanced Virtualization
+-mirrorlist=http://mirrorlist.centos.org/?release=$stream&arch=$basearch&repo=virt-advancedvirt-common
+-#baseurl=http://mirror.centos.org/$contentdir/$stream/virt/$basearch/advancedvirt-common/
++baseurl=http://vault.centos.org/centos/8-stream/virt/$basearch/advancedvirt-common/
+ gpgcheck=1
+ enabled=1
+ module_hotfixes=1
+@@ -86,16 +83,14 @@ gpgkey=https://www.centos.org/keys/RPM-GPG-KEY-CentOS-SIG-Virtualization
+
+ [ovirt-4.4-centos-ovirt44]
+ name=CentOS-$releasever - oVirt 4.4
+-mirrorlist=http://mirrorlist.centos.org/?release=$stream&arch=$basearch&repo=virt-ovirt-44
+-#baseurl=http://mirror.centos.org/$contentdir/$stream/virt/$basearch/ovirt-44/
++baseurl=http://vault.centos.org/centos/8-stream/virt/$basearch/ovirt-44/
+ gpgcheck=1
+ enabled=1
+ gpgkey=https://www.centos.org/keys/RPM-GPG-KEY-CentOS-SIG-Virtualization
+
+ [ovirt-4.4-centos-opstools]
+ name=CentOS-8 - OpsTools - collectd
+-mirrorlist=http://mirrorlist.centos.org/?arch=$basearch&release=$stream&repo=opstools-collectd-5
+-#baseurl=http://mirror.centos.org/$contentdir/$stream/opstools/$basearch/collectd-5/
++baseurl=http://vault.centos.org/centos/8-stream/opstools/$basearch/collectd-5/
+ gpgcheck=1
+ enabled=1
+ gpgkey=https://www.centos.org/keys/RPM-GPG-KEY-CentOS-SIG-OpsTools
+@@ -110,8 +105,7 @@ gpgkey=https://www.centos.org/keys/RPM-GPG-KEY-CentOS-SIG-OpsTools
+
+ [ovirt-4.4-centos-nfv-openvswitch]
+ name=CentOS-$releasever - NFV OpenvSwitch
+-#baseurl=http://mirror.centos.org/centos/$stream/nfv/$basearch/openvswitch-2/
+-mirrorlist=http://mirrorlist.centos.org/?release=$stream&arch=$basearch&repo=nfv-openvswitch-2
++baseurl=http://vault.centos.org/centos/8-stream/nfv/$basearch/openvswitch-2/
+ gpgcheck=1
+ enabled=1
+ gpgkey=https://www.centos.org/keys/RPM-GPG-KEY-CentOS-SIG-NFV
+@@ -119,8 +113,7 @@ module_hotfixes=1
+
+ [ovirt-4.4-centos-ceph-pacific]
+ name=CentOS-$stream - Ceph Pacific
+-mirrorlist=http://mirrorlist.centos.org/?release=$stream&arch=$basearch&repo=storage-ceph-pacific
+-#baseurl=http://mirror.centos.org/$contentdir/$stream/storage/$basearch/ceph-pacific/
++baseurl=https://vault.centos.org/centos/8-stream/storage/x86_64/ceph-pacific/
+ gpgcheck=1
+ enabled=1
+ priority=2
+@@ -145,8 +138,7 @@ includepkgs=ceph-common
+
+ [ovirt-4.4-centos-openstack-victoria]
+ name=CentOS-$releasever - OpenStack victoria
+-#baseurl=http://mirror.centos.org/$contentdir/$stream/cloud/$basearch/openstack-victoria/
+-mirrorlist=http://mirrorlist.centos.org/?release=$stream&arch=$basearch&repo=cloud-openstack-victoria
++baseurl=http://vault.centos.org/centos/8-stream/cloud/$basearch/openstack-victoria/
+ gpgcheck=1
+ enabled=1
+ gpgkey=https://www.centos.org/keys/RPM-GPG-KEY-CentOS-SIG-Cloud
+diff --git a/ovirt-4.4.repo b/ovirt-4.4.repo
+index d33af36..5fb2a83 100644
+--- a/ovirt-4.4.repo
++++ b/ovirt-4.4.repo
+@@ -1,7 +1,6 @@
+ [ovirt-4.4]
+ name=Latest oVirt 4.4 Release
+-#baseurl=https://resources.ovirt.org/pub/ovirt-4.4/rpm/el$releasever/
+-mirrorlist=https://mirrorlist.ovirt.org/mirrorlist-ovirt-4.4-el$releasever
++baseurl=https://resources.ovirt.org/pub/ovirt-4.4/rpm/el$releasever/
+ enabled=1
+ countme=1
+ fastestmirror=1
