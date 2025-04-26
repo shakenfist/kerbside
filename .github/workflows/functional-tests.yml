@@ -1,7 +1,12 @@
-name: Test cloud compatability
+name: Test cloud compatibility
 
 on:
   workflow_dispatch:
+    inputs:
+      retention:
+        description: 'How long to retain the environment after the workflow run in minutes'
+        required: true
+        default: '0'
   pull_request:
     branches:
       - develop
@@ -16,7 +21,25 @@ jobs:
           {
             'name': 'ovirt-44-rocky-8',
             'description': 'oVirt 4.4 on Rocky 8',
+            'ovirt_rpm': 'https://resources.ovirt.org/pub/yum-repo/ovirt-release44.rpm',
+            'ovirt_repos_patch': 'ovirt-4.4-rocky-8-repos.patch',
             'base': 'rocky:8',
+            'baseuser': 'cloud-user'
+          },
+          {
+            'name': 'ovirt-45-rocky-8',
+            'description': 'oVirt 4.5 on Rocky 8',
+            'ovirt_rpm': 'centos-release-ovirt45',
+            'ovirt_repos_patch': 'ovirt-4.5-rocky-8-repos.patch',
+            'base': 'rocky:8',
+            'baseuser': 'cloud-user'
+          },
+          {
+            'name': 'ovirt-45-rocky-9',
+            'description': 'oVirt 4.5 on Rocky 9',
+            'ovirt_rpm': 'centos-release-ovirt45',
+            'ovirt_repos_patch': 'ovirt-4.5-rocky-9-repos.patch',
+            'base': 'rocky:9',
             'baseuser': 'cloud-user'
           },
         ]
@@ -62,7 +85,8 @@ jobs:
         run: |
           . $GITHUB_ENV
 
-          script="sudo dnf update -y;"
+          script="export PS4='=======================\n+ '; set -x;"
+          script="${script} sudo dnf update -y;"
           script="${script} sudo dnf install -y epel-release;"
           script="${script} sudo crb enable;"
           script="${script} sudo dnf update -y;"
@@ -78,7 +102,8 @@ jobs:
         run: |
           . $GITHUB_ENV
 
-          script="sudo dnf install -y https://resources.ovirt.org/pub/yum-repo/ovirt-release44.rpm;"
+          script="export PS4='=======================\n+ '; set -x;"
+          script="${script} sudo dnf install -y ${{ matrix.test.ovirt_rpm }};"
 
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
@@ -91,15 +116,16 @@ jobs:
 
           scp -rp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
-            ${GITHUB_WORKSPACE}/kerbside/etc/ovirt-4.4-yum-repos.patch \
+            ${GITHUB_WORKSPACE}/kerbside/etc/${{ matrix.test.ovirt_repos_patch }} \
             ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
 
       - name: Apply repos patch
         run: |
           . $GITHUB_ENV
 
-          script="cd /etc/yum.repos.d;"
-          script="${script} sudo patch -p1 < /srv/ovirt-4.4-yum-repos.patch;"
+          script="export PS4='=======================\n+ '; set -x;"
+          script="${script} cd /etc/yum.repos.d;"
+          script="${script} sudo patch -p1 < /srv/${{ matrix.test.ovirt_repos_patch }};"
 
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
@@ -110,15 +136,60 @@ jobs:
         run: |
           . $GITHUB_ENV
 
-          script="sudo dnf update -y;"
+          script="export PS4='=======================\n+ '; set -x;"
+          script="${script} sudo dnf update -y;"
           script="${script} sudo dnf module -y enable javapackages-tools;"
           script="${script} sudo dnf module -y enable postgresql:12;"
           script="${script} sudo dnf module -y enable mod_auth_openidc:2.3;"
           script="${script} sudo dnf module -y enable nodejs:14;"
           script="${script} sudo dnf module -y enable pki-deps;"
-          script="${script} sudo dnf distro-sync --nobest;"
+          script="${script} sudo dnf distro-sync --nobest -y;"
 
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
               "${script}"
+
+      - name: Gather artifacts
+        if: always()
+        run: |
+          . $GITHUB_ENV
+
+          script="export PS4='=======================\n+ '; set -x;"
+          script="${script} sudo zip -r /tmp/bundle.zip "
+              script="${script} /etc/yum.repos.d "
+              script="${script} /var/lib/ovirt-engine/setup "
+              script="${script} || true;"
+          script="${script} sudo chmod ugo+r /tmp/bundle.zip;"
+          script="${script} ls -lrth /tmp/bundle.zip;"
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "${script}"
+
+          mkdir -p /srv/github/artifacts/bundle/
+          scp -rp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2:/tmp/bundle.zip \
+              /srv/github/artifacts/bundle/
+
+          cd /srv/github/artifacts/bundle/
+          unzip bundle.zip
+          rm bundle.zip
+          cd ..
+          zip bundle.zip bundle
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bundle-${{ matrix.test.name }}
+          retention-days: 90
+          if-no-files-found: error
+          path: /srv/github/artifacts/bundle.zip
+
+      - name: Retain the environment if requested
+        if: github.event_name == 'workflow_dispatch'
+        run: sleep $(( $MINUTES * 60 ))
+        env:
+          MINUTES: ${{ inputs.retention }}
