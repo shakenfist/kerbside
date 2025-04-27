@@ -63,10 +63,6 @@ class OpenStackSource(base.BaseSource):
                 log.debug('Ignoring instance with incorrect status')
                 continue
 
-            if inst['flavor']['original_name'] not in self.args.get('flavor'):
-                log.debug('Ignoring instance with incorrect flavor')
-                continue
-
             console_data = conn.compute.create_console(
                 inst['id'], console_type='spice-direct')
             if 'port' not in console_data or not console_data['port']:
