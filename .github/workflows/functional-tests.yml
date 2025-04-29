@@ -104,7 +104,7 @@ jobs:
           script="${script} sudo dnf install -y epel-release;"
           script="${script} sudo crb enable;"
           script="${script} sudo dnf update -y;"
-          script="${script} sudo dnf install -y vim patch;"
+          script="${script} sudo dnf install -y vim patch yum-utils;"
           script="${script} sudo chown ${{ matrix.test.baseuser }}:${{ matrix.test.baseuser }} /srv;"
 
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
@@ -203,11 +203,13 @@ jobs:
 
           script="${script} sudo rpm -qa --qf "
               script="${script} \"%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n\" "
-              script="> /tmp/rpms.list;"
+              script="${script} > /tmp/rpms.list;"
 
           script="${script} for rpm in \$(cat /tmp/rpms.list); do"
               script="${script} echo \"Caching URLs for \${rpm}\";"
-              script="${script} yumdownloader --resolve --urls \${rpm} >> /tmp/rpms.urls;"
+              script="${script} sudo yumdownloader --resolve --urls \${rpm} |"
+              script="${script} grep -v 'Last metadata expiration check' "
+              script="${script} >> /tmp/rpms.urls;"
               script="${script} done;"
 
           script="${script} sudo zip -r /tmp/bundle.zip "
