@@ -30,31 +30,6 @@ def cli(ctx, verbose):
     ctx.obj['LOGGER'] = LOG
 
 
-@click.group('lz', help='LZ compression commands')
-def lz_group():
-    pass
-
-
-cli.add_command(lz_group)
-
-
-@lz_group.command(name='decompress', help='Decompress a raw LZ compressed frame')
-@click.pass_context
-@click.argument('source', type=click.Path(exists=True))
-@click.argument('destination', type=click.Path(exists=False))
-def lz_decompress(ctx, source, destination):
-    with open(source, 'rb') as source_file:
-        image_data = source_file.read()
-        width, height, decompressed = lz.Decompress()(ctx, image_data)
-
-    i = Image.frombuffer('RGBA', (width, height), decompressed,
-                         'raw', 'RGBA', 0, 1)
-    i.save(destination)
-
-
-lz_group.add_command(lz_decompress)
-
-
 @click.group('glz', help='GLZ compression commands')
 def glz_group():
     pass
@@ -122,3 +97,28 @@ def glz_decompress(ctx, source, destination, global_dictionary):
 
 
 glz_group.add_command(glz_decompress)
+
+
+@click.group('lz', help='LZ compression commands')
+def lz_group():
+    pass
+
+
+cli.add_command(lz_group)
+
+
+@lz_group.command(name='decompress', help='Decompress a raw LZ compressed frame')
+@click.pass_context
+@click.argument('source', type=click.Path(exists=True))
+@click.argument('destination', type=click.Path(exists=False))
+def lz_decompress(ctx, source, destination):
+    with open(source, 'rb') as source_file:
+        image_data = source_file.read()
+        width, height, decompressed = lz.Decompress()(ctx, image_data)
+
+    i = Image.frombuffer('RGBA', (width, height), decompressed,
+                         'raw', 'RGBA', 0, 1)
+    i.save(destination)
+
+
+lz_group.add_command(lz_decompress)
