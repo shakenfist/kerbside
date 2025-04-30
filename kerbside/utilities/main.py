@@ -6,8 +6,9 @@ import re
 from shakenfist_utilities import logs
 import sys
 
-from . import glz
-from . import lz
+from kerbside.spiceprotocol import SpiceClient
+from kerbside.utilities import glz
+from kerbside.utilities import lz
 
 
 LOG = logs.setup_console(__name__)
@@ -28,6 +29,40 @@ def cli(ctx, verbose):
         LOG.setLevel(logging.INFO)
 
     ctx.obj['LOGGER'] = LOG
+
+
+@click.group('client', help='A command line SPICE client')
+def client_group():
+    pass
+
+
+cli.add_command(client_group)
+
+
+@client_group.command(name='connect-file', help='Connect to a SPICE console')
+@click.pass_context
+@click.argument('vv', type=click.Path(exists=True))
+def connect_file(ctx, vv):
+    sc = SpiceClient()
+    sc.from_vv_file(vvpath=vv)
+    sc.connect()
+    print('Connected OK')
+
+
+client_group.add_command(connect_file)
+
+
+@client_group.command(name='connect-url', help='Connect to a SPICE console')
+@click.pass_context
+@click.argument('vv', type=click.STRING)
+def connect_url(ctx, vv):
+    sc = SpiceClient()
+    sc.from_vv_file(vvurl=vv)
+    sc.connect()
+    print('Connected OK')
+
+
+client_group.add_command(connect_url)
 
 
 @click.group('glz', help='GLZ compression commands')

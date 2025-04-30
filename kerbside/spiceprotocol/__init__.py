@@ -1,10 +1,12 @@
 import configparser
 import datetime
 import os
+import requests
 from shakenfist_utilities import logs
 import socket
 import ssl
 import tempfile
+import urllib3
 
 from .. import util
 
@@ -65,10 +67,16 @@ class SpiceClient(object):
 
         self.configured = True
 
-    def from_vv_file(self, vvconfig=None, vvpath=None):
+    def from_vv_file(self, vvconfig=None, vvpath=None, vvurl=None):
         vv = configparser.ConfigParser()
         if vvpath:
             vv.read(vvpath)
+        elif vvurl:
+            remote = requests.get(vvurl)
+            if remote.status_code != 200:
+                raise InvalidConfiguration(
+                    f'vv url HTTP error is {remote.status_code}: {remote.text}')
+            vv.read_string(remote.text)
         else:
             vv.read_string(vvconfig)
 
