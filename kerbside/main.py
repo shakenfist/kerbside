@@ -51,6 +51,8 @@ def _parse_sources():
     if not os.path.exists(config.SOURCES_PATH):
         LOG.error('Sources configuration at %s does not exist!' % config.SOURCES_PATH)
 
+    source_type = {}
+
     extra_sources = {}
     for source in kerbside_db.get_sources():
         extra_sources[source['name']] = source
@@ -68,6 +70,9 @@ def _parse_sources():
             if source['source'] in extra_sources:
                 del extra_sources[source['source']]
             stored_source = kerbside_db.get_source(source['source'])
+
+            # Cache the type of this source
+            source_type[source['source']] = source['type']
 
             # If this source is new, record it with the configured CA cert
             # (if any).
@@ -162,7 +167,7 @@ def _parse_sources():
             kerbside_db.set_source_error_state(source['source'], False)
 
     for source, uuid in extra_consoles:
-        if source['type'] == 'openstack':
+        if source_type[source] == 'openstack':
             continue
 
         LOG.with_fields(extra_consoles[(source, uuid)]).info(

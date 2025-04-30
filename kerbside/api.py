@@ -54,6 +54,8 @@ jwt = JWTManager(app)
 
 
 OPENSTACK_CLIENT = None
+KEYSTONE_V3 = None
+KEYSTONE_SESSION = None
 
 
 # A decorator to protect endpoints which require authentication
@@ -457,6 +459,9 @@ class NovaToken(sf_api.Resource):
             return sf_api.error(401, 'token absent')
 
         global OPENSTACK_CLIENT
+        global KEYSTONE_V3
+        global KEYSTONE_SESSION
+
         if not OPENSTACK_CLIENT:
             try:
                 OPENSTACK_CLIENT = importlib.import_module('openstack')
