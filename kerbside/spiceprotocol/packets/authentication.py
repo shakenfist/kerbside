@@ -21,9 +21,13 @@ class ServerAuthPacket(object):
         self.password = password
 
     def __call__(self):
+        encoded_password = b''
+        if self.password:
+            encoded_password = self.password.encode()
+
         # Encrypt our ticket with the public key
         encrypted_password = self.key.encrypt(
-            self.password.encode() + b'\x00',
+            encoded_password + b'\x00',
             padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA1()),
                          algorithm=hashes.SHA1(), label=None))
         if len(encrypted_password) != 128:

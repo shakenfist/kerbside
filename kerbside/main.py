@@ -162,6 +162,9 @@ def _parse_sources():
             kerbside_db.set_source_error_state(source['source'], False)
 
     for source, uuid in extra_consoles:
+        if source['type'] == 'openstack':
+            continue
+
         LOG.with_fields(extra_consoles[(source, uuid)]).info(
             'Console is no longer available, cleaning up')
         kerbside_db.remove_console(source=source, uuid=uuid)
