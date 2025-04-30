@@ -218,44 +218,6 @@ class Auth(sf_api.Resource):
         return resp
 
 
-class Sources(sf_api.Resource):
-    @verify_token
-    def get(self):
-        if flask.request.headers.get('Accept', 'text/html').find('text/html') != -1:
-            resp = flask.Response(
-                flask.render_template(
-                    'sources.html', sources=db.get_sources(),
-                    navitems=get_nav_items('Sources'),
-                    refresh=True, when=datetime.datetime.now()),
-                mimetype='text/html')
-        else:
-            sources = []
-            for source in db.get_sources():
-                del source['password']
-                sources.append(source)
-
-            resp = flask.Response(
-                json.dumps(sources, indent=4, sort_keys=True, cls=DateTimeEncoder),
-                mimetype='application/json')
-        resp.status_code = 200
-        return resp
-
-
-class Source(sf_api.Resource):
-    @verify_token
-    def get(self, uuid):
-        # This is a REST API only call
-        source = db.get_source(uuid)
-        if not source:
-            return sf_api.error(404, 'source not found')
-
-        resp = flask.Response(
-            json.dumps(source, indent=4, sort_keys=True, cls=DateTimeEncoder),
-            mimetype='application/json')
-        resp.status_code = 200
-        return resp
-
-
 class Consoles(sf_api.Resource):
     @verify_token
     def get(self):
@@ -515,6 +477,44 @@ class SessionTerminate(sf_api.Resource):
                 {
                     'result': 'ok'
                 }, indent=4, sort_keys=True),
+            mimetype='application/json')
+        resp.status_code = 200
+        return resp
+
+
+class Sources(sf_api.Resource):
+    @verify_token
+    def get(self):
+        if flask.request.headers.get('Accept', 'text/html').find('text/html') != -1:
+            resp = flask.Response(
+                flask.render_template(
+                    'sources.html', sources=db.get_sources(),
+                    navitems=get_nav_items('Sources'),
+                    refresh=True, when=datetime.datetime.now()),
+                mimetype='text/html')
+        else:
+            sources = []
+            for source in db.get_sources():
+                del source['password']
+                sources.append(source)
+
+            resp = flask.Response(
+                json.dumps(sources, indent=4, sort_keys=True, cls=DateTimeEncoder),
+                mimetype='application/json')
+        resp.status_code = 200
+        return resp
+
+
+class Source(sf_api.Resource):
+    @verify_token
+    def get(self, uuid):
+        # This is a REST API only call
+        source = db.get_source(uuid)
+        if not source:
+            return sf_api.error(404, 'source not found')
+
+        resp = flask.Response(
+            json.dumps(source, indent=4, sort_keys=True, cls=DateTimeEncoder),
             mimetype='application/json')
         resp.status_code = 200
         return resp

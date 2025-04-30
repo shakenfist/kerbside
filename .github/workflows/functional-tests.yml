@@ -208,7 +208,7 @@ jobs:
           script="${script} for rpm in \$(cat /tmp/rpms.list); do"
               script="${script} echo \"Caching URLs for \${rpm}\";"
               script="${script} sudo yumdownloader --resolve --urls \${rpm} |"
-              script="${script} grep -v 'Last metadata expiration check' "
+              script="${script} egrep -v '(metadata expiration|Waiting for)' "
               script="${script} >> /tmp/rpms.urls;"
               script="${script} done;"
 
