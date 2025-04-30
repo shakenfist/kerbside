@@ -124,7 +124,8 @@ def _parse_sources():
                 elif source['type'] == 'ovirt':
                     lookup = ovirt_source.oVirtSource(**source)
                 elif source['type'] == 'openstack':
-                    lookup = openstack_source.OpenStackSource(**source)
+                    # OpenStack now uses auth tokens instead of console scraping
+                    continue
                 else:
                     LOG.error('Unknown source type %s' % source['type'])
                     kerbside_db.set_source_error_state(source['source'], True)
