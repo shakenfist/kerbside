@@ -6,7 +6,6 @@ from shakenfist_utilities import logs
 import socket
 import ssl
 import tempfile
-import urllib3
 
 from .. import util
 

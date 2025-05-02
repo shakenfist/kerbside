@@ -42,13 +42,11 @@ class ShakenFistSource(base.BaseSource):
             return
 
     def _make_client(self, namespace):
-        global SHAKENFIST_CLIENT
         return SHAKENFIST_CLIENT.Client(
             base_url=self.args['url'], namespace=namespace, key=self.args['password'],
             async_strategy=SHAKENFIST_CLIENT.ASYNC_BLOCK)
 
     def __call__(self):
-        global SHAKENFIST_CLIENT
         if not SHAKENFIST_CLIENT:
             LOG.warning('Ignoring source %s due to missing shakenfist-client.'
                         % self.args['source'])

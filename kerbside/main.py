@@ -11,7 +11,6 @@ from . import api as kerbside_api
 from .config import config as config
 from . import db as kerbside_db
 from . import proxy as kerbside_proxy
-from .sources import openstack as openstack_source
 from .sources import ovirt as ovirt_source
 from .sources import shakenfist as shakenfist_source
 from . import util
