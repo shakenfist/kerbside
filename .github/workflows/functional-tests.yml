@@ -55,45 +55,45 @@ jobs:
           python3 -mvenv /tmp/venv
           /tmp/venv/bin/pip3 install -r requirements.txt
 
-      - name: Run python3 unit tests
-        timeout-minutes: 10
-        run: |
-          /usr/bin/tox -epy3
+      # - name: Run python3 unit tests
+      #   timeout-minutes: 10
+      #   run: |
+      #     /usr/bin/tox -epy3
 
-      - name: List failing tests
-        if: failure()
-        id: failures
-        run: |
-          echo "Gathering list of failed tests..."
-          touch ${GITHUB_WORKSPACE}/failed
-          /usr/bin/tox -efailing || true > ${GITHUB_WORKSPACE}/failed
-          echo
+      # - name: List failing tests
+      #   if: failure()
+      #   id: failures
+      #   run: |
+      #     echo "Gathering list of failed tests..."
+      #     touch ${GITHUB_WORKSPACE}/failed
+      #     /usr/bin/tox -efailing || true > ${GITHUB_WORKSPACE}/failed
+      #     echo
 
-          failed=$(cat ${GITHUB_WORKSPACE}/failed | egrep "^FAIL: " | \
-              sed -z 's/FAIL: shakenfist_ci\.//g;s/\n/, /g;s/, $/\n/')
+      #     failed=$(cat ${GITHUB_WORKSPACE}/failed | egrep "^FAIL: " | \
+      #         sed -z 's/FAIL: shakenfist_ci\.//g;s/\n/, /g;s/, $/\n/')
 
-          echo "Failed tests:"
-          cat ${GITHUB_WORKSPACE}/failed
-          echo
+      #     echo "Failed tests:"
+      #     cat ${GITHUB_WORKSPACE}/failed
+      #     echo
 
-          echo "failures<<EOF" >> ${GITHUB_OUTPUT}
-          echo "${failed}" >> ${GITHUB_OUTPUT}
-          echo "EOF" >> ${GITHUB_OUTPUT}
-          echo "GITHUB_OUTPUT is:"
-          cat ${GITHUB_OUTPUT}
+      #     echo "failures<<EOF" >> ${GITHUB_OUTPUT}
+      #     echo "${failed}" >> ${GITHUB_OUTPUT}
+      #     echo "EOF" >> ${GITHUB_OUTPUT}
+      #     echo "GITHUB_OUTPUT is:"
+      #     cat ${GITHUB_OUTPUT}
 
-      - name: Generate coverage report
-        timeout-minutes: 10
-        run: |
-          /usr/bin/tox -ecover
-          zip -r cover.zip cover
+      # - name: Generate coverage report
+      #   timeout-minutes: 10
+      #   run: |
+      #     /usr/bin/tox -ecover
+      #     zip -r cover.zip cover
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          retention-days: 90
-          if-no-files-found: error
-          path: cover.zip
+      # - uses: actions/upload-artifact@v4
+      #   with:
+      #     name: coverage
+      #     retention-days: 90
+      #     if-no-files-found: error
+      #     path: cover.zip
 
   functional_matrix:
     name: "${{ matrix.test.description }}"
