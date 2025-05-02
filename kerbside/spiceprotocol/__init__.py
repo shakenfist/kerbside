@@ -118,25 +118,26 @@ class SpiceClient(object):
 
         if not self.secure:
             self.sock.connect((self.server, int(self.port)))
-        elif self.tls_port and self.ca_cert:
-            # This is another example of when we need to write the CA cert to
-            # disk so we can pass it through.
-            fd, ca_tempfile = tempfile.mkstemp()
-            os.close(fd)
-            with open(ca_tempfile, 'w') as f:
-                f.write(self.ca_cert)
-
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock = ssl.wrap_socket(s, ca_certs=ca_tempfile,
-                                        cert_reqs=ssl.CERT_REQUIRED)
-            self.sock.connect((self.server, int(self.tls_port)))
-
-            os.unlink(ca_tempfile)
         elif self.tls_port:
-            # Or we're using a system CA certificate.
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock = ssl.wrap_socket(s, cert_reqs=ssl.CERT_REQUIRED)
+            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+            if self.ca_cert:
+                # This is another example of when we need to write the CA cert to
+                # disk so we can pass it through.
+                fd, ca_tempfile = tempfile.mkstemp()
+                os.close(fd)
+                with open(ca_tempfile, 'w') as f:
+                    f.write(self.ca_cert)
+                ssl_context.load_verify_locations(ca_tempfile)
+
+            ssl_context.set_default_verify_paths()
+            self.sock = ssl_context.wrap_socket(
+                s, server_hostname=self.server)
             self.sock.connect((self.server, int(self.tls_port)))
+
+            if self.ca_cert:
+                os.unlink(ca_tempfile)
         else:
             raise NoTLSPort(
                 'No TLS port has been configured, but a secure session was requested')
