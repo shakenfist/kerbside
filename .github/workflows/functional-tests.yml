@@ -10,8 +10,8 @@ on:
         - '["ovirt-44-rocky-8"]'
         - '["ovirt-45-rocky-8"]'
         - '["ovirt-45-rocky-9"]'
-        - '["ovirt-44-rocky-8", "ovirt-45-rocky-8", "ovirt-45-rocky-9"]'
-        default: '["ovirt-45-rocky-9"]'
+        - '["kolla-ansible-2025.1-debian-12"]'
+        default: '["kolla-ansible-2025.1-debian-12"]'
         required: true
       retention:
         description: 'How long to retain the environment after the workflow run in minutes'
@@ -95,7 +95,7 @@ jobs:
       #     if-no-files-found: error
       #     path: cover.zip
 
-  functional_matrix:
+  ovirt_matrix:
     name: "${{ matrix.test.description }}"
     strategy:
       fail-fast: false
@@ -104,6 +104,7 @@ jobs:
           {
             'name': 'ovirt-44-rocky-8',
             'description': 'oVirt 4.4 on Rocky 8',
+            'environment_name': 'ovirt',
             'ovirt_rpm': 'https://resources.ovirt.org/pub/yum-repo/ovirt-release44.rpm',
             'base': 'rocky:8',
             'baseuser': 'cloud-user'
@@ -111,6 +112,7 @@ jobs:
           {
             'name': 'ovirt-45-rocky-8',
             'description': 'oVirt 4.5 on Rocky 8',
+            'environment_name': 'ovirt',
             'ovirt_rpm': 'centos-release-ovirt45',
             'base': 'rocky:8',
             'baseuser': 'cloud-user'
@@ -118,6 +120,7 @@ jobs:
           {
             'name': 'ovirt-45-rocky-9',
             'description': 'oVirt 4.5 on Rocky 9',
+            'environment_name': 'ovirt',
             'ovirt_rpm': 'centos-release-ovirt45',
             'base': 'rocky:9',
             'baseuser': 'cloud-user'
@@ -166,7 +169,7 @@ jobs:
         run: |
           . $GITHUB_ENV
           ansible-playbook -i /home/debian/ansible-hosts \
-              --extra-vars "identifier=${SHAKENFIST_NAMESPACE} base=${{ matrix.test.base }} environment_name=ovirt" \
+              --extra-vars "identifier=${SHAKENFIST_NAMESPACE} base=${{ matrix.test.base }} environment_name=${{ matrix.test.environment_name }}" \
               --tags all ${GITHUB_WORKSPACE}/actions/ansible/kerbside-single-node.yml
 
       - name: Install base packages
@@ -269,7 +272,6 @@ jobs:
               "${script}"
 
       - name: Gather artifacts
-        if: always()
         run: |
           . $GITHUB_ENV
 
@@ -311,6 +313,191 @@ jobs:
           rm bundle.zip
           cd ..
           zip -r bundle.zip bundle
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bundle-${{ matrix.test.name }}
+          retention-days: 90
+          if-no-files-found: error
+          path: /srv/github/artifacts/bundle.zip
+
+      - name: Retain the environment if requested
+        if: github.event_name == 'workflow_dispatch'
+        run: sleep $(( $MINUTES * 60 ))
+        env:
+          MINUTES: ${{ inputs.retention }}
+
+  openstack_matrix:
+    name: "${{ matrix.test.description }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        test: [
+          {
+            'name': 'kolla-ansible-2025.1-debian-12',
+            'environment_name': 'kolla',
+            'description': 'OpenStack via Kolla-Ansible 2025.1 on Debian 12',
+            'openstack_release': '2025.1',
+            'base': 'debian:12',
+            'baseuser': 'debian'
+          },
+        ]
+    runs-on: [self-hosted, vm]
+    needs: sanity_checks
+    timeout-minutes: 120
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.test.name }}
+      cancel-in-progress: true
+
+    # NOTE(mikal): git repos are checked out to /srv/github/_work/{org}/{repo}
+    # which is available as GITHUB_WORKSPACE. You can find other environment
+    # variables at https://docs.github.com/en/actions/learn-github-actions/environment-variables
+
+    steps:
+      - name: Filter workflow_dispatch runs
+        if: github.event_name == 'workflow_dispatch' && ! contains(inputs.target, matrix.test.name)
+        uses: actions/github-script@v6
+        with:
+          script: |
+              core.setFailed('Target skipped')
+
+      - name: Set environment variables
+        shell: bash
+        run: |
+          echo "SF_HEAD_SHA=${{ github.event.pull_request.head.sha }}" >> $GITHUB_ENV
+          echo "SHAKENFIST_NAMESPACE=$(hostname)" >> $GITHUB_ENV
+
+      - name: Checkout the actions repository
+        uses: actions/checkout@v4
+        with:
+          repository: shakenfist/actions
+          path: actions
+          fetch-depth: 0
+
+      - name: Checkout kerbside
+        uses: actions/checkout@v4
+        with:
+          path: kerbside
+          fetch-depth: 0
+
+      - name: Build infrastructure
+        shell: bash
+        run: |
+          . $GITHUB_ENV
+          ansible-playbook -i /home/debian/ansible-hosts \
+              --extra-vars "identifier=${SHAKENFIST_NAMESPACE} base=${{ matrix.test.base }} environment_name=${{ matrix.test.environment_name }}" \
+              --tags all ${GITHUB_WORKSPACE}/actions/ansible/kerbside-single-node.yml
+
+      - name: Checkout kerbside-patches
+        uses: actions/checkout@v4
+        with:
+          repository: shakenfist/kerbside-patches
+          path: kerbside-patches
+          fetch-depth: 0
+
+      - name: Copy kerbside-patches git repo
+        shell: bash
+        run: |
+          . $GITHUB_ENV
+          scp -rp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${GITHUB_WORKSPACE}/kerbside-patches \
+              ${{ matrix.test.baseuser }}@10.0.2.2:.
+
+      - name: Install additional packages
+        run: |
+          script="${script} sudo apt-get update;"
+              script="${script} sudo apt-get install -y zip;"
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "${script}"
+
+      - name: Setup build environment
+        run: |
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "cd kerbside-patches; ./_build/setup-local-build-environment.sh"
+
+      - name: Install build dependencies
+        run: |
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "cd kerbside-patches; ./_build/install-build-dependencies.sh"
+
+      - name: Assemble source code
+        run: |
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "cd kerbside-patches; ./_build/assemble-source.sh ${{ matrix.test.openstack_release }}"
+
+      - name: Build containers with no local OCI registry
+        run: |
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "cd kerbside-patches; ./_build/build-containers.sh --build-targets ${{ matrix.test.openstack_release }} --build-images all"
+
+      - name: Disable /etc/hosts for name resolution
+        run: |
+          . $GITHUB_ENV
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              'sudo sed -i s"|hosts:      files dns myhostname|hosts:      dns myhostname|" /etc/nsswitch.conf'
+
+      - name: Bootstrap Kolla-Ansible
+        run: |
+          . $GITHUB_ENV
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              'cd kerbside-patches; sudo ./tools/bootstrap-kolla-ansible ${{ matrix.test.openstack_release }}'
+
+      - name: Install Kolla-Ansible
+        run: |
+          . $GITHUB_ENV
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              'cd kerbside-patches; sudo ./tools/install-kolla-ansible'
+
+      - name: Install patched OpenStack clients
+        run: |
+          . $GITHUB_ENV
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              'cd kerbside-patches; sudo ./tools/install-openstack-clients'
+
+      - name: Post install Kolla-Ansible setup
+        run: |
+          . $GITHUB_ENV
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              'cd kerbside-patches; sudo ./tools/postinstall-kolla-ansible'
+
+      - name: Attempt to start an instance with a console and connect to it
+        run: |
+          . $GITHUB_ENV
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              'cd kerbside-patches; sudo ./tools/test-console'
+
+      - name: Collect logs
+        if: always()
+        run: |
+          . $GITHUB_ENV
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              'cd kerbside-patches/tools; sudo ./gather-logs'
+          scp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2:/tmp/bundle.zip \
+              /srv/github/artifacts/bundle.zip
 
       - uses: actions/upload-artifact@v4
         if: always()
