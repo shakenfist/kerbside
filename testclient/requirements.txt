@@ -1,0 +1,2 @@
+click >= 8.0.0           # bsd
+pillow >= 11.2.1         # MIT-CMU
