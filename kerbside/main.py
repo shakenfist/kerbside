@@ -11,7 +11,6 @@ from . import api as kerbside_api
 from .config import config as config
 from . import db as kerbside_db
 from . import proxy as kerbside_proxy
-from .sources import openstack as openstack_source
 from .sources import ovirt as ovirt_source
 from .sources import shakenfist as shakenfist_source
 from . import util
@@ -51,6 +50,8 @@ def _parse_sources():
     if not os.path.exists(config.SOURCES_PATH):
         LOG.error('Sources configuration at %s does not exist!' % config.SOURCES_PATH)
 
+    source_type = {}
+
     extra_sources = {}
     for source in kerbside_db.get_sources():
         extra_sources[source['name']] = source
@@ -68,6 +69,9 @@ def _parse_sources():
             if source['source'] in extra_sources:
                 del extra_sources[source['source']]
             stored_source = kerbside_db.get_source(source['source'])
+
+            # Cache the type of this source
+            source_type[source['source']] = source['type']
 
             # If this source is new, record it with the configured CA cert
             # (if any).
@@ -124,7 +128,8 @@ def _parse_sources():
                 elif source['type'] == 'ovirt':
                     lookup = ovirt_source.oVirtSource(**source)
                 elif source['type'] == 'openstack':
-                    lookup = openstack_source.OpenStackSource(**source)
+                    # OpenStack now uses auth tokens instead of console scraping
+                    continue
                 else:
                     LOG.error('Unknown source type %s' % source['type'])
                     kerbside_db.set_source_error_state(source['source'], True)
@@ -161,6 +166,9 @@ def _parse_sources():
             kerbside_db.set_source_error_state(source['source'], False)
 
     for source, uuid in extra_consoles:
+        if source_type[source] == 'openstack':
+            continue
+
         LOG.with_fields(extra_consoles[(source, uuid)]).info(
             'Console is no longer available, cleaning up')
         kerbside_db.remove_console(source=source, uuid=uuid)

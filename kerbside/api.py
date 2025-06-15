@@ -13,6 +13,7 @@ from flask_jwt_extended import (
 from flask_jwt_extended.exceptions import NoAuthorizationError
 from flask_request_id import RequestID
 import flask_restful
+import importlib
 import json
 from keystoneauth1 import exceptions as keystone_exceptions
 from keystoneauth1.identity import v3 as keystone_v3
@@ -27,6 +28,7 @@ import subprocess
 import sys
 from webargs import fields
 from webargs.flaskparser import use_kwargs
+import yaml
 
 from .config import config
 from . import consoletoken
@@ -49,6 +51,11 @@ app.logger.handlers = [HANDLER]
 # Configure JWT authentication
 app.config['JWT_SECRET_KEY'] = config.AUTH_SECRET_SEED
 jwt = JWTManager(app)
+
+
+OPENSTACK_CLIENT = None
+KEYSTONE_V3 = None
+KEYSTONE_SESSION = None
 
 
 # A decorator to protect endpoints which require authentication
@@ -218,44 +225,6 @@ class Auth(sf_api.Resource):
         return resp
 
 
-class Sources(sf_api.Resource):
-    @verify_token
-    def get(self):
-        if flask.request.headers.get('Accept', 'text/html').find('text/html') != -1:
-            resp = flask.Response(
-                flask.render_template(
-                    'sources.html', sources=db.get_sources(),
-                    navitems=get_nav_items('Sources'),
-                    refresh=True, when=datetime.datetime.now()),
-                mimetype='text/html')
-        else:
-            sources = []
-            for source in db.get_sources():
-                del source['password']
-                sources.append(source)
-
-            resp = flask.Response(
-                json.dumps(sources, indent=4, sort_keys=True, cls=DateTimeEncoder),
-                mimetype='application/json')
-        resp.status_code = 200
-        return resp
-
-
-class Source(sf_api.Resource):
-    @verify_token
-    def get(self, uuid):
-        # This is a REST API only call
-        source = db.get_source(uuid)
-        if not source:
-            return sf_api.error(404, 'source not found')
-
-        resp = flask.Response(
-            json.dumps(source, indent=4, sort_keys=True, cls=DateTimeEncoder),
-            mimetype='application/json')
-        resp.status_code = 200
-        return resp
-
-
 class Consoles(sf_api.Resource):
     @verify_token
     def get(self):
@@ -398,7 +367,8 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
             'host_subject': host_subject
         }
 
-        resp = flask.Response(vv, mimetype='application/x-virt-viewer;charset=UTF-8')
+        resp = flask.Response(
+            vv, mimetype='application/x-virt-viewer;charset=UTF-8')
         resp.status_code = 200
         return resp
 
@@ -476,6 +446,99 @@ class ConsolesTerminate(sf_api.Resource):
         return resp
 
 
+class NovaToken(sf_api.Resource):
+    get_args = {
+        'token': fields.String()
+    }
+
+    # No token verification because this route uses an external token from
+    # OpenStack Nova.
+    @use_kwargs(get_args, location='query')
+    def get(self, token=None):
+        if not token:
+            return sf_api.error(401, 'token absent')
+
+        global OPENSTACK_CLIENT
+        global KEYSTONE_V3
+        global KEYSTONE_SESSION
+
+        if not OPENSTACK_CLIENT:
+            try:
+                OPENSTACK_CLIENT = importlib.import_module('openstack')
+                KEYSTONE_V3 = importlib.import_module(
+                    'keystoneauth1.identity.v3')
+                KEYSTONE_SESSION = importlib.import_module(
+                    'keystoneauth1.session')
+            except Exception as e:
+                LOG.error('Failed to import OpenStack client: %s' % e)
+                return sf_api.error(
+                    500, 'OpenStack client setup failure')
+
+        with open(config.SOURCES_PATH) as f:
+            sources = yaml.safe_load(f)
+            for source in sources:
+                if source['type'] != 'openstack':
+                    continue
+
+                auth = KEYSTONE_V3.Password(
+                    auth_url=source['url'],
+                    username=source['username'],
+                    password=source['password'],
+                    project_name=source['project_name'],
+                    user_domain_id=source['user_domain_id'],
+                    project_domain_id=source['project_domain_id'])
+                conn = OPENSTACK_CLIENT.connection.Connection(
+                    session=KEYSTONE_SESSION.Session(auth=auth))
+
+                try:
+                    details = conn.compute.validate_console_auth_token(token)
+                except OPENSTACK_CLIENT.exceptions.NotFoundException:
+                    continue
+
+                if not details:
+                    continue
+
+                instance_uuid = details.instance_uuid
+
+                # Configure the console, given OpenStack does not do instance
+                # scraping in advance.
+                db.add_console(
+                    uuid=instance_uuid,
+                    source=source['source'],
+                    hypervisor=details['host'],
+                    insecure_port=details['port'],
+                    secure_port=details['tls_port']
+                )
+                token = consoletoken.create_token(
+                    source['source'], instance_uuid)
+
+                cacert = ''
+                with open(config.CACERT_PATH) as f:
+                    cacert = f.read()
+                cacert = cacert.replace('\n', '\\n')
+
+                if config.PROXY_HOST_SUBJECT:
+                    host_subject = '\nhost-subject=%s' % config.PROXY_HOST_SUBJECT
+                else:
+                    host_subject = ''
+
+                vv = VIRTVIEWER_TEMPLATE % {
+                    'node': config.PUBLIC_FQDN,
+                    'port': config.VDI_INSECURE_PORT,
+                    'tls_port': '\ntls-port=%s' % config.VDI_SECURE_PORT,
+                    'token': token['token'],
+                    'ca_cert': '\nca=%s' % cacert,
+                    'name': '%s via proxy session ID %s' % (instance_uuid, token['session_id']),
+                    'host_subject': host_subject
+                }
+
+                resp = flask.Response(vv, mimetype='application/x-virt-viewer;charset=UTF-8')
+                resp.status_code = 200
+                return resp
+
+        return sf_api.error(404, 'nova token not found')
+
+
 class Sessions(sf_api.Resource):
     @verify_token
     def get(self):
@@ -520,6 +583,44 @@ class SessionTerminate(sf_api.Resource):
         return resp
 
 
+class Sources(sf_api.Resource):
+    @verify_token
+    def get(self):
+        if flask.request.headers.get('Accept', 'text/html').find('text/html') != -1:
+            resp = flask.Response(
+                flask.render_template(
+                    'sources.html', sources=db.get_sources(),
+                    navitems=get_nav_items('Sources'),
+                    refresh=True, when=datetime.datetime.now()),
+                mimetype='text/html')
+        else:
+            sources = []
+            for source in db.get_sources():
+                del source['password']
+                sources.append(source)
+
+            resp = flask.Response(
+                json.dumps(sources, indent=4, sort_keys=True, cls=DateTimeEncoder),
+                mimetype='application/json')
+        resp.status_code = 200
+        return resp
+
+
+class Source(sf_api.Resource):
+    @verify_token
+    def get(self, uuid):
+        # This is a REST API only call
+        source = db.get_source(uuid)
+        if not source:
+            return sf_api.error(404, 'source not found')
+
+        resp = flask.Response(
+            json.dumps(source, indent=4, sort_keys=True, cls=DateTimeEncoder),
+            mimetype='application/json')
+        resp.status_code = 200
+        return resp
+
+
 api.add_resource(Root, '/')
 api.add_resource(Auth, '/auth')
 api.add_resource(Consoles, '/console')
@@ -528,6 +629,7 @@ api.add_resource(ConsolesAudit, '/console/<source>/<uuid>/audit')
 api.add_resource(ConsolesDirectVirtViewer, '/console/direct/<source>/<uuid>/console.vv')
 api.add_resource(ConsolesProxyVirtViewer, '/console/proxy/<source>/<uuid>/console.vv')
 api.add_resource(ConsolesTerminate, '/console/<source>/<uuid>/terminate')
+api.add_resource(NovaToken, '/nova')
 api.add_resource(Sessions, '/session')
 api.add_resource(SessionTerminate, '/session/<session>/terminate')
 api.add_resource(Sources, '/source')

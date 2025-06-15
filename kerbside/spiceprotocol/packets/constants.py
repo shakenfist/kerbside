@@ -233,6 +233,7 @@ server_inputs_num_to_str = copy.copy(server_common_num_to_str)
 server_inputs_num_to_str.update({
     101: 'init',
     102: 'key_modifiers',
+    103: 'not_documented',
     111: 'mouse_motion_ack'
 })
 

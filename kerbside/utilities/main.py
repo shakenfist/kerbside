@@ -6,8 +6,9 @@ import re
 from shakenfist_utilities import logs
 import sys
 
-from . import glz
-from . import lz
+from kerbside.spiceprotocol import SpiceClient
+from kerbside.utilities import glz
+from kerbside.utilities import lz
 
 
 LOG = logs.setup_console(__name__)
@@ -30,29 +31,38 @@ def cli(ctx, verbose):
     ctx.obj['LOGGER'] = LOG
 
 
-@click.group('lz', help='LZ compression commands')
-def lz_group():
+@click.group('client', help='A command line SPICE client')
+def client_group():
     pass
 
 
-cli.add_command(lz_group)
+cli.add_command(client_group)
 
 
-@lz_group.command(name='decompress', help='Decompress a raw LZ compressed frame')
+@client_group.command(name='connect-file', help='Connect to a SPICE console')
 @click.pass_context
-@click.argument('source', type=click.Path(exists=True))
-@click.argument('destination', type=click.Path(exists=False))
-def lz_decompress(ctx, source, destination):
-    with open(source, 'rb') as source_file:
-        image_data = source_file.read()
-        width, height, decompressed = lz.Decompress()(ctx, image_data)
-
-    i = Image.frombuffer('RGBA', (width, height), decompressed,
-                         'raw', 'RGBA', 0, 1)
-    i.save(destination)
+@click.argument('vv', type=click.Path(exists=True))
+def connect_file(ctx, vv):
+    sc = SpiceClient()
+    sc.from_vv_file(vvpath=vv)
+    sc.connect()
+    print('Connected OK')
 
 
-lz_group.add_command(lz_decompress)
+client_group.add_command(connect_file)
+
+
+@client_group.command(name='connect-url', help='Connect to a SPICE console')
+@click.pass_context
+@click.argument('vv', type=click.STRING)
+def connect_url(ctx, vv):
+    sc = SpiceClient()
+    sc.from_vv_file(vvurl=vv)
+    sc.connect()
+    print('Connected OK')
+
+
+client_group.add_command(connect_url)
 
 
 @click.group('glz', help='GLZ compression commands')
@@ -122,3 +132,28 @@ def glz_decompress(ctx, source, destination, global_dictionary):
 
 
 glz_group.add_command(glz_decompress)
+
+
+@click.group('lz', help='LZ compression commands')
+def lz_group():
+    pass
+
+
+cli.add_command(lz_group)
+
+
+@lz_group.command(name='decompress', help='Decompress a raw LZ compressed frame')
+@click.pass_context
+@click.argument('source', type=click.Path(exists=True))
+@click.argument('destination', type=click.Path(exists=False))
+def lz_decompress(ctx, source, destination):
+    with open(source, 'rb') as source_file:
+        image_data = source_file.read()
+        width, height, decompressed = lz.Decompress()(ctx, image_data)
+
+    i = Image.frombuffer('RGBA', (width, height), decompressed,
+                         'raw', 'RGBA', 0, 1)
+    i.save(destination)
+
+
+lz_group.add_command(lz_decompress)

@@ -75,7 +75,6 @@ class oVirtSource(base.BaseSource):
         return connection
 
     def __call__(self):
-        global OVIRT_SDK
         if not OVIRT_SDK:
             LOG.warning('Ignoring source %s due to missing ovirt-engine-sdk4.'
                         % self.args['source'])
