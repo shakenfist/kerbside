@@ -13,6 +13,7 @@ import click
 from kerbside.spiceprotocol import SpiceClient
 from kerbside.spiceprotocol.packets import constants
 
+from ryll import common
 from ryll.common import _log
 from ryll import display_types
 from ryll import scancodes
@@ -681,8 +682,18 @@ def cli(ctx):
     '--input-type', default='tkinter', help='Which input method to use',
     type=click.Choice(['none', 'tkinter', 'cadence']),
 )
+@click.option(
+    '--logfile-path', default='logfile', help='Where to write our logfile'
+)
+@click.option(
+    '--latency-path', default='latency.csv',
+    help='Where to write our latency report'
+)
 @click.pass_context
-def connect(ctx, url, file, direct, display_type, statistics_type, input_type):
+def connect(ctx, url, file, direct, display_type, statistics_type, input_type,
+            logfile_path, latency_path):
+    common.LOGFILE_PATH = logfile_path
+
     # Load configuration from the various possible places
     _log('global', 'Loading config')
     vv = None
@@ -763,7 +774,7 @@ def connect(ctx, url, file, direct, display_type, statistics_type, input_type):
     cadence_thread = None
     last_key_event = None
 
-    latency_report = open('latency.csv', 'w')
+    latency_report = open(latency_path, 'w')
 
     while True:
         try:
