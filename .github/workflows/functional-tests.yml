@@ -10,8 +10,8 @@ on:
         - '["ovirt-44-rocky-8"]'
         - '["ovirt-45-rocky-8"]'
         - '["ovirt-45-rocky-9"]'
-        - '["kolla-ansible-2025.1-debian-12"]'
-        default: '["kolla-ansible-2025.1-debian-12"]'
+        - '["kolla-ansible-master-debian-12"]'
+        default: '["kolla-ansible-master-debian-12"]'
         required: true
       retention:
         description: 'How long to retain the environment after the workflow run in minutes'
@@ -335,10 +335,10 @@ jobs:
       matrix:
         test: [
           {
-            'name': 'kolla-ansible-2025.1-debian-12',
+            'name': 'kolla-ansible-master-debian-12',
             'environment_name': 'kolla',
-            'description': 'OpenStack via Kolla-Ansible 2025.1 on Debian 12',
-            'openstack_release': '2025.1',
+            'description': 'OpenStack via Kolla-Ansible master on Debian 12',
+            'openstack_release': 'master',
             'base': 'debian:12',
             'baseuser': 'debian'
           },
@@ -407,8 +407,8 @@ jobs:
 
       - name: Install additional packages
         run: |
-          script="${script} sudo apt-get update;"
-              script="${script} sudo apt-get install -y zip;"
+          script="sudo apt-get update;"
+          script="${script} sudo apt-get install -y zip;"
 
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null ${{ matrix.test.baseuser }}@10.0.2.2 \
