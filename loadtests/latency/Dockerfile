@@ -7,7 +7,7 @@ RUN apt-get update && \
 
 RUN mkdir -p /srv
 ADD . /srv/kerbside
-ADD loadtests/latency/makeconsole.sh /srv/makesonsole.sh
+ADD loadtests/latency/makeconsole.sh /srv/makeconsole.sh
 ADD loadtests/latency/cleanupconsoles.sh /srv/cleanupconsoles.sh
 
 RUN git clone https://github.com/openstack/openstacksdk /srv/openstacksdk
