@@ -107,7 +107,8 @@ jobs:
             'environment_name': 'ovirt',
             'ovirt_rpm': 'https://resources.ovirt.org/pub/yum-repo/ovirt-release44.rpm',
             'base': 'rocky:8',
-            'baseuser': 'cloud-user'
+            'baseuser': 'cloud-user',
+            'hostname': 'ovirt'
           },
           {
             'name': 'ovirt-45-rocky-8',
@@ -115,7 +116,8 @@ jobs:
             'environment_name': 'ovirt',
             'ovirt_rpm': 'centos-release-ovirt45',
             'base': 'rocky:8',
-            'baseuser': 'cloud-user'
+            'baseuser': 'cloud-user',
+            'hostname': 'ovirt'
           },
           {
             'name': 'ovirt-45-rocky-9',
@@ -123,7 +125,8 @@ jobs:
             'environment_name': 'ovirt',
             'ovirt_rpm': 'centos-release-ovirt45',
             'base': 'rocky:9',
-            'baseuser': 'cloud-user'
+            'baseuser': 'cloud-user',
+            'hostname': 'ovirt'
           },
         ]
     runs-on: [self-hosted, vm]
@@ -169,7 +172,7 @@ jobs:
         run: |
           . $GITHUB_ENV
           ansible-playbook -i /home/debian/ansible-hosts \
-              --extra-vars "identifier=${SHAKENFIST_NAMESPACE} base=${{ matrix.test.base }} environment_name=${{ matrix.test.environment_name }}" \
+              --extra-vars "identifier=${SHAKENFIST_NAMESPACE} base=${{ matrix.test.base }} environment_name=${{ matrix.test.environment_name }} hostname=${{ matrix.test.hostname }}" \
               --tags all ${GITHUB_WORKSPACE}/actions/ansible/kerbside-single-node.yml
 
       - name: Install base packages
