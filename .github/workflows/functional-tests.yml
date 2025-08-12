@@ -496,11 +496,10 @@ jobs:
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd kerbside-patches/tools; sudo ./gather-logs'
+              'cd kerbside-patches/tools; sudo ./tools/gather-logs'
           scp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
-              ${{ matrix.test.baseuser }}@10.0.2.2:/tmp/bundle.zip \
-              /srv/github/artifacts/bundle.zip
+              ${{ matrix.test.baseuser }}@10.0.2.2:/tmp/bundle.zip /tmp/bundle.zip
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -508,7 +507,7 @@ jobs:
           name: bundle-${{ matrix.test.name }}
           retention-days: 90
           if-no-files-found: error
-          path: /srv/github/artifacts/bundle.zip
+          path: /tmp/bundle.zip
 
       - name: Retain the environment if requested
         if: github.event_name == 'workflow_dispatch'
