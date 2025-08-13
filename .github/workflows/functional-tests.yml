@@ -470,7 +470,7 @@ jobs:
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd kerbside-patches; sudo ./tools/bootstrap-kolla-ansible ${{ matrix.test.openstack_release }}'
+              'cd kerbside-patches; sudo ./tools/bootstrap-kolla-ansible ${{ matrix.test.openstack_release }} all-in-one'
 
       - name: Install Kolla-Ansible
         run: |
