@@ -10,8 +10,8 @@ on:
         - '["ovirt-44-rocky-8"]'
         - '["ovirt-45-rocky-8"]'
         - '["ovirt-45-rocky-9"]'
-        - '["kolla-ansible-2025.1-debian-12"]'
-        default: '["kolla-ansible-2025.1-debian-12"]'
+        - '["kolla-ansible-master-debian-12"]'
+        default: '["kolla-ansible-master-debian-12"]'
         required: true
       retention:
         description: 'How long to retain the environment after the workflow run in minutes'
@@ -107,7 +107,8 @@ jobs:
             'environment_name': 'ovirt',
             'ovirt_rpm': 'https://resources.ovirt.org/pub/yum-repo/ovirt-release44.rpm',
             'base': 'rocky:8',
-            'baseuser': 'cloud-user'
+            'baseuser': 'cloud-user',
+            'hostname': 'ovirt'
           },
           {
             'name': 'ovirt-45-rocky-8',
@@ -115,7 +116,8 @@ jobs:
             'environment_name': 'ovirt',
             'ovirt_rpm': 'centos-release-ovirt45',
             'base': 'rocky:8',
-            'baseuser': 'cloud-user'
+            'baseuser': 'cloud-user',
+            'hostname': 'ovirt'
           },
           {
             'name': 'ovirt-45-rocky-9',
@@ -123,7 +125,8 @@ jobs:
             'environment_name': 'ovirt',
             'ovirt_rpm': 'centos-release-ovirt45',
             'base': 'rocky:9',
-            'baseuser': 'cloud-user'
+            'baseuser': 'cloud-user',
+            'hostname': 'ovirt'
           },
         ]
     runs-on: [self-hosted, vm]
@@ -169,7 +172,7 @@ jobs:
         run: |
           . $GITHUB_ENV
           ansible-playbook -i /home/debian/ansible-hosts \
-              --extra-vars "identifier=${SHAKENFIST_NAMESPACE} base=${{ matrix.test.base }} environment_name=${{ matrix.test.environment_name }}" \
+              --extra-vars "identifier=${SHAKENFIST_NAMESPACE} base=${{ matrix.test.base }} environment_name=${{ matrix.test.environment_name }} hostname=${{ matrix.test.hostname }}" \
               --tags all ${GITHUB_WORKSPACE}/actions/ansible/kerbside-single-node.yml
 
       - name: Install base packages
@@ -335,10 +338,10 @@ jobs:
       matrix:
         test: [
           {
-            'name': 'kolla-ansible-2025.1-debian-12',
+            'name': 'kolla-ansible-master-debian-12',
             'environment_name': 'kolla',
-            'description': 'OpenStack via Kolla-Ansible 2025.1 on Debian 12',
-            'openstack_release': '2025.1',
+            'description': 'OpenStack via Kolla-Ansible master on Debian 12',
+            'openstack_release': 'master',
             'base': 'debian:12',
             'baseuser': 'debian'
           },
@@ -407,8 +410,8 @@ jobs:
 
       - name: Install additional packages
         run: |
-          script="${script} sudo apt-get update;"
-              script="${script} sudo apt-get install -y zip;"
+          script="sudo apt-get update;"
+          script="${script} sudo apt-get install -y zip;"
 
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null ${{ matrix.test.baseuser }}@10.0.2.2 \
@@ -493,11 +496,10 @@ jobs:
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd kerbside-patches/tools; sudo ./gather-logs'
+              'cd kerbside-patches/tools; sudo ./tools/gather-logs'
           scp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
-              ${{ matrix.test.baseuser }}@10.0.2.2:/tmp/bundle.zip \
-              /srv/github/artifacts/bundle.zip
+              ${{ matrix.test.baseuser }}@10.0.2.2:/tmp/bundle.zip /tmp/bundle.zip
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -505,7 +507,7 @@ jobs:
           name: bundle-${{ matrix.test.name }}
           retention-days: 90
           if-no-files-found: error
-          path: /srv/github/artifacts/bundle.zip
+          path: /tmp/bundle.zip
 
       - name: Retain the environment if requested
         if: github.event_name == 'workflow_dispatch'
