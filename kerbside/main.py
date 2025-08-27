@@ -7,7 +7,6 @@ import sys
 import time
 import yaml
 
-from . import api as kerbside_api
 from .config import config as config
 from . import db as kerbside_db
 from . import proxy as kerbside_proxy
@@ -200,22 +199,11 @@ def daemon_run(ctx):
         target=kerbside_proxy.run, args=(), name='kerbside-main')
     proxy.start()
 
-    kerbside_db.reset_engine()
-    api = multiprocessing.Process(
-        target=kerbside_api.run, args=(), name='kerbside-api')
-    api.start()
-
     while True:
         proxy.join(timeout=0)
         if not proxy.is_alive():
             LOG.error('Proxy process died with exit code %d!' % proxy.exitcode)
             proxy.kill()
-            sys.exit(1)
-
-        api.join(timeout=0)
-        if not api.is_alive():
-            LOG.error('API process died with exit code %d!' % api.exitcode)
-            api.kill()
             sys.exit(1)
 
         time.sleep(1)
