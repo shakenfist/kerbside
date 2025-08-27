@@ -19,13 +19,8 @@ from keystoneauth1 import exceptions as keystone_exceptions
 from keystoneauth1.identity import v3 as keystone_v3
 from keystoneauth1 import session as keystone_session
 from keystoneclient.v3 import client as keystone_client
-import logging
 import os
-import setproctitle
 from shakenfist_utilities import api as sf_api, logs
-import signal
-import subprocess
-import sys
 from webargs import fields
 from webargs.flaskparser import use_kwargs
 import yaml
@@ -634,49 +629,3 @@ api.add_resource(Sessions, '/session')
 api.add_resource(SessionTerminate, '/session/<session>/terminate')
 api.add_resource(Sources, '/source')
 api.add_resource(Source, '/source/<uuid>')
-
-
-def run():
-    setproctitle.setproctitle('kerbside-api')
-    db.reset_engine()
-
-    pid_file = os.path.join(config.PID_FILE_LOCATION, 'gunicorn.pid')
-    if os.path.exists(pid_file):
-        with open(pid_file) as f:
-            pid = int(f.read())
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except ProcessLookupError:
-            ...
-
-    if config.LOG_VERBOSE:
-        LOG.setLevel(logging.DEBUG)
-    LOG.info('REST API starting')
-
-    os.makedirs(config.PID_FILE_LOCATION, exist_ok=True)
-    command = config.API_COMMAND_LINE % {
-        'port': config.API_PORT,
-        'timeout': config.API_TIMEOUT,
-        'pid_file_dir': config.PID_FILE_LOCATION,
-        'name': 'kerbside-api',
-        'workers': 10,
-        'threads': 10,
-        'install_dir': os.path.dirname(sys.argv[0])
-    }
-
-    LOG.info('Starting REST API with %s' % command)
-    p = subprocess.Popen(
-        command, env=os.environ, shell=True,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    while not p.poll():
-        try:
-            out, err = p.communicate(timeout=1)
-            if out:
-                sys.stdout.write(out.decode('utf-8'))
-            if err:
-                sys.stdout.write(err.decode('utf-8'))
-        except subprocess.TimeoutExpired:
-            ...
-
-    LOG.with_fields({'returncode', p.returncode}).info('REST API terminated')

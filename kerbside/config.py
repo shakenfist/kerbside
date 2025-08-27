@@ -44,23 +44,6 @@ class Config(BaseSettings):
         description='The keystone group users must exist in to access the proxy'
     )
 
-    # API / admin server options
-    API_PORT: int = Field(
-        13002,
-        description='Port for the REST API')
-    API_TIMEOUT: int = Field(
-        30,
-        description='How long gunicorn processes can use for a single request')
-    API_COMMAND_LINE: str = Field(
-        (
-            '%(install_dir)s/gunicorn --workers %(workers)d --bind 0.0.0.0:%(port)d '
-            '--log-syslog --log-syslog-prefix kerbside --timeout %(timeout)s --name "%(name)s" '
-            '--pid %(pid_file_dir)s/gunicorn.pid kerbside.api:app'
-        ),
-        description='The gunicorn command line to use')
-    PID_FILE_LOCATION: str = Field(
-        '/tmp/',
-        description='Where the gunicorn PID file is located')
     PUBLIC_FQDN: str = Field(
         'kerbside.home.stillhq.com',
         description=('The public fully qualified domain name for kerbside. This '
