@@ -154,4 +154,5 @@ class Config(BaseSettings):
         env_prefix = ENV_PREFIX
 
 
+load_ini_settings()
 config = Config()
