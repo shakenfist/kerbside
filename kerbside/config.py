@@ -1,5 +1,36 @@
+import configparser
+import os
+import sys
+
 from pydantic import Field
 from pydantic_settings import BaseSettings
+
+
+ENV_PREFIX = 'KERBSIDE_'
+INI_PATH = '/etc/kerbside/kerbside.ini'
+INI_SECTION = 'kerbside'
+
+
+def load_ini_settings():
+    if os.path.exists(INI_PATH):
+        print(f'Reading configuration INI file at {INI_PATH}')
+        c = configparser.ConfigParser()
+        try:
+            c.read(INI_PATH)
+
+            for k in c[INI_SECTION]:
+                env_var_name = f'{ENV_PREFIX}{k.upper()}'
+                if env_var_name in os.environ:
+                    print(f'Not overriding environment variable: {env_var_name}')
+                else:
+                    print(f'Setting {env_var_name}...')
+                    os.environ[env_var_name] = str(c[INI_SECTION][k])
+
+            print('INI file processing complete')
+
+        except configparser.Error as e:
+            print(f"Error reading INI file: {e}")
+            sys.exit()
 
 
 class Config(BaseSettings):
@@ -120,7 +151,7 @@ class Config(BaseSettings):
         description='How long in minutes a console token is valid for.')
 
     class Config:
-        env_prefix = 'KERBSIDE_'
+        env_prefix = ENV_PREFIX
 
 
 config = Config()
