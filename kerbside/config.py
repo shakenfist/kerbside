@@ -153,6 +153,9 @@ class Config(BaseSettings):
     class Config:
         env_prefix = ENV_PREFIX
 
+    def __init__(self):
+        load_ini_settings()
+        super().__init__(self)
 
-load_ini_settings()
+
 config = Config()
