@@ -1,3 +1,5 @@
+import os
+
 from .config import config
 
 
@@ -17,4 +19,5 @@ def configure_logging():
     if config.LOG_OUTPUT_JSON:
         out['json'] = True
 
+    print(f'PID {os.getpid()} logging configured: {out}')
     return out
