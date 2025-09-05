@@ -22,7 +22,7 @@ def load_ini_settings():
 
             for k in c[INI_SECTION]:
                 env_var_name = f'{ENV_PREFIX}{k.upper()}'
-                if env_var_name not in os.environ:
+                if env_var_name in os.environ:
                     print(f'Not overriding environment variable: {env_var_name}')
                     skipped += 1
                 else:
