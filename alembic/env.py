@@ -7,7 +7,7 @@ from alembic import context
 
 from kerbside.config import config as kerbside_config
 
-# this is the Alembic Config object, which provides
+# This is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
 
@@ -17,16 +17,11 @@ config.set_main_option('sqlalchemy.url', kerbside_config.SQL_URL)
 # Load other configuration from the ini file
 fileConfig(config.config_file_name)
 
-# add your model's MetaData object here
+# Add your model's MetaData object here
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 target_metadata = None
-
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
 
 
 def run_migrations_offline() -> None:

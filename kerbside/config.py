@@ -13,23 +13,28 @@ INI_SECTION = 'kerbside'
 
 def load_ini_settings():
     if os.path.exists(INI_PATH):
-        print(f'Reading configuration INI file at {INI_PATH}')
+        print(f'PID {os.getpid()} reading configuration INI file at {INI_PATH}')
         c = configparser.ConfigParser()
         try:
             c.read(INI_PATH)
+            processed = 0
+            skipped = 0
 
             for k in c[INI_SECTION]:
                 env_var_name = f'{ENV_PREFIX}{k.upper()}'
-                if env_var_name in os.environ:
+                if env_var_name not in os.environ:
                     print(f'Not overriding environment variable: {env_var_name}')
+                    skipped += 1
                 else:
                     print(f'Setting {env_var_name}...')
                     os.environ[env_var_name] = str(c[INI_SECTION][k])
+                    processed += 1
 
-            print('INI file processing complete')
+            print(f'PID {os.getpid()} INI file processing complete: set '
+                  f'{processed}, skipped {skipped}')
 
         except configparser.Error as e:
-            print(f"Error reading INI file: {e}")
+            print(f'PID {os.getpid()} error reading INI file: {e}')
             sys.exit()
 
 
