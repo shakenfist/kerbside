@@ -23,7 +23,7 @@ on:
 
 jobs:
   sanity_checks:
-    runs-on: [self-hosted, vm]
+    runs-on: [self-hosted, vm, debian-12]
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-lint
       cancel-in-progress: true
@@ -32,11 +32,12 @@ jobs:
       - name: Checkout code with two commits
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Install additional dependencies not tracked by pip
         timeout-minutes: 5
         run: |
+          sudo apt-get install -y python3-venv
           python3 -mvenv /tmp/bindep-venv
           /tmp/bindep-venv/bin/pip3 install bindep
           echo
@@ -44,36 +45,49 @@ jobs:
           echo
           sudo apt-get install -y $(/tmp/bindep-venv/bin/bindep --brief || true)
 
+      - name: Upgrade base test tools
+        timeout-minutes: 5
+        run: |
+          python3 -mvenv /tmp/venv-test
+          . /tmp/venv-test/bin/activate
+          pip3 install uv
+          uv pip install tox tox-uv
+
       - name: Lint with flake8
         timeout-minutes: 5
         run: |
-          /usr/bin/tox -eflake8
+          . /tmp/venv-test/bin/activate
+          tox -eflake8
 
       - name: Attempt to install requirements
         timeout-minutes: 5
         run: |
-          python3 -mvenv /tmp/venv
-          /tmp/venv/bin/pip3 install -r requirements.txt
+          python3 -mvenv /tmp/venv-reqs
+          . /tmp/venv-reqs/bin/activate
+          pip3 install uv
+          uv pip install -r pyproject.toml
 
       # - name: Run python3 unit tests
       #   timeout-minutes: 10
       #   run: |
-      #     /usr/bin/tox -epy3
+      #     . /tmp/venv-test/bin/activate
+      #     tox -epy3
 
       # - name: List failing tests
       #   if: failure()
       #   id: failures
       #   run: |
       #     echo "Gathering list of failed tests..."
-      #     touch ${GITHUB_WORKSPACE}/failed
-      #     /usr/bin/tox -efailing || true > ${GITHUB_WORKSPACE}/failed
+      #     touch /srv/ci/failed
+      #     . /tmp/venv-test/bin/activate
+      #     tox -efailing || true > /srv/ci/failed
       #     echo
 
-      #     failed=$(cat ${GITHUB_WORKSPACE}/failed | egrep "^FAIL: " | \
+      #     failed=$(cat /srv/ci/failed | egrep "^FAIL: " | \
       #         sed -z 's/FAIL: shakenfist_ci\.//g;s/\n/, /g;s/, $/\n/')
 
       #     echo "Failed tests:"
-      #     cat ${GITHUB_WORKSPACE}/failed
+      #     cat /srv/ci/failed
       #     echo
 
       #     echo "failures<<EOF" >> ${GITHUB_OUTPUT}
@@ -85,7 +99,8 @@ jobs:
       # - name: Generate coverage report
       #   timeout-minutes: 10
       #   run: |
-      #     /usr/bin/tox -ecover
+      #     . /tmp/venv-test/bin/activate
+      #     tox -ecover
       #     zip -r cover.zip cover
 
       # - uses: actions/upload-artifact@v4
