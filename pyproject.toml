@@ -78,6 +78,9 @@ dependencies = [
 kerbside = "kerbside.main:cli"
 kerbside-util = "kerbside.utilities.main:cli"
 
+[tool.setuptools]
+packages = ["kerbside"]
+
 [tool.setuptools_scm]
 git_describe_command = "git describe --dirty --tags --match v* --first-parent"
 write_to = "kerbside/_version.py"
