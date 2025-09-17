@@ -95,7 +95,7 @@ test = [
     "flake8",              # mit
 
     "shakenfist-client>=0.7.0.0rc6",   # apache2
-    "ovirt-engine-sdk-python>=4.6.1",  # apache2
+    #"ovirt-engine-sdk-python>=4.6.1",  # apache2
     "keystoneauth1",                   # apache2
     "openstacksdk>=4.5.0",             # apache2
 ]
