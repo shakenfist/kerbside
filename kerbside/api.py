@@ -22,6 +22,7 @@ from keystoneclient.v3 import client as keystone_client
 import logging
 import os
 import setproctitle
+import shakenfist_utilities
 from shakenfist_utilities import api as sf_api, logs
 import signal
 import subprocess
@@ -37,7 +38,9 @@ from .sources import ovirt as ovirt_source
 from . import util
 
 
-LOG, HANDLER = logs.setup(__name__, **util.configure_logging())
+logging_config = util.configure_logging()
+shakenfist_utilities.LOGGING_CONFIG = logging_config
+LOG, HANDLER = logs.setup(__name__, **logging_config)
 app = flask.Flask(__name__,
                   static_url_path='/static',
                   static_folder='%s/api/static' % os.path.dirname(__file__),
