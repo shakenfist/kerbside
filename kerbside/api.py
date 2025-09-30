@@ -20,7 +20,6 @@ from keystoneauth1.identity import v3 as keystone_v3
 from keystoneauth1 import session as keystone_session
 from keystoneclient.v3 import client as keystone_client
 import os
-from shakenfist_utilities import api as sf_api, logs
 from webargs import fields
 from webargs.flaskparser import use_kwargs
 import yaml
@@ -32,7 +31,15 @@ from .sources import ovirt as ovirt_source
 from . import util
 
 
-LOG, HANDLER = logs.setup(__name__, **util.configure_logging())
+# An awkward dance to load our logging config into the helper library.
+# We need to ensure the logging configuration is loaded _before_ the
+# actual utilities are imported.
+import shakenfist_utilities                             # noqa: E402
+logging_config = util.configure_logging()
+shakenfist_utilities.LOGGING_CONFIG = logging_config
+from shakenfist_utilities import api as sf_api, logs    # noqa: E402
+LOG, HANDLER = logs.setup(__name__, **logging_config)
+
 app = flask.Flask(__name__,
                   static_url_path='/static',
                   static_folder='%s/api/static' % os.path.dirname(__file__),
