@@ -40,6 +40,10 @@ shakenfist_utilities.LOGGING_CONFIG = logging_config
 from shakenfist_utilities import api as sf_api, logs    # noqa: E402
 LOG, HANDLER = logs.setup(__name__, **logging_config)
 
+
+print(f'PID {os.getpid()} API library logging: {sf_api.LOG}')
+
+
 app = flask.Flask(__name__,
                   static_url_path='/static',
                   static_folder='%s/api/static' % os.path.dirname(__file__),
