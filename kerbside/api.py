@@ -24,6 +24,8 @@ from webargs import fields
 from webargs.flaskparser import use_kwargs
 import yaml
 
+from shakenfist_utilities import api as sf_api, logs
+
 from .config import config
 from . import consoletoken
 from . import db
@@ -31,13 +33,9 @@ from .sources import ovirt as ovirt_source
 from . import util
 
 
-# An awkward dance to load our logging config into the helper library.
-# We need to ensure the logging configuration is loaded _before_ the
-# actual utilities are imported.
-import shakenfist_utilities                             # noqa: E402
+# Setup logging
 logging_config = util.configure_logging()
-shakenfist_utilities.LOGGING_CONFIG = logging_config
-from shakenfist_utilities import api as sf_api, logs    # noqa: E402
+sf_api.configure_logging(**logging_config)
 LOG, HANDLER = logs.setup(__name__, **logging_config)
 
 
