@@ -16,6 +16,7 @@ import flask_restful
 import importlib
 import json
 import os
+import requests
 from webargs import fields
 from webargs.flaskparser import use_kwargs
 import yaml
@@ -196,12 +197,19 @@ class Auth(sf_api.Resource):
                 project_name='admin',
                 user_domain_id='default',
                 project_domain_id='default')
-            user_session = KEYSTONE_SESSION.Session(auth=user_auth)
+            user_session = KEYSTONE_SESSION.Session(
+                auth=user_auth,
+                verify=config.KEYSTONE_AUTH_VERIFY)
             user_id = user_session.get_user_id()
         except KEYSTONE_EXCEPTIONS.http.Unauthorized:
             return sf_api.error(401, 'unauthorized')
-        except KEYSTONE_EXCEPTIONS.connection.SSLError as e:
-            LOG.error(f'SSL error while communicating with Keystone: {e}')
+        except (
+                requests.exceptions.SSLError,
+                KEYSTONE_EXCEPTIONS.connection.SSLError
+                ) as e:
+            LOG.error(
+                'SSL error while communicating with Keystone for auth '
+                f'with verify={config.KEYSTONE_AUTH_VERIFY}: {e}')
             return sf_api.error(500, 'Keystone SSL error')
 
         # Ensure the user is in the correct group
@@ -217,7 +225,10 @@ class Auth(sf_api.Resource):
             service_keystone.users.check_in_group(user_id, group.id)
         except KEYSTONE_EXCEPTIONS.http.NotFound:
             return sf_api.error(401, 'unauthorized')
-        except KEYSTONE_EXCEPTIONS.connection.SSLError as e:
+        except (
+                requests.exceptions.SSLError,
+                KEYSTONE_EXCEPTIONS.connection.SSLError
+                ) as e:
             LOG.error(f'SSL error while communicating with Keystone: {e}')
             return sf_api.error(500, 'Keystone SSL error')
 
@@ -526,22 +537,38 @@ class NovaToken(sf_api.Resource):
                 if source['type'] != 'openstack':
                     continue
 
-                auth = KEYSTONE_V3.Password(
-                    auth_url=source['url'],
-                    username=source['username'],
-                    password=source['password'],
-                    project_name=source['project_name'],
-                    user_domain_id=source['user_domain_id'],
-                    project_domain_id=source['project_domain_id'])
-                conn = OPENSTACK_CLIENT.connection.Connection(
-                    session=KEYSTONE_SESSION.Session(auth=auth))
+                verify = source.get('verify')
+                if verify is None:
+                    verify = True
+                else:
+                    verify_lower = verify.lower()
+                    if verify_lower == 'true':
+                        verify = True
+                    elif verify_lower == 'false':
+                        verify = False
 
                 try:
+                    auth = KEYSTONE_V3.Password(
+                        auth_url=source['url'],
+                        username=source['username'],
+                        password=source['password'],
+                        project_name=source['project_name'],
+                        user_domain_id=source['user_domain_id'],
+                        project_domain_id=source['project_domain_id'])
+                    conn = OPENSTACK_CLIENT.connection.Connection(
+                        session=KEYSTONE_SESSION.Session(
+                            auth=auth,
+                            verify=True))
                     details = conn.compute.validate_console_auth_token(token)
                 except OPENSTACK_CLIENT.exceptions.NotFoundException:
                     continue
-                except KEYSTONE_EXCEPTIONS.connection.SSLError as e:
-                    LOG.error(f'SSL error while communicating with Keystone: {e}')
+                except (
+                        requests.exceptions.SSLError,
+                        KEYSTONE_EXCEPTIONS.connection.SSLError
+                        ) as e:
+                    LOG.error(
+                        'SSL error while communicating with Keystone using '
+                        f'verify={verify}: {e}')
                     return sf_api.error(500, 'Keystone SSL error')
 
                 if not details:
