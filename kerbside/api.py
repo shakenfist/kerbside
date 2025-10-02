@@ -15,10 +15,6 @@ from flask_request_id import RequestID
 import flask_restful
 import importlib
 import json
-from keystoneauth1 import exceptions as keystone_exceptions
-from keystoneauth1.identity import v3 as keystone_v3
-from keystoneauth1 import session as keystone_session
-from keystoneclient.v3 import client as keystone_client
 import os
 from webargs import fields
 from webargs.flaskparser import use_kwargs
@@ -58,7 +54,12 @@ jwt = JWTManager(app)
 
 
 OPENSTACK_CLIENT = None
+
+# NOTE(mikal): KEYSTONE_V3 is used as a marker for if _any_ of these globals
+# are already initialized.
 KEYSTONE_V3 = None
+KEYSTONE_CLIENT = None
+KEYSTONE_EXCEPTIONS = None
 KEYSTONE_SESSION = None
 
 
@@ -151,30 +152,57 @@ class Auth(sf_api.Resource):
         if not username or not password:
             return sf_api.error(400, 'bad request')
 
-        # We need to talk to Keystone as our service account
-        service_auth = keystone_v3.Password(
+        # TODO(mikal): Handle non-keystone auth as well
+
+        # We need to talk to Keystone as our service account. This is written
+        # like this because I want to make the presence of OpenStack optional
+        # in the future, but its not a priority right now.
+
+        global KEYSTONE_V3
+        global KEYSTONE_CLIENT
+        global KEYSTONE_EXCEPTIONS
+        global KEYSTONE_SESSION
+
+        if not KEYSTONE_V3:
+            try:
+                KEYSTONE_V3 = importlib.import_module(
+                    'keystoneauth1.identity.v3')
+                KEYSTONE_CLIENT = importlib.import_module(
+                    'keystoneclient.v3.client')
+                KEYSTONE_EXCEPTIONS = importlib.import_module(
+                    'keystoneauth1.exceptions')
+                KEYSTONE_SESSION = importlib.import_module(
+                    'keystoneauth1.session')
+            except Exception as e:
+                LOG.error(f'Failed to import Keystone v3: {e}')
+                return sf_api.error(500, 'Keystone setup failure')
+
+        service_auth = KEYSTONE_V3.Password(
             auth_url=config.KEYSTONE_AUTH_URL,
             username=config.KEYSTONE_SERVICE_AUTH_USER,
             password=config.KEYSTONE_SERVICE_AUTH_PASSWORD,
             project_name=config.KEYSTONE_SERVICE_AUTH_PROJECT,
             user_domain_id=config.KEYSTONE_SERVICE_AUTH_USER_DOMAIN_ID,
             project_domain_id=config.KEYSTONE_SERVICE_AUTH_PROJECT_DOMAIN_ID)
-        service_session = keystone_session.Session(auth=service_auth)
-        service_keystone = keystone_client.Client(session=service_session)
+        service_session = KEYSTONE_SESSION.Session(auth=service_auth)
+        service_keystone = KEYSTONE_CLIENT.Client(session=service_session)
 
         # Authenticate the user
         try:
-            user_auth = keystone_v3.Password(
+            user_auth = KEYSTONE_V3.Password(
                 auth_url=config.KEYSTONE_AUTH_URL,
                 username=username,
                 password=password,
                 project_name='admin',
                 user_domain_id='default',
                 project_domain_id='default')
-            user_session = keystone_session.Session(auth=user_auth)
+            user_session = KEYSTONE_SESSION.Session(auth=user_auth)
             user_id = user_session.get_user_id()
-        except keystone_exceptions.http.Unauthorized:
+        except KEYSTONE_EXCEPTIONS.http.Unauthorized:
             return sf_api.error(401, 'unauthorized')
+        except KEYSTONE_EXCEPTIONS.connection.SSLError as e:
+            LOG.error(f'SSL error while communicating with Keystone: {e}')
+            return sf_api.error(500, 'Keystone SSL error')
 
         # Ensure the user is in the correct group
         group = None
@@ -187,8 +215,11 @@ class Auth(sf_api.Resource):
         # Require that the user be in that group
         try:
             service_keystone.users.check_in_group(user_id, group.id)
-        except keystone_exceptions.http.NotFound:
+        except KEYSTONE_EXCEPTIONS.http.NotFound:
             return sf_api.error(401, 'unauthorized')
+        except KEYSTONE_EXCEPTIONS.connection.SSLError as e:
+            LOG.error(f'SSL error while communicating with Keystone: {e}')
+            return sf_api.error(500, 'Keystone SSL error')
 
         # Create a JWT containing the user's keystone token
         token = user_session.get_token()
@@ -464,19 +495,30 @@ class NovaToken(sf_api.Resource):
 
         global OPENSTACK_CLIENT
         global KEYSTONE_V3
+        global KEYSTONE_EXCEPTIONS
         global KEYSTONE_SESSION
 
         if not OPENSTACK_CLIENT:
             try:
                 OPENSTACK_CLIENT = importlib.import_module('openstack')
+            except Exception as e:
+                LOG.error(f'Failed to import OpenStack client: {e}')
+                return sf_api.error(
+                    500, 'OpenStack client setup failure')
+
+        if not KEYSTONE_V3:
+            try:
                 KEYSTONE_V3 = importlib.import_module(
                     'keystoneauth1.identity.v3')
+                KEYSTONE_CLIENT = importlib.import_module(             # noqa F841
+                    'keystoneclient.v3.client')
+                KEYSTONE_EXCEPTIONS = importlib.import_module(
+                    'keystoneauth1.exceptions')
                 KEYSTONE_SESSION = importlib.import_module(
                     'keystoneauth1.session')
             except Exception as e:
-                LOG.error('Failed to import OpenStack client: %s' % e)
-                return sf_api.error(
-                    500, 'OpenStack client setup failure')
+                LOG.error(f'Failed to import Keystone v3: {e}')
+                return sf_api.error(500, 'Keystone setup failure')
 
         with open(config.SOURCES_PATH) as f:
             sources = yaml.safe_load(f)
@@ -498,6 +540,9 @@ class NovaToken(sf_api.Resource):
                     details = conn.compute.validate_console_auth_token(token)
                 except OPENSTACK_CLIENT.exceptions.NotFoundException:
                     continue
+                except KEYSTONE_EXCEPTIONS.connection.SSLError as e:
+                    LOG.error(f'SSL error while communicating with Keystone: {e}')
+                    return sf_api.error(500, 'Keystone SSL error')
 
                 if not details:
                     continue
