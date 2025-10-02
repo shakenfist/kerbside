@@ -55,6 +55,15 @@ class Config(BaseSettings):
         '~~unconfigured~~',
         description='The URL to the keystone service we should auth against'
     )
+    KEYSTONE_AUTH_VERIFY: bool | str = Field(
+        True,
+        description=(
+            'Whether or not to verify TLS sessions to Keystone, as per the '
+            'behaviour of keystoneauth1.session: False to not verify; True to '
+            'verify using the system configured CA bundle; or a path to a CA '
+            'certificate or CA bundle to use a specific certificate.'
+        )
+    )
     KEYSTONE_SERVICE_AUTH_USER: str = Field(
         '~~unconfigured~~',
         description='The user to authenticate this service as'
