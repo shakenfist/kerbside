@@ -540,12 +540,19 @@ class NovaToken(sf_api.Resource):
                 verify = source.get('verify')
                 if verify is None:
                     verify = True
-                else:
+                elif isinstance(verify, bool):
+                    ...
+                elif isinstance(verify, str):
                     verify_lower = verify.lower()
                     if verify_lower == 'true':
                         verify = True
                     elif verify_lower == 'false':
                         verify = False
+                else:
+                    LOG.error(
+                        f'type {type(verify)} for verify value for source '
+                        f'{source["name"]} is not supported')
+                    return sf_api.error(500, 'Source configuration error')
 
                 try:
                     auth = KEYSTONE_V3.Password(
