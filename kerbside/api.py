@@ -397,8 +397,10 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
             host_subject = '\nhost-subject=%s' % c['host_subject']
 
         ca_cert = ''
-        if s.get('ca_cert'):
-            ca_cert = '\nca=%s' % s['ca_cert'].replace('\n', '\\n')
+        if config.CACERT_PATH:
+            with open(config.CACERT_PATH) as f:
+                ca_cert_data = f.read().replace('\n', '\\n')
+            ca_cert = f'\nca={ca_cert_data}'
 
         LOG.with_fields(c).with_fields(s).info(
             'Providing virt-viewer direct configuration for console')
