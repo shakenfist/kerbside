@@ -455,8 +455,8 @@ class ConsolesProxyVirtViewer(sf_api.Resource):
         token = consoletoken.create_token(source, uuid)
         vv = VIRTVIEWER_TEMPLATE % {
             'node': config.PUBLIC_FQDN,
-            'port': config.VDI_INSECURE_PORT,
-            'tls_port': '\ntls-port=%s' % config.VDI_SECURE_PORT,
+            'port': config.PUBLIC_INSECURE_PORT,
+            'tls_port': '\ntls-port=%s' % config.PUBLIC_SECURE_PORT,
             'token': token['token'],
             'ca_cert': '\nca=%s' % cacert,
             'name': '%s via proxy session ID %s' % (c['name'], token['session_id']),
@@ -609,8 +609,8 @@ class NovaToken(sf_api.Resource):
 
                 vv = VIRTVIEWER_TEMPLATE % {
                     'node': config.PUBLIC_FQDN,
-                    'port': config.VDI_INSECURE_PORT,
-                    'tls_port': '\ntls-port=%s' % config.VDI_SECURE_PORT,
+                    'port': config.PUBLIC_INSECURE_PORT,
+                    'tls_port': '\ntls-port=%s' % config.PUBLIC_SECURE_PORT,
                     'token': token['token'],
                     'ca_cert': '\nca=%s' % cacert,
                     'name': '%s via proxy session ID %s' % (instance_uuid, token['session_id']),

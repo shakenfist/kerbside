@@ -93,6 +93,23 @@ class Config(BaseSettings):
         'kerbside.home.stillhq.com',
         description=('The public fully qualified domain name for kerbside. This '
                      'could be a load balancer with backend affinity.'))
+    PUBLIC_SECURE_PORT: int = Field(
+        5900,
+        description=(
+            'Port secure connections should connect to on the PUBLIC_FQDN. This '
+            'can be different from VDI_SECURE_PORT if there is a load balancing '
+            'layer in front of Kerbside'
+        )
+    )
+    PUBLIC_INSECURE_PORT: int = Field(
+        5901,
+        description=(
+            'Port insecure connections should connect to on the PUBLIC_FQDN. This '
+            'can be different from VDI_SECURE_PORT if there is a load balancing '
+            'layer in front of Kerbside'
+        )
+    )
+
     NODE_NAME: str = Field(
         'kerbside',
         description='The private unique name for this machine.')
@@ -101,10 +118,18 @@ class Config(BaseSettings):
         description='The IPv4 address to bind the SPICE proxy to.')
     VDI_SECURE_PORT: int = Field(
         5900,
-        description='Port for the secure SPICE connections')
+        description=(
+            'Port to bind to for secure SPICE connections on the node '
+            'running Kerbside'
+        )
+    )
     VDI_INSECURE_PORT: int = Field(
         5901,
-        description='Port for the insecure SPICE connections')
+        description=(
+            'Port to bind to for insecure SPICE connections on the node '
+            'running Kerbside'
+        )
+    )
 
     # Logging
     LOG_OUTPUT_PATH: str = Field(
