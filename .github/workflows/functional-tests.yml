@@ -380,89 +380,33 @@ jobs:
           script: |
               core.setFailed('Target skipped')
 
-      - name: Set environment variables
-        shell: bash
-        run: |
-          echo "SF_HEAD_SHA=${{ github.event.pull_request.head.sha }}" >> $GITHUB_ENV
-          echo "SHAKENFIST_NAMESPACE=$(hostname)" >> $GITHUB_ENV
-
-      - name: Checkout the actions repository
-        uses: actions/checkout@v4
+      - name: Setup test environment
+        uses: shakenfist/actions/setup-kerbside-environment@main
         with:
-          repository: shakenfist/actions
-          path: actions
-          fetch-depth: 0
+          base: ${{ matrix.test.base }}
+          base_user: ${{ matrix.test.baseuser }}
+          openstack_release: ${{ matrix.test.openstack_release }}
+          topology: all-in-one
 
-      - name: Checkout kerbside
-        uses: actions/checkout@v4
-        with:
-          path: kerbside
-          fetch-depth: 0
-
-      - name: Build infrastructure
-        shell: bash
-        run: |
-          . $GITHUB_ENV
-          ansible-playbook -i /home/debian/ansible-hosts \
-              --extra-vars "identifier=${SHAKENFIST_NAMESPACE} base=${{ matrix.test.base }} environment_name=${{ matrix.test.environment_name }}" \
-              --tags all ${GITHUB_WORKSPACE}/actions/ansible/kerbside-single-node.yml
-
-      - name: Checkout kerbside-patches
-        uses: actions/checkout@v4
-        with:
-          repository: shakenfist/kerbside-patches
-          path: kerbside-patches
-          fetch-depth: 0
-
-      - name: Copy kerbside-patches git repo
-        shell: bash
-        run: |
-          . $GITHUB_ENV
-          scp -rp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null \
-              ${GITHUB_WORKSPACE}/kerbside-patches \
-              ${{ matrix.test.baseuser }}@10.0.2.2:.
-
-      - name: Install additional packages
-        run: |
-          script="sudo apt-get update;"
-          script="${script} sudo apt-get install -y zip;"
-
-          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "${script}"
-
-      - name: Setup build environment
-        run: |
-          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "cd kerbside-patches; ./_build/setup-local-build-environment.sh"
-
-      - name: Install build dependencies
-        run: |
-          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "cd kerbside-patches; ./_build/install-build-dependencies.sh"
-
-      - name: Assemble source code
-        run: |
-          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "cd kerbside-patches; ./_build/assemble-source.sh ${{ matrix.test.openstack_release }}"
-
-      - name: Build containers with no local OCI registry
-        run: |
-          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "cd kerbside-patches; ./_build/build-containers.sh --build-targets ${{ matrix.test.openstack_release }} --build-images all"
-
-      - name: Disable /etc/hosts for name resolution
+      - name: Build patched repositories
         run: |
           . $GITHUB_ENV
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'sudo sed -i s"|hosts:      files dns myhostname|hosts:      dns myhostname|" /etc/nsswitch.conf'
+              'cd /srv/shakenfist/kerbside-patches; ./_build/assemble-source.sh ${{ matrix.test.openstack_release }}'
+
+      - name: Build container images
+        run: |
+          . $GITHUB_ENV
+
+          script="cd /srv/shakenfist/kerbside-patches;"
+          script="${script} hash=\$(./_build/calculate-container-hash.sh kolla kolla-2* nova nova-2* requirements requirements-2*);"
+          script="${script} ./_build/build-containers.sh --use-ci-registry --build-targets ${{ matrix.test.openstack_release }} --build-images all --image-tag "\$hash-debian-bookworm";"
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 "${script}"
 
       - name: Bootstrap Kolla-Ansible
         run: |
@@ -470,7 +414,7 @@ jobs:
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd kerbside-patches; sudo ./tools/bootstrap-kolla-ansible ${{ matrix.test.openstack_release }}'
+              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/bootstrap-kolla-ansible ${{ matrix.test.openstack_release }} all-in-one'
 
       - name: Install Kolla-Ansible
         run: |
@@ -478,7 +422,7 @@ jobs:
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd kerbside-patches; sudo ./tools/install-kolla-ansible'
+              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/install-kolla-ansible'
 
       - name: Install patched OpenStack clients
         run: |
@@ -486,7 +430,7 @@ jobs:
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd kerbside-patches; sudo ./tools/install-openstack-clients'
+              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/install-openstack-clients'
 
       - name: Post install Kolla-Ansible setup
         run: |
@@ -494,7 +438,7 @@ jobs:
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd kerbside-patches; sudo ./tools/postinstall-kolla-ansible'
+              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/postinstall-kolla-ansible'
 
       - name: Attempt to start an instance with a console and connect to it
         run: |
@@ -502,7 +446,7 @@ jobs:
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd kerbside-patches; sudo ./tools/test-console'
+              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/test-console'
 
       - name: Collect logs
         if: always()
@@ -511,7 +455,7 @@ jobs:
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd kerbside-patches/tools; sudo ./tools/gather-logs'
+              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/gather-logs'
           scp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2:/tmp/bundle.zip /tmp/bundle.zip
