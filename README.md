@@ -93,3 +93,38 @@ alembic downgrade -1
 **Note:** Alembic automatically uses the database URL from the kerbside
 configuration, so ensure your kerbside config is properly set up before running
 migrations.
+
+## Checking OS Package Dependencies
+
+Kerbside requires certain OS-level packages to be installed. You can check for
+missing dependencies using bindep via tox.
+
+### Check for Missing OS Packages
+
+To check which OS packages are required but not installed:
+
+```bash
+tox -e bindep
+```
+
+This will read the `bindep.txt` file and report any missing system packages
+that need to be installed for your platform. The bindep tool automatically
+detects your operating system and checks for platform-specific packages.
+
+### Installing Missing Packages
+
+After running the bindep check, install any missing packages using your system's
+package manager:
+
+**Debian/Ubuntu:**
+```bash
+sudo apt-get install <package-names>
+```
+
+**RHEL/CentOS/Fedora:**
+```bash
+sudo dnf install <package-names>
+```
+
+The `bindep.txt` file includes dependencies for MariaDB/MySQL client libraries,
+XML parsing libraries, and build tools needed for compiling Python extensions.
