@@ -82,7 +82,6 @@ def _parse_sources():
                     project_name=source.get('project_name'),
                     user_domain_id=source.get('user_domain_id'),
                     project_domain_id=source.get('project_domain_id'),
-                    flavor=';'.join(source.get('flavor', [])),
                     errored=False, ca_cert=source.get('ca_cert'))
 
             # Ensure that the sources.yaml configuration for the source has
@@ -90,16 +89,12 @@ def _parse_sources():
             else:
                 dirty = False
                 for field in ['type', 'url', 'username', 'password', 'project_name',
-                              'user_domain_id', 'project_domain_id', 'flavor',
+                              'user_domain_id', 'project_domain_id',
                               'deleted', 'ca_cert']:
                     if field == 'deleted':
                         new_value = False
-                    elif field != 'flavor':
-                        new_value = source.get(field)
-                    elif source.get(field):
-                        new_value = ';'.join(source.get(field))
                     else:
-                        new_value = None
+                        new_value = source.get(field)
 
                     if stored_source[field] != new_value:
                         LOG.with_fields({
@@ -117,7 +112,6 @@ def _parse_sources():
                         project_name=source.get('project_name'),
                         user_domain_id=source.get('user_domain_id'),
                         project_domain_id=source.get('project_domain_id'),
-                        flavor=';'.join(source.get('flavor', [])),
                         errored=False, ca_cert=source.get('ca_cert'))
 
             # Now lookup consoles.
