@@ -57,11 +57,10 @@ class Source(Base):
     project_name = Column(String)
     user_domain_id = Column(String)
     project_domain_id = Column(String)
-    flavor = Column(String)
 
     def __init__(self, name, type, last_seen, seen_by, errored, url, ca_cert,
                  username, password, project_name, user_domain_id,
-                 project_domain_id, flavor, deleted):
+                 project_domain_id, deleted):
         self.name = name
         self.type = type
         self.last_seen = last_seen
@@ -74,7 +73,6 @@ class Source(Base):
         self.project_name = project_name
         self.user_domain_id = user_domain_id
         self.project_domain_id = project_domain_id
-        self.flavor = flavor
         self.deleted = deleted
 
     def export(self):
@@ -91,14 +89,13 @@ class Source(Base):
             'project_name': self.project_name,
             'user_domain_id': self.user_domain_id,
             'project_domain_id': self.project_domain_id,
-            'flavor': self.flavor,
             'deleted': self.deleted
         }
 
 
 def add_source(name, type, url, username, password, project_name=None,
-               user_domain_id=None, project_domain_id=None, flavor=None,
-               errored=False, ca_cert=None):
+               user_domain_id=None, project_domain_id=None, errored=False,
+               ca_cert=None):
     with Session(ENGINE) as session:
         try:
             source = session.query(Source).\
@@ -113,15 +110,13 @@ def add_source(name, type, url, username, password, project_name=None,
             source.project_name = project_name
             source.user_domain_id = user_domain_id
             source.project_domain_id = project_domain_id
-            source.flavor = flavor
             source.errored = errored
             source.deleted = False
             source.ca_cert = ca_cert
         except exc.NoResultFound:
             source = Source(name, type, datetime.datetime.now(), config.NODE_NAME,
                             errored, url, ca_cert, username, password,
-                            project_name, user_domain_id, project_domain_id,
-                            flavor, False)
+                            project_name, user_domain_id, project_domain_id, False)
             session.add(source)
         finally:
             session.commit()
