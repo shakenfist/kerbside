@@ -47,7 +47,10 @@ def _parse_sources():
     # proxy behind a load balancer... That is, we should not scrape the clouds
     # unless no one has done it recently.
     if not os.path.exists(config.SOURCES_PATH):
-        LOG.error('Sources configuration at %s does not exist!' % config.SOURCES_PATH)
+        LOG.error(
+            f'Sources configuration at {config.SOURCES_PATH} does not exist!'
+            )
+        return
 
     source_type = {}
 
