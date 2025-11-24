@@ -567,7 +567,8 @@ class NovaToken(sf_api.Resource):
                     conn = OPENSTACK_CLIENT.connection.Connection(
                         session=KEYSTONE_SESSION.Session(
                             auth=auth,
-                            verify=verify))
+                            verify=verify),
+                        identity_interface='internal')
                     details = conn.compute.validate_console_auth_token(token)
                 except OPENSTACK_CLIENT.exceptions.NotFoundException:
                     continue
