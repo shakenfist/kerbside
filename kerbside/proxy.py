@@ -23,8 +23,8 @@ from . import db
 from . import spiceprotocol
 from .spiceprotocol import constants
 from .spiceprotocol.packets.linkmessages import (BadMagic, BadMajor, BadMinor,
-                                                HandshakeFailed,
-                                                ConnectionError as SpiceConnectionError)
+                                                 HandshakeFailed,
+                                                 ConnectionError as SpiceConnectionError)
 from . import util
 
 
