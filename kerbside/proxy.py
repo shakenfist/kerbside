@@ -22,7 +22,9 @@ from .config import config
 from . import db
 from . import spiceprotocol
 from .spiceprotocol import constants
-from .spiceprotocol.packets.linkmessages import (BadMagic, BadMajor, BadMinor)
+from .spiceprotocol.packets.linkmessages import (BadMagic, BadMajor, BadMinor,
+                                                 HandshakeFailed,
+                                                 ConnectionError as SpiceConnectionError)
 from . import util
 
 
@@ -286,7 +288,8 @@ class SpiceTLSSession(object):
                         server_consumed = self.server_next_packet(server_buffered)
 
             except (BadMagic, BadMajor, BadMinor, ProtocolError, ConnectionRedirected,
-                    ConnectionRefused, ConnectionDeclined) as e:
+                    ConnectionRefused, ConnectionDeclined, HandshakeFailed,
+                    SpiceConnectionError) as e:
                 self.log.info('Connection termination on processing: %s' % e)
                 self._cleanup_sockets(sockets)
                 return
@@ -413,6 +416,16 @@ class SpiceTLSSession(object):
                 constants.channel_num_to_str[self.chan_type],
                 config.NODE_NAME, os.getpid(), 'Hypervisor SSL connection failed')
             raise ConnectionRefused('hypervisor ssl connection failed')
+
+        except (HandshakeFailed, SpiceConnectionError, OSError, socket.error) as e:
+            self.log.with_fields(self.console).warning(
+                'Connection to hypervisor failed: %s' % e)
+            db.add_audit_event(
+                self.console['source'], self.console['uuid'], self.session_id,
+                constants.channel_num_to_str[self.chan_type],
+                config.NODE_NAME, os.getpid(),
+                'Hypervisor connection failed: %s' % e)
+            raise ConnectionRefused('hypervisor connection failed: %s' % e)
 
         # Assume we consumed all of the data
         self.log.info('Entering pass through mode')
