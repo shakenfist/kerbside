@@ -37,9 +37,10 @@ dependencies = [
     "webargs==8.3.0",                   # mit
 
     # These must move as a set
-    "pydantic==2.6.4",                  # mit
-    "pydantic-settings==2.2.1",         # mit
-    "pydantic-core==2.16.3",            # (indirect dependency)
+    "pydantic==2.12.4",                 # mit
+    "pydantic-settings==2.12.0",        # mit
+    "pydantic-core==2.41.5",            # (indirect dependency)
+    "typing-extensions==4.14.1",        # (indirect dependency)
 
     # These also move as a set
     "alembic==1.15.2",                  # mit
@@ -67,7 +68,6 @@ dependencies = [
     "mistune==3.1.3",
     "python-dotenv==1.1.0",
     "pytz==2025.2",
-    "typing-extensions==4.13.2",
     "werkzeug==3.1.3",
     "zipp==3.21.0",
 ]
