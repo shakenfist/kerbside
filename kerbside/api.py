@@ -567,7 +567,8 @@ class NovaToken(sf_api.Resource):
                     conn = OPENSTACK_CLIENT.connection.Connection(
                         session=KEYSTONE_SESSION.Session(
                             auth=auth,
-                            verify=verify))
+                            verify=verify),
+                        identity_interface='internal')
                     details = conn.compute.validate_console_auth_token(token)
                 except OPENSTACK_CLIENT.exceptions.NotFoundException:
                     continue
@@ -714,7 +715,7 @@ api.add_resource(ConsolesAudit, '/console/<source>/<uuid>/audit')
 api.add_resource(ConsolesDirectVirtViewer, '/console/direct/<source>/<uuid>/console.vv')
 api.add_resource(ConsolesProxyVirtViewer, '/console/proxy/<source>/<uuid>/console.vv')
 api.add_resource(ConsolesTerminate, '/console/<source>/<uuid>/terminate')
-api.add_resource(NovaToken, '/nova')
+api.add_resource(NovaToken, '/nova-console.vv')
 api.add_resource(Sessions, '/session')
 api.add_resource(SessionTerminate, '/session/<session>/terminate')
 api.add_resource(Sources, '/source')
