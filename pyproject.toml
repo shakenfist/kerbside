@@ -43,8 +43,8 @@ dependencies = [
     "typing-extensions==4.14.1",        # (indirect dependency)
 
     # These also move as a set
-    "alembic==1.15.2",                  # mit
-    "sqlalchemy==2.0.29",               # mit
+    "alembic==1.17.2",                  # mit
+    "sqlalchemy==2.0.36",               # mit
     "mysqlclient==2.1.1",               # gpl
 
     # Optional dependancies, depending on what clouds you want to provide access to
