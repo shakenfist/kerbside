@@ -261,4 +261,14 @@ etc/                   # Configuration examples
 tools/                 # Utility scripts
 testclient/            # Ryll test client
 loadtests/             # Load testing tools
+docs/                  # Protocol documentation
 ```
+
+## Related Documentation
+
+For detailed SPICE protocol documentation, see the [docs/](docs/) directory:
+
+- [Protocol Overview](docs/protocol-overview.md) - SPICE protocol fundamentals
+- [Channel Protocols](docs/channel-protocols.md) - Per-channel message formats
+- [Capabilities](docs/capabilities.md) - Feature negotiation
+- [Proxy Architecture](docs/proxy-architecture.md) - Internal proxy design details

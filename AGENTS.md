@@ -87,7 +87,15 @@ Protocol packets are in `kerbside/spiceprotocol/packets/`:
 - Each packet type has a parser class
 - Parsers return consumed byte count (0 if incomplete)
 - Use `struct.unpack_from()` for binary parsing
-- Reference: https://www.spice-space.org/spice-protocol.html
+
+See the protocol documentation in `docs/` for detailed information:
+- `docs/protocol-overview.md` - SPICE protocol fundamentals
+- `docs/spice-link-protocol.md` - Connection handshake and authentication
+- `docs/channel-protocols.md` - Per-channel message formats
+- `docs/usb-redirection.md` - USB device redirection protocol
+- `docs/proxy-architecture.md` - Kerbside proxy internals
+
+External reference: https://www.spice-space.org/spice-protocol.html
 
 ## Testing
 
