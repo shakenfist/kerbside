@@ -12,13 +12,13 @@
           string seen_by
           boolean errored
           string url
-          string ca_cert
+          text ca_cert
           string username
           string password
           string project_name "OpenStack only"
           string user_domain_id "OpenStack only"
           string project_domain_id "OpenStack only"
-          string flavor "OpenStack only"
+          boolean deleted
       }
 
       sources ||--o{ consoles : "sources provide consoles"
@@ -43,7 +43,7 @@
           string uuid FK
           string source FK
           integer created "epoch seconds"
-          integer expired "epoch seconds"
+          integer expires "epoch seconds"
       }
 
       consoletokens ||--o{ proxychannels: "consoletokens authenticate proxychannels"
@@ -65,10 +65,10 @@
           string uuid PK "No FK to avoid cascading delete"
           string session_id "No FK to avoid cascading delete"
           string channel
-          timestamp timestamp PK
+          datetime timestamp PK "microsecond precision"
           string node
-          integer pid
-          string message
+          string pid
+          text message
       }
     </pre>
 

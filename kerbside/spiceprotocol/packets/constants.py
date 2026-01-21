@@ -2,6 +2,8 @@ import copy
 
 
 # Map channel types back and forth
+# These values are defined in the SPICE protocol specification:
+# https://www.spice-space.org/spice-protocol.html
 channel_str_to_num = {
     'main': 1,
     'display': 2,
@@ -10,9 +12,10 @@ channel_str_to_num = {
     'playback': 5,
     'record': 6,
     'tunnel (obsolete)': 7,
-    'usbredir': 8,
-    'port': 9,
-    'webdav': 10
+    'smartcard': 8,
+    'usbredir': 9,
+    'port': 10,
+    'webdav': 11
 }
 
 
@@ -24,9 +27,10 @@ channel_num_to_str = {
     5: 'playback',
     6: 'record',
     7: 'tunnel (obsolete)',
-    8: 'usbredir',
-    9: 'port',
-    10: 'webdav'
+    8: 'smartcard',
+    9: 'usbredir',
+    10: 'port',
+    11: 'webdav'
 }
 
 

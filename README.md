@@ -12,6 +12,34 @@ those at the moment because there are patches to add deployment support for
 Kerbside to Kolla-Ansible, whereas there is no deployment support for Shaken
 Fist just yet.
 
+## Documentation
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) - High-level system architecture
+- [AGENTS.md](AGENTS.md) - AI agent guidelines for working on this codebase
+- [docs/](docs/) - Full documentation:
+  - [Documentation Index](docs/index.md) - Full documentation index with
+    overview and introduction
+  - Operator documentation:
+    - [Configuration](docs/configuration.md) - Configuration reference
+    - [Console Sources](docs/console-sources.md) - Configuring sources.yaml
+  - Protocol documentation:
+    - [Protocol Overview](docs/protocol-overview.md) - SPICE protocol
+      fundamentals
+    - [Link Protocol](docs/spice-link-protocol.md) - Connection handshake and
+      authentication
+    - [Channel Protocols](docs/channel-protocols.md) - Per-channel message
+      formats (main, display, inputs, cursor, audio, smartcard)
+    - [Keyboard Scancodes](docs/scancodes.md) - IBM PC XT scancode reference
+      for the inputs channel
+    - [Compression Protocols](docs/compression-protocols.md) - LZ and GLZ
+      image compression formats
+    - [Capabilities](docs/capabilities.md) - Channel capability negotiation
+    - [USB Redirection](docs/usb-redirection.md) - USB device redirection
+      protocol
+    - [VD Agent Protocol](docs/vd-agent-protocol.md) - Guest agent for
+      clipboard, file transfer, and display configuration
+    - [Proxy Architecture](docs/proxy-architecture.md) - Internal proxy design
+
 ## Bootstrap CSS
 
 Kerbside uses bootstrap CSS for styling. This was constructed by downloading
