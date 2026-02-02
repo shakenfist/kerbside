@@ -1,0 +1,138 @@
+# Release workflow for Kerbside
+#
+# Triggers on version tags (v*). Requires approval from the 'release'
+# environment before publishing. Uses Sigstore for signing and PyPI
+# trusted publishers for authentication.
+#
+# See RELEASE-SETUP.md for one-time configuration steps.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+  # Allow manual trigger for testing (won't publish without a tag)
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build distribution packages
+    runs-on: [self-hosted, static]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for setuptools_scm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+
+      - name: Build package
+        run: python -m build
+
+      - name: Check package with twine
+        run: twine check dist/*
+
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  sign-tag:
+    name: Sign release tag with Sigstore
+    needs: build
+    runs-on: [self-hosted, static]
+    environment: release
+
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitsign
+        run: |
+          GITSIGN_VERSION="0.10.2"
+          curl -sLO "https://github.com/sigstore/gitsign/releases/download/v${GITSIGN_VERSION}/gitsign_${GITSIGN_VERSION}_linux_amd64"
+          curl -sLO "https://github.com/sigstore/gitsign/releases/download/v${GITSIGN_VERSION}/gitsign_${GITSIGN_VERSION}_checksums.txt"
+          sha256sum --ignore-missing -c "gitsign_${GITSIGN_VERSION}_checksums.txt"
+          chmod +x "gitsign_${GITSIGN_VERSION}_linux_amd64"
+          sudo mv "gitsign_${GITSIGN_VERSION}_linux_amd64" /usr/local/bin/gitsign
+
+      - name: Configure git for Sigstore signing
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global tag.gpgsign true
+          git config --global gpg.format x509
+          git config --global gpg.x509.program gitsign
+
+      - name: Create signed tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          echo "Signing tag: ${TAG_NAME}"
+          git tag -d "${TAG_NAME}" || true
+          git tag -s "${TAG_NAME}" -m "Release ${TAG_NAME}" "${GITHUB_SHA}"
+          git push origin "${TAG_NAME}" --force
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [build, sign-tag]
+    runs-on: [self-hosted, static]
+    environment: release
+
+    permissions:
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Generate attestations for artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'dist/*'
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    name: Create GitHub Release
+    needs: [build, sign-tag, publish-pypi]
+    runs-on: [self-hosted, static]
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
