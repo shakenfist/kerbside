@@ -40,7 +40,7 @@ jobs:
 
       - name: Check package with twine
         run: |
-          release-venv/bin/python3/twine check dist/*
+          release-venv/bin/twine check dist/*
 
       - name: Upload distribution artifacts
         uses: actions/upload-artifact@v4
