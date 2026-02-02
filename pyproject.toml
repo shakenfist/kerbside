@@ -16,8 +16,7 @@ description = "A protocol native SPICE VDI proxy"
 readme = "README.md"
 requires-python = ">=3.7"
 dependencies = [
-    #"shakenfist-utilities==0.6.9",      # apache2
-    "shakenfist-utilities @ git+https://github.com/shakenfist/library-utilities",
+    "shakenfist-utilities==0.8.4",      # apache2
 
     "click==8.1.7",                     # bsd
     "cryptography",                     # apache2
