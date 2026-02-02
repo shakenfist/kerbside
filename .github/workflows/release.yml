@@ -51,7 +51,7 @@ jobs:
   sign-tag:
     name: Sign release tag with Sigstore
     needs: build
-    runs-on: [self-hosted, static]
+    runs-on: [self-hosted, debian-12, s]
     environment: release
 
     permissions:
@@ -66,10 +66,10 @@ jobs:
 
       - name: Install gitsign
         run: |
-          GITSIGN_VERSION="0.10.2"
+          GITSIGN_VERSION="0.14.0"
           curl -sLO "https://github.com/sigstore/gitsign/releases/download/v${GITSIGN_VERSION}/gitsign_${GITSIGN_VERSION}_linux_amd64"
-          curl -sLO "https://github.com/sigstore/gitsign/releases/download/v${GITSIGN_VERSION}/gitsign_${GITSIGN_VERSION}_checksums.txt"
-          sha256sum --ignore-missing -c "gitsign_${GITSIGN_VERSION}_checksums.txt"
+          curl -sLO "https://github.com/sigstore/gitsign/releases/download/v${GITSIGN_VERSION}/checksums.txt"
+          sha256sum --ignore-missing -c checksums.txt
           chmod +x "gitsign_${GITSIGN_VERSION}_linux_amd64"
           sudo mv "gitsign_${GITSIGN_VERSION}_linux_amd64" /usr/local/bin/gitsign
 
