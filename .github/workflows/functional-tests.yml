@@ -401,8 +401,7 @@ jobs:
           . $GITHUB_ENV
 
           script="cd /srv/shakenfist/kerbside-patches;"
-          script="${script} hash=\$(./_build/calculate-container-hash.sh kolla kolla-2* nova nova-2* requirements requirements-2*);"
-          script="${script} ./_build/build-containers.sh --use-ci-registry --build-targets ${{ matrix.test.openstack_release }} --build-images all --image-tag "\$hash-debian-bookworm";"
+          script="${script} ./_build/build-containers.sh --build-targets ${{ matrix.test.openstack_release }} --build-images all --distro debian --image-tag local;"
 
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
@@ -411,18 +410,31 @@ jobs:
       - name: Bootstrap Kolla-Ansible
         run: |
           . $GITHUB_ENV
+          script="cd /srv/shakenfist/kerbside-patches;"
+          script="${script} sudo ./tools/bootstrap-kolla-ansible"
+              script="${script} --image-tag local"
+              script="${script} --build-targets ${{ matrix.test.openstack_release }}"
+              script="${script} --topology all-in-one;"
+
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
-              ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/bootstrap-kolla-ansible ${{ matrix.test.openstack_release }} all-in-one'
+              ${{ matrix.test.baseuser }}@10.0.2.2 "${script}"
 
-      - name: Install Kolla-Ansible
+      - name: Run pre-checks
         run: |
           . $GITHUB_ENV
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/install-kolla-ansible'
+              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/ka prechecks -i /etc/kolla/inventory'
+
+      - name: Deploy
+        run: |
+          . $GITHUB_ENV
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/ka deploy -i /etc/kolla/inventory'
 
       - name: Install patched OpenStack clients
         run: |
