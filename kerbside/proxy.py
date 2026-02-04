@@ -206,7 +206,7 @@ class SpiceTLSSession(object):
         if time.time() - self.last_statistics > 10:
             labels = {
                 'type': constants.channel_num_to_str[self.chan_type],
-                'session': self.session_id
+                'session_id': self.session_id
             }
 
             self.prometheus_updates.put(('bytes_proxied', labels, from_client))
@@ -274,18 +274,22 @@ class SpiceTLSSession(object):
                 self._cleanup_sockets(sockets)
                 return
 
+            client_total = 0
+            server_total = 0
             try:
                 if client_buffered:
                     client_consumed = self.client_next_packet(client_buffered)
                     while client_consumed > 0:
                         client_buffered = client_buffered[client_consumed:]
                         client_consumed = self.client_next_packet(client_buffered)
+                        client_total += client_consumed
 
                 if self.server_next_packet and server_buffered:
                     server_consumed = self.server_next_packet(server_buffered)
                     while server_consumed > 0:
                         server_buffered = server_buffered[server_consumed:]
                         server_consumed = self.server_next_packet(server_buffered)
+                        server_total += server_consumed
 
             except (BadMagic, BadMajor, BadMinor, ProtocolError, ConnectionRedirected,
                     ConnectionRefused, ConnectionDeclined, HandshakeFailed,
@@ -300,8 +304,8 @@ class SpiceTLSSession(object):
                 self._cleanup_sockets(sockets)
                 return
 
-            if client_consumed + server_consumed > 0 and self.server_conn:
-                self._emit_statistics(client_consumed, server_consumed, time.time() - start_time)
+            if client_total + server_total > 0 and self.server_conn:
+                self._emit_statistics(client_total, server_total, time.time() - start_time)
 
     def ClientSpiceLinkMess(self, buffered):
         parser = spiceprotocol.ClientSpiceLinkMessPacket(
