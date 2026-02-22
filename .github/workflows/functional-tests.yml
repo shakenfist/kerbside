@@ -399,60 +399,20 @@ jobs:
       - name: Build container images
         run: |
           . $GITHUB_ENV
-
-          script="cd /srv/shakenfist/kerbside-patches;"
-          script="${script} ./_build/build-containers.sh --build-targets ${{ matrix.test.openstack_release }} --build-images all --distro debian --image-tag local;"
-
-          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null \
-              ${{ matrix.test.baseuser }}@10.0.2.2 "${script}"
-
-      - name: Bootstrap Kolla-Ansible
-        run: |
-          . $GITHUB_ENV
-          script="cd /srv/shakenfist/kerbside-patches;"
-          script="${script} sudo ./tools/bootstrap-kolla-ansible"
-              script="${script} --image-tag local"
-              script="${script} --build-targets ${{ matrix.test.openstack_release }}"
-              script="${script} --topology all-in-one;"
-
-          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null \
-              ${{ matrix.test.baseuser }}@10.0.2.2 "${script}"
-
-      - name: Run pre-checks
-        run: |
-          . $GITHUB_ENV
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/ka prechecks -i /etc/kolla/inventory'
+              'cd /srv/shakenfist/kerbside-patches; ./_build/build-containers.sh --build-targets ${{ matrix.test.openstack_release }} --build-images all --distro debian --distro-version trixie --image-tag local'
 
-      - name: Deploy
-        run: |
-          . $GITHUB_ENV
-          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null \
-              ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/ka deploy -i /etc/kolla/inventory'
+      - name: Deploy Kolla-Ansible
+        uses: shakenfist/actions/deploy-kolla-ansible@main
+        with:
+          base_user: ${{ matrix.test.baseuser }}
+          image_tag: local
+          build_targets: ${{ matrix.test.openstack_release }}
+          topology: all-in-one
 
-      - name: Install patched OpenStack clients
-        run: |
-          . $GITHUB_ENV
-          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null \
-              ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/install-openstack-clients'
-
-      - name: Post install Kolla-Ansible setup
-        run: |
-          . $GITHUB_ENV
-          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null \
-              ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/postinstall-kolla-ansible'
-
-      - name: Attempt to start an instance with a console and connect to it
+      - name: Test SPICE console connectivity
         run: |
           . $GITHUB_ENV
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
