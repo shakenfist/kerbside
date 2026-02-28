@@ -61,7 +61,9 @@ jobs:
 
           cd ${GITHUB_WORKSPACE}/kerbside
           python3 -m venv  --system-site-packages ${RUNNER_TEMP}/venv
-          ${RUNNER_TEMP}/venv/bin/pip install -r requirements.txt
+          . ${RUNNER_TEMP}/venv/bin/activate
+          pip3 install uv
+          uv pip install -r pyproject.toml
 
       - name: List all our dependencies
         run: |
@@ -79,8 +81,8 @@ jobs:
           for depver in $(${RUNNER_TEMP}/venv/bin/pip freeze --local); do
             dep=$(echo ${depver} | sed 's/==.*//')
 
-            if [ $(egrep -ic "^${dep}==" requirements.txt) -lt 1 ]; then
-              echo "${depver}" >> requirements.txt
+            if [ $(egrep -ic "${dep}==" pyproject.toml) -lt 1 ]; then
+              sed -i pyproject.toml "s/    # END_OF_INDIRECT_DEPS/    \"${depver}\",\n    # END_OF_INDIRECT_DEPS/"
             fi
           done
 
@@ -95,6 +97,11 @@ jobs:
             git commit -a -m "Update pinned dependencies."
             git push -f origin pin-dependencies-${datestamp}
             echo
+            # Ensure the label exists before creating the PR
+            gh label create dependencies --color 0075ca \
+                --description "Pull requests that update a dependency file" \
+                2>/dev/null || true
+
             gh pr create \
                 --assignee mikalstill \
                 --reviewer mikalstill \
