@@ -180,6 +180,20 @@ ps aux | grep kerbside
 5. **Database Connections**: SQLAlchemy sessions should be properly closed.
    Use context managers or explicit `session.close()`.
 
+## Dependency Management
+
+### Indirect Dependency Pinning
+
+Dependencies are declared in `pyproject.toml`. Indirect (transitive) dependencies
+are pinned in the same file, in a section ending with a `# END_OF_INDIRECT_DEPS`
+marker comment. A daily CI job (`pin-indirect-dependencies.yml`) detects new
+unpinned indirect dependencies and creates PRs to pin them. The marker comment
+must not be removed, as the CI job uses `sed` to insert new entries before it.
+
+When adding a new direct dependency to `pyproject.toml`, place it in the main
+dependencies list above the "Indirect dependencies" comment. Do not place it
+after the `# END_OF_INDIRECT_DEPS` marker.
+
 ## External Dependencies
 
 ### Required Python Packages

@@ -69,6 +69,7 @@ dependencies = [
     "pytz==2025.2",
     "werkzeug==3.1.3",
     "zipp==3.21.0",
+    # END_OF_INDIRECT_DEPS
 ]
 
 [project.urls]
