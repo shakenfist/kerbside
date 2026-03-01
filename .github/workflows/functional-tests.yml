@@ -394,7 +394,7 @@ jobs:
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd /srv/shakenfist/kerbside-patches; ./_build/assemble-source.sh ${{ matrix.test.openstack_release }}'
+              'cd /srv/shakenfist/kerbside-patches; ./_build/assemble-source.sh --no-tarball ${{ matrix.test.openstack_release }}'
 
       - name: Build container images
         run: |
