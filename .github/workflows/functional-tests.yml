@@ -408,7 +408,7 @@ jobs:
         uses: shakenfist/actions/deploy-kolla-ansible@main
         with:
           base_user: ${{ matrix.test.baseuser }}
-          image_tag: local
+          image_tag: ${{ matrix.test.openstack_release }}-debian-trixie-local
           build_targets: ${{ matrix.test.openstack_release }}
           topology: all-in-one
 
