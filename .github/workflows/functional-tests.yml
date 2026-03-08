@@ -433,7 +433,7 @@ jobs:
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/test-console'
+              'cd /srv/shakenfist/kerbside-patches; sudo bash -c ". /etc/kolla/admin-openrc.sh && ./tools/test-console"'
 
       - name: Collect logs
         if: always()
