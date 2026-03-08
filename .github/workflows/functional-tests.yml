@@ -396,6 +396,20 @@ jobs:
               ${{ matrix.test.baseuser }}@10.0.2.2 \
               'cd /srv/shakenfist/kerbside-patches; ./_build/assemble-source.sh --no-tarball ${{ matrix.test.openstack_release }}'
 
+      - name: Bootstrap Kolla-Ansible
+        run: |
+          . $GITHUB_ENV
+
+          script="cd /srv/shakenfist/kerbside-patches;"
+          script="${script} sudo ./tools/bootstrap-kolla-ansible"
+          script="${script} --image-tag ${{ matrix.test.openstack_release }}-debian-trixie-local"
+          script="${script} --build-targets ${{ matrix.test.openstack_release }}"
+          script="${script} --topology all-in-one;"
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 "${script}"
+
       - name: Build container images
         run: |
           . $GITHUB_ENV
@@ -411,6 +425,7 @@ jobs:
           image_tag: ${{ matrix.test.openstack_release }}-debian-trixie-local
           build_targets: ${{ matrix.test.openstack_release }}
           topology: all-in-one
+          skip_bootstrap: 'true'
 
       - name: Test SPICE console connectivity
         run: |
