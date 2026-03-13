@@ -376,13 +376,38 @@ def main():
         log_kwargs['debug'] = True
         log_kwargs['log'] = logging.getLogger()
 
-    connection = sdk.Connection(
-        url=args.url,
-        username=args.username,
-        password=args.password,
-        ca_file=args.ca_file,
-        **log_kwargs,
-    )
+    # The oVirt engine may not be fully ready to accept API connections
+    # immediately after engine-setup completes (SSO service returns HTML
+    # instead of JSON). Retry the connection until it succeeds.
+    connection = None
+    print('Connecting to oVirt engine...')
+    start = time.time()
+    while True:
+        try:
+            connection = sdk.Connection(
+                url=args.url,
+                username=args.username,
+                password=args.password,
+                ca_file=args.ca_file,
+                **log_kwargs,
+            )
+            # Force authentication by making an API call
+            connection.system_service().data_centers_service().list()
+            break
+        except sdk.Error as e:
+            if connection:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+                connection = None
+            if time.time() - start > timeout_secs:
+                print(f'ERROR: Timeout waiting for oVirt engine to be ready: {e}')
+                sys.exit(1)
+            print(f'  Engine not ready ({e}), retrying in 10s...')
+            time.sleep(10)
+
+    print('  Connected to oVirt engine')
 
     try:
         system_service = connection.system_service()
