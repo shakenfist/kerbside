@@ -194,7 +194,8 @@ jobs:
         run: |
           . $GITHUB_ENV
 
-          script="export PS4='=======================\n+ '; set -x;"
+          script="export PS4='=======================\n+ '; set -xe;"
+          script="${script} sudo dnf clean all;"
           script="${script} sudo dnf update -y;"
           script="${script} sudo dnf install -y epel-release;"
           script="${script} sudo crb enable;"
@@ -211,7 +212,7 @@ jobs:
         run: |
           . $GITHUB_ENV
 
-          script="export PS4='=======================\n+ '; set -x;"
+          script="export PS4='=======================\n+ '; set -xe;"
           script="${script} sudo dnf install -y ${{ matrix.test.ovirt_rpm }};"
 
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
@@ -232,7 +233,7 @@ jobs:
         run: |
           . $GITHUB_ENV
 
-          script="export PS4='=======================\n+ '; set -x;"
+          script="export PS4='=======================\n+ '; set -xe;"
           script="${script} cd /etc/yum.repos.d;"
           script="${script} sudo patch -p1 < /srv/${{ matrix.test.name }}-repos.patch;"
 
@@ -245,7 +246,7 @@ jobs:
         run: |
           . $GITHUB_ENV
 
-          script="export PS4='=======================\n+ '; set -x;"
+          script="export PS4='=======================\n+ '; set -xe;"
           script="${script} sudo dnf update -y;"
           script="${script} sudo dnf module -y enable javapackages-tools;"
           script="${script} sudo dnf module -y enable postgresql:12;"
@@ -263,7 +264,7 @@ jobs:
         run: |
           . $GITHUB_ENV
 
-          script="export PS4='=======================\n+ '; set -x;"
+          script="export PS4='=======================\n+ '; set -xe;"
           script="${script} sudo dnf install -y ovirt-engine;"
 
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
@@ -280,7 +281,7 @@ jobs:
             ${GITHUB_WORKSPACE}/kerbside/etc/${{ matrix.test.name }}-answers.conf \
             ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
 
-          script="export PS4='=======================\n+ '; set -x;"
+          script="export PS4='=======================\n+ '; set -xe;"
           script="${script} sudo engine-setup"
               script="${script} --config-append=/srv/${{ matrix.test.name }}-answers.conf;"
 
@@ -293,7 +294,7 @@ jobs:
         run: |
           . $GITHUB_ENV
 
-          script="export PS4='=======================\n+ '; set -x;"
+          script="export PS4='=======================\n+ '; set -xe;"
 
           # Enable root SSH login so oVirt engine can deploy VDSM
           script="${script} echo 'root:foobar' | sudo chpasswd;"
@@ -343,7 +344,7 @@ jobs:
         run: |
           . $GITHUB_ENV
 
-          script="export PS4='=======================\n+ '; set -x;"
+          script="export PS4='=======================\n+ '; set -xe;"
 
           script="${script} sudo rpm -qa --qf "
               script="${script} \"%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n\" "
