@@ -56,6 +56,25 @@ Ryll, located in the `testclient/` directory, is a simple python native SPICE
 client used to implement various load tests. It has its own README file in that
 subdirectory.
 
+## Creating an oVirt SPICE Test Target
+
+The `tools/start-test-target.py` script creates an oVirt VM suitable as a SPICE
+test target. It imports a CirrOS image from oVirt's built-in Glance repository,
+creates a template, then creates and starts a VM from that template.
+
+```bash
+python tools/start-test-target.py \
+    --url https://ovirt-engine.example/ovirt-engine/api \
+    --password secret \
+    --ca-file /path/to/ca.pem \
+    --datacenter mydc \
+    --cluster mycluster \
+    --storage-domain mystorage
+```
+
+Run with `--help` for all options (custom image name, template name, VM name,
+memory size, timeout, debug logging).
+
 ## Build the load testing OCI container images
 
 There are a series of OCI container images intended for load testing. These need
