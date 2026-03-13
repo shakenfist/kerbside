@@ -289,6 +289,56 @@ jobs:
               ${{ matrix.test.baseuser }}@10.0.2.2 \
               "${script}"
 
+      - name: Prepare host for oVirt hypervisor
+        run: |
+          . $GITHUB_ENV
+
+          script="export PS4='=======================\n+ '; set -x;"
+
+          # Enable root SSH login so oVirt engine can deploy VDSM
+          script="${script} echo 'root:foobar' | sudo chpasswd;"
+          script="${script} sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config;"
+          script="${script} sudo systemctl restart sshd;"
+
+          # Create local storage directory (uid 36 = vdsm on RHEL-based)
+          script="${script} sudo mkdir -p /srv/ovirt-storage;"
+          script="${script} sudo chown 36:36 /srv/ovirt-storage;"
+
+          # Install oVirt Python SDK
+          script="${script} sudo dnf install -y python3-ovirt-engine-sdk4;"
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "${script}"
+
+      - name: Copy start-test-target.py to target
+        run: |
+          . $GITHUB_ENV
+
+          scp -rp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            ${GITHUB_WORKSPACE}/kerbside/tools/start-test-target.py \
+            ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
+
+      - name: Create SPICE test target VM
+        run: |
+          . $GITHUB_ENV
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "python3 /srv/start-test-target.py \
+                  --url https://${{ matrix.test.hostname }}.local/ovirt-engine/api \
+                  --password foobar \
+                  --ca-file /etc/pki/ovirt-engine/ca.pem \
+                  --datacenter test \
+                  --cluster test \
+                  --storage-domain local-storage \
+                  --host-address ${{ matrix.test.hostname }}.local \
+                  --host-password foobar \
+                  --storage-path /srv/ovirt-storage"
+
       - name: Gather artifacts
         run: |
           . $GITHUB_ENV
