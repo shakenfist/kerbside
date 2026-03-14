@@ -55,7 +55,7 @@ dependencies = [
 
     # Indirect dependencies. We do not track license for these.
     "marshmallow==3.21.1",
-    "PyJWT==2.9.0",
+    "PyJWT==2.12.0",
     "aniso8601==10.0.1",
     "annotated-types==0.7.0",
     "greenlet==3.2.0",
