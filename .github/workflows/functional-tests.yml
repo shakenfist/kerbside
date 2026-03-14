@@ -242,17 +242,29 @@ jobs:
               ${{ matrix.test.baseuser }}@10.0.2.2 \
               "${script}"
 
+      - name: Enable Rocky 8 dnf modules for oVirt
+        if: matrix.test.base == 'rocky:8'
+        run: |
+          . $GITHUB_ENV
+
+          script="export PS4='=======================\n+ '; set -xe;"
+          script="${script} sudo dnf module -y enable javapackages-tools;"
+          script="${script} sudo dnf module -y enable postgresql:12;"
+          script="${script} sudo dnf module -y enable mod_auth_openidc:2.3;"
+          script="${script} sudo dnf module -y enable nodejs:14;"
+          script="${script} sudo dnf module -y enable pki-deps;"
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "${script}"
+
       - name: Further package configuration
         run: |
           . $GITHUB_ENV
 
           script="export PS4='=======================\n+ '; set -xe;"
           script="${script} sudo dnf update -y;"
-          script="${script} sudo dnf module -y enable javapackages-tools;"
-          script="${script} sudo dnf module -y enable postgresql:12;"
-          script="${script} sudo dnf module -y enable mod_auth_openidc:2.3;"
-          script="${script} sudo dnf module -y enable nodejs:14;"
-          script="${script} sudo dnf module -y enable pki-deps;"
           script="${script} sudo dnf distro-sync --nobest -y;"
 
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
