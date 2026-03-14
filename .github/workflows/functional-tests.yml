@@ -296,6 +296,9 @@ jobs:
 
           script="export PS4='=======================\n+ '; set -xe;"
 
+          # Restart ovirt-engine so SSO works (engine-setup says to do this)
+          script="${script} sudo systemctl restart ovirt-engine;"
+
           # Enable root SSH login so oVirt engine can deploy VDSM
           script="${script} echo 'root:foobar' | sudo chpasswd;"
           script="${script} sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config;"
