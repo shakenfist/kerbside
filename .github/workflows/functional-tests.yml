@@ -326,7 +326,15 @@ jobs:
           script="${script}   echo \"  Attempt \$i/60: SSO not ready yet, waiting 10s...\";"
           script="${script}   sleep 10;"
           script="${script} done;"
-          script="${script} if [ \$sso_ready -ne 1 ]; then echo 'ERROR: SSO never became ready'; exit 1; fi;"
+          script="${script} if [ \$sso_ready -ne 1 ]; then"
+          script="${script}   echo 'ERROR: SSO never became ready. Dumping diagnostics...';"
+          script="${script}   sudo systemctl status ovirt-engine || true;"
+          script="${script}   echo '--- Last 50 lines of engine.log ---';"
+          script="${script}   sudo tail -50 /var/log/ovirt-engine/engine.log 2>/dev/null || true;"
+          script="${script}   echo '--- Last 50 lines of server.log ---';"
+          script="${script}   sudo tail -50 /var/log/ovirt-engine/server.log 2>/dev/null || true;"
+          script="${script}   exit 1;"
+          script="${script} fi;"
 
           # Enable root SSH login so oVirt engine can deploy VDSM
           script="${script} echo 'root:foobar' | sudo chpasswd;"
