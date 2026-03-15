@@ -308,8 +308,25 @@ jobs:
 
           script="export PS4='=======================\n+ '; set -xe;"
 
-          # Restart ovirt-engine so SSO works (engine-setup says to do this)
+          # Restart ovirt-engine so SSO works (engine-setup says to do this).
+          # Then wait for the engine's SSO endpoint to actually respond with
+          # JSON rather than HTML, which indicates the JBoss application server
+          # has fully started.
           script="${script} sudo systemctl restart ovirt-engine;"
+          script="${script} echo 'Waiting for oVirt engine SSO to become ready...';"
+          script="${script} sso_ready=0;"
+          script="${script} for i in \$(seq 1 60); do"
+          script="${script}   resp=\$(curl -sk https://localhost/ovirt-engine/sso/oauth/token"
+          script="${script}     -d 'grant_type=password&username=admin@internal&password=foobar&scope=ovirt-app-api'"
+          script="${script}     -H 'Content-Type: application/x-www-form-urlencoded'"
+          script="${script}     2>/dev/null) || true;"
+          script="${script}   if echo \"\$resp\" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then"
+          script="${script}     echo 'oVirt engine SSO is ready'; sso_ready=1; break;"
+          script="${script}   fi;"
+          script="${script}   echo \"  Attempt \$i/60: SSO not ready yet, waiting 10s...\";"
+          script="${script}   sleep 10;"
+          script="${script} done;"
+          script="${script} if [ \$sso_ready -ne 1 ]; then echo 'ERROR: SSO never became ready'; exit 1; fi;"
 
           # Enable root SSH login so oVirt engine can deploy VDSM
           script="${script} echo 'root:foobar' | sudo chpasswd;"
