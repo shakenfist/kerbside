@@ -123,7 +123,8 @@ jobs:
             'ovirt_rpm': 'https://resources.ovirt.org/pub/yum-repo/ovirt-release44.rpm',
             'base': 'rocky:8',
             'baseuser': 'cloud-user',
-            'hostname': 'ovirt'
+            'hostname': 'ovirt',
+            'ovirt_username': 'admin@internal'
           },
           {
             'name': 'ovirt-45-rocky-8',
@@ -132,7 +133,8 @@ jobs:
             'ovirt_rpm': 'centos-release-ovirt45',
             'base': 'rocky:8',
             'baseuser': 'cloud-user',
-            'hostname': 'ovirt'
+            'hostname': 'ovirt',
+            'ovirt_username': 'admin@ovirt'
           },
           {
             'name': 'ovirt-45-rocky-9',
@@ -141,7 +143,8 @@ jobs:
             'ovirt_rpm': 'centos-release-ovirt45',
             'base': 'rocky:9',
             'baseuser': 'cloud-user',
-            'hostname': 'ovirt'
+            'hostname': 'ovirt',
+            'ovirt_username': 'admin@ovirt'
           },
         ]
     runs-on: [self-hosted, vm]
@@ -199,6 +202,7 @@ jobs:
           script="${script} sudo dnf update -y;"
           script="${script} sudo dnf install -y epel-release;"
           script="${script} sudo crb enable;"
+          script="${script} sudo dnf clean all;"
           script="${script} sudo dnf update -y;"
           script="${script} sudo dnf install -y vim patch yum-utils;"
           script="${script} sudo chown ${{ matrix.test.baseuser }}:${{ matrix.test.baseuser }} /srv;"
@@ -317,10 +321,12 @@ jobs:
           script="${script} sso_ready=0;"
           script="${script} for i in \$(seq 1 60); do"
           script="${script}   resp=\$(curl -sk https://localhost/ovirt-engine/sso/oauth/token"
-          script="${script}     -d 'grant_type=password&username=admin@internal&password=foobar&scope=ovirt-app-api'"
+          script="${script}     -d 'grant_type=password&username=${{ matrix.test.ovirt_username }}&password=foobar&scope=ovirt-app-api'"
           script="${script}     -H 'Content-Type: application/x-www-form-urlencoded'"
           script="${script}     2>/dev/null) || true;"
-          script="${script}   if echo \"\$resp\" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then"
+          script="${script}   if echo \"\$resp\" | python3 -c '"
+          script="${script}     import json,sys; d=json.load(sys.stdin);"
+          script="${script}     sys.exit(1 if \"error_code\" in d or \"error\" in d else 0)' 2>/dev/null; then"
           script="${script}     echo 'oVirt engine SSO is ready'; sso_ready=1; break;"
           script="${script}   fi;"
           script="${script}   echo \"  Attempt \$i/60: SSO not ready yet, waiting 10s...\";"
@@ -371,6 +377,7 @@ jobs:
               ${{ matrix.test.baseuser }}@10.0.2.2 \
               "python3 /srv/start-test-target.py \
                   --url https://${{ matrix.test.hostname }}.local/ovirt-engine/api \
+                  --username ${{ matrix.test.ovirt_username }} \
                   --password foobar \
                   --ca-file /etc/pki/ovirt-engine/ca.pem \
                   --datacenter test \
