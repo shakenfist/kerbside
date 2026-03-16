@@ -7,8 +7,6 @@ on:
         description: Select target
         type: choice
         options:
-        - '["ovirt-44-rocky-8"]'
-        - '["ovirt-45-rocky-8"]'
         - '["ovirt-45-rocky-9"]'
         - '["kolla-ansible-master-debian-12"]'
         default: '["kolla-ansible-master-debian-12"]'
@@ -117,26 +115,6 @@ jobs:
       matrix:
         test: [
           {
-            'name': 'ovirt-44-rocky-8',
-            'description': 'oVirt 4.4 on Rocky 8',
-            'environment_name': 'ovirt',
-            'ovirt_rpm': 'https://resources.ovirt.org/pub/yum-repo/ovirt-release44.rpm',
-            'base': 'rocky:8',
-            'baseuser': 'cloud-user',
-            'hostname': 'ovirt',
-            'ovirt_username': 'admin@internal'
-          },
-          {
-            'name': 'ovirt-45-rocky-8',
-            'description': 'oVirt 4.5 on Rocky 8',
-            'environment_name': 'ovirt',
-            'ovirt_rpm': 'centos-release-ovirt45',
-            'base': 'rocky:8',
-            'baseuser': 'cloud-user',
-            'hostname': 'ovirt',
-            'ovirt_username': 'admin@ovirt@internalsso'
-          },
-          {
             'name': 'ovirt-45-rocky-9',
             'description': 'oVirt 4.5 on Rocky 9',
             'environment_name': 'ovirt',
@@ -240,23 +218,6 @@ jobs:
           script="export PS4='=======================\n+ '; set -xe;"
           script="${script} cd /etc/yum.repos.d;"
           script="${script} sudo patch -p1 < /srv/${{ matrix.test.name }}-repos.patch;"
-
-          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null \
-              ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "${script}"
-
-      - name: Enable Rocky 8 dnf modules for oVirt
-        if: matrix.test.base == 'rocky:8'
-        run: |
-          . $GITHUB_ENV
-
-          script="export PS4='=======================\n+ '; set -xe;"
-          script="${script} sudo dnf module -y enable javapackages-tools;"
-          script="${script} sudo dnf module -y enable postgresql:12;"
-          script="${script} sudo dnf module -y enable mod_auth_openidc:2.3;"
-          script="${script} sudo dnf module -y enable nodejs:14;"
-          script="${script} sudo dnf module -y enable pki-deps;"
 
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
