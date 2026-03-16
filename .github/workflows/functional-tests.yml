@@ -313,27 +313,27 @@ jobs:
           script="export PS4='=======================\n+ '; set -xe;"
 
           # Restart ovirt-engine so SSO works (engine-setup says to do this).
-          # Then wait for the engine's SSO endpoint to actually respond with
-          # JSON rather than HTML, which indicates the JBoss application server
-          # has fully started.
+          # Then wait for the engine's health endpoint to respond, which
+          # indicates the JBoss/WildFly application server has fully started
+          # and deployed the engine.ear application. We use the health
+          # endpoint rather than the SSO token endpoint because Keycloak
+          # (oVirt 4.5) uses a different auth flow that the internal SSO
+          # endpoint doesn't support.
           script="${script} sudo systemctl restart ovirt-engine;"
-          script="${script} echo 'Waiting for oVirt engine SSO to become ready...';"
-          script="${script} sso_ready=0;"
+          script="${script} echo 'Waiting for oVirt engine to become ready...';"
+          script="${script} engine_ready=0;"
           script="${script} for i in \$(seq 1 60); do"
-          script="${script}   resp=\$(curl -sk https://localhost/ovirt-engine/sso/oauth/token"
-          script="${script}     -d 'grant_type=password&username=${{ matrix.test.ovirt_username }}&password=foobar&scope=ovirt-app-api'"
-          script="${script}     -H 'Content-Type: application/x-www-form-urlencoded'"
+          script="${script}   http_code=\$(curl -sk -o /dev/null -w '%{http_code}'"
+          script="${script}     https://localhost/ovirt-engine/services/health"
           script="${script}     2>/dev/null) || true;"
-          script="${script}   if echo \"\$resp\" | python3 -c '"
-          script="${script}     import json,sys; d=json.load(sys.stdin);"
-          script="${script}     sys.exit(1 if \"error_code\" in d or \"error\" in d else 0)' 2>/dev/null; then"
-          script="${script}     echo 'oVirt engine SSO is ready'; sso_ready=1; break;"
+          script="${script}   if [ \"\$http_code\" = '200' ]; then"
+          script="${script}     echo 'oVirt engine is ready'; engine_ready=1; break;"
           script="${script}   fi;"
-          script="${script}   echo \"  Attempt \$i/60: SSO not ready yet, waiting 10s...\";"
+          script="${script}   echo \"  Attempt \$i/60: engine not ready (HTTP \$http_code), waiting 10s...\";"
           script="${script}   sleep 10;"
           script="${script} done;"
-          script="${script} if [ \$sso_ready -ne 1 ]; then"
-          script="${script}   echo 'ERROR: SSO never became ready. Dumping diagnostics...';"
+          script="${script} if [ \$engine_ready -ne 1 ]; then"
+          script="${script}   echo 'ERROR: oVirt engine never became ready. Dumping diagnostics...';"
           script="${script}   sudo systemctl status ovirt-engine || true;"
           script="${script}   echo '--- Last 50 lines of engine.log ---';"
           script="${script}   sudo tail -50 /var/log/ovirt-engine/engine.log 2>/dev/null || true;"
