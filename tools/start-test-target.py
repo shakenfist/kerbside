@@ -104,34 +104,26 @@ def _wait_for(description, check_fn, timeout_secs, poll_interval=5):
         time.sleep(poll_interval)
 
 
-def create_datacenter(system_service, datacenter_name, timeout_secs):
-    """Create a local-storage datacenter if it doesn't exist, then wait for UP."""
+def create_datacenter(system_service, datacenter_name):
+    """Create a local-storage datacenter if it doesn't exist.
+
+    Note: a local-storage datacenter stays in UNINITIALIZED state until a
+    host with local storage is added. Do not wait for UP here.
+    """
     dcs_service = system_service.data_centers_service()
 
-    # Check if it already exists
     for dc in dcs_service.list():
         if dc.name == datacenter_name:
-            print(f'Datacenter {datacenter_name!r} already exists')
-            break
-    else:
-        print(f'Creating local-storage datacenter {datacenter_name!r}...')
-        dcs_service.add(
-            types.DataCenter(
-                name=datacenter_name,
-                local=True,
-            )
+            print(f'Datacenter {datacenter_name!r} already exists (status: {dc.status})')
+            return
+
+    print(f'Creating local-storage datacenter {datacenter_name!r}...')
+    dcs_service.add(
+        types.DataCenter(
+            name=datacenter_name,
+            local=True,
         )
-
-    print(f'Waiting for datacenter {datacenter_name!r} to be ready...')
-
-    def check():
-        for dc in dcs_service.list():
-            if dc.name == datacenter_name and dc.status == types.DataCenterStatus.UP:
-                print(f'  Datacenter {datacenter_name!r} is UP')
-                return dc
-        return None
-
-    return _wait_for(f'datacenter {datacenter_name!r}', check, timeout_secs)
+    )
 
 
 def create_cluster(system_service, cluster_name, datacenter_name):
@@ -413,8 +405,11 @@ def main():
         system_service = connection.system_service()
 
         if args.host_address:
-            # Full infrastructure setup: datacenter, cluster, host, storage
-            create_datacenter(system_service, args.datacenter, timeout_secs)
+            # Full infrastructure setup: datacenter, cluster, host, storage.
+            # A local-storage datacenter won't reach UP until a host with
+            # storage is added, so create it without waiting, then add the
+            # host and storage, then wait for the datacenter to come UP.
+            create_datacenter(system_service, args.datacenter)
             create_cluster(system_service, args.cluster, args.datacenter)
             add_host(
                 system_service, args.host_name, args.host_address,
@@ -425,6 +420,7 @@ def main():
                     system_service, args.storage_domain, args.host_name,
                     args.storage_path, timeout_secs,
                 )
+            wait_for_datacenter(system_service, args.datacenter, timeout_secs)
         else:
             # Assume infrastructure exists, just wait for datacenter
             wait_for_datacenter(system_service, args.datacenter, timeout_secs)
