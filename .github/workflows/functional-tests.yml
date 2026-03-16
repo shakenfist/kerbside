@@ -303,9 +303,15 @@ jobs:
           script="${script}   exit 1;"
           script="${script} fi;"
 
-          # Enable root SSH login so oVirt engine can deploy VDSM
+          # Enable root SSH login so oVirt engine can deploy VDSM.
+          # Rocky 9 cloud images disable password auth in sshd_config.d
+          # drop-in files, so we must enable it there too.
           script="${script} echo 'root:foobar' | sudo chpasswd;"
           script="${script} sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config;"
+          script="${script} sudo sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config;"
+          script="${script} for f in /etc/ssh/sshd_config.d/*.conf; do"
+          script="${script}   sudo sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' \$f 2>/dev/null || true;"
+          script="${script} done;"
           script="${script} sudo systemctl restart sshd;"
 
           # Create local storage directory (uid 36 = vdsm on RHEL-based)
