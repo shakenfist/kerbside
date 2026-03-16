@@ -388,6 +388,7 @@ jobs:
                   --storage-path /srv/ovirt-storage"
 
       - name: Gather artifacts
+        if: always()
         run: |
           . $GITHUB_ENV
 
