@@ -134,7 +134,7 @@ jobs:
             'base': 'rocky:8',
             'baseuser': 'cloud-user',
             'hostname': 'ovirt',
-            'ovirt_username': 'admin@ovirt'
+            'ovirt_username': 'admin@ovirt@internalsso'
           },
           {
             'name': 'ovirt-45-rocky-9',
@@ -144,7 +144,7 @@ jobs:
             'base': 'rocky:9',
             'baseuser': 'cloud-user',
             'hostname': 'ovirt',
-            'ovirt_username': 'admin@ovirt'
+            'ovirt_username': 'admin@ovirt@internalsso'
           },
         ]
     runs-on: [self-hosted, vm]
@@ -323,13 +323,13 @@ jobs:
           script="${script} echo 'Waiting for oVirt engine to become ready...';"
           script="${script} engine_ready=0;"
           script="${script} for i in \$(seq 1 60); do"
-          script="${script}   http_code=\$(curl -sk -o /dev/null -w '%{http_code}'"
+          script="${script}   resp=\$(curl -sk"
           script="${script}     https://localhost/ovirt-engine/services/health"
           script="${script}     2>/dev/null) || true;"
-          script="${script}   if [ \"\$http_code\" = '200' ]; then"
+          script="${script}   if echo \"\$resp\" | grep -q 'DB Up'; then"
           script="${script}     echo 'oVirt engine is ready'; engine_ready=1; break;"
           script="${script}   fi;"
-          script="${script}   echo \"  Attempt \$i/60: engine not ready (HTTP \$http_code), waiting 10s...\";"
+          script="${script}   echo \"  Attempt \$i/60: engine not ready, waiting 10s...\";"
           script="${script}   sleep 10;"
           script="${script} done;"
           script="${script} if [ \$engine_ready -ne 1 ]; then"
