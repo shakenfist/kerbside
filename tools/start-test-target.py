@@ -167,6 +167,70 @@ def _dump_host_events(system_service, host):
         print(f'  (Could not fetch host events: {e})')
 
 
+def _fix_management_network(system_service, host_service, host):
+    """Attach the ovirtmgmt management network to the host's NIC.
+
+    When oVirt's automatic setupNetworks fails during host addition (common
+    in CI / single-node setups), the host goes non_operational with
+    "missing on host: 'ovirtmgmt'". We fix this by finding the host's
+    primary NIC, attaching ovirtmgmt to it via the SDK, then activating
+    the host.
+    """
+    # Find the ovirtmgmt network
+    networks_service = system_service.networks_service()
+    ovirtmgmt = None
+    for net in networks_service.list(search='name=ovirtmgmt'):
+        ovirtmgmt = net
+        break
+
+    if not ovirtmgmt:
+        print('ERROR: Could not find ovirtmgmt network')
+        sys.exit(1)
+
+    # Find the host's primary NIC (the one with a default route / IP)
+    nics_service = host_service.nics_service()
+    target_nic = None
+    for nic in nics_service.list():
+        # Skip bridges, bonds, and loopback
+        if nic.bridged or not nic.ip or nic.name == 'lo':
+            continue
+        if nic.ip.address and not nic.ip.address.startswith('127.'):
+            target_nic = nic
+            print(f'  Found NIC {nic.name!r} with IP {nic.ip.address}')
+            break
+
+    if not target_nic:
+        # Fall back to first non-loopback NIC
+        for nic in nics_service.list():
+            if nic.name != 'lo' and not nic.bridged:
+                target_nic = nic
+                print(f'  Using fallback NIC {nic.name!r}')
+                break
+
+    if not target_nic:
+        print('ERROR: Could not find a suitable NIC on the host')
+        sys.exit(1)
+
+    print(f'Attaching ovirtmgmt to NIC {target_nic.name!r}...')
+    host_service.setup_networks(
+        modified_network_attachments=[
+            types.NetworkAttachment(
+                network=types.Network(id=ovirtmgmt.id),
+                host_nic=types.HostNic(name=target_nic.name),
+                ip_address_assignments=[
+                    types.IpAddressAssignment(
+                        assignment_method=types.BootProtocol.DHCP,
+                    ),
+                ],
+            ),
+        ],
+        check_connectivity=False,
+        commit_on_success=True,
+    )
+    print('  Network configured, persisting...')
+    host_service.commit_net_config()
+
+
 def add_host(system_service, host_name, host_address, host_password, cluster_name, timeout_secs):
     """Register a host as a hypervisor and wait for it to become active."""
     hosts_service = system_service.hosts_service()
@@ -195,9 +259,10 @@ def add_host(system_service, host_name, host_address, host_password, cluster_nam
                 print(f'  Host status: {h.status}')
                 if h.status == types.HostStatus.UP:
                     return h
+                if h.status == types.HostStatus.NON_OPERATIONAL:
+                    return ('non_operational', h)
                 if h.status in (
                     types.HostStatus.INSTALL_FAILED,
-                    types.HostStatus.NON_OPERATIONAL,
                     types.HostStatus.ERROR,
                 ):
                     print(f'ERROR: Host entered {h.status} state')
@@ -205,9 +270,45 @@ def add_host(system_service, host_name, host_address, host_password, cluster_nam
                     sys.exit(1)
         return None
 
-    return _wait_for(
-        f'host {host_name!r} to be UP', check, timeout_secs, poll_interval=15
+    result = _wait_for(
+        f'host {host_name!r} to be UP or non_operational',
+        check, timeout_secs, poll_interval=15,
     )
+
+    # If the host went non_operational, try to fix the management network
+    if isinstance(result, tuple) and result[0] == 'non_operational':
+        host = result[1]
+        _dump_host_events(system_service, host)
+        print('Attempting to fix management network configuration...')
+
+        host_service = hosts_service.host_service(host.id)
+        _fix_management_network(system_service, host_service, host)
+
+        print('Activating host...')
+        host_service.activate()
+
+        # Now wait for the host to come UP
+        def check_up():
+            h = host_service.get()
+            print(f'  Host status: {h.status}')
+            if h.status == types.HostStatus.UP:
+                return h
+            if h.status in (
+                types.HostStatus.INSTALL_FAILED,
+                types.HostStatus.ERROR,
+                types.HostStatus.NON_OPERATIONAL,
+            ):
+                print(f'ERROR: Host still in {h.status} after network fix')
+                _dump_host_events(system_service, h)
+                sys.exit(1)
+            return None
+
+        result = _wait_for(
+            f'host {host_name!r} to be UP after network fix',
+            check_up, timeout_secs, poll_interval=10,
+        )
+
+    return result
 
 
 def create_local_storage(system_service, storage_domain_name, host_name, storage_path, timeout_secs):
