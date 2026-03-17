@@ -148,6 +148,25 @@ def create_cluster(system_service, cluster_name, datacenter_name):
     print(f'  Cluster {cluster_name!r} created')
 
 
+def _dump_host_events(system_service, host):
+    """Print recent oVirt events related to a host for diagnostics."""
+    try:
+        events_service = system_service.events_service()
+        events = events_service.list(
+            search=f'host.name={host.name}',
+            max=20,
+        )
+        if events:
+            print(f'\n--- Recent events for host {host.name!r} ---')
+            for event in sorted(events, key=lambda e: e.id):
+                print(f'  [{event.severity}] {event.description}')
+            print('--- End of events ---\n')
+        else:
+            print(f'  No events found for host {host.name!r}')
+    except Exception as e:
+        print(f'  (Could not fetch host events: {e})')
+
+
 def add_host(system_service, host_name, host_address, host_password, cluster_name, timeout_secs):
     """Register a host as a hypervisor and wait for it to become active."""
     hosts_service = system_service.hosts_service()
@@ -182,6 +201,7 @@ def add_host(system_service, host_name, host_address, host_password, cluster_nam
                     types.HostStatus.ERROR,
                 ):
                     print(f'ERROR: Host entered {h.status} state')
+                    _dump_host_events(system_service, h)
                     sys.exit(1)
         return None
 
