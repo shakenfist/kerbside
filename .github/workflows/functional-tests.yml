@@ -304,21 +304,21 @@ jobs:
           script="${script} fi;"
 
           # Enable root SSH login so oVirt engine can deploy VDSM.
-          # Rocky 9 cloud images disable password auth and root login in
-          # sshd_config.d drop-in files, which take precedence over
-          # sshd_config (OpenSSH 8.7+ processes Include before main config).
-          # We must fix both the main config and all drop-in files.
+          # Rocky 9 cloud images disable password auth and root login
+          # via sshd_config.d drop-in files or cloud-init. Rather than
+          # trying to sed every possible config file, write a
+          # high-priority drop-in (00-) that gets processed first --
+          # in OpenSSH the first match wins for included files.
           script="${script} echo 'root:foobar' | sudo chpasswd;"
           script="${script} sudo passwd -u root 2>/dev/null || true;"
-          script="${script} sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config;"
-          script="${script} sudo sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config;"
-          script="${script} for f in /etc/ssh/sshd_config.d/*.conf; do"
-          script="${script}   sudo sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' \$f 2>/dev/null || true;"
-          script="${script}   sudo sed -i 's/^PermitRootLogin.*/PermitRootLogin yes/' \$f 2>/dev/null || true;"
-          script="${script} done;"
+          script="${script} printf 'PermitRootLogin yes\nPasswordAuthentication yes\n'"
+          script="${script}   | sudo tee /etc/ssh/sshd_config.d/00-ovirt-ci.conf > /dev/null;"
           script="${script} sudo systemctl restart sshd;"
           script="${script} echo '--- SSH config verification ---';"
-          script="${script} sudo sshd -T 2>/dev/null | grep -iE 'permitrootlogin|passwordauthentication' || true;"
+          script="${script} sudo sshd -T 2>/dev/null | grep -iE 'permitrootlogin|passwordauthentication';"
+          script="${script} echo '--- sshd_config.d contents ---';"
+          script="${script} ls -la /etc/ssh/sshd_config.d/ || true;"
+          script="${script} cat /etc/ssh/sshd_config.d/* 2>/dev/null || true;"
 
           # Create local storage directory (uid 36 = vdsm on RHEL-based)
           script="${script} sudo mkdir -p /srv/ovirt-storage;"
