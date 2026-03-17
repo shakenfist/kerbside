@@ -304,15 +304,21 @@ jobs:
           script="${script} fi;"
 
           # Enable root SSH login so oVirt engine can deploy VDSM.
-          # Rocky 9 cloud images disable password auth in sshd_config.d
-          # drop-in files, so we must enable it there too.
+          # Rocky 9 cloud images disable password auth and root login in
+          # sshd_config.d drop-in files, which take precedence over
+          # sshd_config (OpenSSH 8.7+ processes Include before main config).
+          # We must fix both the main config and all drop-in files.
           script="${script} echo 'root:foobar' | sudo chpasswd;"
+          script="${script} sudo passwd -u root 2>/dev/null || true;"
           script="${script} sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config;"
           script="${script} sudo sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config;"
           script="${script} for f in /etc/ssh/sshd_config.d/*.conf; do"
           script="${script}   sudo sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' \$f 2>/dev/null || true;"
+          script="${script}   sudo sed -i 's/^PermitRootLogin.*/PermitRootLogin yes/' \$f 2>/dev/null || true;"
           script="${script} done;"
           script="${script} sudo systemctl restart sshd;"
+          script="${script} echo '--- SSH config verification ---';"
+          script="${script} sudo sshd -T 2>/dev/null | grep -iE 'permitrootlogin|passwordauthentication' || true;"
 
           # Create local storage directory (uid 36 = vdsm on RHEL-based)
           script="${script} sudo mkdir -p /srv/ovirt-storage;"
@@ -363,13 +369,13 @@ jobs:
 
           script="${script} sudo rpm -qa --qf "
               script="${script} \"%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n\" "
-              script="${script} > /tmp/rpms.list;"
+              script="${script} | grep -v '^gpg-pubkey' > /tmp/rpms.list;"
 
           script="${script} for rpm in \$(cat /tmp/rpms.list); do"
               script="${script} echo \"Caching URLs for \${rpm}\";"
               script="${script} sudo yumdownloader --resolve --urls \${rpm} |"
               script="${script} egrep -v '(metadata expiration|Waiting for)' "
-              script="${script} >> /tmp/rpms.urls;"
+              script="${script} >> /tmp/rpms.urls 2>/dev/null || true;"
               script="${script} done;"
 
           script="${script} sudo zip -r /tmp/bundle.zip "
