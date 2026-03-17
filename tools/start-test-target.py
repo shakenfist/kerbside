@@ -167,7 +167,7 @@ def _dump_host_events(system_service, host):
         print(f'  (Could not fetch host events: {e})')
 
 
-def _fix_management_network(system_service, host_service, host):
+def _fix_management_network(system_service, host_service, host, datacenter_name):
     """Attach the ovirtmgmt management network to the host's NIC.
 
     When oVirt's automatic setupNetworks fails during host addition (common
@@ -176,15 +176,31 @@ def _fix_management_network(system_service, host_service, host):
     primary NIC, attaching ovirtmgmt to it via the SDK, then activating
     the host.
     """
-    # Find the ovirtmgmt network
-    networks_service = system_service.networks_service()
+    # Find the ovirtmgmt network in our specific datacenter.
+    # Each datacenter has its own ovirtmgmt with a unique ID; using the
+    # wrong one (e.g. from the Default datacenter) causes a 400 error.
+    dcs_service = system_service.data_centers_service()
+    dc = None
+    for d in dcs_service.list():
+        if d.name == datacenter_name:
+            dc = d
+            break
+
+    if not dc:
+        print(f'ERROR: Could not find datacenter {datacenter_name!r}')
+        sys.exit(1)
+
+    dc_service = dcs_service.data_center_service(dc.id)
+    dc_networks = dc_service.networks_service()
     ovirtmgmt = None
-    for net in networks_service.list(search='name=ovirtmgmt'):
-        ovirtmgmt = net
-        break
+    for net in dc_networks.list():
+        if net.name == 'ovirtmgmt':
+            ovirtmgmt = net
+            print(f'  Found ovirtmgmt network (id={ovirtmgmt.id}) in datacenter {datacenter_name!r}')
+            break
 
     if not ovirtmgmt:
-        print('ERROR: Could not find ovirtmgmt network')
+        print('ERROR: Could not find ovirtmgmt network in datacenter')
         sys.exit(1)
 
     # Find the host's primary NIC (the one with a default route / IP)
@@ -231,7 +247,7 @@ def _fix_management_network(system_service, host_service, host):
     host_service.commit_net_config()
 
 
-def add_host(system_service, host_name, host_address, host_password, cluster_name, timeout_secs):
+def add_host(system_service, host_name, host_address, host_password, cluster_name, datacenter_name, timeout_secs):
     """Register a host as a hypervisor and wait for it to become active."""
     hosts_service = system_service.hosts_service()
 
@@ -282,7 +298,7 @@ def add_host(system_service, host_name, host_address, host_password, cluster_nam
         print('Attempting to fix management network configuration...')
 
         host_service = hosts_service.host_service(host.id)
-        _fix_management_network(system_service, host_service, host)
+        _fix_management_network(system_service, host_service, host, datacenter_name)
 
         print('Activating host...')
         host_service.activate()
@@ -534,7 +550,8 @@ def main():
             create_cluster(system_service, args.cluster, args.datacenter)
             add_host(
                 system_service, args.host_name, args.host_address,
-                args.host_password, args.cluster, timeout_secs,
+                args.host_password, args.cluster, args.datacenter,
+                timeout_secs,
             )
             if args.storage_path:
                 create_local_storage(
