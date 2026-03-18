@@ -311,7 +311,7 @@ def add_host(system_service, host_name, host_address, host_password, cluster_nam
                 break
             except sdk.Error as e:
                 if 'in progress' in str(e) and time.time() - activate_start < 120:
-                    print(f'  Activate busy, retrying in 10s...')
+                    print('  Activate busy, retrying in 10s...')
                     time.sleep(10)
                 else:
                     raise
