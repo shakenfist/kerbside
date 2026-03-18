@@ -510,19 +510,55 @@ def create_and_start_vm(system_service, vm_name, template_name, cluster_name, me
 
     _wait_for(f'VM {vm_name!r} to be ready', check_down, timeout_secs)
 
-    # Start the VM
-    print(f'Starting VM {vm_name!r}...')
-    vm_service.start()
+    # Start the VM, retrying if it falls back to DOWN (which can
+    # happen if KVM/QEMU needs a moment or the first attempt races
+    # with disk copy completion).
+    max_start_attempts = 3
+    for attempt in range(1, max_start_attempts + 1):
+        print(f'Starting VM {vm_name!r} (attempt {attempt}/{max_start_attempts})...')
+        vm_service.start()
 
-    def check_up():
-        v = vm_service.get()
-        print(f'  VM status: {v.status}')
-        return v if v.status == types.VmStatus.UP else None
+        launched = False
+        start_time = time.time()
+        while time.time() - start_time < 60:
+            v = vm_service.get()
+            print(f'  VM status: {v.status}')
+            if v.status == types.VmStatus.UP:
+                print(f'VM {vm_name!r} is running')
+                return vm_name
+            if v.status == types.VmStatus.DOWN:
+                # VM fell back to down after start attempt
+                break
+            time.sleep(5)
 
-    result = _wait_for(f'VM {vm_name!r} to be UP', check_up, timeout_secs)
-    if result:
-        print(f'VM {vm_name!r} is running')
-    return vm_name
+        if attempt < max_start_attempts:
+            # Dump events to understand why the VM didn't start
+            print(f'  VM went back to DOWN, checking events...')
+            try:
+                events_service = system_service.events_service()
+                events = events_service.list(
+                    search=f'vm.name={vm_name}',
+                    max=5,
+                )
+                for event in sorted(events, key=lambda e: e.id):
+                    print(f'    [{event.severity}] {event.description}')
+            except Exception:
+                pass
+            print(f'  Retrying in 15s...')
+            time.sleep(15)
+
+    print(f'ERROR: VM {vm_name!r} failed to start after {max_start_attempts} attempts')
+    # Final event dump
+    try:
+        events_service = system_service.events_service()
+        events = events_service.list(search=f'vm.name={vm_name}', max=10)
+        print(f'\n--- Recent events for VM {vm_name!r} ---')
+        for event in sorted(events, key=lambda e: e.id):
+            print(f'  [{event.severity}] {event.description}')
+        print('--- End of events ---\n')
+    except Exception:
+        pass
+    sys.exit(1)
 
 
 def main():
