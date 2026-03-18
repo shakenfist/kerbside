@@ -518,7 +518,6 @@ def create_and_start_vm(system_service, vm_name, template_name, cluster_name, me
         print(f'Starting VM {vm_name!r} (attempt {attempt}/{max_start_attempts})...')
         vm_service.start()
 
-        launched = False
         start_time = time.time()
         while time.time() - start_time < 60:
             v = vm_service.get()
@@ -533,7 +532,7 @@ def create_and_start_vm(system_service, vm_name, template_name, cluster_name, me
 
         if attempt < max_start_attempts:
             # Dump events to understand why the VM didn't start
-            print(f'  VM went back to DOWN, checking events...')
+            print('  VM went back to DOWN, checking events...')
             try:
                 events_service = system_service.events_service()
                 events = events_service.list(
@@ -544,7 +543,7 @@ def create_and_start_vm(system_service, vm_name, template_name, cluster_name, me
                     print(f'    [{event.severity}] {event.description}')
             except Exception:
                 pass
-            print(f'  Retrying in 15s...')
+            print('  Retrying in 15s...')
             time.sleep(15)
 
     print(f'ERROR: VM {vm_name!r} failed to start after {max_start_attempts} attempts')
