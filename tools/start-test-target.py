@@ -340,7 +340,10 @@ def add_host(system_service, host_name, host_address, host_password, cluster_nam
     return result
 
 
-def create_local_storage(system_service, storage_domain_name, host_name, storage_path, timeout_secs):
+def create_local_storage(
+    system_service, storage_domain_name, host_name, storage_path,
+    datacenter_name, timeout_secs,
+):
     """Create a local storage domain if it doesn't exist."""
     sds_service = system_service.storage_domains_service()
 
@@ -362,13 +365,27 @@ def create_local_storage(system_service, storage_domain_name, host_name, storage
         )
     )
 
-    # Wait for storage domain to become active
+    # Wait for storage domain to become active. For local storage
+    # domains, the top-level status is always None — we must check
+    # via the datacenter's attached storage domains instead.
+    dcs_service = system_service.data_centers_service()
+    dc = None
+    for d in dcs_service.list():
+        if d.name == datacenter_name:
+            dc = d
+            break
+
+    dc_sds_service = dcs_service.data_center_service(dc.id).storage_domains_service()
+
     def check():
-        for sd in sds_service.list():
+        for sd in dc_sds_service.list():
             if sd.name == storage_domain_name:
                 print(f'  Storage domain status: {sd.status}')
                 if sd.status == types.StorageDomainStatus.ACTIVE:
                     return sd
+                return None
+        # Not yet attached to datacenter
+        print('  Storage domain not yet attached to datacenter')
         return None
 
     _wait_for(
@@ -569,7 +586,7 @@ def main():
             if args.storage_path:
                 create_local_storage(
                     system_service, args.storage_domain, args.host_name,
-                    args.storage_path, timeout_secs,
+                    args.storage_path, args.datacenter, timeout_secs,
                 )
             wait_for_datacenter(system_service, args.datacenter, timeout_secs)
         else:
