@@ -300,8 +300,21 @@ def add_host(system_service, host_name, host_address, host_password, cluster_nam
         host_service = hosts_service.host_service(host.id)
         _fix_management_network(system_service, host_service, host, datacenter_name)
 
+        # Activate the host, retrying if a prior operation is still
+        # in progress (the setup_networks call may not have fully
+        # completed on the engine side).
         print('Activating host...')
-        host_service.activate()
+        activate_start = time.time()
+        while True:
+            try:
+                host_service.activate()
+                break
+            except sdk.Error as e:
+                if 'in progress' in str(e) and time.time() - activate_start < 120:
+                    print(f'  Activate busy, retrying in 10s...')
+                    time.sleep(10)
+                else:
+                    raise
 
         # Now wait for the host to come UP
         def check_up():
