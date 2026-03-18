@@ -1,0 +1,94 @@
+diff -u a/CentOS-Ceph-Pacific.repo b/CentOS-Ceph-Pacific.repo
+--- a/CentOS-Ceph-Pacific.repo	2022-12-07 07:45:22.000000000 +1100
++++ b/CentOS-Ceph-Pacific.repo	2025-04-28 06:33:03.295270857 +1000
+@@ -5,8 +5,7 @@
+
+ [centos-ceph-pacific]
+ name=CentOS-$stream - Ceph Pacific
+-mirrorlist=http://mirrorlist.centos.org/?release=$stream&arch=$basearch&repo=storage-ceph-pacific
+-#baseurl=http://mirror.centos.org/$contentdir/$stream/storage/$basearch/ceph-pacific/
++baseurl=http://vault.centos.org/centos/8-stream/storage/$basearch/ceph-pacific/
+ gpgcheck=1
+ enabled=1
+ gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-SIG-Storage
+@@ -20,7 +19,7 @@
+
+ [centos-ceph-pacific-source]
+ name=CentOS-$stream - Ceph Pacific Source
+-baseurl=http://vault.centos.org/$contentdir/$stream/storage/Source/ceph-pacific/
++baseurl=http://vault.centos.org/centos/8-stream/storage/Source/ceph-pacific/
+ gpgcheck=1
+ enabled=0
+ gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-SIG-Storage
+diff -u a/CentOS-Gluster-10.repo b/CentOS-Gluster-10.repo
+--- a/CentOS-Gluster-10.repo	2022-12-07 07:56:26.000000000 +1100
++++ b/CentOS-Gluster-10.repo	2025-04-28 06:32:08.048797102 +1000
+@@ -5,8 +5,7 @@
+
+ [centos-gluster10]
+ name=CentOS-$stream - Gluster 10
+-mirrorlist=http://mirrorlist.centos.org?arch=$basearch&release=$stream&repo=storage-gluster-10
+-#baseurl=http://mirror.centos.org/$contentdir/$stream/storage/$basearch/gluster-10/
++baseurl=http://vault.centos.org/centos/8-stream/storage/$basearch/gluster-10/
+ gpgcheck=1
+ enabled=1
+ gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-SIG-Storage
+diff -u a/CentOS-NFV-OpenvSwitch.repo b/CentOS-NFV-OpenvSwitch.repo
+--- a/CentOS-NFV-OpenvSwitch.repo	2022-12-15 09:02:16.000000000 +1100
++++ b/CentOS-NFV-OpenvSwitch.repo	2025-04-28 06:32:46.396030738 +1000
+@@ -5,8 +5,7 @@
+
+ [centos-nfv-openvswitch]
+ name=CentOS-$releasever - NFV OpenvSwitch
+-#baseurl=http://mirror.centos.org/centos/$nfvsigdist/nfv/$basearch/openvswitch-2/
+-mirrorlist=http://mirrorlist.centos.org/?release=$nfvsigdist&arch=$basearch&repo=nfv-openvswitch-2
++baseurl=http://vault.centos.org/centos/$nfvsigdist/nfv/$basearch/openvswitch-2/
+ gpgcheck=1
+ enabled=1
+ gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-SIG-NFV
+diff -u a/CentOS-OpsTools.repo b/CentOS-OpsTools.repo
+--- a/CentOS-OpsTools.repo	2021-09-14 08:00:25.000000000 +1000
++++ b/CentOS-OpsTools.repo	2025-04-28 06:33:24.963982839 +1000
+@@ -11,8 +11,7 @@
+
+ [centos-opstools]
+ name=CentOS-8 - OpsTools - collectd
+-mirrorlist=http://mirrorlist.centos.org/?arch=$basearch&release=$releasever&repo=opstools-collectd-5
+-#baseurl=http://mirror.centos.org/$contentdir/$releasever/opstools/$basearch/collectd-5/
++baseurl=http://vault.centos.org/centos/8-stream/opstools/$basearch/collectd-5/
+ gpgcheck=1
+ enabled=1
+ skip_if_unavailable=1
+diff -u a/CentOS-oVirt-4.5.repo b/CentOS-oVirt-4.5.repo
+--- a/CentOS-oVirt-4.5.repo	2023-04-20 18:42:24.000000000 +1000
++++ b/CentOS-oVirt-4.5.repo	2025-04-28 06:19:51.996473325 +1000
+@@ -11,8 +11,7 @@
+
+ [centos-ovirt45]
+ name=CentOS Stream $releasever - oVirt 4.5
+-# baseurl=http://mirror.centos.org/centos/$stream/virt/$basearch/ovirt-45/
+-mirrorlist=http://mirrorlist.centos.org/?release=$stream&arch=$basearch&repo=virt-ovirt-45
++baseurl=http://vault.centos.org/centos/8-stream/virt/$basearch/ovirt-45/
+ gpgcheck=1
+ enabled=1
+ module_hotfixes=1
+@@ -37,8 +36,7 @@
+
+ [ovirt-45-centos-stream-openstack-yoga]
+ name=CentOS Stream $releasever - oVirt 4.5 - OpenStack Yoga Repository
+-# baseurl=http://mirror.centos.org/centos/$stream/cloud/$basearch/openstack-yoga/
+-mirrorlist=http://mirrorlist.centos.org/?release=$stream&arch=$basearch&repo=cloud-openstack-yoga
++baseurl=http://vault.centos.org/centos/8-stream/cloud/$basearch/openstack-yoga/
+ gpgcheck=1
+ gpgkey=https://www.centos.org/keys/RPM-GPG-KEY-CentOS-SIG-Cloud
+ enabled=1
+@@ -59,8 +57,7 @@
+ [ovirt-45-upstream]
+ name=oVirt upstream for CentOS Stream $releasever - oVirt 4.5
+ enabled=1
+-mirrorlist=https://mirrorlist.ovirt.org/mirrorlist-ovirt-4.5-el$releasever
+-#baseurl=https://resources.ovirt.org/pub/ovirt-4.5/rpm/el$releasever
++baseurl=https://resources.ovirt.org/pub/ovirt-4.5/rpm/el$releasever
+ gpgcheck=1
+ gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-oVirt-4.5
+ # ovirt mirrorlist is static
