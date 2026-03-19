@@ -547,23 +547,20 @@ def create_and_start_vm(system_service, vm_name, template_name, cluster_name, me
             pass
 
         import glob as globmod
-        import subprocess
-        print('  --- VDSM log (last 20 lines) ---')
-        result = subprocess.run(
-            ['sudo', 'tail', '-20', '/var/log/vdsm/vdsm.log'],
-            capture_output=True, text=True
-        )
-        print(result.stdout)
-        if result.stderr:
-            print(result.stderr)
-        print('  --- libvirt QEMU logs ---')
-        for qlog in sorted(globmod.glob('/var/log/libvirt/qemu/*.log')):
-            print(f'  [{qlog}]')
-            result = subprocess.run(
-                ['sudo', 'tail', '-20', qlog],
-                capture_output=True, text=True
-            )
-            print(result.stdout)
+        import os
+        for logpath in ['/var/log/vdsm/vdsm.log'] + sorted(globmod.glob('/var/log/libvirt/qemu/*.log')):
+            print(f'  --- {logpath} (last 20 lines) ---')
+            try:
+                with open(logpath, 'r') as f:
+                    lines = f.readlines()
+                    for line in lines[-20:]:
+                        print(f'  {line.rstrip()}')
+            except PermissionError:
+                # Try via os.popen which may work with sudo
+                output = os.popen(f'sudo tail -20 {logpath} 2>&1').read()
+                print(output)
+            except FileNotFoundError:
+                print(f'  (file not found)')
 
         if attempt < max_start_attempts:
             print('  Retrying in 15s...')
