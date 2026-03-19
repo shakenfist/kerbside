@@ -560,7 +560,7 @@ def create_and_start_vm(system_service, vm_name, template_name, cluster_name, me
                 output = os.popen(f'sudo tail -20 {logpath} 2>&1').read()
                 print(output)
             except FileNotFoundError:
-                print(f'  (file not found)')
+                print('  (file not found)')
 
         if attempt < max_start_attempts:
             print('  Retrying in 15s...')
