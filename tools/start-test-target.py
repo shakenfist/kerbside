@@ -533,19 +533,34 @@ def create_and_start_vm(system_service, vm_name, template_name, cluster_name, me
                 break
             time.sleep(5)
 
+        # Dump events and logs to understand why the VM didn't start
+        print('  VM went back to DOWN, checking events...')
+        try:
+            events_service = system_service.events_service()
+            events = events_service.list(
+                search=f'vm.name={vm_name}',
+                max=5,
+            )
+            for event in sorted(events, key=lambda e: e.id):
+                print(f'    [{event.severity}] {event.description}')
+        except Exception:
+            pass
+
+        import subprocess
+        print('  --- VDSM log (last 20 lines) ---')
+        subprocess.run(
+            ['sudo', 'tail', '-20', '/var/log/vdsm/vdsm.log'],
+            capture_output=False
+        )
+        print('  --- libvirt QEMU log ---')
+        subprocess.run(
+            ['bash', '-c',
+             'sudo tail -20 /var/log/libvirt/qemu/*.log 2>/dev/null'
+             ' || echo "No QEMU logs found"'],
+            capture_output=False
+        )
+
         if attempt < max_start_attempts:
-            # Dump events to understand why the VM didn't start
-            print('  VM went back to DOWN, checking events...')
-            try:
-                events_service = system_service.events_service()
-                events = events_service.list(
-                    search=f'vm.name={vm_name}',
-                    max=5,
-                )
-                for event in sorted(events, key=lambda e: e.id):
-                    print(f'    [{event.severity}] {event.description}')
-            except Exception:
-                pass
             print('  Retrying in 15s...')
             time.sleep(15)
 
@@ -561,18 +576,6 @@ def create_and_start_vm(system_service, vm_name, template_name, cluster_name, me
     except Exception:
         pass
 
-    # Dump VDSM and libvirt logs for diagnosis
-    import subprocess
-    print('--- VDSM log (last 30 lines) ---')
-    subprocess.run(
-        ['sudo', 'tail', '-30', '/var/log/vdsm/vdsm.log'],
-        capture_output=False
-    )
-    print('--- libvirt QEMU log ---')
-    subprocess.run(
-        ['bash', '-c', 'sudo tail -30 /var/log/libvirt/qemu/*.log 2>/dev/null || echo "No QEMU logs found"'],
-        capture_output=False
-    )
     sys.exit(1)
 
 
