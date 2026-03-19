@@ -560,6 +560,19 @@ def create_and_start_vm(system_service, vm_name, template_name, cluster_name, me
         print('--- End of events ---\n')
     except Exception:
         pass
+
+    # Dump VDSM and libvirt logs for diagnosis
+    import subprocess
+    print('--- VDSM log (last 30 lines) ---')
+    subprocess.run(
+        ['sudo', 'tail', '-30', '/var/log/vdsm/vdsm.log'],
+        capture_output=False
+    )
+    print('--- libvirt QEMU log ---')
+    subprocess.run(
+        ['bash', '-c', 'sudo tail -30 /var/log/libvirt/qemu/*.log 2>/dev/null || echo "No QEMU logs found"'],
+        capture_output=False
+    )
     sys.exit(1)
 
 

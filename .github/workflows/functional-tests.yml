@@ -360,6 +360,12 @@ jobs:
           script="${script} echo '--- SSH config verification ---';"
           script="${script} sudo sshd -T 2>/dev/null | grep -iE 'permitrootlogin|passwordauthentication';"
 
+          # Verify KVM is available for nested virtualization
+          script="${script} echo '--- KVM availability ---';"
+          script="${script} ls -la /dev/kvm 2>/dev/null || echo 'WARNING: /dev/kvm not found';"
+          script="${script} lsmod | grep kvm || echo 'WARNING: no kvm modules loaded';"
+          script="${script} cat /proc/cpuinfo | grep -c vmx || cat /proc/cpuinfo | grep -c svm || echo 'WARNING: no hardware virt extensions';"
+
           # Create local storage directory (uid 36 = vdsm on RHEL-based)
           script="${script} sudo mkdir -p /srv/ovirt-storage;"
           script="${script} sudo chown 36:36 /srv/ovirt-storage;"
