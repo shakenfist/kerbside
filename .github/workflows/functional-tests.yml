@@ -285,6 +285,28 @@ jobs:
               ${{ matrix.test.baseuser }}@10.0.2.2 \
               "${script}"
 
+      - name: Patch oVirt host-deploy OVN Ansible role
+        run: |
+          . $GITHUB_ENV
+
+          # Fix oVirt 4.5 bug where the OVN configuration task runs even
+          # when OVN is not configured (oVirt/ovirt-engine#949). The broken
+          # condition "ovn_central is defined" fires when ovn_central is
+          # None/empty. The fix adds proper None/length checks.
+          script="export PS4='=======================\n+ '; set -xe;"
+          script="${script} OVN_CFG=/usr/share/ovirt-engine/ansible-runner-service-project"
+          script="${script}/project/roles/ovirt-provider-ovn-driver/tasks/configure.yml;"
+          script="${script} sudo sed -i"
+          script="${script} 's/ovn_central is defined\$/ovn_central is defined and ovn_central != None and ovn_central | length != 0/'"
+          script="${script} \$OVN_CFG;"
+          script="${script} echo '--- Patched OVN configure.yml ---';"
+          script="${script} grep -n 'ovn_central' \$OVN_CFG;"
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "${script}"
+
       - name: Prepare host for oVirt hypervisor
         run: |
           . $GITHUB_ENV
