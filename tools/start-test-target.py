@@ -143,6 +143,9 @@ def create_cluster(system_service, cluster_name, datacenter_name):
             cpu=types.Cpu(
                 architecture=types.Architecture.X86_64,
             ),
+            # Use legacy Linux bridge networking (not OVS) so the
+            # host-deploy Ansible role does not attempt OVN configuration.
+            switch_type=types.SwitchType.LEGACY,
         )
     )
     print(f'  Cluster {cluster_name!r} created')

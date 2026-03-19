@@ -342,8 +342,9 @@ jobs:
           script="${script} sudo mkdir -p /srv/ovirt-storage;"
           script="${script} sudo chown 36:36 /srv/ovirt-storage;"
 
-          # Install oVirt Python SDK
-          script="${script} sudo dnf install -y python3-ovirt-engine-sdk4;"
+          # Install oVirt Python SDK and netaddr (needed by the host-deploy
+          # Ansible role's ipaddr filter in the OVN configuration task)
+          script="${script} sudo dnf install -y python3-ovirt-engine-sdk4 python3-netaddr;"
 
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
