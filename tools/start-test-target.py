@@ -546,19 +546,24 @@ def create_and_start_vm(system_service, vm_name, template_name, cluster_name, me
         except Exception:
             pass
 
+        import glob as globmod
         import subprocess
         print('  --- VDSM log (last 20 lines) ---')
-        subprocess.run(
+        result = subprocess.run(
             ['sudo', 'tail', '-20', '/var/log/vdsm/vdsm.log'],
-            capture_output=False
+            capture_output=True, text=True
         )
-        print('  --- libvirt QEMU log ---')
-        subprocess.run(
-            ['bash', '-c',
-             'sudo tail -20 /var/log/libvirt/qemu/*.log 2>/dev/null'
-             ' || echo "No QEMU logs found"'],
-            capture_output=False
-        )
+        print(result.stdout)
+        if result.stderr:
+            print(result.stderr)
+        print('  --- libvirt QEMU logs ---')
+        for qlog in sorted(globmod.glob('/var/log/libvirt/qemu/*.log')):
+            print(f'  [{qlog}]')
+            result = subprocess.run(
+                ['sudo', 'tail', '-20', qlog],
+                capture_output=True, text=True
+            )
+            print(result.stdout)
 
         if attempt < max_start_attempts:
             print('  Retrying in 15s...')
