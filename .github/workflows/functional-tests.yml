@@ -171,222 +171,99 @@ jobs:
               --extra-vars "identifier=${SHAKENFIST_NAMESPACE} base=${{ matrix.test.base }} environment_name=${{ matrix.test.environment_name }} hostname=${{ matrix.test.hostname }}" \
               --tags all ${GITHUB_WORKSPACE}/actions/ansible/kerbside-single-node.yml
 
+      - name: Copy tools and config to target
+        run: |
+          . $GITHUB_ENV
+
+          scp -rp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${GITHUB_WORKSPACE}/kerbside/tools/ovirt-*.sh \
+              ${GITHUB_WORKSPACE}/kerbside/tools/start-test-target.py \
+              ${GITHUB_WORKSPACE}/kerbside/etc/${{ matrix.test.name }}-answers.conf \
+              ${GITHUB_WORKSPACE}/kerbside/etc/${{ matrix.test.name }}-repos.patch \
+              ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
+
       - name: Install base packages
         run: |
           . $GITHUB_ENV
 
-          script="export PS4='=======================\n+ '; set -xe;"
-          script="${script} sudo dnf clean all;"
-          script="${script} sudo dnf update -y;"
-          script="${script} sudo dnf install -y epel-release;"
-          script="${script} sudo dnf config-manager --set-enabled powertools 2>/dev/null"
-          script="${script}   || sudo crb enable;"
-          script="${script} sudo dnf clean all;"
-          script="${script} sudo dnf update -y;"
-          script="${script} sudo dnf install -y vim patch yum-utils;"
-          script="${script} sudo chown ${{ matrix.test.baseuser }}:${{ matrix.test.baseuser }} /srv;"
-
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "${script}"
+              "bash /srv/ovirt-install-base.sh ${{ matrix.test.baseuser }}"
 
       - name: Install upstream oVirt release package
         run: |
           . $GITHUB_ENV
 
-          script="export PS4='=======================\n+ '; set -xe;"
-          script="${script} sudo dnf install -y ${{ matrix.test.ovirt_rpm }};"
-
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "${script}"
-
-      - name: Copy oVirt yum repos patch to target node
-        run: |
-          . $GITHUB_ENV
-
-          scp -rp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            ${GITHUB_WORKSPACE}/kerbside/etc/${{ matrix.test.name }}-repos.patch \
-            ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
+              "set -xe; sudo dnf install -y ${{ matrix.test.ovirt_rpm }}"
 
       - name: Apply repos patch
         run: |
           . $GITHUB_ENV
 
-          script="export PS4='=======================\n+ '; set -xe;"
-          script="${script} cd /etc/yum.repos.d;"
-          script="${script} sudo patch -p1 < /srv/${{ matrix.test.name }}-repos.patch;"
-
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "${script}"
+              "set -xe; cd /etc/yum.repos.d; sudo patch -p1 < /srv/${{ matrix.test.name }}-repos.patch"
 
       - name: Enable Rocky 8 dnf modules for oVirt
         if: matrix.test.base == 'rocky:8'
         run: |
           . $GITHUB_ENV
 
-          script="export PS4='=======================\n+ '; set -xe;"
-          script="${script} sudo dnf module -y enable javapackages-tools;"
-          script="${script} sudo dnf module -y enable postgresql:12;"
-          script="${script} sudo dnf module -y enable mod_auth_openidc:2.3;"
-          script="${script} sudo dnf module -y enable nodejs:14;"
-          script="${script} sudo dnf module -y enable pki-deps;"
-
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "${script}"
+              "set -xe; sudo dnf module -y enable javapackages-tools postgresql:12 mod_auth_openidc:2.3 nodejs:14 pki-deps"
 
       - name: Further package configuration
         run: |
           . $GITHUB_ENV
 
-          script="export PS4='=======================\n+ '; set -xe;"
-          script="${script} sudo dnf update -y;"
-          script="${script} sudo dnf distro-sync --nobest -y;"
-
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "${script}"
+              "set -xe; sudo dnf update -y; sudo dnf distro-sync --nobest -y"
 
       - name: Install ovirt-engine
         run: |
           . $GITHUB_ENV
 
-          script="export PS4='=======================\n+ '; set -xe;"
-          script="${script} sudo dnf install -y ovirt-engine;"
-
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "${script}"
+              "set -xe; sudo dnf install -y ovirt-engine"
 
       - name: Setup ovirt-engine
         run: |
           . $GITHUB_ENV
 
-          scp -rp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            ${GITHUB_WORKSPACE}/kerbside/etc/${{ matrix.test.name }}-answers.conf \
-            ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
-
-          script="export PS4='=======================\n+ '; set -xe;"
-          script="${script} sudo engine-setup"
-              script="${script} --config-append=/srv/${{ matrix.test.name }}-answers.conf;"
-
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "${script}"
+              "set -xe; sudo engine-setup --config-append=/srv/${{ matrix.test.name }}-answers.conf"
 
       - name: Patch oVirt host-deploy OVN Ansible role
         run: |
           . $GITHUB_ENV
 
-          # Fix oVirt 4.5 bug where the OVN configuration task runs even
-          # when OVN is not configured (oVirt/ovirt-engine#949). The broken
-          # condition "ovn_central is defined" fires when ovn_central is
-          # None/empty. The fix adds proper None/length checks.
-          script="export PS4='=======================\n+ '; set -xe;"
-          script="${script} OVN_CFG=/usr/share/ovirt-engine/ansible-runner-service-project"
-          script="${script}/project/roles/ovirt-provider-ovn-driver/tasks/configure.yml;"
-          script="${script} sudo sed -i"
-          script="${script} 's/ovn_central is defined\$/ovn_central is defined and ovn_central != None and ovn_central | length != 0/'"
-          script="${script} \$OVN_CFG;"
-          script="${script} echo '--- Patched OVN configure.yml ---';"
-          script="${script} grep -n 'ovn_central' \$OVN_CFG;"
-
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "${script}"
+              "bash /srv/ovirt-patch-ovn.sh"
 
       - name: Prepare host for oVirt hypervisor
         run: |
           . $GITHUB_ENV
 
-          script="export PS4='=======================\n+ '; set -xe;"
-
-          # Restart ovirt-engine so SSO works (engine-setup says to do this).
-          # Then wait for the engine's health endpoint to respond, which
-          # indicates the JBoss/WildFly application server has fully started
-          # and deployed the engine.ear application. We use the health
-          # endpoint rather than the SSO token endpoint because Keycloak
-          # (oVirt 4.5) uses a different auth flow that the internal SSO
-          # endpoint doesn't support.
-          script="${script} sudo systemctl restart ovirt-engine;"
-          script="${script} echo 'Waiting for oVirt engine to become ready...';"
-          script="${script} engine_ready=0;"
-          script="${script} for i in \$(seq 1 60); do"
-          script="${script}   resp=\$(curl -sk"
-          script="${script}     https://localhost/ovirt-engine/services/health"
-          script="${script}     2>/dev/null) || true;"
-          script="${script}   if echo \"\$resp\" | grep -q 'DB Up'; then"
-          script="${script}     echo 'oVirt engine is ready'; engine_ready=1; break;"
-          script="${script}   fi;"
-          script="${script}   echo \"  Attempt \$i/60: engine not ready, waiting 10s...\";"
-          script="${script}   sleep 10;"
-          script="${script} done;"
-          script="${script} if [ \$engine_ready -ne 1 ]; then"
-          script="${script}   echo 'ERROR: oVirt engine never became ready. Dumping diagnostics...';"
-          script="${script}   sudo systemctl status ovirt-engine || true;"
-          script="${script}   echo '--- Last 50 lines of engine.log ---';"
-          script="${script}   sudo tail -50 /var/log/ovirt-engine/engine.log 2>/dev/null || true;"
-          script="${script}   echo '--- Last 50 lines of server.log ---';"
-          script="${script}   sudo tail -50 /var/log/ovirt-engine/server.log 2>/dev/null || true;"
-          script="${script}   exit 1;"
-          script="${script} fi;"
-
-          # Enable root SSH login so oVirt engine can deploy VDSM.
-          # Use a drop-in file if sshd_config.d exists (Rocky 9+), or
-          # modify sshd_config directly (Rocky 8). Either way, ensure
-          # root login and password auth are enabled.
-          script="${script} echo 'root:foobar' | sudo chpasswd;"
-          script="${script} sudo passwd -u root 2>/dev/null || true;"
-          script="${script} if [ -d /etc/ssh/sshd_config.d ]; then"
-          script="${script}   printf 'PermitRootLogin yes\nPasswordAuthentication yes\n'"
-          script="${script}     | sudo tee /etc/ssh/sshd_config.d/00-ovirt-ci.conf > /dev/null;"
-          script="${script} else"
-          script="${script}   sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config;"
-          script="${script}   sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config;"
-          script="${script} fi;"
-          script="${script} sudo systemctl restart sshd;"
-          script="${script} echo '--- SSH config verification ---';"
-          script="${script} sudo sshd -T 2>/dev/null | grep -iE 'permitrootlogin|passwordauthentication';"
-
-          # Verify KVM is available for nested virtualization
-          script="${script} echo '--- KVM availability ---';"
-          script="${script} ls -la /dev/kvm 2>/dev/null || echo 'WARNING: /dev/kvm not found';"
-          script="${script} lsmod | grep kvm || echo 'WARNING: no kvm modules loaded';"
-          script="${script} cat /proc/cpuinfo | grep -c vmx || cat /proc/cpuinfo | grep -c svm || echo 'WARNING: no hardware virt extensions';"
-
-          # Create local storage directory (uid 36 = vdsm on RHEL-based)
-          script="${script} sudo mkdir -p /srv/ovirt-storage;"
-          script="${script} sudo chown 36:36 /srv/ovirt-storage;"
-
-          # Install oVirt Python SDK and netaddr (needed by the host-deploy
-          # Ansible role's ipaddr filter in the OVN configuration task)
-          script="${script} sudo dnf install -y python3-ovirt-engine-sdk4 python3-netaddr;"
-
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "${script}"
-
-      - name: Copy start-test-target.py to target
-        run: |
-          . $GITHUB_ENV
-
-          scp -rp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            ${GITHUB_WORKSPACE}/kerbside/tools/start-test-target.py \
-            ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
+              "bash /srv/ovirt-prepare-host.sh"
 
       - name: Copy desktop disk image to target
         if: matrix.test.environment_name == 'ovirt'
@@ -428,35 +305,10 @@ jobs:
         run: |
           . $GITHUB_ENV
 
-          script="export PS4='=======================\n+ '; set -xe;"
-
-          script="${script} sudo rpm -qa --qf "
-              script="${script} \"%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n\" "
-              script="${script} | grep -v '^gpg-pubkey' > /tmp/rpms.list;"
-
-          script="${script} for rpm in \$(cat /tmp/rpms.list); do"
-              script="${script} echo \"Caching URLs for \${rpm}\";"
-              script="${script} sudo yumdownloader --resolve --urls \${rpm} |"
-              script="${script} egrep -v '(metadata expiration|Waiting for)' "
-              script="${script} >> /tmp/rpms.urls 2>/dev/null || true;"
-              script="${script} done;"
-
-          script="${script} sudo zip -r /tmp/bundle.zip "
-              script="${script} /etc/yum.repos.d "
-              script="${script} /tmp/rpms.list "
-              script="${script} /tmp/rpms.urls "
-              script="${script} /var/lib/ovirt-engine/setup "
-              script="${script} /var/log/ovirt-engine/ "
-              script="${script} /var/log/vdsm/ "
-              script="${script} /etc/ssh/sshd_config.d/ "
-              script="${script} || true;"
-          script="${script} sudo chmod ugo+r /tmp/bundle.zip;"
-          script="${script} ls -lrth /tmp/bundle.zip;"
-
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "${script}"
+              "bash /srv/ovirt-gather-artifacts.sh"
 
           mkdir -p /srv/github/artifacts/bundle/
           scp -rp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
