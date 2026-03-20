@@ -2,11 +2,11 @@
 
 """Create an oVirt VM suitable as a SPICE test target for kerbside.
 
-This script can optionally set up the full oVirt infrastructure (datacenter,
-cluster, hypervisor host, local storage domain) before importing a CirrOS
-image from oVirt's built-in Glance image repository, creating a template,
-and starting a VM. The resulting VM can be used as a SPICE console target
-for kerbside functional tests.
+This script sets up oVirt infrastructure (datacenter, cluster, hypervisor
+host, local storage domain) then uploads a desktop QCOW2 image, creates
+a template from it, and starts a VM. The resulting VM has a graphical
+desktop with QEMU guest agent and SPICE agent, suitable for testing
+kerbside's SPICE console proxy.
 
 When --host-address and --storage-path are provided, the script creates a
 local-storage datacenter and cluster, registers the host as a hypervisor
@@ -18,6 +18,7 @@ creates the template and VM.
 import argparse
 import logging
 import random
+import ssl
 import sys
 import time
 
@@ -26,8 +27,8 @@ import ovirtsdk4.types as types
 
 
 DEFAULT_WAIT_MINS = 30
-DEFAULT_IMAGE_NAME = 'CirrOS 0.5'
-DEFAULT_TEMPLATE_NAME = 'cirros'
+DEFAULT_DISK_IMAGE = '/srv/ci/cached/gnome-desktop-12-agents'
+DEFAULT_TEMPLATE_NAME = 'desktop-spice'
 DEFAULT_VM_MEMORY_MB = 2048
 DEFAULT_HOST_NAME = 'local-host'
 
@@ -70,7 +71,10 @@ def parse_args():
     )
 
     vm = parser.add_argument_group('VM options')
-    vm.add_argument('--image-name', default=DEFAULT_IMAGE_NAME, help='Glance image name prefix to import')
+    vm.add_argument(
+        '--disk-image', default=DEFAULT_DISK_IMAGE,
+        help='Path to QCOW2 disk image to upload'
+    )
     vm.add_argument('--template-name', default=DEFAULT_TEMPLATE_NAME, help='Name for the created template')
     vm.add_argument('--vm-name', default=None, help='VM name (random if not specified)')
     vm.add_argument('--vm-memory-mb', type=int, default=DEFAULT_VM_MEMORY_MB, help='VM memory in MB')
@@ -413,64 +417,178 @@ def wait_for_datacenter(system_service, datacenter_name, timeout_secs):
     return _wait_for(f'datacenter {datacenter_name!r}', check, timeout_secs)
 
 
-def import_template(system_service, image_name, template_name, cluster_name, storage_domain_name):
-    """Import a Glance image as a template if it doesn't already exist."""
+def upload_disk_image(connection, system_service, disk_image_path, storage_domain_name, timeout_secs):
+    """Upload a QCOW2 disk image to oVirt and return the disk object.
+
+    Uses the oVirt ImageIO transfer API to upload a local QCOW2 file as a
+    new disk in the specified storage domain.
+    """
+    import os
+    import http.client
+    from urllib.parse import urlparse
+
+    image_size = os.path.getsize(disk_image_path)
+    print(f'Uploading disk image {disk_image_path} ({image_size} bytes)...')
+
+    # Create the disk that will receive the upload
+    disks_service = system_service.disks_service()
+    disk = disks_service.add(
+        types.Disk(
+            name='desktop-spice-disk',
+            content_type=types.DiskContentType.DATA,
+            format=types.DiskFormat.COW,
+            initial_size=image_size,
+            provisioned_size=image_size * 2,
+            storage_domains=[
+                types.StorageDomain(name=storage_domain_name),
+            ],
+        )
+    )
+    print(f'  Created disk {disk.id}')
+
+    # Wait for the disk to be ready
+    disk_service = disks_service.disk_service(disk.id)
+
+    def check_disk():
+        d = disk_service.get()
+        print(f'  Disk status: {d.status}')
+        return d if d.status == types.DiskStatus.OK else None
+
+    _wait_for('disk to be ready', check_disk, timeout_secs)
+
+    # Start an upload transfer
+    transfers_service = system_service.image_transfers_service()
+    transfer = transfers_service.add(
+        types.ImageTransfer(
+            disk=types.Disk(id=disk.id),
+            direction=types.ImageTransferDirection.UPLOAD,
+            format=types.DiskFormat.COW,
+        )
+    )
+    print(f'  Transfer started (id={transfer.id})')
+
+    # Wait for the transfer to be ready
+    transfer_service = transfers_service.image_transfer_service(transfer.id)
+
+    def check_transfer():
+        t = transfer_service.get()
+        return t if t.phase == types.ImageTransferPhase.TRANSFERRING else None
+
+    transfer = _wait_for('image transfer to be ready', check_transfer, timeout_secs)
+
+    # Upload the image data via HTTPS to the transfer URL
+    upload_url = transfer.transfer_url
+    print(f'  Uploading to {upload_url}...')
+
+    parsed = urlparse(upload_url)
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+
+    conn = http.client.HTTPSConnection(parsed.hostname, parsed.port, context=context)
+    with open(disk_image_path, 'rb') as f:
+        conn.putrequest('PUT', parsed.path)
+        conn.putheader('Content-Length', str(image_size))
+        conn.putheader('Content-Type', 'application/octet-stream')
+        conn.endheaders()
+
+        chunk_size = 64 * 1024
+        sent = 0
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            conn.send(chunk)
+            sent += len(chunk)
+            if sent % (10 * 1024 * 1024) < chunk_size:
+                print(f'  Uploaded {sent // (1024 * 1024)} MB / {image_size // (1024 * 1024)} MB')
+
+    response = conn.getresponse()
+    print(f'  Upload response: {response.status} {response.reason}')
+    conn.close()
+
+    # Finalize the transfer
+    transfer_service.finalize()
+    print('  Transfer finalized')
+
+    # Wait for the disk to become OK again
+    _wait_for('disk to be ready after upload', check_disk, timeout_secs)
+    print(f'  Disk {disk.id} uploaded successfully')
+
+    return disk
+
+
+def create_template_from_disk(system_service, disk, template_name, cluster_name, timeout_secs):
+    """Create a VM template from an uploaded disk."""
     templates_service = system_service.templates_service()
+
     for t in templates_service.list():
         if t.name == template_name:
-            print(f'Template {template_name!r} already exists, skipping import')
+            print(f'Template {template_name!r} already exists, skipping')
             return
 
-    print('Finding ovirt-image-repository...')
-    storage_domains_service = system_service.storage_domains_service()
-    glance_domain = storage_domains_service.list(search='name=ovirt-image-repository')[0]
-    glance_service = storage_domains_service.storage_domain_service(glance_domain.id)
-    images_service = glance_service.images_service()
+    # Create a temporary VM with the disk attached, then make a template
+    vms_service = system_service.vms_service()
+    temp_vm_name = f'template-builder-{random.randint(0, 9999):04d}'
 
-    image = None
-    for img in images_service.list():
-        if img.name.startswith(image_name):
-            print(f'  Found image: {img.name}')
-            image = img
-            break
+    print(f'Creating temporary VM {temp_vm_name!r} for template...')
+    vm = vms_service.add(
+        types.Vm(
+            name=temp_vm_name,
+            cluster=types.Cluster(name=cluster_name),
+            template=types.Template(name='Blank'),
+            os=types.OperatingSystem(
+                boot=types.Boot(devices=[types.BootDevice.HD]),
+            ),
+            memory=2048 * 1024 * 1024,
+            display=types.Display(type=types.DisplayType.SPICE),
+        )
+    )
+    vm_service = vms_service.vm_service(vm.id)
 
-    if not image:
-        print(f'ERROR: No image matching {image_name!r} found in Glance repository')
-        sys.exit(1)
+    # Wait for temp VM to be down (ready)
+    def check_vm_down():
+        v = vm_service.get()
+        return v if v.status == types.VmStatus.DOWN else None
 
-    done = False
-    while not done:
-        try:
-            print(f'Importing image as template {template_name!r}...')
-            target_image_service = images_service.image_service(image.id)
-            target_image_service.import_(
-                import_as_template=True,
-                template=types.Template(name=template_name),
-                cluster=types.Cluster(name=cluster_name),
-                storage_domain=types.StorageDomain(name=storage_domain_name),
-            )
-            done = True
-        except Exception as e:
-            print(f'  Import failed ({e}), retrying...')
-            time.sleep(5)
+    _wait_for('temp VM to be ready', check_vm_down, timeout_secs)
 
-    print(f'  Template {template_name!r} import started')
+    # Attach the uploaded disk to the VM
+    disk_attachments_service = vm_service.disk_attachments_service()
+    disk_attachments_service.add(
+        types.DiskAttachment(
+            disk=types.Disk(id=disk.id),
+            interface=types.DiskInterface.VIRTIO,
+            bootable=True,
+            active=True,
+        )
+    )
+    print('  Disk attached to temp VM')
 
+    # Create template from the VM
+    print(f'Creating template {template_name!r}...')
+    templates_service.add(
+        types.Template(
+            name=template_name,
+            vm=types.Vm(id=vm.id),
+        )
+    )
 
-def wait_for_template(system_service, template_name, timeout_secs):
-    """Wait for the template to become available."""
-    print(f'Waiting for template {template_name!r} to be available...')
-    templates_service = system_service.templates_service()
-
-    def check():
+    # Wait for template to be available
+    def check_template():
         for t in templates_service.list():
-            if t.name == template_name:
-                print(f'  Template {template_name!r} is available')
+            if t.name == template_name and t.status == types.TemplateStatus.OK:
                 return t
         return None
 
-    _wait_for(f'template {template_name!r}', check, timeout_secs)
-    time.sleep(5)  # Allow oVirt to finish making it available
+    _wait_for(f'template {template_name!r} to be ready', check_template, timeout_secs)
+    print(f'  Template {template_name!r} is available')
+
+    # Delete the temporary VM (the template has its own copy of the disk)
+    print(f'  Removing temporary VM {temp_vm_name!r}...')
+    vm_service.remove()
+
+    return template_name
 
 
 def create_and_start_vm(system_service, vm_name, template_name, cluster_name, memory_mb, timeout_secs):
@@ -488,6 +606,7 @@ def create_and_start_vm(system_service, vm_name, template_name, cluster_name, me
                     memory=memory_bytes,
                     cluster=types.Cluster(name=cluster_name),
                     template=types.Template(name=template_name),
+                    display=types.Display(type=types.DisplayType.SPICE),
                     os=types.OperatingSystem(
                         boot=types.Boot(devices=[types.BootDevice.HD])
                     ),
@@ -513,27 +632,42 @@ def create_and_start_vm(system_service, vm_name, template_name, cluster_name, me
 
     _wait_for(f'VM {vm_name!r} to be ready', check_down, timeout_secs)
 
-    # Start the VM, retrying if it falls back to DOWN (which can
-    # happen if KVM/QEMU needs a moment or the first attempt races
-    # with disk copy completion).
+    # Start the VM, retrying if it falls back to DOWN
     max_start_attempts = 3
     for attempt in range(1, max_start_attempts + 1):
         print(f'Starting VM {vm_name!r} (attempt {attempt}/{max_start_attempts})...')
-        vm_service.start()
+        try:
+            vm_service.start()
+        except Exception as e:
+            if 'Up status' in str(e):
+                print(f'VM {vm_name!r} is already running')
+                return vm_name
+            raise
 
         start_time = time.time()
-        while time.time() - start_time < 60:
+        while time.time() - start_time < 120:
             v = vm_service.get()
             print(f'  VM status: {v.status}')
             if v.status == types.VmStatus.UP:
                 print(f'VM {vm_name!r} is running')
                 return vm_name
-            if v.status == types.VmStatus.DOWN:
+            if v.status == types.VmStatus.POWERING_UP:
+                # VM is booting, guest agent may not have responded yet.
+                # Keep waiting — oVirt will transition to UP once the
+                # guest agent connects.
+                pass
+            elif v.status == types.VmStatus.DOWN:
                 # VM fell back to down after start attempt
                 break
             time.sleep(5)
 
-        # Dump events and logs to understand why the VM didn't start
+        # Check if VM ended up running while we were logging
+        v = vm_service.get()
+        if v.status in (types.VmStatus.UP, types.VmStatus.POWERING_UP):
+            print(f'VM {vm_name!r} is running (status: {v.status})')
+            return vm_name
+
+        # Dump events to understand why the VM didn't start
         print('  VM went back to DOWN, checking events...')
         try:
             events_service = system_service.events_service()
@@ -545,22 +679,6 @@ def create_and_start_vm(system_service, vm_name, template_name, cluster_name, me
                 print(f'    [{event.severity}] {event.description}')
         except Exception:
             pass
-
-        import glob as globmod
-        import os
-        for logpath in ['/var/log/vdsm/vdsm.log'] + sorted(globmod.glob('/var/log/libvirt/qemu/*.log')):
-            print(f'  --- {logpath} (last 20 lines) ---')
-            try:
-                with open(logpath, 'r') as f:
-                    lines = f.readlines()
-                    for line in lines[-20:]:
-                        print(f'  {line.rstrip()}')
-            except PermissionError:
-                # Try via os.popen which may work with sudo
-                output = os.popen(f'sudo tail -20 {logpath} 2>&1').read()
-                print(output)
-            except FileNotFoundError:
-                print('  (file not found)')
 
         if attempt < max_start_attempts:
             print('  Retrying in 15s...')
@@ -649,11 +767,14 @@ def main():
             # Assume infrastructure exists, just wait for datacenter
             wait_for_datacenter(system_service, args.datacenter, timeout_secs)
 
-        import_template(
-            system_service, args.image_name, args.template_name,
-            args.cluster, args.storage_domain,
+        disk = upload_disk_image(
+            connection, system_service, args.disk_image,
+            args.storage_domain, timeout_secs,
         )
-        wait_for_template(system_service, args.template_name, timeout_secs)
+        create_template_from_disk(
+            system_service, disk, args.template_name,
+            args.cluster, timeout_secs,
+        )
         create_and_start_vm(
             system_service, vm_name, args.template_name,
             args.cluster, args.vm_memory_mb, timeout_secs,

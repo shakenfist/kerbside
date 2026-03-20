@@ -388,6 +388,21 @@ jobs:
             ${GITHUB_WORKSPACE}/kerbside/tools/start-test-target.py \
             ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
 
+      - name: Copy desktop disk image to target
+        if: matrix.test.environment_name == 'ovirt'
+        run: |
+          . $GITHUB_ENV
+
+          # Download the desktop image (with qemu-guest-agent and
+          # spice-vdagent pre-installed) from the CI images label
+          sf-client artifact download ci-images/debian-gnome-12 \
+              /tmp/gnome-desktop-12-agents.qcow2
+
+          scp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              /tmp/gnome-desktop-12-agents.qcow2 \
+              ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
+
       - name: Create SPICE test target VM
         run: |
           . $GITHUB_ENV
@@ -405,7 +420,8 @@ jobs:
                   --storage-domain local-storage \
                   --host-address ${{ matrix.test.hostname }}.local \
                   --host-password foobar \
-                  --storage-path /srv/ovirt-storage"
+                  --storage-path /srv/ovirt-storage \
+                  --disk-image /srv/gnome-desktop-12-agents.qcow2"
 
       - name: Gather artifacts
         if: always()
