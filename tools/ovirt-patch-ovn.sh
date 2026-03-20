@@ -9,7 +9,9 @@
 set -xe
 export PS4='=======================\n+ '
 
-OVN_CFG=/usr/share/ovirt-engine/ansible-runner-service-project/project/roles/ovirt-provider-ovn-driver/tasks/configure.yml
+OVN_CFG=/usr/share/ovirt-engine/ansible-runner-service-project
+OVN_CFG=${OVN_CFG}/project/roles/ovirt-provider-ovn-driver
+OVN_CFG=${OVN_CFG}/tasks/configure.yml
 
 sudo sed -i \
     's/ovn_central is defined$/ovn_central is defined and ovn_central != None and ovn_central | length != 0/' \

@@ -155,23 +155,20 @@ def create_cluster(system_service, cluster_name, datacenter_name):
     print(f'  Cluster {cluster_name!r} created')
 
 
-def _dump_host_events(system_service, host):
-    """Print recent oVirt events related to a host for diagnostics."""
+def _dump_events(system_service, search_query, label, max_events=20):
+    """Print recent oVirt events matching a search query."""
     try:
         events_service = system_service.events_service()
-        events = events_service.list(
-            search=f'host.name={host.name}',
-            max=20,
-        )
+        events = events_service.list(search=search_query, max=max_events)
         if events:
-            print(f'\n--- Recent events for host {host.name!r} ---')
+            print(f'\n--- Recent events for {label} ---')
             for event in sorted(events, key=lambda e: e.id):
                 print(f'  [{event.severity}] {event.description}')
             print('--- End of events ---\n')
         else:
-            print(f'  No events found for host {host.name!r}')
+            print(f'  No events found for {label}')
     except Exception as e:
-        print(f'  (Could not fetch host events: {e})')
+        print(f'  (Could not fetch events for {label}: {e})')
 
 
 def _fix_management_network(system_service, host_service, host, datacenter_name):
@@ -289,7 +286,7 @@ def add_host(system_service, host_name, host_address, host_password, cluster_nam
                     types.HostStatus.ERROR,
                 ):
                     print(f'ERROR: Host entered {h.status} state')
-                    _dump_host_events(system_service, h)
+                    _dump_events(system_service, f'host.name={h.name}', f'host {h.name!r}')
                     sys.exit(1)
         return None
 
@@ -301,7 +298,7 @@ def add_host(system_service, host_name, host_address, host_password, cluster_nam
     # If the host went non_operational, try to fix the management network
     if isinstance(result, tuple) and result[0] == 'non_operational':
         host = result[1]
-        _dump_host_events(system_service, host)
+        _dump_events(system_service, f'host.name={host.name}', f'host {host.name!r}')
         print('Attempting to fix management network configuration...')
 
         host_service = hosts_service.host_service(host.id)
@@ -335,7 +332,7 @@ def add_host(system_service, host_name, host_address, host_password, cluster_nam
                 types.HostStatus.NON_OPERATIONAL,
             ):
                 print(f'ERROR: Host still in {h.status} after network fix')
-                _dump_host_events(system_service, h)
+                _dump_events(system_service, f'host.name={h.name}', f'host {h.name!r}')
                 sys.exit(1)
             return None
 
@@ -669,33 +666,20 @@ def create_and_start_vm(system_service, vm_name, template_name, cluster_name, me
 
         # Dump events to understand why the VM didn't start
         print('  VM went back to DOWN, checking events...')
-        try:
-            events_service = system_service.events_service()
-            events = events_service.list(
-                search=f'vm.name={vm_name}',
-                max=5,
-            )
-            for event in sorted(events, key=lambda e: e.id):
-                print(f'    [{event.severity}] {event.description}')
-        except Exception:
-            pass
+        _dump_events(
+            system_service, f'vm.name={vm_name}',
+            f'VM {vm_name!r}', max_events=5,
+        )
 
         if attempt < max_start_attempts:
             print('  Retrying in 15s...')
             time.sleep(15)
 
     print(f'ERROR: VM {vm_name!r} failed to start after {max_start_attempts} attempts')
-    # Final event dump
-    try:
-        events_service = system_service.events_service()
-        events = events_service.list(search=f'vm.name={vm_name}', max=10)
-        print(f'\n--- Recent events for VM {vm_name!r} ---')
-        for event in sorted(events, key=lambda e: e.id):
-            print(f'  [{event.severity}] {event.description}')
-        print('--- End of events ---\n')
-    except Exception:
-        pass
-
+    _dump_events(
+        system_service, f'vm.name={vm_name}',
+        f'VM {vm_name!r}', max_events=10,
+    )
     sys.exit(1)
 
 
