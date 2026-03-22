@@ -171,6 +171,15 @@ jobs:
               --extra-vars "identifier=${SHAKENFIST_NAMESPACE} base=${{ matrix.test.base }} environment_name=${{ matrix.test.environment_name }} hostname=${{ matrix.test.hostname }}" \
               --tags all ${GITHUB_WORKSPACE}/actions/ansible/kerbside-single-node.yml
 
+      - name: Prepare /srv on target
+        run: |
+          . $GITHUB_ENV
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "sudo chown ${{ matrix.test.baseuser }}:${{ matrix.test.baseuser }} /srv"
+
       - name: Copy tools and config to target
         run: |
           . $GITHUB_ENV
@@ -190,7 +199,7 @@ jobs:
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "bash /srv/ovirt-install-base.sh ${{ matrix.test.baseuser }}"
+              "bash /srv/ovirt-install-base.sh"
 
       - name: Install upstream oVirt release package
         run: |

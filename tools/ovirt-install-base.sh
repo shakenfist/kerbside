@@ -4,12 +4,10 @@
 # This script runs on the oVirt target node. It installs EPEL,
 # enables powertools/CRB, and installs basic utilities.
 #
-# Usage: ovirt-install-base.sh <owner_user>
+# Usage: ovirt-install-base.sh
 
 set -xe
 export PS4='=======================\n+ '
-
-OWNER_USER="${1:?Usage: ovirt-install-base.sh <owner_user>}"
 
 sudo dnf clean all
 sudo dnf update -y
@@ -19,4 +17,3 @@ sudo dnf config-manager --set-enabled powertools 2>/dev/null \
 sudo dnf clean all
 sudo dnf update -y
 sudo dnf install -y vim patch yum-utils
-sudo chown "${OWNER_USER}:${OWNER_USER}" /srv
