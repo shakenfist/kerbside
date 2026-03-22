@@ -27,7 +27,7 @@ import ovirtsdk4.types as types
 
 
 DEFAULT_WAIT_MINS = 30
-DEFAULT_DISK_IMAGE = '/srv/ci/cached/gnome-desktop-12-agents'
+DEFAULT_DISK_IMAGE = '/srv/ci/cached/debian-12-gnome-agents'
 DEFAULT_TEMPLATE_NAME = 'desktop-spice'
 DEFAULT_VM_MEMORY_MB = 2048
 DEFAULT_HOST_NAME = 'local-host'

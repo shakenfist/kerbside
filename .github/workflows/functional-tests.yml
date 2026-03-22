@@ -270,15 +270,12 @@ jobs:
         run: |
           . $GITHUB_ENV
 
-          # Download the desktop image (with qemu-guest-agent and
-          # spice-vdagent pre-installed) from the CI images label
-          sf-client artifact download ci-images/debian-gnome-12 \
-              /tmp/gnome-desktop-12-agents.qcow2
-
+          # Use the pre-cached desktop image (with qemu-guest-agent and
+          # spice-vdagent pre-installed) from the CI runner
           scp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
-              /tmp/gnome-desktop-12-agents.qcow2 \
-              ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
+              /srv/ci/cached/debian-12-gnome-agents \
+              ${{ matrix.test.baseuser }}@10.0.2.2:/srv/debian-12-gnome-agents.qcow2
 
       - name: Create SPICE test target VM
         run: |
@@ -298,7 +295,7 @@ jobs:
                   --host-address ${{ matrix.test.hostname }}.local \
                   --host-password foobar \
                   --storage-path /srv/ovirt-storage \
-                  --disk-image /srv/gnome-desktop-12-agents.qcow2"
+                  --disk-image /srv/debian-12-gnome-agents.qcow2"
 
       - name: Gather artifacts
         if: always()
