@@ -420,12 +420,30 @@ def upload_disk_image(connection, system_service, disk_image_path, storage_domai
     Uses the oVirt ImageIO transfer API to upload a local QCOW2 file as a
     new disk in the specified storage domain.
     """
+    import json
     import os
     import http.client
+    import subprocess
     from urllib.parse import urlparse
 
     image_size = os.path.getsize(disk_image_path)
-    print(f'Uploading disk image {disk_image_path} ({image_size} bytes)...')
+
+    # Get the virtual size from the QCOW2 header so we can set
+    # provisioned_size correctly. oVirt requires this to match the
+    # image's virtual size; an arbitrary value causes 'illegal' disks.
+    try:
+        qemu_info = subprocess.check_output(
+            ['qemu-img', 'info', '--output=json', disk_image_path],
+            stderr=subprocess.STDOUT,
+        )
+        virtual_size = json.loads(qemu_info)['virtual-size']
+    except (subprocess.CalledProcessError, FileNotFoundError, KeyError) as e:
+        print(f'  Warning: could not determine virtual size ({e}), '
+              f'falling back to 2x file size')
+        virtual_size = image_size * 2
+
+    print(f'Uploading disk image {disk_image_path} '
+          f'({image_size} bytes, virtual {virtual_size} bytes)...')
 
     # Create the disk that will receive the upload
     disks_service = system_service.disks_service()
@@ -435,7 +453,7 @@ def upload_disk_image(connection, system_service, disk_image_path, storage_domai
             content_type=types.DiskContentType.DATA,
             format=types.DiskFormat.COW,
             initial_size=image_size,
-            provisioned_size=image_size * 2,
+            provisioned_size=virtual_size,
             storage_domains=[
                 types.StorageDomain(name=storage_domain_name),
             ],
@@ -447,8 +465,27 @@ def upload_disk_image(connection, system_service, disk_image_path, storage_domai
     disk_service = disks_service.disk_service(disk.id)
 
     def check_disk():
-        d = disk_service.get()
+        try:
+            d = disk_service.get()
+        except sdk.NotFoundError:
+            print('  Disk was removed by oVirt (404)')
+            _dump_events(
+                system_service, f'disk.id={disk.id}',
+                f'disk {disk.id}',
+            )
+            print('ERROR: Disk disappeared after upload — oVirt '
+                  'likely rejected the image data')
+            sys.exit(1)
+
         print(f'  Disk status: {d.status}')
+        if d.status == types.DiskStatus.ILLEGAL:
+            _dump_events(
+                system_service, f'disk.id={disk.id}',
+                f'disk {disk.id}',
+            )
+            print('ERROR: Disk entered illegal state — the '
+                  'uploaded image was rejected by oVirt')
+            sys.exit(1)
         return d if d.status == types.DiskStatus.OK else None
 
     _wait_for('disk to be ready', check_disk, timeout_secs)
@@ -473,8 +510,10 @@ def upload_disk_image(connection, system_service, disk_image_path, storage_domai
 
     transfer = _wait_for('image transfer to be ready', check_transfer, timeout_secs)
 
-    # Upload the image data via HTTPS to the transfer URL
-    upload_url = transfer.transfer_url
+    # Upload the image data via HTTPS to the transfer URL.
+    # Prefer transfer_url (direct to imageio daemon) but fall back
+    # to proxy_url (through the engine) if it is not set.
+    upload_url = transfer.transfer_url or transfer.proxy_url
     print(f'  Uploading to {upload_url}...')
 
     parsed = urlparse(upload_url)
@@ -498,10 +537,17 @@ def upload_disk_image(connection, system_service, disk_image_path, storage_domai
             conn.send(chunk)
             sent += len(chunk)
             if sent % (10 * 1024 * 1024) < chunk_size:
-                print(f'  Uploaded {sent // (1024 * 1024)} MB / {image_size // (1024 * 1024)} MB')
+                print(f'  Uploaded {sent // (1024 * 1024)} MB / '
+                      f'{image_size // (1024 * 1024)} MB')
 
     response = conn.getresponse()
     print(f'  Upload response: {response.status} {response.reason}')
+    if response.status >= 400:
+        body = response.read().decode('utf-8', errors='replace')
+        conn.close()
+        print(f'  Upload error body: {body[:500]}')
+        print('ERROR: Image upload failed')
+        sys.exit(1)
     conn.close()
 
     # Finalize the transfer
