@@ -188,6 +188,7 @@ jobs:
               -o UserKnownHostsFile=/dev/null \
               ${GITHUB_WORKSPACE}/kerbside/tools/ovirt-*.sh \
               ${GITHUB_WORKSPACE}/kerbside/tools/start-test-target.py \
+              ${GITHUB_WORKSPACE}/kerbside/tools/test-ovirt-console.py \
               ${GITHUB_WORKSPACE}/kerbside/etc/${{ matrix.test.name }}-answers.conf \
               ${GITHUB_WORKSPACE}/kerbside/etc/${{ matrix.test.name }}-repos.patch \
               ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
@@ -305,6 +306,19 @@ jobs:
                   --host-password foobar \
                   --storage-path /srv/ovirt-storage \
                   --disk-image /srv/debian-12-gnome-agents.qcow2"
+
+      - name: Test SPICE console connectivity
+        run: |
+          . $GITHUB_ENV
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "python3 /srv/test-ovirt-console.py \
+                  --url https://${{ matrix.test.hostname }}.local/ovirt-engine/api \
+                  --username ${{ matrix.test.ovirt_username }} \
+                  --password foobar \
+                  --ca-file /etc/pki/ovirt-engine/ca.pem"
 
       - name: Gather artifacts
         if: always()
