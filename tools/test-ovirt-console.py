@@ -145,18 +145,12 @@ def main():
 
         heading('List graphics consoles')
         graphics_consoles = vm_service.graphics_consoles_service()
-        consoles = graphics_consoles.list()
+        consoles = graphics_consoles.list(current=True)
         if not consoles:
             print('ERROR: No graphics consoles found')
             sys.exit(1)
 
-        for console in consoles:
-            console_service = (
-                graphics_consoles.graphics_console_service(
-                    console.id
-                )
-            )
-            c = console_service.get()
+        for c in consoles:
             print(f'  Console: protocol={c.protocol}, '
                   f'address={c.address}, port={c.port}, '
                   f'tls_port={c.tls_port}')
@@ -175,9 +169,9 @@ def main():
                   f'({host.address})')
 
         heading('Test SPICE protocol connectivity')
-        # Use localhost since the test runs on the same host
-        # as the oVirt engine and hypervisor
-        spice_host = '127.0.0.1'
+        # Use the display address reported by oVirt (typically
+        # the host's IP). Fall back to localhost if not set.
+        spice_host = display.address or '127.0.0.1'
         spice_port = display.port
 
         if not spice_port:
