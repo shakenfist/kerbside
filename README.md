@@ -56,6 +56,35 @@ Ryll, located in the `testclient/` directory, is a simple python native SPICE
 client used to implement various load tests. It has its own README file in that
 subdirectory.
 
+## Creating an oVirt SPICE Test Target
+
+The `tools/start-test-target.py` script creates an oVirt VM suitable as a
+SPICE test target. It uploads a desktop QCOW2 disk image (with
+qemu-guest-agent and spice-vdagent pre-installed), creates a template from
+it, then creates and starts a VM with SPICE display enabled. When
+`--host-address` is provided, it also sets up the full oVirt infrastructure
+(datacenter, cluster, hypervisor host, and local storage domain).
+
+```bash
+python tools/start-test-target.py \
+    --url https://ovirt-engine.example/ovirt-engine/api \
+    --password secret \
+    --ca-file /path/to/ca.pem \
+    --datacenter mydc \
+    --cluster mycluster \
+    --storage-domain mystorage \
+    --disk-image /path/to/desktop.qcow2
+```
+
+Run with `--help` for all options (disk image path, template name, VM name,
+memory size, host setup, timeout, debug logging).
+
+Supporting shell scripts in `tools/` handle oVirt host preparation in CI:
+- `ovirt-install-base.sh` — base package installation (EPEL, utilities)
+- `ovirt-patch-ovn.sh` — patches oVirt 4.5 OVN Ansible role bug (#949)
+- `ovirt-prepare-host.sh` — engine health check, SSH setup, KVM verification
+- `ovirt-gather-artifacts.sh` — collects RPM lists and logs for CI artifacts
+
 ## Build the load testing OCI container images
 
 There are a series of OCI container images intended for load testing. These need
