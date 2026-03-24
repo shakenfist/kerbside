@@ -78,7 +78,28 @@ def test_spice_handshake(host, port):
         assert server_minor == 2, (
             f'Bad minor version: {server_minor}'
         )
-        print(f'  SPICE handshake OK (error code={server_error})')
+
+        # SPICE link error codes (from spice.proto):
+        #   0 = OK
+        #   5 = NEED_SECURED (reconnect on TLS port required)
+        # Code 5 is expected when connecting on the insecure port
+        # to a server that requires TLS — it confirms the SPICE
+        # server is alive and speaking the correct protocol.
+        error_names = {
+            0: 'OK', 1: 'ERROR', 2: 'INVALID_MAGIC',
+            3: 'INVALID_DATA', 4: 'VERSION_MISMATCH',
+            5: 'NEED_SECURED', 6: 'NEED_UNSECURED',
+            7: 'PERMISSION_DENIED', 8: 'BAD_CONNECTION_ID',
+            9: 'CHANNEL_NOT_AVAILABLE',
+        }
+        error_name = error_names.get(server_error, 'UNKNOWN')
+        print(f'  SPICE handshake OK: server responded with '
+              f'{error_name} ({server_error})')
+
+        if server_error not in (0, 5):
+            print(f'  WARNING: unexpected error code '
+                  f'{server_error} ({error_name})')
+
         return True
     finally:
         sock.close()
