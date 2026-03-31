@@ -310,7 +310,13 @@ image_type_num_to_str = {
     100: 'lz_palette',
     101: 'lz_rgb',
     102: 'glz_rgb',
-    103: 'from_cache'
+    103: 'from_cache',
+    104: 'surface',
+    105: 'jpeg',
+    106: 'from_cache_lossless',
+    107: 'zlib_glz_rgb',
+    108: 'jpeg_alpha',
+    109: 'lz4',
 }
 
 image_type_str_to_num = {
@@ -319,7 +325,13 @@ image_type_str_to_num = {
     'lz_palette': 100,
     'lz_rgb': 101,
     'glz_rgb': 102,
-    'from_cache': 103
+    'from_cache': 103,
+    'surface': 104,
+    'jpeg': 105,
+    'from_cache_lossless': 106,
+    'zlib_glz_rgb': 107,
+    'jpeg_alpha': 108,
+    'lz4': 109,
 }
 
 lz_max_copy = 32
