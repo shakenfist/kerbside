@@ -250,6 +250,18 @@ complete list of SPICE link error codes.
 | 2 | AuthSASL | SASL auth |
 | 3 | MiniHeader | Compact message headers |
 
+## Related Projects
+
+[ryll](https://github.com/shakenfist/ryll) is a browser-based SPICE frontend
+that uses WebRTC for transport: its `--web` mode serves the signalling page
+directly over HTTPS (via `--web-tls-cert`/`--web-tls-key`) without requiring a
+reverse proxy. It operates independently of Kerbside — no Kerbside installation
+is needed — but operators who already run Kerbside may find ryll useful for
+providing browser-based access to the same SPICE consoles in scenarios where
+installing a native client is not practical. See the
+[ryll operator guide](https://github.com/shakenfist/ryll/blob/main/docs/web-frontend.md)
+for deployment details.
+
 ## External References
 
 Official SPICE protocol resources:
