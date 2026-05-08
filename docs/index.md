@@ -199,6 +199,16 @@ Protocol for advanced guest integration features:
 - [VD Agent Protocol](spice/vd-agent-protocol.md) - Guest agent protocol for
   clipboard sharing, file transfer, display configuration, and volume sync
 
+### Connection File Extensions
+
+Extensions and interpretations layered on the standard
+virt-viewer console.vv format:
+
+- [console.vv Extensions](spice/console-vv-extensions.md) - ryll-specific
+  console.vv keys (`ticket-valid-until`) and standard-key interpretations
+  (`delete-this-file=1` as a one-shot ticket signal). Producers (Kerbside,
+  oVirt, custom gateways) populate these to drive client-side behaviour.
+
 ## Protocol Implementation Status
 
 | Feature | Status | Notes |
