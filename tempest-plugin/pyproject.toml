@@ -1,0 +1,34 @@
+[build-system]
+requires = [
+    'setuptools>=61.0',
+    'setuptools_scm[simple]>=6.2',
+    'wheel',
+]
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = 'kerbside-tempest-plugin'
+dynamic = ['version']
+description = 'Tempest plugin for the Kerbside SPICE VDI proxy'
+readme = 'README.md'
+requires-python = '>=3.9'
+dependencies = [
+    'tempest>=39.0.0',   # apache2
+    'oslo.config',       # apache2
+    'oslo.log',          # apache2
+]
+
+[project.urls]
+'Homepage' = 'https://shakenfist.com'
+'Bug Tracker' = 'https://github.com/shakenfist/kerbside/issues'
+
+[project.entry-points.'tempest.test_plugins']
+kerbside_tempest_plugin = 'kerbside_tempest_plugin.plugin:KerbsideTempestPlugin'
+
+[tool.setuptools.packages.find]
+include = ['kerbside_tempest_plugin*']
+
+[tool.setuptools_scm]
+root = '..'
+git_describe_command = 'git describe --dirty --tags --match v* --first-parent'
+write_to = 'tempest-plugin/kerbside_tempest_plugin/_version.py'
