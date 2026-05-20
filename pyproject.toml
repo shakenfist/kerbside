@@ -76,7 +76,7 @@ dependencies = [
     "cryptography==46.0.7",
     "debtcollector==3.0.0",
     "fasteners==0.20",
-    "idna==3.11",
+    "idna==3.15",
     "importlib_metadata==8.6.1",
     "jsonschema==4.26.0",
     "jsonschema-specifications==2025.9.1",
