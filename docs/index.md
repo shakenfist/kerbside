@@ -252,15 +252,21 @@ complete list of SPICE link error codes.
 
 ## Related Projects
 
-[ryll](https://github.com/shakenfist/ryll) is a browser-based SPICE frontend
-that uses WebRTC for transport: its `--web` mode serves the signalling page
-directly over HTTPS (via `--web-tls-cert`/`--web-tls-key`) without requiring a
-reverse proxy. It operates independently of Kerbside — no Kerbside installation
-is needed — but operators who already run Kerbside may find ryll useful for
-providing browser-based access to the same SPICE consoles in scenarios where
-installing a native client is not practical. See the
-[ryll operator guide](https://github.com/shakenfist/ryll/blob/main/docs/web-frontend.md)
-for deployment details.
+[ryll](https://github.com/shakenfist/ryll) is a purpose-built SPICE test
+client, written in Rust, originally built to performance-test Kerbside. It
+runs on Linux, macOS, and Windows in three modes: a desktop GUI, a headless
+mode suited to automation and benchmarking, and a `--web` mode that hosts a
+browser frontend tunnelling SPICE over WebRTC (serving the signalling page
+directly over HTTPS via `--web-tls-cert`/`--web-tls-key`, with no reverse
+proxy required). It operates independently of Kerbside — no Kerbside
+installation is needed — but Kerbside operators may find it useful both for
+exercising the proxy under realistic workloads from headless mode and, via
+the web mode, for providing browser-based access to the same SPICE consoles
+in scenarios where installing a native client is not practical. See the
+[ryll documentation](https://github.com/shakenfist/ryll/blob/main/docs/index.md)
+for an overview, or the
+[ryll web frontend guide](https://github.com/shakenfist/ryll/blob/main/docs/web-frontend.md)
+for browser-deployment specifics.
 
 ## External References
 
