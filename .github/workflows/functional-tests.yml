@@ -398,6 +398,12 @@ jobs:
           openstack_release: ${{ matrix.test.openstack_release }}
           topology: all-in-one
 
+      - name: Checkout kerbside (for tempest plugin sources)
+        uses: actions/checkout@v4
+        with:
+          path: kerbside
+          fetch-depth: 0
+
       - name: Build patched repositories
         run: |
           . $GITHUB_ENV
@@ -445,6 +451,29 @@ jobs:
               ${{ matrix.test.baseuser }}@10.0.2.2 \
               'cd /srv/shakenfist/kerbside-patches; sudo bash -c ". /etc/kolla/admin-openrc.sh && ./tools/test-console"'
 
+      - name: Copy kerbside tempest plugin to target
+        run: |
+          . $GITHUB_ENV
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              'sudo rm -rf /srv/shakenfist/kerbside; sudo mkdir -p /srv/shakenfist/kerbside; sudo chown -R ${{ matrix.test.baseuser }}:${{ matrix.test.baseuser }} /srv/shakenfist/kerbside'
+
+          scp -rp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${GITHUB_WORKSPACE}/kerbside/tempest-plugin \
+              ${GITHUB_WORKSPACE}/kerbside/tools \
+              ${GITHUB_WORKSPACE}/kerbside/.git \
+              ${{ matrix.test.baseuser }}@10.0.2.2:/srv/shakenfist/kerbside/
+
+      - name: Run Kerbside Tempest tests
+        run: |
+          . $GITHUB_ENV
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              'cd /srv/shakenfist/kerbside; sudo bash ./tools/run-tempest-tests'
+
       - name: Collect logs
         if: always()
         run: |
@@ -453,6 +482,10 @@ jobs:
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
               'cd /srv/shakenfist/kerbside-patches; sudo ./tools/gather-logs'
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              'if [ -d /srv/kerbside-tempest ]; then sudo zip -r /tmp/bundle.zip /srv/kerbside-tempest/logs /srv/kerbside-tempest/tempest/etc/tempest.conf 2>/dev/null || true; fi'
           scp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2:/tmp/bundle.zip /tmp/bundle.zip

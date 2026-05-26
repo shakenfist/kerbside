@@ -258,7 +258,8 @@ kerbside/
 alembic/               # Database migrations
   versions/            # Migration scripts
 etc/                   # Configuration examples
-tools/                 # Utility scripts
+tools/                 # Utility scripts (incl. run-tempest-tests)
+tempest-plugin/        # Kerbside Tempest plugin (separate releasable)
 testclient/            # Ryll test client
 loadtests/             # Load testing tools
 docs/                  # Protocol documentation

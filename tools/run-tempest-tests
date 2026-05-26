@@ -1,0 +1,157 @@
+#!/bin/bash
+set -eo pipefail
+
+# Drive a curated subset of Tempest tests against a Kolla-Ansible
+# deployment that has Kerbside enabled. Mirrors the kolla-ansible-tempest
+# Ansible role used by the upstream Zuul scenarios in
+# shakenfist/kerbside-patches, but trimmed to what we need in
+# Kerbside's GitHub Actions CI: install Tempest plus the local
+# kerbside-tempest-plugin into a fresh venv, run discover-tempest-config
+# with spice_console forced on, then run the SPICE-via-Kerbside and
+# upstream spice-direct tests.
+
+usage() {
+    cat <<EOF
+Usage: $0 [options]
+
+Options:
+  --plugin-source PATH   Path to the local kerbside-tempest-plugin
+                         checkout (default: the tempest-plugin directory
+                         alongside this script).
+  --workspace PATH       Working directory for the tempest venv and
+                         workspace (default: /srv/kerbside-tempest).
+  --ca-cert PATH         CA bundle for the Kerbside HTTPS front-end
+                         (default: /etc/kolla/certificates/ca/root.crt).
+  --clouds-file PATH     clouds.yaml path
+                         (default: /etc/kolla/clouds.yaml).
+  --cloud NAME           Cloud name in clouds.yaml
+                         (default: kolla-admin).
+  --cirros-image URL     Cirros image URL passed to
+                         discover-tempest-config (default: 0.6.3 amd64).
+  --regex REGEX          Tempest --regex (default: kerbside plugin and
+                         upstream spice-direct tests).
+  --build-timeout SECS   compute.build_timeout override (default: 900).
+  -h, --help             Show this help.
+EOF
+}
+
+script_dir=$(cd "$(dirname "$0")" && pwd)
+default_plugin_source="$(dirname "${script_dir}")/tempest-plugin"
+
+plugin_source="${default_plugin_source}"
+workspace="/srv/kerbside-tempest"
+ca_cert="/etc/kolla/certificates/ca/root.crt"
+clouds_file="/etc/kolla/clouds.yaml"
+cloud_name="kolla-admin"
+cirros_image="https://download.cirros-cloud.net/0.6.3/cirros-0.6.3-x86_64-disk.img"
+build_timeout="900"
+regex='kerbside_tempest_plugin\.tests\.api\.test_spice_via_kerbside|tempest\.api\.compute\.admin\.test_spice'
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --plugin-source) plugin_source="$2"; shift 2 ;;
+        --workspace) workspace="$2"; shift 2 ;;
+        --ca-cert) ca_cert="$2"; shift 2 ;;
+        --clouds-file) clouds_file="$2"; shift 2 ;;
+        --cloud) cloud_name="$2"; shift 2 ;;
+        --cirros-image) cirros_image="$2"; shift 2 ;;
+        --regex) regex="$2"; shift 2 ;;
+        --build-timeout) build_timeout="$2"; shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+    esac
+done
+
+if [ ! -d "${plugin_source}" ]; then
+    echo "Plugin source ${plugin_source} not found" >&2
+    exit 2
+fi
+
+if [ ! -e "${clouds_file}" ]; then
+    echo "${clouds_file} not found; was Kolla-Ansible deployed?" >&2
+    exit 2
+fi
+
+if [ ! -e "${ca_cert}" ]; then
+    echo "CA bundle ${ca_cert} not found" >&2
+    exit 2
+fi
+
+heading() {
+    echo
+    echo '=================================================='
+    echo "$@"
+    echo '=================================================='
+}
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "This script needs to read /etc/kolla/clouds.yaml; re-run via sudo." >&2
+    exit 2
+fi
+
+venv_dir="${workspace}/venv"
+tempest_dir="${workspace}/tempest"
+log_dir="${workspace}/logs"
+
+mkdir -p "${workspace}" "${log_dir}"
+
+heading "Create Tempest venv at ${venv_dir}"
+python3 -m venv "${venv_dir}"
+. "${venv_dir}/bin/activate"
+pip install --upgrade pip wheel
+pip install python-tempestconf tempest
+pip install "${plugin_source}"
+pip freeze | tee "${log_dir}/pip-freeze.txt"
+
+heading "Initialise Tempest workspace at ${tempest_dir}"
+rm -rf "${tempest_dir}"
+tempest init "${tempest_dir}"
+
+heading "Discover Tempest config"
+cd "${tempest_dir}"
+OS_CLIENT_CONFIG_FILE="${clouds_file}" discover-tempest-config \
+    --debug \
+    --image "${cirros_image}" \
+    --os-cloud "${cloud_name}" \
+    compute.build_timeout "${build_timeout}" \
+    compute-feature-enabled.spice_console True \
+    2>&1 | tee "${log_dir}/discover-tempest-config.log"
+
+heading "Inject Kerbside config into tempest.conf"
+python3 - "$PWD/etc/tempest.conf" "${ca_cert}" <<'PYEOF'
+import configparser
+import sys
+
+conf_path = sys.argv[1]
+ca_path = sys.argv[2]
+
+parser = configparser.ConfigParser()
+parser.read(conf_path)
+if 'kerbside' not in parser:
+    parser['kerbside'] = {}
+parser['kerbside']['ca_cert_path'] = ca_path
+with open(conf_path, 'w') as f:
+    parser.write(f)
+PYEOF
+cp etc/tempest.conf "${log_dir}/tempest.conf"
+
+heading "Sanity check the plugin is registered"
+tempest list-plugins | tee "${log_dir}/list-plugins.txt"
+if ! grep -q '^kerbside_tempest_plugin ' "${log_dir}/list-plugins.txt"; then
+    echo "kerbside_tempest_plugin did not register itself with Tempest" >&2
+    exit 1
+fi
+
+heading "Run Tempest with regex: ${regex}"
+set +e
+tempest run --config-file etc/tempest.conf --regex "${regex}" \
+    2>&1 | tee "${log_dir}/tempest-run.log"
+status="${PIPESTATUS[0]}"
+set -e
+
+heading "Tempest exit status: ${status}"
+if [ -d ".stestr" ]; then
+    cp -r .stestr "${log_dir}/" || true
+fi
+
+exit "${status}"
