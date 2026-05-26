@@ -45,7 +45,7 @@ clouds_file="/etc/kolla/clouds.yaml"
 cloud_name="kolla-admin"
 cirros_image="https://download.cirros-cloud.net/0.6.3/cirros-0.6.3-x86_64-disk.img"
 build_timeout="900"
-regex='kerbside_tempest_plugin\.tests\.api\.test_spice_via_kerbside|tempest\.api\.compute\.admin\.test_spice'
+regex='kerbside_tempest_plugin\.tests\.api\.test_spice_via_kerbside'
 
 while [ $# -gt 0 ]; do
     case "$1" in

@@ -33,6 +33,9 @@ class SpiceViaKerbsideTestJSON(compute_base.BaseV2ComputeAdminTest):
 
     create_default_network = True
 
+    # POST /servers/{id}/remote-consoles is microversion >= 2.6.
+    min_microversion = '2.6'
+
     @classmethod
     def skip_checks(cls):
         super().skip_checks()

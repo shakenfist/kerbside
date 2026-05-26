@@ -106,7 +106,10 @@ first signal. The script:
    `compute-feature-enabled.spice_console True`.
 4. Injects the `[kerbside]` group pointing at the Kolla CA bundle.
 5. Runs `tempest run` against a regex that selects the kerbside plugin
-   tests plus the upstream `tempest.api.compute.admin.test_spice` test.
+   tests. The upstream `tempest.api.compute.admin.test_spice` (spice-direct)
+   test deliberately bypasses Kerbside by connecting straight to the
+   libvirt SPICE port, so it is not in the default regex — pass
+   `--regex` to opt back in if you want it.
 
 Run it manually on a deployed all-in-one node with
 `sudo bash tools/run-tempest-tests`; pass `--help` to see knobs (regex,
