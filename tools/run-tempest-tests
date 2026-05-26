@@ -137,7 +137,7 @@ cp etc/tempest.conf "${log_dir}/tempest.conf"
 
 heading "Sanity check the plugin is registered"
 tempest list-plugins | tee "${log_dir}/list-plugins.txt"
-if ! grep -q '^kerbside_tempest_plugin ' "${log_dir}/list-plugins.txt"; then
+if ! grep -q 'kerbside_tempest_plugin' "${log_dir}/list-plugins.txt"; then
     echo "kerbside_tempest_plugin did not register itself with Tempest" >&2
     exit 1
 fi
