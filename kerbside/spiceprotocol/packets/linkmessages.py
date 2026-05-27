@@ -53,6 +53,7 @@ def parse_capabilities(log, buffered, num_common_caps, num_channel_caps,
             'but only know how to decode one word. We will ignore the rest.'
             % target)
 
+    cap_words = []
     cur_caps_offset = 16 + caps_offset
     for _ in range(num_common_caps):
         cap = struct.unpack_from('<I', buffered, offset=cur_caps_offset)[0]
