@@ -443,13 +443,43 @@ jobs:
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 "${script}"
 
+      - name: Apply kerbside CI globals overlay
+        # bootstrap-kolla-ansible has just written
+        # /etc/kolla/globals.yml from kerbside-patches' globals-master.yml.
+        # Append this repo's overlay to disable Kolla-Ansible features
+        # we do not need to test kerbside end to end -- kolla-ansible
+        # reads globals.yml top-to-bottom so trailing keys win.
+        run: |
+          . $GITHUB_ENV
+          scp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${GITHUB_WORKSPACE}/kerbside/etc/kolla-ci-globals-overlay.yml \
+              ${{ matrix.test.baseuser }}@10.0.2.2:/tmp/kolla-ci-globals-overlay.yml
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              'sudo bash -c "echo >> /etc/kolla/globals.yml && cat /tmp/kolla-ci-globals-overlay.yml >> /etc/kolla/globals.yml"'
+
       - name: Build container images
+        # The build-images value is forwarded to kolla-build as a regex.
+        # Restrict it to the services kerbside actually exercises end to
+        # end -- kerbside itself, the OpenStack core needed to boot a
+        # SPICE-enabled instance (nova, neutron, glance, keystone,
+        # placement), and the infrastructure those depend on (haproxy,
+        # keepalived, mariadb, rabbitmq, memcached, plus the
+        # base/openstack-base/kolla-toolbox foundations). 'all' builds
+        # 200+ images and is what kerbside-patches CI uses to catch
+        # upstream regressions; we trade that breadth here for ~10
+        # minutes off the build, with the cost that adding a new
+        # kolla-side dependency to kerbside will require updating this
+        # regex.
         run: |
           . $GITHUB_ENV
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd /srv/shakenfist/kerbside-patches; ./_build/build-containers.sh --build-targets ${{ matrix.test.openstack_release }} --build-images all --distro debian --distro-version trixie --image-tag local'
+              'cd /srv/shakenfist/kerbside-patches; ./_build/build-containers.sh --build-targets ${{ matrix.test.openstack_release }} --build-images "^(base|openstack-base|kolla-toolbox|cron|haproxy|httpd|keepalived|mariadb|memcached|openvswitch|proxysql|rabbitmq|keystone|glance|placement|neutron|nova|kerbside)" --distro debian --distro-version trixie --image-tag local'
 
       - name: Deploy Kolla-Ansible
         uses: shakenfist/actions/deploy-kolla-ansible@main
