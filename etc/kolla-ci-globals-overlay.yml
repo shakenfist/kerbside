@@ -1,0 +1,10 @@
+# Overrides appended to /etc/kolla/globals.yml in the openstack_matrix
+# CI job for this repository. The goal is just-enough-cloud to exercise
+# kerbside end to end -- kerbside-patches CI is the place to validate
+# that we have not broken the broader kolla / Kolla-Ansible
+# ecosystem. Add a line here when a default-on Kolla-Ansible service
+# turns out to be irrelevant to kerbside testing.
+
+# Horizon is the OpenStack dashboard. Tempest drives the API directly
+# and the kerbside scenarios never touch it.
+enable_horizon: "no"
