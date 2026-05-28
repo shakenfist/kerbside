@@ -444,12 +444,24 @@ jobs:
               ${{ matrix.test.baseuser }}@10.0.2.2 "${script}"
 
       - name: Build container images
+        # The build-images value is forwarded to kolla-build as a regex.
+        # Restrict it to the services kerbside actually exercises end to
+        # end -- kerbside itself, the OpenStack core needed to boot a
+        # SPICE-enabled instance (nova, neutron, glance, keystone,
+        # placement), and the infrastructure those depend on (haproxy,
+        # keepalived, mariadb, rabbitmq, memcached, plus the
+        # base/openstack-base/kolla-toolbox foundations). 'all' builds
+        # 200+ images and is what kerbside-patches CI uses to catch
+        # upstream regressions; we trade that breadth here for ~10
+        # minutes off the build, with the cost that adding a new
+        # kolla-side dependency to kerbside will require updating this
+        # regex.
         run: |
           . $GITHUB_ENV
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd /srv/shakenfist/kerbside-patches; ./_build/build-containers.sh --build-targets ${{ matrix.test.openstack_release }} --build-images all --distro debian --distro-version trixie --image-tag local'
+              'cd /srv/shakenfist/kerbside-patches; ./_build/build-containers.sh --build-targets ${{ matrix.test.openstack_release }} --build-images "^(base|openstack-base|kolla-toolbox|haproxy|keepalived|mariadb|memcached|rabbitmq|keystone|glance|placement|neutron|nova|kerbside)" --distro debian --distro-version trixie --image-tag local'
 
       - name: Deploy Kolla-Ansible
         uses: shakenfist/actions/deploy-kolla-ansible@main
