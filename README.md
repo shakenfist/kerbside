@@ -85,6 +85,36 @@ Supporting shell scripts in `tools/` handle oVirt host preparation in CI:
 - `ovirt-prepare-host.sh` — engine health check, SSH setup, KVM verification
 - `ovirt-gather-artifacts.sh` — collects RPM lists and logs for CI artifacts
 
+## Tempest Tests Against a Kolla-Ansible Deployment
+
+The `tempest-plugin/` directory is a separate releasable that contributes
+Kerbside-specific Tempest tests; see `tempest-plugin/README.md` for what it
+covers.
+
+`tools/run-tempest-tests` drives a curated subset of those tests against a
+running Kolla-Ansible deployment. It is invoked automatically by the
+`openstack_matrix` job in `.github/workflows/functional-tests.yml` after the
+`test-console` smoke check, so the GitHub Actions CI iterates on the
+plugin's tests on every PR rather than relying on upstream Zuul as the
+first signal. The script:
+
+1. Creates a Python venv at `/srv/kerbside-tempest/venv`.
+2. Pip-installs `tempest`, `python-tempestconf`, and the local
+   `tempest-plugin/` checkout into it.
+3. Runs `tempest init` plus `discover-tempest-config` against
+   `/etc/kolla/clouds.yaml`'s `kolla-admin` cloud with
+   `compute-feature-enabled.spice_console True`.
+4. Injects the `[kerbside]` group pointing at the Kolla CA bundle.
+5. Runs `tempest run` against a regex that selects the kerbside plugin
+   tests. The upstream `tempest.api.compute.admin.test_spice` (spice-direct)
+   test deliberately bypasses Kerbside by connecting straight to the
+   libvirt SPICE port, so it is not in the default regex — pass
+   `--regex` to opt back in if you want it.
+
+Run it manually on a deployed all-in-one node with
+`sudo bash tools/run-tempest-tests`; pass `--help` to see knobs (regex,
+workspace location, CA bundle path, etc.).
+
 ## Build the load testing OCI container images
 
 There are a series of OCI container images intended for load testing. These need

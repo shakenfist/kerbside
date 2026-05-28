@@ -116,6 +116,9 @@ tox -e bindep
 
 - Unit tests: `kerbside/tests/unit/`
 - Functional tests: `kerbside/tests/functional/`
+- Tempest plugin: `tempest-plugin/kerbside_tempest_plugin/` (separate
+  releasable, driven via `tools/run-tempest-tests` and the
+  `openstack_matrix` job in `.github/workflows/functional-tests.yml`)
 
 ## Code Style
 

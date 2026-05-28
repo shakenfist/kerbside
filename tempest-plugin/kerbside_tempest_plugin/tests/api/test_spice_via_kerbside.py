@@ -33,6 +33,11 @@ class SpiceViaKerbsideTestJSON(compute_base.BaseV2ComputeAdminTest):
 
     create_default_network = True
 
+    # The spice-direct console type was added in microversion 2.99.
+    # /remote-consoles itself dates to 2.6, but Nova rejects type=
+    # spice-direct under any older version.
+    min_microversion = '2.99'
+
     @classmethod
     def skip_checks(cls):
         super().skip_checks()
