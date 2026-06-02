@@ -139,7 +139,7 @@ jobs:
     steps:
       - name: Filter workflow_dispatch runs
         if: github.event_name == 'workflow_dispatch' && ! contains(inputs.target, matrix.test.name)
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
               core.setFailed('Target skipped')
@@ -385,7 +385,7 @@ jobs:
     steps:
       - name: Filter workflow_dispatch runs
         if: github.event_name == 'workflow_dispatch' && ! contains(inputs.target, matrix.test.name)
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
               core.setFailed('Target skipped')
