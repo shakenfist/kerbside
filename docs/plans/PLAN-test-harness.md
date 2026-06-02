@@ -43,10 +43,16 @@ grounded way:
   crate, holding the encoder, decoder, and a CLI
   decoder.
 
-All planning documents for kerbside-side work go into
-`docs/plans/`. Phases whose work lives wholly in another
-repo may have their phase plan live in that repo
-instead — the master plan tracks them either way.
+All planning documents for this plan — master and every
+phase plan — live in this repo's `docs/plans/`,
+regardless of which repo each phase's *implementation*
+lands in. Kerbside is the main driver of this work, and
+keeping every phase plan co-located keeps the design
+conversation in one searchable place. Sub-agents
+executing a cross-repo phase must therefore be briefed
+that the plan they are following lives in
+`shakenfist/kerbside/docs/plans/` even when all of
+their commits will land elsewhere.
 
 Consult `ARCHITECTURE.md` for the overall proxy
 architecture, channel model, and connection lifecycle.
@@ -223,9 +229,9 @@ master plan, but listed here so they are not forgotten:
 ## Execution
 
 Phases land across three repos. The "Repo" column tells
-you where the code goes; phase plans live in this
-directory unless noted, with plan-files cross-referenced
-when work is wholly in another repo.
+you where the code goes. Every phase plan lives in this
+directory regardless of repo, so the plan stays
+searchable from one place.
 
 | Phase | Repo | Plan | Status |
 |-------|------|------|--------|
@@ -288,11 +294,17 @@ Specific notes for this plan:
 - Cross-repo work needs cross-repo back-briefing. Before
   starting a phase whose code lives in another repo, the
   management session should confirm the operator has the
-  matching repo checked out and is happy with the phase
-  plan being authored there or here.
+  matching repo checked out and that the sub-agent
+  understands the phase plan lives in
+  `shakenfist/kerbside/docs/plans/` even though the
+  commits will land elsewhere.
 - Each phase that crosses repos should produce its own
   commit(s) in the right repo. Do not bundle ryll and
-  kerbside changes into the same git operation.
+  kerbside changes into the same git operation. Commit
+  messages in the implementing repo should reference the
+  master plan path (e.g.
+  `shakenfist/kerbside/docs/plans/PLAN-test-harness.md`)
+  so the trail back is obvious.
 - The control socket protocol is the highest-impact
   design decision in this plan. Phase 3's plan should be
   reviewed end-to-end before any implementation starts,
