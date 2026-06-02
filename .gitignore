@@ -140,4 +140,13 @@ dmypy.json
 # Deployer git repos
 deploy/gitrepos/
 
-.vscode
+# VS Code - ignore user-specific files but keep workspace settings
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Generated version file
+kerbside/_version.py
+
+# Claude Code per-session state
+/.claude/scheduled_tasks.lock

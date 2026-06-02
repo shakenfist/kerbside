@@ -1,0 +1,11 @@
+# actionlint configuration for Kerbside.
+#
+# Declares custom labels used by our self-hosted CI runners so that
+# `runs-on: [self-hosted, <label>]` lines do not trigger "unknown label"
+# warnings.
+
+self-hosted-runner:
+  labels:
+    - static
+    - vm
+    - debian-12
