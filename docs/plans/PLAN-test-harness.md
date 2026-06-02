@@ -121,6 +121,17 @@ the loadtest does. This may indicate planned work that
 never landed, or a misremembered detail — to be
 clarified during phase 4 planning.
 
+The Python client at `testclient/ryll/` is the
+predecessor to `shakenfist/ryll`. The Rust rewrite was
+started from lessons learned building the Python
+version, and is now a strict feature superset. The
+loadtest is the only remaining consumer of the Python
+client; removing the `testclient/ryll/` tree is part
+of this plan (phase 4). Note the namespace collision:
+"Ryll" in this document means the Rust client
+(`shakenfist/ryll`) unless the prefix `testclient/` or
+the qualifier "legacy Python" is used.
+
 The digest format on Uncalibrated Sextant is a versioned
 binary protocol (10-byte header, eight per-channel
 chained CRC32C hashes, up to 44 bytes of raw recent
@@ -221,7 +232,7 @@ when work is wholly in another repo.
 | 1. Shared visual-digest crate | new (`shakenfist-visual-digest`) | PLAN-test-harness-phase-01-digest-crate.md | Not started |
 | 2. Static hypervisor driver | kerbside | PLAN-test-harness-phase-02-static-hypervisor.md | Not started |
 | 3. Control socket on Ryll | ryll | PLAN-test-harness-phase-03-control-socket.md | Not started |
-| 4. Port latency loadtest to control socket | kerbside | PLAN-test-harness-phase-04-port-latency.md | Not started |
+| 4. Port latency loadtest to control socket and remove legacy `testclient/ryll/` | kerbside | PLAN-test-harness-phase-04-port-latency.md | Not started |
 | 5. Direct-qemu CI workflow | kerbside | PLAN-test-harness-phase-05-direct-qemu-ci.md | Not started |
 | 6. Digest decoding in Ryll | ryll | PLAN-test-harness-phase-06-digest-decoding.md | Not started |
 | 7. First Sextant scenario tempest test | kerbside | PLAN-test-harness-phase-07-scenario-test.md | Not started |
@@ -235,7 +246,7 @@ when each phase plan is written):
 | 1 | medium | sonnet | Self-contained crate extraction; spec already exists. New repo bootstrap is the main novelty. |
 | 2 | medium | sonnet | Follows the existing `Source` interface in `kerbside/hypervisors/base.py`. Bounded scope, clear pattern. |
 | 3 | high | opus | New protocol design that must serve both tests and future MCP. Touches Ryll's tokio event loop. Getting the verb set wrong is expensive to undo. |
-| 4 | medium | sonnet | Rewrite a Python client to use the new socket. Validates phase 3's API; small but high-signal. |
+| 4 | medium | sonnet | Rewrite the loadtest to drive the control socket, then delete the legacy `testclient/ryll/` tree (the loadtest is its only consumer). Also touches `loadtests/latency/Dockerfile` and any README / AGENTS.md references. Validates phase 3's API; small but high-signal. |
 | 5 | high | opus | New CI workflow integrating multiple binaries, debugging KVM/runner-environment unknowns, many edge cases. |
 | 6 | high | opus | SurfaceMirror integration, QR detection on draw-event change, subtle correctness around when to re-decode. |
 | 7 | medium | sonnet | Composes phase 6 primitives into a scenario. Once the spine is in place this is mostly glue. |
@@ -315,9 +326,12 @@ true:
   shutdown matches the expected event sequence. All of
   this runs without OpenStack.
 * The legacy latency loadtest in `loadtests/latency/`
-  no longer uses `testclient/ryll/`; it drives Ryll's
-  control socket instead. Its latency numbers are
-  unchanged within noise vs the pre-port baseline.
+  drives Ryll's control socket. Its latency numbers
+  are unchanged within noise vs the pre-port baseline.
+* The legacy Python SPICE client at `testclient/ryll/`
+  has been deleted, along with any remaining references
+  to it in the Dockerfile, README, AGENTS.md, and
+  ARCHITECTURE.md.
 * Ryll's production binary does not carry the
   visual-digest crate unless built with the
   `digest-decode` feature.
