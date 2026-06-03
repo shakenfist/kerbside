@@ -79,6 +79,21 @@ explicitly so they can be challenged before any code lands.
   single-language, and the suffix would read as noise on
   every `use` line).
 - **License Apache-2.0.**
+- **CI runs on self-hosted GitHub Actions runners with
+  cargo work wrapped in Docker**, following the
+  shakenfist/ryll pattern (`ryll/.github/workflows/ci.yml`
+  + `ryll/scripts/check-rust.sh` + a `.devcontainer/`
+  Dockerfile that owns the toolchain). The Docker wrap
+  is load-bearing — the operator runs several Rust
+  projects at different toolchain versions and does not
+  want a pinned Rust on the host. Self-hosted runners
+  inherit the same constraint, so the Dockerfile is the
+  source of truth for the crate's toolchain in CI and
+  in local dev.
+- **Sextant's `docs/visual-digest-format.md` becomes a
+  one-line pointer** to the new repo's copy, not a
+  deletion. Keeps in-repo grep finds inside Sextant
+  pointing somewhere useful.
 
 ## Situation
 
@@ -144,19 +159,10 @@ After phase 1:
 
 ## Open questions
 
-These need an answer before or during the phase, but do
-not block writing this plan:
-
-- **Sextant doc redirect shape.** Either delete
-  `uncalibrated-sextant/docs/visual-digest-format.md` and
-  fix cross-refs, or leave a one-line stub. Operator
-  preference at step 1b.
-- **CI shape on the new repo.** Match Ryll's CI (Docker
-  builds, clippy/fmt/test) vs simpler GitHub Actions
-  hosted runners. Lean simpler hosted runners for v1
-  since the crate is pure host-side Rust except for the
-  `no_std` smoke; no `/dev/kvm` or platform matrix
-  needed.
+None remaining at the time of writing — all initial
+operator-facing decisions are locked in the "Decisions
+baked into this plan" block above. New questions surfaced
+during execution should be added here.
 
 ## Execution
 
@@ -167,7 +173,7 @@ existing repo destructively.
 
 | Step | Repo | Effort | Model | Isolation | Brief for sub-agent |
 |------|------|--------|-------|-----------|---------------------|
-| 1a. Bootstrap new repo | visual-digest-rust (new) | low | sonnet | none | Operator creates the empty `shakenfist/visual-digest-rust` repo on GitHub. Then initialise it with: README.md, AGENTS.md, ARCHITECTURE.md, LICENSE (Apache-2.0), `Cargo.toml` workspace, `crates/shakenfist-visual-digest/` (empty `lib.rs`, `Cargo.toml` declaring features `decode`, `qr`, `serde`, `cli` — all off by default; default features = encoder-only, `no_std`-compatible), `crates/digest-decode/` (empty `main.rs`, `Cargo.toml` depending on the library with `decode,qr,serde,cli`), `.github/workflows/ci.yml` (clippy `-D warnings`, rustfmt, `cargo test --workspace --all-features`, `cargo build --no-default-features` to verify no_std story), `.pre-commit-config.yaml` (same shape as kerbside's actionlint + hygiene + cargo equivalents; adapt the cargo bits from `shakenfist/ryll/.pre-commit-config.yaml`), `.gitignore`. Lands as one commit in the new repo. |
+| 1a. Bootstrap new repo | visual-digest-rust (new) | low | sonnet | none | Operator creates the empty `shakenfist/visual-digest-rust` repo on GitHub. Then initialise it with: README.md, AGENTS.md, ARCHITECTURE.md, LICENSE (Apache-2.0), `Cargo.toml` workspace, `crates/shakenfist-visual-digest/` (empty `lib.rs`, `Cargo.toml` declaring features `decode`, `qr`, `serde`, `cli` — all off by default; default features = encoder-only, `no_std`-compatible), `crates/digest-decode/` (empty `main.rs`, `Cargo.toml` depending on the library with `decode,qr,serde,cli`), `.devcontainer/Dockerfile` owning the Rust toolchain (copy the shape from `shakenfist/ryll/.devcontainer/`, adjust toolchain version as needed for the no_std target), `scripts/check-rust.sh` that runs rustfmt + clippy inside the Docker image (model on `shakenfist/ryll/scripts/check-rust.sh`), `.github/workflows/ci.yml` on `runs-on: [self-hosted, ...]` labels matching Ryll's pattern, invoking the Docker-wrapped build for: clippy `-D warnings`, rustfmt, `cargo test --workspace --all-features`, `cargo build --no-default-features` to verify the no_std story, `.pre-commit-config.yaml` modelled on `shakenfist/ryll/.pre-commit-config.yaml` (actionlint + hygiene + the Docker-wrapped check-rust hook), `.gitignore`. Lands as one commit in the new repo. |
 | 1b. Move format spec doc | visual-digest-rust, then sextant | low | sonnet | none | Copy `shakenfist/uncalibrated-sextant/docs/visual-digest-format.md` into `shakenfist/visual-digest-rust/docs/visual-digest-format.md`. Update every source-file reference inside the doc to point at the new crate layout (`src/digest.rs` → `crates/shakenfist-visual-digest/src/encoder.rs`, etc.). Provenance section needs the new paths. Commit in new repo. Then a second commit in Sextant: replace `docs/visual-digest-format.md` with a one-line pointer ("The visual-digest wire format spec lives in shakenfist/visual-digest-rust/docs/visual-digest-format.md."); update any in-source `//!` comments that referenced the doc path. |
 | 1c. Extract encoder | visual-digest-rust | medium | sonnet | worktree | Copy `uncalibrated-sextant/src/digest.rs` content into the new crate, splitting into: `format.rs` (constants, `EncodeError`, `phase_wire`, `choice_wire`, `size_of_record`), `events.rs` (`Event`, `Phase`, `BootloaderChoice` — copy verbatim from Sextant's `src/event.rs` for those three types only, plus `RingBuffer` if needed), `encoder.rs` (the `encode` function + `event_tlv_bytes` + `write_record`), `hashes.rs` (`ChannelHashes`). Change `encode`'s signature to take `events: &[&Event]` instead of `&RingBuffer<256>`; move the ring-walking and stack-buffer materialisation logic to the call site (it stays in Sextant for now). All `pub(crate)` items become `pub`. Bring the existing `#[cfg(test)] mod tests` block over unchanged. Verify: `cargo test --no-default-features` (encoder only) passes, `cargo build --no-default-features` succeeds with `#![no_std]` declared in lib.rs. No behavioural change; only structure. |
 | 1d. Golden encoder vectors | visual-digest-rust | medium | sonnet | none | Before any decoder work, lock the encoder against accidental drift. In the new crate's `tests/golden.rs`, construct three event sequences: empty ring, a single keypress, a mixed sequence of one each of every variant. For each, call the new encoder and assert byte-equality against a captured fixture under `tests/golden/`. Capture the fixtures by running the *original* Sextant encoder via a tiny throwaway harness against the same inputs (a one-off binary in the Sextant tree, committed to a scratch branch, the bytes captured and copied across, the branch deleted). Document the capture procedure inline in the test file so it can be re-run if the fixtures ever need refreshing. The fixtures become the load-bearing on-wire compatibility check from this point forward. |
