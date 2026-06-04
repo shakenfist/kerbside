@@ -380,13 +380,22 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
         if not node:
             node = c['hypervisor_ip']
 
-        ticket = ''
-        if s['type'] == 'ovirt':
+        # Acquire the ticket for embedding in the .vv file.  The
+        # static driver persists its ticket at enumeration time; read
+        # it back from the Console DB row.  oVirt fetches a fresh
+        # ticket on every request.  All other types (shakenfist,
+        # openstack) use an empty string here.
+        if s['type'] == 'static':
+            ticket = c.get('ticket') or ''
+        elif s['type'] == 'ovirt':
+            ticket = ''
             lookup = ovirt_source.oVirtSource(**s)
             if lookup.errored:
                 return sf_api.error(404, 'source error')
             _, ticket = lookup.get_console_for_vm(c['uuid'], acquire_ticket=True)
             lookup.close()
+        else:
+            ticket = ''
 
         tls_port = ''
         if c['secure_port']:
@@ -442,15 +451,27 @@ class ConsolesProxyVirtViewer(sf_api.Resource):
         else:
             host_subject = ''
 
-        # Acquire a ticket if required
-        ticket = ''
-        if s['type'] == 'ovirt':
+        # Acquire a ticket if required.  The static driver persists
+        # the ticket to the Console DB at enumeration time, so we
+        # must not overwrite it with an empty string here.  oVirt
+        # fetches a fresh ticket on every request.  All other source
+        # types (shakenfist, openstack) manage tickets separately
+        # and receive an empty string as a no-op.
+        if s['type'] == 'static':
+            # Ticket already stored by StaticSource.__call__() via
+            # db.add_console(..., ticket=...).  Leave it intact.
+            pass
+        elif s['type'] == 'ovirt':
+            ticket = ''
             lookup = ovirt_source.oVirtSource(**s)
             if lookup.errored:
                 return sf_api.error(404, 'source error')
             _, ticket = lookup.get_console_for_vm(c['uuid'], acquire_ticket=True)
             lookup.close()
-        db.store_console_ticket(source, uuid, ticket)
+            db.store_console_ticket(source, uuid, ticket)
+        else:
+            # shakenfist, openstack: store an empty string as before.
+            db.store_console_ticket(source, uuid, '')
 
         token = consoletoken.create_token(source, uuid)
         vv = VIRTVIEWER_TEMPLATE % {
