@@ -7,7 +7,7 @@ document, explore the kerbside codebase thoroughly. Read
 relevant source files, understand existing patterns (the
 SPICE protocol implementation in `kerbside/spiceprotocol/`,
 the proxy connection model in `kerbside/proxy.py`, the
-hypervisor abstraction in `kerbside/hypervisors/`, the REST
+source driver abstraction in `kerbside/sources/`, the REST
 API in `kerbside/api.py`, the SQLAlchemy/alembic data model
 in `kerbside/db.py` and `alembic/`, Pydantic-based config in
 `kerbside/config.py`, audit logging, and the .vv file
@@ -256,8 +256,8 @@ implemented because the following statements will be true:
   meaningfully for touched modules.
 * New code follows existing patterns: pydantic config,
   SQLAlchemy session usage, the audit logging convention,
-  the existing `kerbside/hypervisors/base.py` interface
-  for new source backends, the SPICE protocol packet
+  the existing `kerbside/sources/base.py::BaseSource`
+  interface for new source backends, the SPICE protocol packet
   helpers in `kerbside/spiceprotocol/`.
 * There are unit tests for new logic, and the existing
   tests still pass. Integration coverage in the tempest

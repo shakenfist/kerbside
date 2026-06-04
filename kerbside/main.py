@@ -12,6 +12,7 @@ from . import db as kerbside_db
 from . import proxy as kerbside_proxy
 from .sources import ovirt as ovirt_source
 from .sources import shakenfist as shakenfist_source
+from .sources import static as static_source
 from . import util
 
 
@@ -80,8 +81,8 @@ def _parse_sources():
             if not stored_source:
                 LOG.info('Creating new source %s' % source['source'])
                 kerbside_db.add_source(
-                    source['source'], source['type'], source['url'],
-                    source['username'], source['password'],
+                    source['source'], source['type'], source.get('url'),
+                    source.get('username'), source.get('password'),
                     project_name=source.get('project_name'),
                     user_domain_id=source.get('user_domain_id'),
                     project_domain_id=source.get('project_domain_id'),
@@ -110,8 +111,8 @@ def _parse_sources():
                 if dirty:
                     LOG.info('Updating source %s' % source['source'])
                     kerbside_db.add_source(
-                        source['source'], source['type'], source['url'],
-                        source['username'], source['password'],
+                        source['source'], source['type'], source.get('url'),
+                        source.get('username'), source.get('password'),
                         project_name=source.get('project_name'),
                         user_domain_id=source.get('user_domain_id'),
                         project_domain_id=source.get('project_domain_id'),
@@ -123,6 +124,8 @@ def _parse_sources():
                     lookup = shakenfist_source.ShakenFistSource(**source)
                 elif source['type'] == 'ovirt':
                     lookup = ovirt_source.oVirtSource(**source)
+                elif source['type'] == 'static':
+                    lookup = static_source.StaticSource(**source)
                 elif source['type'] == 'openstack':
                     # OpenStack now uses auth tokens instead of console scraping
                     continue

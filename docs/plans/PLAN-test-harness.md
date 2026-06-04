@@ -7,7 +7,7 @@ document, explore the kerbside codebase thoroughly. Read
 relevant source files, understand existing patterns (the
 SPICE protocol implementation in `kerbside/spiceprotocol/`,
 the proxy connection model in `kerbside/proxy.py`, the
-hypervisor abstraction in `kerbside/hypervisors/`, the REST
+source driver abstraction in `kerbside/sources/`, the REST
 API in `kerbside/api.py`, the SQLAlchemy/alembic data model
 in `kerbside/db.py` and `alembic/`, Pydantic-based config in
 `kerbside/config.py`, audit logging, the .vv file generation
@@ -113,7 +113,7 @@ is not part of our long-term ecosystem; it was the
 hypervisor stack with the most readily available
 tooling. The CI workflow lives in
 `.github/workflows/functional-tests.yml`. Hypervisor
-backends live at `kerbside/hypervisors/{base.py,ovirt.py,shakenfist.py}`
+backends live at `kerbside/sources/{base.py,ovirt.py,shakenfist.py}`
 — there is no static / test backend today.
 
 A latency loadtest exists at `loadtests/latency/`. It
@@ -236,7 +236,7 @@ searchable from one place.
 | Phase | Repo | Plan | Status |
 |-------|------|------|--------|
 | 1. Shared visual-digest crate | new (`shakenfist-visual-digest`) | [PLAN-test-harness-phase-01-digest-crate.md](PLAN-test-harness-phase-01-digest-crate.md) | Implementation complete; Sextant PR pending operator |
-| 2. Static hypervisor driver | kerbside | PLAN-test-harness-phase-02-static-hypervisor.md | Not started |
+| 2. Static source driver | kerbside | [PLAN-test-harness-phase-02-static-hypervisor.md](PLAN-test-harness-phase-02-static-hypervisor.md) | Implementation complete |
 | 3. Control socket on Ryll | ryll | PLAN-test-harness-phase-03-control-socket.md | Not started |
 | 4. Port latency loadtest to control socket and remove legacy `testclient/ryll/` | kerbside | PLAN-test-harness-phase-04-port-latency.md | Not started |
 | 5. Direct-qemu CI workflow | kerbside | PLAN-test-harness-phase-05-direct-qemu-ci.md | Not started |
@@ -250,7 +250,7 @@ when each phase plan is written):
 | Phase | Effort | Model | Notes |
 |-------|--------|-------|-------|
 | 1 | medium | sonnet | Self-contained crate extraction; spec already exists. New repo bootstrap is the main novelty. |
-| 2 | medium | sonnet | Follows the existing `Source` interface in `kerbside/hypervisors/base.py`. Bounded scope, clear pattern. |
+| 2 | medium | sonnet | Follows the existing `BaseSource` interface in `kerbside/sources/base.py`. Bounded scope, clear pattern. |
 | 3 | high | opus | New protocol design that must serve both tests and future MCP. Touches Ryll's tokio event loop. Getting the verb set wrong is expensive to undo. |
 | 4 | medium | sonnet | Rewrite the loadtest to drive the control socket, then delete the legacy `testclient/ryll/` tree (the loadtest is its only consumer). Also touches `loadtests/latency/Dockerfile` and any README / AGENTS.md references. Validates phase 3's API; small but high-signal. |
 | 5 | high | opus | New CI workflow integrating multiple binaries, debugging KVM/runner-environment unknowns, many edge cases. |

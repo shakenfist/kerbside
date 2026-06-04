@@ -85,8 +85,8 @@ conventions in `AGENTS.md`:
   existing class shape; constants live in
   `packets/constants.py`; parsing uses the existing
   `struct`-based helpers, not ad-hoc byte slicing.
-- Hypervisor backends: new sources subclass
-  `kerbside.hypervisors.base.Source` and respect the
+- Source backends: new sources subclass
+  `kerbside.sources.base.BaseSource` and respect the
   documented method contract; capability flags are
   declared, not implied.
 - API endpoints: pydantic request / response models;

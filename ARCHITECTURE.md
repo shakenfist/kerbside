@@ -155,6 +155,17 @@ Pluggable console discovery from different cloud platforms.
 | Shaken Fist | `shakenfist.py` | Uses `shakenfist_client` library |
 | oVirt | `ovirt.py` | Uses `ovirtsdk4` library |
 | OpenStack | `api.py` | On-demand via Nova token validation |
+| Static | `static.py` | Reads VM mapping from an inline `consoles:` list in sources.yaml; no external API calls; designed for CI and ad-hoc debugging |
+
+The static driver stores tickets in the Console DB at
+enumeration time via `db.add_console(..., ticket=...)`.  The
+API layer reads those persisted tickets back at `.vv`-
+generation time rather than making a per-request driver call.
+This keeps the API-side change to a single `elif` branch that
+skips the `db.store_console_ticket()` overwrite that would
+otherwise erase the persisted value.  An example sources.yaml
+for the static driver lives at
+`etc/example-static-sources.yaml`.
 
 ## Data Flow
 

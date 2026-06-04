@@ -1,0 +1,61 @@
+# Example sources.yaml for the kerbside static source driver.
+#
+# Purpose
+# -------
+# This file is a copy-paste starter for two use-cases:
+#
+#   1. CI pipelines (phase 5 of the test-harness plan) that boot a
+#      QEMU guest directly and need kerbside to front it without a
+#      full control plane (Shaken Fist, oVirt, or OpenStack).
+#
+#   2. Ad-hoc debugging sessions where a developer wants to point
+#      kerbside at a hand-rolled QEMU immediately, without configuring
+#      a cloud.
+#
+# The static driver is NOT intended for production use.  The console
+# list is read once at startup (and once per 60-second maintenance
+# cycle).  There is no liveness check on the QEMU process; kerbside
+# will happily hand out .vv files for VMs that have stopped.
+#
+# Usage
+# -----
+# Copy this file to the path configured by SOURCES_PATH in
+# kerbside.conf (default: /etc/kerbside/sources.yaml) and adjust
+# the uuid, hypervisor_ip, insecure_port, and ticket values to
+# match your QEMU invocations.
+#
+# QEMU example that matches the first entry below:
+#
+#   qemu-system-x86_64 \
+#     -machine q35,accel=kvm \
+#     -m 2048 \
+#     -drive file=sextant.qcow2,format=qcow2 \
+#     -spice port=5910,password=ci-ticket-vm-1,disable-ticketing=off \
+#     -daemonize
+#
+# Required console fields: uuid, name, hypervisor, hypervisor_ip,
+#                          insecure_port, ticket
+# Optional console fields: secure_port, host_subject (both default
+#                          to null if omitted)
+
+- source: direct-qemu-lab
+  type: static
+  consoles:
+
+    # VM 1: Uncalibrated Sextant running on localhost, plaintext SPICE.
+    - uuid: "6f4e2c1a-0000-0000-0000-000000000001"
+      name: "sextant-vm-1"
+      hypervisor: "localhost"
+      hypervisor_ip: "127.0.0.1"
+      insecure_port: 5910
+      ticket: "ci-ticket-vm-1"
+      # secure_port: null       # omit or set to a TLS port if QEMU
+      # host_subject: null      # exposes -spice tls-port=...
+
+    # VM 2: A second QEMU on a different port (e.g. a parallel CI job).
+    - uuid: "6f4e2c1a-0000-0000-0000-000000000002"
+      name: "sextant-vm-2"
+      hypervisor: "localhost"
+      hypervisor_ip: "127.0.0.1"
+      insecure_port: 5911
+      ticket: "ci-ticket-vm-2"
