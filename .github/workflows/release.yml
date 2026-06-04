@@ -51,7 +51,7 @@ jobs:
   sign-tag:
     name: Sign release tag with Sigstore
     needs: build
-    runs-on: [self-hosted, debian-12, s]
+    runs-on: [self-hosted, debian-12, static]
     environment: release
 
     permissions:
