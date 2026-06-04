@@ -236,7 +236,7 @@ searchable from one place.
 | Phase | Repo | Plan | Status |
 |-------|------|------|--------|
 | 1. Shared visual-digest crate | new (`shakenfist-visual-digest`) | [PLAN-test-harness-phase-01-digest-crate.md](PLAN-test-harness-phase-01-digest-crate.md) | Implementation complete; Sextant PR pending operator |
-| 2. Static hypervisor driver | kerbside | PLAN-test-harness-phase-02-static-hypervisor.md | Not started |
+| 2. Static source driver | kerbside | [PLAN-test-harness-phase-02-static-hypervisor.md](PLAN-test-harness-phase-02-static-hypervisor.md) | Phase plan drafted |
 | 3. Control socket on Ryll | ryll | PLAN-test-harness-phase-03-control-socket.md | Not started |
 | 4. Port latency loadtest to control socket and remove legacy `testclient/ryll/` | kerbside | PLAN-test-harness-phase-04-port-latency.md | Not started |
 | 5. Direct-qemu CI workflow | kerbside | PLAN-test-harness-phase-05-direct-qemu-ci.md | Not started |
