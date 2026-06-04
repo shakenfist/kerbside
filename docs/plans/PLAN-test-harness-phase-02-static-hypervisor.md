@@ -206,12 +206,12 @@ rather land phase 2 as its own PR — see Sequencing notes below).
   contract and might surface API mistakes before they ship.
 - 2e and 2f land anytime after the code is in place.
 
-**Branch and PR shape**: Phase 2 should land as a kerbside PR
-off `develop`, **not** as additional commits on the
-`test-harness` branch. The `test-harness` branch is the
-planning home; per-phase implementation work belongs on its own
-branch so review and CI scoping stays clean. Recommend
-`phase-02-static-source` as the branch name.
+**Branch and PR shape**: All phase 2 commits land on the
+`test-harness` branch alongside the planning docs and (eventually)
+later phases' implementation. One unified branch keeps the work
+chronologically reviewable and avoids juggling per-phase branches.
+The eventual PR off `test-harness` will be wider than a single
+phase, which is by design.
 
 ## Agent guidance
 
@@ -256,7 +256,7 @@ you intend to do aligns with that step's brief.
 Phase 2 is done when:
 
 - `tox -eflake8` and `tox -epy3` are clean on the
-  phase-02-static-source branch.
+  `test-harness` branch with phase 2's commits on top.
 - The new `StaticSource` unit tests pass; existing unit tests
   still pass; coverage from `tox -ecover` does not regress in
   touched modules.
@@ -269,8 +269,10 @@ Phase 2 is done when:
   `docs/console-sources.md` describe the new driver. The example
   sources.yaml ships under `etc/` (or wherever the repo's
   convention puts examples).
-- A PR is opened against `develop` and tagged for review. (The
-  operator opens the PR; the management session does not.)
+- The `test-harness` branch is pushed with phase 2's commits
+  visible on origin. A PR will be opened later, scoped to
+  whatever set of phases the operator wants to land together;
+  the management session does not open the PR.
 
 ### Future work
 
