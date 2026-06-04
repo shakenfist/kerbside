@@ -5,6 +5,9 @@ import tempfile
 import testtools
 import yaml
 
+# UUID shared across the static-source dispatch tests.
+_STATIC_CONSOLE_UUID = 'cccccccc-0000-0000-0000-000000000001'
+
 
 class FakeConfig:
     SOURCES_PATH = None
@@ -75,6 +78,11 @@ class ParseSourcesTestCase(testtools.TestCase):
             'kerbside.sources.ovirt.oVirtSource')
         self.mock_ovirt_source = ovirt_patcher.start()
         self.addCleanup(ovirt_patcher.stop)
+
+        static_patcher = mock.patch(
+            'kerbside.sources.static.StaticSource')
+        self.mock_static_source = static_patcher.start()
+        self.addCleanup(static_patcher.stop)
 
     @contextmanager
     def _create_sources_yaml(self, sources):
@@ -349,3 +357,89 @@ class ParseSourcesTestCase(testtools.TestCase):
             main._parse_sources()
             # Should set error state when source initialization fails
             self.mock_db_set_source_error_state.assert_called_with('test-sf', True)
+
+    @mock.patch('os.path.exists', return_value=True)
+    def test_parse_sources_static_source_dispatch(self, mock_exists):
+        """Static source dispatches to StaticSource and passes ticket to db."""
+        from kerbside import main
+
+        static_console = {
+            'source': 'test-static',
+            'uuid': _STATIC_CONSOLE_UUID,
+            'name': 'ci-vm',
+            'hypervisor': 'localhost',
+            'hypervisor_ip': '127.0.0.1',
+            'insecure_port': 5910,
+            'secure_port': None,
+            'host_subject': None,
+            'ticket': 'ci-spice-password',
+        }
+        with self._create_sources_yaml([{
+            'source': 'test-static',
+            'type': 'static',
+            'consoles': [{
+                'uuid': _STATIC_CONSOLE_UUID,
+                'name': 'ci-vm',
+                'hypervisor': 'localhost',
+                'hypervisor_ip': '127.0.0.1',
+                'insecure_port': 5910,
+                'ticket': 'ci-spice-password',
+            }]
+        }]):
+            self.mock_db_get_source.return_value = None
+            self.mock_static_source.return_value = self._mock_source_lookup(
+                consoles=[static_console])
+
+            self.mock_db_add_console.return_value = True
+            main._parse_sources()
+
+            # StaticSource should be constructed
+            self.mock_static_source.assert_called_once()
+
+            # db.add_console should be called with the ticket field
+            self.mock_db_add_console.assert_called_once_with(**static_console)
+            call_kwargs = self.mock_db_add_console.call_args[1]
+            self.assertEqual('ci-spice-password', call_kwargs['ticket'])
+
+            # Success path: error state set to False (not True)
+            self.mock_db_set_source_error_state.assert_called_with(
+                'test-static', False)
+
+            # Audit event should be logged for the new console
+            self.mock_db_add_audit_event.assert_called()
+
+    @mock.patch('os.path.exists', return_value=True)
+    def test_parse_sources_static_and_other_source_coexist(self, mock_exists):
+        """A static source does not break dispatch for other source types."""
+        from kerbside import main
+
+        with self._create_sources_yaml([
+            {
+                'source': 'test-static',
+                'type': 'static',
+                'consoles': [{
+                    'uuid': _STATIC_CONSOLE_UUID,
+                    'name': 'ci-vm',
+                    'hypervisor': 'localhost',
+                    'hypervisor_ip': '127.0.0.1',
+                    'insecure_port': 5910,
+                    'ticket': 'ci-spice-password',
+                }]
+            },
+            {
+                'source': 'test-sf',
+                'type': 'shakenfist',
+                'url': 'http://localhost:13000',
+                'username': 'admin',
+                'password': 'secret'
+            }
+        ]):
+            self.mock_db_get_source.return_value = None
+            self.mock_static_source.return_value = self._mock_source_lookup()
+            self.mock_shakenfist_source.return_value = self._mock_source_lookup()
+
+            main._parse_sources()
+
+            # Both source types should be instantiated
+            self.mock_static_source.assert_called_once()
+            self.mock_shakenfist_source.assert_called_once()
