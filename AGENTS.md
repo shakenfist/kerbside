@@ -20,6 +20,7 @@ SPICE protocol negotiation, authentication, and bidirectional traffic relay.
 | `kerbside/config.py` | Pydantic-based configuration |
 | `kerbside/spiceprotocol/__init__.py` | SpiceClient class for hypervisor connections |
 | `kerbside/spiceprotocol/packets/linkmessages.py` | SPICE handshake protocol |
+| `kerbside/sources/static.py` | Static source driver: reads VM-to-console mapping from an inline list in sources.yaml; designed for CI pipelines and ad-hoc debugging (no control plane required) |
 
 ## Architecture Patterns
 
