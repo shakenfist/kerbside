@@ -348,6 +348,18 @@ Items deliberately deferred from phase 4:
   switches so downstream consumers don't have to change. This is
   not "nice to have" — phase 6's success criteria should include
   it.
+- **Shrink the loadtest image via a ryll `headless` Cargo
+  feature (committed for phase 6).** Ryll has no headless
+  Cargo feature today, so the binary unconditionally links
+  eframe / egui / egui-winit / cpal and the runtime image
+  carries libgl1, libx11-6, libxcb1, libxkbcommon0,
+  libwayland-client0, and libasound2. Phase 4 just accepts
+  the bloat. Phase 6 adds a `headless` feature flag to ryll's
+  Cargo.toml that gates the GUI/audio modules behind it, and
+  the loadtest Dockerfile here switches its stage-1 build to
+  `cargo build --release --no-default-features --features
+  headless` and the stage-2 runtime layer drops those system
+  libs. Tracked in the master plan's phase 6 row.
 - **Wiring the latency loadtest into GitHub Actions.** Today
   it's run out-of-band; CI integration is a separate piece of
   work.
