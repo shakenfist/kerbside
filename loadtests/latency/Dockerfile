@@ -105,4 +105,4 @@ COPY loadtests/latency/orchestrator.py /srv/orchestrator.py
 ADD loadtests/latency/makeconsole.sh /srv/makeconsole.sh
 ADD loadtests/latency/cleanupconsoles.sh /srv/cleanupconsoles.sh
 
-CMD /srv/makeconsole.sh
+CMD ["/srv/makeconsole.sh"]
