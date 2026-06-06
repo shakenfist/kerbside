@@ -240,7 +240,7 @@ searchable from one place.
 | 3. Control socket on Ryll | ryll | [PLAN-test-harness-phase-03-control-socket.md](PLAN-test-harness-phase-03-control-socket.md) | Implementation complete; PR pending operator |
 | 4. Port latency loadtest to control socket and remove legacy `testclient/ryll/` | kerbside | [PLAN-test-harness-phase-04-port-latency.md](PLAN-test-harness-phase-04-port-latency.md) | Phase plan drafted |
 | 5. Direct-qemu CI workflow | kerbside | PLAN-test-harness-phase-05-direct-qemu-ci.md | Not started |
-| 6. Digest decoding in Ryll | ryll | PLAN-test-harness-phase-06-digest-decoding.md | Not started |
+| 6. Digest decoding in Ryll + restore keypress-to-screen latency | ryll | PLAN-test-harness-phase-06-digest-decoding.md | Not started |
 | 7. First Sextant scenario tempest test | kerbside | PLAN-test-harness-phase-07-scenario-test.md | Not started |
 | 8. OpenStack CI lane disposition | kerbside | PLAN-test-harness-phase-08-openstack-disposition.md | Not started |
 
@@ -254,7 +254,7 @@ when each phase plan is written):
 | 3 | high | opus | New protocol design that must serve both tests and future MCP. Touches Ryll's tokio event loop. Getting the verb set wrong is expensive to undo. |
 | 4 | medium | sonnet | Rewrite the loadtest to drive the control socket, then delete the legacy `testclient/ryll/` tree (the loadtest is its only consumer). Also touches `loadtests/latency/Dockerfile` and any README / AGENTS.md references. Validates phase 3's API; small but high-signal. |
 | 5 | high | opus | New CI workflow integrating multiple binaries, debugging KVM/runner-environment unknowns, many edge cases. |
-| 6 | high | opus | SurfaceMirror integration, QR detection on draw-event change, subtle correctness around when to re-decode. |
+| 6 | high | opus | SurfaceMirror integration, QR detection on draw-event change, subtle correctness around when to re-decode. Also adds a `surface_drawn` control-socket event so phase 4's loadtest can restore keypress-to-screen latency semantics (the user-perceivable metric Kerbside is being measured against); orchestrator switch-back is part of this phase. |
 | 7 | medium | sonnet | Composes phase 6 primitives into a scenario. Once the spine is in place this is mostly glue. |
 | 8 | low | sonnet | A CI workflow tweak plus a documentation update. |
 

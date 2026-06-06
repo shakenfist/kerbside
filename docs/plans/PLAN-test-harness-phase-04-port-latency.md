@@ -46,24 +46,29 @@ These were judgment calls made while drafting the phase plan
 rather than questions to ask the operator. Flagged explicitly so
 they can be challenged before code lands.
 
-- **The latency metric definition changes**. The legacy loadtest
-  reports wall-clock time between a synthetic key press leaving
-  the SPICE inputs channel and the next `draw_copy` arriving on
-  the display channel (i.e. keypress-to-screen end-to-end). v1
-  of the control socket exposes the `latency` event sourced from
-  SPICE PING/PONG (`main_channel.rs:~1032`). These are *different*
-  measurements: PING/PONG is round-trip channel latency, not
-  keypress-to-screen. After this phase, the CSV column will be
-  PING/PONG sample latencies. The CSV file shape stays identical
-  (one float per line, seconds, no header), so any consumer that
-  treats the file as opaque keeps working — but the *numbers* are
-  not directly comparable to the legacy run. This is a deliberate
-  scope-bounding choice: surfacing a real keypress-to-screen
-  metric requires a new event in the control socket (probably a
-  `surface_drawn` event in a future phase 6 / 6.5), and the
-  strict-replacement scope rules that out. Document the metric
-  change in the loadtest README so anyone reading old vs new
-  numbers knows why they differ.
+- **The latency metric definition changes — temporarily**. The
+  legacy loadtest reports wall-clock time between a synthetic key
+  press leaving the SPICE inputs channel and the next `draw_copy`
+  arriving on the display channel (i.e. keypress-to-screen
+  end-to-end). v1 of the control socket exposes the `latency`
+  event sourced from SPICE PING/PONG
+  (`main_channel.rs:~1032`). These are *different* measurements:
+  PING/PONG is round-trip channel latency, not keypress-to-screen.
+  After this phase, the CSV column will be PING/PONG sample
+  latencies. The CSV file shape stays identical (one float per
+  line, seconds, no header), so any consumer that treats the file
+  as opaque keeps working — but the *numbers* are not directly
+  comparable to the legacy run. This is a deliberate
+  scope-bounding choice. **The operator's intent is to measure
+  user-perceivable latency introduced by Kerbside, not just
+  underlying connection latency, so this regression is explicitly
+  temporary.** Restoring keypress-to-screen semantics requires a
+  new event in the control socket (a `surface_drawn` event, or
+  equivalent), which is committed to land in phase 6 (see the
+  master plan's phase 6 row and the Future work section below).
+  Document the metric change in the
+  loadtest README so anyone reading old vs new numbers knows why
+  they differ, and that it is a known-temporary state.
 - **The orchestrator is a single Python file at
   `loadtests/latency/orchestrator.py`**. Stdlib-only (`socket`,
   `json`, `argparse`, `time`, `signal`, `threading`, `sys`,
@@ -72,15 +77,16 @@ they can be challenged before code lands.
   copy-paste base; this script is a hardened version of it with
   CSV output and signal handling for clean shutdown.
 - **The Dockerfile becomes multi-stage**. Stage 1 (Rust build):
-  pulls a `rust:1.XX-bookworm` base, clones the ryll repo at a
-  pinned ref or builds from a `RYLL_REF` build-arg, runs
-  `cargo build --release -p ryll`, produces the binary. Stage 2
-  (runtime): the existing `debian:bookworm` base, with Python
-  deps, kerbside, the orchestrator script, the `makeconsole.sh`
-  / `cleanupconsoles.sh` scripts, and the ryll binary copied
-  from stage 1. No `testclient/` install line. The pinned ryll
-  ref is set as a build-arg with a default of `main`; CI can
-  override.
+  pulls a `rust:1.XX-bookworm` base, clones the ryll repo from
+  `main` (no pinned ref), runs `cargo build --release -p ryll`,
+  produces the binary. Stage 2 (runtime): the existing
+  `debian:bookworm` base, with Python deps, kerbside, the
+  orchestrator script, the `makeconsole.sh` /
+  `cleanupconsoles.sh` scripts, and the ryll binary copied from
+  stage 1. No `testclient/` install line. **The ryll source is
+  not pinned in this phase.** We always build from `main`. Pinning
+  is deferred until ryll either cuts a release tag or we hit a
+  reproducibility incident; both are out of scope for phase 4.
 - **`makeconsole.sh` orchestrates two processes**: it starts
   ryll headless in the background with `--headless --url <spice
   url> --control-socket /tmp/ryll.sock`, waits for the socket
@@ -213,10 +219,6 @@ After phase 4:
 These need answers before or during the phase, but do not block
 writing this plan:
 
-- **Pinning the ryll source in the Dockerfile**. Default plan:
-  `ARG RYLL_REF=main` and `git clone --depth 1 --branch ${RYLL_REF}`.
-  Operator may want a tag or a specific commit pinned for
-  reproducibility. Resolve at start of step 4b.
 - **Whether to emit the `wallclock_us` field anywhere**. Default
   plan: drop it; the legacy CSV has only one column. If a future
   consumer wants both, we can switch to two columns at that
@@ -237,7 +239,7 @@ single-branch discipline, do not open new branches.
 | Step | Repo | Effort | Model | Isolation | Brief for sub-agent |
 |------|------|--------|-------|-----------|---------------------|
 | 4a. Write the Python orchestrator | kerbside | medium | sonnet | none | Land `loadtests/latency/orchestrator.py` as a stdlib-only Python 3.10+ script. Use `shakenfist/ryll/examples/control-socket-demo.py` (224 lines) as the structural starter. CLI: `--socket PATH` (default `/tmp/ryll.sock`), `--output PATH` (required, CSV path), `--sample-count N` (default 60), `--cadence-seconds F` (default 2.0), `--max-seconds F` (default 600.0), `--scancode HEX` (default `0x39`). Behaviour: connect, hello (client_name `kerbside-latency-loadtest`, protocol_version `"1.0"`), assert server's hello response, subscribe to `["latency", "dropped"]`, start a key-press cadence thread that sends `send_key {scancode, state: "down"}` then sleeps 0.1s then `send_key {scancode, state: "up"}` then sleeps `cadence_seconds - 0.1`. Main thread reads events; for each `latency` event append `f"{sample_ms / 1000.0}\n"` to the CSV (note the unit conversion: protocol gives ms, legacy CSV is seconds); for each `dropped` event print to stderr `dropped <count> events`; exit cleanly after N latency samples have been written OR after `max_seconds` wall-clock OR on SIGTERM / SIGINT. On any error during the run (parse failure, socket close, hello rejection) print to stderr and exit non-zero. Open the CSV with line-buffered writes so partial runs leave usable data. Include a module docstring linking to `https://github.com/shakenfist/ryll/blob/main/docs/control-socket-protocol.md` and to `docs/plans/PLAN-test-harness-phase-04-port-latency.md`. Add no integration test — manual verification against `examples/control-socket-demo.py` style mock is enough; the loadtest is exercised via its Docker image in CI. |
-| 4b. Multi-stage Dockerfile + makeconsole.sh wiring | kerbside | medium | sonnet | none | Rewrite `loadtests/latency/Dockerfile` as multi-stage. Stage 1: base `rust:1.83-bookworm` (or whatever ryll's `rust-toolchain.toml` pins; check that file first), `ARG RYLL_REF=main`, `git clone --depth 1 --branch ${RYLL_REF} https://github.com/shakenfist/ryll.git /src`, then `cargo build --release -p ryll` (find the correct binary package name in ryll's workspace; the binary may be at `target/release/ryll`). Stage 2: base `debian:bookworm`, install `python3` + `python3-openstackclient` + `openstacksdk` + the system libs ryll needs at runtime (read ryll's runtime deps — typically `libgtk-3-0`, `libgstreamer1.0-0`, etc.; if it's a heavy list, consider whether headless mode actually requires the GUI libs — Ryll's GUI is opt-in, so the headless runtime should be lighter. Confirm by inspecting the ryll Cargo features used in stage 1.). Install kerbside. Do NOT install `testclient/`. `COPY --from=stage1 /src/target/release/ryll /usr/local/bin/ryll`. `COPY` the orchestrator and the two shell scripts. CMD remains `/srv/makeconsole.sh`. Then update `loadtests/latency/makeconsole.sh`: keep all the OpenStack provisioning logic (instance create, wait for ACTIVE, fetch console URL) unchanged. Replace the final `ryll connect ...` invocation with two steps: (1) `ryll --headless --url "${console_url}" --control-socket /tmp/ryll.sock &` (capture the PID); (2) a bounded wait loop (up to 30s) for `/tmp/ryll.sock` to appear; (3) `python3 /srv/orchestrator.py --socket /tmp/ryll.sock --output /tmp/results/latency-$$.csv` (capture exit code); (4) `kill -TERM ${RYLL_PID}` and `wait ${RYLL_PID}`; (5) `exit ${ORCH_EXIT_CODE}`. Use `set -euo pipefail` and a `trap` to clean up the background ryll on any script exit. Verify the script with `bash -n` and `shellcheck`. |
+| 4b. Multi-stage Dockerfile + makeconsole.sh wiring | kerbside | medium | sonnet | none | Rewrite `loadtests/latency/Dockerfile` as multi-stage. Stage 1: base `rust:1.83-bookworm` (or whatever ryll's `rust-toolchain.toml` pins; check that file first), `git clone --depth 1 https://github.com/shakenfist/ryll.git /src` (no `--branch`, no pinned ref — always builds from `main`), then `cargo build --release -p ryll` (find the correct binary package name in ryll's workspace; the binary may be at `target/release/ryll`). Stage 2: base `debian:bookworm`, install `python3` + `python3-openstackclient` + `openstacksdk` + the system libs ryll needs at runtime (read ryll's runtime deps — typically `libgtk-3-0`, `libgstreamer1.0-0`, etc.; if it's a heavy list, consider whether headless mode actually requires the GUI libs — Ryll's GUI is opt-in, so the headless runtime should be lighter. Confirm by inspecting the ryll Cargo features used in stage 1.). Install kerbside. Do NOT install `testclient/`. `COPY --from=stage1 /src/target/release/ryll /usr/local/bin/ryll`. `COPY` the orchestrator and the two shell scripts. CMD remains `/srv/makeconsole.sh`. Then update `loadtests/latency/makeconsole.sh`: keep all the OpenStack provisioning logic (instance create, wait for ACTIVE, fetch console URL) unchanged. Replace the final `ryll connect ...` invocation with two steps: (1) `ryll --headless --url "${console_url}" --control-socket /tmp/ryll.sock &` (capture the PID); (2) a bounded wait loop (up to 30s) for `/tmp/ryll.sock` to appear; (3) `python3 /srv/orchestrator.py --socket /tmp/ryll.sock --output /tmp/results/latency-$$.csv` (capture exit code); (4) `kill -TERM ${RYLL_PID}` and `wait ${RYLL_PID}`; (5) `exit ${ORCH_EXIT_CODE}`. Use `set -euo pipefail` and a `trap` to clean up the background ryll on any script exit. Verify the script with `bash -n` and `shellcheck`. |
 | 4c. Delete testclient/ryll/ and update docs | kerbside | low | sonnet | none | `git rm -r testclient/ryll/` and `git rm -r testclient/` if the directory becomes empty (verify nothing else lives under `testclient/` first). Remove the testclient table row from `AGENTS.md`. Update `README.md`'s loadtest section to describe the new flow: built image now bundles upstream Ryll's Rust binary; orchestrator drives the control socket; metric is PING/PONG round-trip (note the change from keypress-to-screen). Update `ARCHITECTURE.md` if it mentions the testclient — replace with a one-line pointer at `loadtests/latency/orchestrator.py` and a link to `shakenfist/ryll/docs/control-socket-protocol.md`. Grep the whole repo for any other reference to `testclient/` (`pyproject.toml`, `Makefile`, `tox.ini`, `tools/`, `docs/`, `.github/workflows/`) and remove or rewrite as appropriate. Update the master plan's phase 4 row in `docs/plans/PLAN-test-harness.md` from "Not started" to "Implementation complete; PR pending operator". |
 
 ### Sequencing notes
@@ -332,10 +334,20 @@ Phase 4 is done when:
 
 Items deliberately deferred from phase 4:
 
-- **Keypress-to-screen latency as a control-socket event.** A
-  future `surface_drawn` event in the protocol would let the
-  orchestrator restore the legacy metric semantics. Likely
-  bundled with phase 6's display-channel work.
+- **Restore keypress-to-screen latency semantics (committed for
+  phase 6+).** PING/PONG round-trip is a stand-in, not the metric
+  the operator actually wants. The operator's goal is to measure
+  whether Kerbside introduces user-perceivable latency on
+  sessions, which requires measuring end-to-end keypress-to-screen
+  time, not just the underlying SPICE channel round-trip. Phase 6
+  must add a `surface_drawn` (or equivalently-named) control-
+  socket event that fires when a draw operation lands on the
+  display surface, and the orchestrator here gets a follow-up to
+  switch the CSV back to the legacy metric semantics. The CSV
+  shape (one float per line, seconds) stays the same across both
+  switches so downstream consumers don't have to change. This is
+  not "nice to have" — phase 6's success criteria should include
+  it.
 - **Wiring the latency loadtest into GitHub Actions.** Today
   it's run out-of-band; CI integration is a separate piece of
   work.
