@@ -186,11 +186,11 @@ jobs:
 
           scp -rp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
-              ${GITHUB_WORKSPACE}/kerbside/tools/ovirt-*.sh \
-              ${GITHUB_WORKSPACE}/kerbside/tools/start-test-target.py \
-              ${GITHUB_WORKSPACE}/kerbside/tools/test-ovirt-console.py \
-              ${GITHUB_WORKSPACE}/kerbside/etc/${{ matrix.test.name }}-answers.conf \
-              ${GITHUB_WORKSPACE}/kerbside/etc/${{ matrix.test.name }}-repos.patch \
+              ${GITHUB_WORKSPACE}/actions/tools/ovirt-*.sh \
+              ${GITHUB_WORKSPACE}/actions/tools/start-test-target.py \
+              ${GITHUB_WORKSPACE}/actions/tools/test-ovirt-console.py \
+              ${GITHUB_WORKSPACE}/actions/etc/${{ matrix.test.name }}-answers.conf \
+              ${GITHUB_WORKSPACE}/actions/etc/${{ matrix.test.name }}-repos.patch \
               ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
 
       - name: Install base packages
