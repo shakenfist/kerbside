@@ -271,8 +271,8 @@ alembic/               # Database migrations
 etc/                   # Configuration examples
 tools/                 # Utility scripts (incl. run-tempest-tests)
 tempest-plugin/        # Kerbside Tempest plugin (separate releasable)
-testclient/            # Ryll test client
 loadtests/             # Load testing tools
+  latency/             # Latency loadtest (orchestrator.py + Dockerfile)
 docs/                  # Protocol documentation
 ```
 

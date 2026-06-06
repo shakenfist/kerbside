@@ -220,4 +220,4 @@ after the `# END_OF_INDIRECT_DEPS` marker.
 
 - **kerbside-patches**: Upstream patches for OpenStack/Kolla integration
 - **shakenfist**: Shaken Fist hypervisor platform
-- **testclient/ryll**: Simple SPICE client for testing (in this repo)
+- **shakenfist/ryll**: Upstream Rust SPICE client (built into the loadtest image)

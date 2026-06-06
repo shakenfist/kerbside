@@ -93,8 +93,6 @@ RUN cd /srv/openstacksdk && pip install --break-system-packages -e .
 RUN cd /srv/python-openstackclient && pip install --break-system-packages -e .
 
 # Install kerbside (the package under test / metric consumer).
-# testclient/ is intentionally NOT installed here — it is being
-# retired in phase 4c.
 ADD . /srv/kerbside
 RUN cd /srv/kerbside && apt-get install -y $(bindep --brief) || true
 RUN cd /srv/kerbside && pip install --break-system-packages -e .

@@ -1,9 +1,8 @@
 """Latency loadtest orchestrator driving Ryll's control socket.
 
-This script replaces the legacy `testclient/ryll/` Python SPICE client
-as the latency loadtest's SUT-side driver. See the kerbside phase 4
-plan at docs/plans/PLAN-test-harness-phase-04-port-latency.md for
-context and motivation.
+This script is the latency loadtest's SUT-side driver. See the kerbside
+phase 4 plan at docs/plans/PLAN-test-harness-phase-04-port-latency.md
+for context and motivation.
 
 Wire protocol: https://github.com/shakenfist/ryll/blob/main/docs/control-socket-protocol.md
 
