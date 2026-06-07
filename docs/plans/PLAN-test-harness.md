@@ -240,7 +240,7 @@ searchable from one place.
 | 3. Control socket on Ryll | ryll | [PLAN-test-harness-phase-03-control-socket.md](PLAN-test-harness-phase-03-control-socket.md) | Implementation complete; PR pending operator |
 | 4. Port latency loadtest to control socket and remove legacy `testclient/ryll/` | kerbside | [PLAN-test-harness-phase-04-port-latency.md](PLAN-test-harness-phase-04-port-latency.md) | Implementation complete; PR pending operator |
 | 5. Direct-qemu CI workflow | kerbside | [PLAN-test-harness-phase-05-direct-qemu-ci.md](PLAN-test-harness-phase-05-direct-qemu-ci.md) | Implementation drafted; awaiting first CI run |
-| 6. Ryll Cargo feature work: digest decoding, headless feature, restore keypress-to-screen latency | ryll | PLAN-test-harness-phase-06-digest-decoding.md | Not started |
+| 6. Ryll Cargo feature work: digest decoding, headless feature, restore keypress-to-screen latency | ryll | [PLAN-test-harness-phase-06-digest-decoding.md](PLAN-test-harness-phase-06-digest-decoding.md) | Phase plan drafted |
 | 7. First Sextant scenario tempest test | kerbside | PLAN-test-harness-phase-07-scenario-test.md | Not started |
 | 8. OpenStack CI lane disposition | kerbside | PLAN-test-harness-phase-08-openstack-disposition.md | Not started |
 
