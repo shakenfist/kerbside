@@ -393,6 +393,23 @@ Items deliberately deferred:
   `pre-commit install` to wire it as a git hook. Worth
   a contributors' note when we touch CONTRIBUTING / the
   readme.
+- **Remove the "direct" .vv endpoint and its UI affordance.**
+  `kerbside/api.py:368` exposes `ConsolesDirectVirtViewer` at
+  `/console/direct/<source>/<uuid>/console.vv`, which builds
+  a virt-viewer file pointing at the hypervisor's SPICE port
+  instead of kerbside's proxy. `kerbside/api/templates/consoles.html:62`
+  surfaces it as a "Connect directly" dropdown item. The
+  direct endpoint exists for historical debugging convenience
+  but bypasses every value kerbside provides (authentication,
+  TLS termination, audit, ticket abstraction). Phase 5's
+  smoke-check exposure of this trap (a sub-agent reached for
+  the direct endpoint and had to be redirected to the proxy
+  endpoint to actually test the proxy path) is the second
+  time it has caused confusion. Remove both the endpoint
+  registration and the UI link in a follow-up commit; do an
+  initial grep across the codebase, docs, and tempest plugin
+  to make sure no test or doc relies on the direct flow
+  before deleting.
 
 ### Bugs fixed during this work
 
