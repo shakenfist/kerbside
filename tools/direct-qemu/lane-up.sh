@@ -110,12 +110,11 @@ fi
 # calls verify_jwt_in_request which checks the signature and expiry;
 # it does not validate any keystone claims.
 #
-# Endpoint: GET /console/direct/<source>/<uuid>/console.vv
-# The "direct" variant embeds the SPICE ticket and points ryll
-# straight at the QEMU SPICE port without the proxy hop.  The
-# "proxy" variant would go through kerbside's SPICE proxy, which
-# requires TLS and a running proxy daemon — correct for production
-# but unnecessarily complex for the smoke check.
+# Endpoint: GET /console/proxy/<source>/<uuid>/console.vv
+# The "proxy" variant embeds the CA cert and points ryll at kerbside's
+# own SPICE proxy (VDI_INSECURE_PORT / VDI_SECURE_PORT) rather than
+# at QEMU's SPICE port directly.  This is the correct endpoint for
+# smoke-checking that kerbside sits in the connection path.
 
 SEED_FILE="${WORKDIR}/kerbside-auth-seed.txt"
 if [ ! -f "${SEED_FILE}" ]; then
@@ -151,7 +150,7 @@ print(token, end='')
 PYEOF
 )"
 
-VV_URL="http://127.0.0.1:${API_PORT}/console/direct/${CONSOLE_SOURCE}/${CONSOLE_UUID}/console.vv"
+VV_URL="http://127.0.0.1:${API_PORT}/console/proxy/${CONSOLE_SOURCE}/${CONSOLE_UUID}/console.vv"
 echo "[lane-up] Fetching .vv from ${VV_URL}"
 
 curl \

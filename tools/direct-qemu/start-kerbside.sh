@@ -65,6 +65,13 @@ KERBSIDE_AUTH_SECRET_SEED="$(openssl rand -hex 32)"
 export KERBSIDE_SQL_URL='sqlite:////tmp/kerbside-ci.db'
 # Suppress Prometheus metrics port conflicts in CI
 export KERBSIDE_PROMETHEUS_METRICS_PORT='13009'
+# Proxy .vv configuration: point ryll at localhost on the standard SPICE ports.
+# PUBLIC_FQDN is the host ryll will connect to; PUBLIC_SECURE_PORT and
+# PUBLIC_INSECURE_PORT default to 5900/5901 and do not need to be overridden.
+export KERBSIDE_PUBLIC_FQDN='127.0.0.1'
+# PROXY_HOST_SUBJECT must match the CN/subject of proxy-cert.pem as generated
+# by generate-tls.sh (subj '/C=US/O=Kerbside CI/CN=kerbside-ci').
+export KERBSIDE_PROXY_HOST_SUBJECT='C=US,O=Kerbside CI,CN=kerbside-ci'
 
 # ── Locate repo root (needed for alembic.ini) ────────────────────────────────
 
@@ -142,4 +149,32 @@ while true; do
     sleep 0.5
 done
 
-echo "[start-kerbside] kerbside up on port ${API_PORT}, daemon pid=$(cat "${PID_FILE}")"
+echo "[start-kerbside] kerbside REST API up on port ${API_PORT}"
+
+# ── Wait for the SPICE proxy to accept connections ────────────────────────────
+#
+# The proxy endpoint (/console/proxy/...) generates a .vv that points ryll
+# at the SPICE proxy on VDI_SECURE_PORT (default 5900) and
+# VDI_INSECURE_PORT (default 5901).  Poll VDI_INSECURE_PORT (5901) so that
+# we know the proxy listener is up before lane-up.sh fetches the .vv and
+# hands it to ryll.
+#
+SPICE_PROXY_PORT="${KERBSIDE_VDI_INSECURE_PORT:-5901}"
+echo "[start-kerbside] Waiting for SPICE proxy on port ${SPICE_PROXY_PORT}..."
+DEADLINE=$(( $(date +%s) + 30 ))
+while true; do
+    if python3 -c \
+            "import socket; s=socket.socket(); s.settimeout(1); s.connect(('127.0.0.1', ${SPICE_PROXY_PORT})); s.close()" \
+            2>/dev/null; then
+        break
+    fi
+    if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
+        echo "ERROR: kerbside SPICE proxy did not come up on port ${SPICE_PROXY_PORT} within 30s" >&2
+        echo "  daemon log (last 20 lines):" >&2
+        tail -20 "${LOG_PATH}" >&2 || true
+        exit 1
+    fi
+    sleep 0.5
+done
+
+echo "[start-kerbside] kerbside SPICE proxy up on port ${SPICE_PROXY_PORT}, daemon pid=$(cat "${PID_FILE}")"
