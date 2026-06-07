@@ -1,9 +1,6 @@
 name: Direct-qemu functional test
 
 on:
-  push:
-    branches:
-      - test-harness
   pull_request:
     branches:
       - develop
@@ -26,7 +23,7 @@ jobs:
           sudo apt-get install -y \
             qemu-system-x86 ovmf openssl curl jq \
             libgl1 libx11-6 libxcb1 libxkbcommon0 libwayland-client0 \
-            libasound2 libssl3 \
+            libasound2 \
             build-essential cmake pkg-config \
             libasound2-dev libxcb1-dev libxkbcommon-dev libwayland-dev \
             libegl1-mesa-dev libgl1-mesa-dev \
