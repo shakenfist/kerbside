@@ -237,7 +237,7 @@ searchable from one place.
 |-------|------|------|--------|
 | 1. Shared visual-digest crate | new (`shakenfist-visual-digest`) | [PLAN-test-harness-phase-01-digest-crate.md](PLAN-test-harness-phase-01-digest-crate.md) | Implementation complete; Sextant PR pending operator |
 | 2. Static source driver | kerbside | [PLAN-test-harness-phase-02-static-hypervisor.md](PLAN-test-harness-phase-02-static-hypervisor.md) | Implementation complete |
-| 3. Control socket on Ryll | ryll | [PLAN-test-harness-phase-03-control-socket.md](PLAN-test-harness-phase-03-control-socket.md) | Implementation complete; PR pending operator |
+| 3. Control socket on Ryll | ryll | [PLAN-test-harness-phase-03-control-socket.md](PLAN-test-harness-phase-03-control-socket.md) | Merged to ryll develop |
 | 4. Port latency loadtest to control socket and remove legacy `testclient/ryll/` | kerbside | [PLAN-test-harness-phase-04-port-latency.md](PLAN-test-harness-phase-04-port-latency.md) | Implementation complete; PR pending operator |
 | 5. Direct-qemu CI workflow | kerbside | [PLAN-test-harness-phase-05-direct-qemu-ci.md](PLAN-test-harness-phase-05-direct-qemu-ci.md) | Implementation drafted; awaiting first CI run |
 | 6. Ryll Cargo feature work: digest decoding, headless feature, restore keypress-to-screen latency | ryll | [PLAN-test-harness-phase-06-digest-decoding.md](PLAN-test-harness-phase-06-digest-decoding.md) | Phase plan drafted |
