@@ -29,6 +29,7 @@ repos:
       - id: check-yaml
       - id: check-merge-conflict
       - id: check-added-large-files
+        args: ['--maxkb=1024']
 
   # Flake8 style checking via tox
   # Requires: pip install tox flake8
