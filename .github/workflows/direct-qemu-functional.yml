@@ -7,7 +7,7 @@ on:
 
 jobs:
   direct-qemu-lane:
-    runs-on: [self-hosted, vm]
+    runs-on: [self-hosted, vm, debian-12]
     timeout-minutes: 60
 
     steps:
