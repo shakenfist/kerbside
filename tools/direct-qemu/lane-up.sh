@@ -34,6 +34,7 @@ RYLL_SOCK="${RYLL_SOCK:-${WORKDIR}/ryll-ci.sock}"
 RYLL_VV="${RYLL_VV:-${WORKDIR}/console.vv}"
 RYLL_PID_FILE="${RYLL_PID_FILE:-${WORKDIR}/ryll.pid}"
 RYLL_STDERR="${RYLL_STDERR:-${WORKDIR}/ryll-ci.stderr}"
+RYLL_STDOUT="${RYLL_STDOUT:-${WORKDIR}/ryll-ci.stdout}"
 API_PORT="${API_PORT:-13002}"
 
 QCOW2="${REPO_ROOT}/tests/fixtures/uncalibrated-sextant.qcow2"
@@ -190,12 +191,20 @@ echo "[lane-up] .vv file written to ${RYLL_VV}"
 
 echo "[lane-up] Launching ryll headless"
 ryll --headless --file "${RYLL_VV}" --control-socket "${RYLL_SOCK}" \
-    2> "${RYLL_STDERR}" &
+    > "${RYLL_STDOUT}" 2> "${RYLL_STDERR}" &
 RYLL_PID=$!
 printf '%d' "${RYLL_PID}" > "${RYLL_PID_FILE}"
 echo "[lane-up] ryll started, pid=${RYLL_PID}"
 
 # ── Step 8: Poll for the ryll control socket ──────────────────────────────────
+#
+# ryll exits its event loop the moment the SPICE connection task
+# finishes (cleanly or otherwise), which also unlinks the control
+# socket.  If we miss the brief window between socket-listen and
+# socket-removal, the readiness check fails -- so on timeout, also
+# verify whether ryll is still alive and dump everything we know
+# about what happened: ryll stdout/stderr plus the kerbside proxy
+# and gunicorn logs.
 
 echo "[lane-up] Waiting for ryll control socket at ${RYLL_SOCK}..."
 DEADLINE=$(( $(date +%s) + 30 ))
@@ -205,8 +214,21 @@ while true; do
     fi
     if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
         echo "ERROR: ryll control socket did not appear within 30s" >&2
+        if kill -0 "${RYLL_PID}" 2>/dev/null; then
+            echo "  ryll process ${RYLL_PID} is still running" >&2
+        else
+            echo "  ryll process ${RYLL_PID} has exited" >&2
+        fi
+        echo "  ryll stdout:" >&2
+        tail -40 "${RYLL_STDOUT}" >&2 || true
         echo "  ryll stderr:" >&2
-        tail -20 "${RYLL_STDERR}" >&2 || true
+        tail -40 "${RYLL_STDERR}" >&2 || true
+        echo "  kerbside daemon (proxy) log:" >&2
+        tail -60 "${KERBSIDE_LOG}" >&2 || true
+        echo "  gunicorn access log:" >&2
+        tail -20 "${KERBSIDE_LOG}.gunicorn-access" >&2 || true
+        echo "  .vv contents:" >&2
+        cat "${RYLL_VV}" >&2 || true
         exit 1
     fi
     sleep 0.5
