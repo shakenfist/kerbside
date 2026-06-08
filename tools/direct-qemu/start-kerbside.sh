@@ -14,9 +14,11 @@
 # background process.  Both PIDs are captured; the caller should use
 # lane-down.sh to clean up.
 #
-# Database: uses SQLite so no MySQL is needed in CI.  The alembic
-# migration is run in-place from KERBSIDE_REPO_ROOT (the repo root
-# that contains alembic.ini).
+# Database: uses MariaDB to match production (the schema includes
+# MySQL-only DDL such as DATETIME(fsp) and CURRENT_TIMESTAMP(6)).
+# setup-mariadb.sh must have been run first to create the kerbside
+# database and user.  The alembic migration is run in-place from
+# KERBSIDE_REPO_ROOT (the repo root that contains alembic.ini).
 #
 # Part of docs/plans/PLAN-test-harness-phase-05-direct-qemu-ci.md step 5b.
 
@@ -60,9 +62,9 @@ export KERBSIDE_PROXY_HOST_CERT_KEY_PATH="${TLS_DIR}/proxy-key.pem"
 export KERBSIDE_LOG_OUTPUT_PATH="${LOG_PATH}"
 export KERBSIDE_AUTH_SECRET_SEED
 KERBSIDE_AUTH_SECRET_SEED="$(openssl rand -hex 32)"
-# SQLite avoids the MySQL dependency in CI; note four slashes for an
-# absolute path (sqlite:////abs/path).
-export KERBSIDE_SQL_URL='sqlite:////tmp/kerbside-ci.db'
+# MariaDB, set up by setup-mariadb.sh.  Matches the production driver
+# (mysqlclient, SQLAlchemy URL prefix mysql://).
+export KERBSIDE_SQL_URL='mysql://kerbside:kerbside@127.0.0.1/kerbside'
 # Suppress Prometheus metrics port conflicts in CI
 export KERBSIDE_PROMETHEUS_METRICS_PORT='13009'
 # Proxy .vv configuration: point ryll at localhost on the standard SPICE ports.

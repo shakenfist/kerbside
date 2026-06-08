@@ -25,6 +25,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             qemu-system-x86 ovmf openssl curl jq \
+            mariadb-server \
             libgl1 libx11-6 libxcb1 libxkbcommon0 libwayland-client0 \
             libasound2 \
             build-essential cmake pkg-config \
@@ -58,6 +59,9 @@ jobs:
           python3 -m venv /tmp/kerbside-venv
           /tmp/kerbside-venv/bin/pip install --quiet .
           echo "/tmp/kerbside-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Initialize MariaDB
+        run: tools/direct-qemu/setup-mariadb.sh
 
       - name: Bring up the lane
         run: tools/direct-qemu/lane-up.sh
