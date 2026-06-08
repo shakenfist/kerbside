@@ -53,7 +53,7 @@ jobs:
       - name: Install kerbside into venv
         run: |
           python3 -m venv /tmp/kerbside-venv
-          /tmp/kerbside-venv/bin/pip install --quiet -e .
+          /tmp/kerbside-venv/bin/pip install --quiet .
           echo "/tmp/kerbside-venv/bin" >> "$GITHUB_PATH"
 
       - name: Bring up the lane
