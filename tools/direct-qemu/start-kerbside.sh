@@ -145,7 +145,15 @@ while true; do
     if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
         echo "ERROR: kerbside API did not come up on port ${API_PORT} within 30s" >&2
         echo "  gunicorn error log:" >&2
-        tail -20 "${LOG_PATH}.gunicorn-error" >&2 || true
+        tail -40 "${LOG_PATH}.gunicorn-error" >&2 || true
+        echo "  gunicorn access log:" >&2
+        tail -40 "${LOG_PATH}.gunicorn-access" >&2 || true
+        echo "  kerbside daemon log:" >&2
+        tail -40 "${LOG_PATH}" >&2 || true
+        echo "  one-shot verbose curl to ${API_PORT}/:" >&2
+        curl --max-time 3 --verbose \
+            "http://127.0.0.1:${API_PORT}/" \
+            -H 'Accept: application/json' >&2 || true
         exit 1
     fi
     sleep 0.5

@@ -87,6 +87,8 @@ jobs:
           if-no-files-found: warn
           path: |
             /tmp/kerbside-ci/kerbside.log
+            /tmp/kerbside-ci/kerbside.log.gunicorn-access
+            /tmp/kerbside-ci/kerbside.log.gunicorn-error
             /tmp/kerbside-ci/sextant-serial.log
             /tmp/kerbside-ci/ryll-ci.stderr
             /tmp/kerbside-ci/smoke-client.log
