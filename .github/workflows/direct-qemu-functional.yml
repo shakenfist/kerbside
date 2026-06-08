@@ -7,7 +7,7 @@ on:
 
 jobs:
   direct-qemu-lane:
-    runs-on: [self-hosted, vm, debian-12]
+    runs-on: [self-hosted, vm, debian-12, l]
     timeout-minutes: 60
 
     steps:
@@ -16,6 +16,9 @@ jobs:
 
       - name: Probe runner for KVM / qemu / OVMF
         run: bash tools/direct-qemu/probe-runner.sh
+
+      - name: Grant runner user access to /dev/kvm
+        run: sudo chmod a+rw /dev/kvm
 
       - name: Install system packages
         run: |

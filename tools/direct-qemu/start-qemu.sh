@@ -78,7 +78,7 @@ echo "[start-qemu] Launching QEMU with SPICE on port ${SPICE_PORT}"
 
 qemu-system-x86_64 \
     -machine "q35,accel=${ACCEL}" \
-    -m 2048 \
+    -m 512 \
     -drive "if=pflash,format=raw,readonly=on,file=${OVMF_CODE}" \
     -drive "if=pflash,format=raw,file=${VARS_COPY}" \
     -drive "file=${QCOW2},format=qcow2,if=virtio" \
