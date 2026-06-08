@@ -138,7 +138,12 @@ payload = {
     'iat': now,
     'jti': str(uuid.uuid4()),
     'type': 'access',
-    'sub': ['ci-admin'],
+    # flask-jwt-extended validates that sub is a string (RFC 7519
+    # StringOrURI); a list here is rejected at verify time with
+    # "Subject must be a string".  kerbside.verify_token does not
+    # inspect the identity, only the signature/expiry, so any
+    # string is fine.
+    'sub': 'kerbside-ci',
     'nbf': now,
     'exp': now + 3600,
 }
