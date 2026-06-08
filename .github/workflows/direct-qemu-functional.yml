@@ -10,6 +10,14 @@ jobs:
     runs-on: [self-hosted, vm, debian-12, l]
     timeout-minutes: 60
 
+    # The runner image exports http_proxy/https_proxy pointing at an
+    # upstream squid cache for apt, github, and the cargo registry.
+    # Loopback traffic to kerbside on 127.0.0.1 must bypass that proxy
+    # or squid returns 503 ERR_CONNECT_FAIL when it cannot route the
+    # request back through itself.
+    env:
+      no_proxy: 127.0.0.1,localhost
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
