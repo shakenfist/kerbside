@@ -153,12 +153,26 @@ PYEOF
 VV_URL="http://127.0.0.1:${API_PORT}/console/proxy/${CONSOLE_SOURCE}/${CONSOLE_UUID}/console.vv"
 echo "[lane-up] Fetching .vv from ${VV_URL}"
 
-curl \
+VV_STATUS="$(curl \
     --silent \
-    --fail \
     --output "${RYLL_VV}" \
+    --write-out '%{http_code}' \
     --header "Authorization: Bearer ${JWT_TOKEN}" \
-    "${VV_URL}"
+    "${VV_URL}")"
+
+if [ "${VV_STATUS}" != '200' ]; then
+    echo "ERROR: .vv fetch returned HTTP ${VV_STATUS}" >&2
+    echo "  response body:" >&2
+    cat "${RYLL_VV}" >&2 || true
+    echo >&2
+    echo "  gunicorn access log:" >&2
+    tail -40 "${KERBSIDE_LOG}.gunicorn-access" >&2 || true
+    echo "  gunicorn error log:" >&2
+    tail -40 "${KERBSIDE_LOG}.gunicorn-error" >&2 || true
+    echo "  kerbside daemon log:" >&2
+    tail -40 "${KERBSIDE_LOG}" >&2 || true
+    exit 1
+fi
 
 if [ ! -s "${RYLL_VV}" ]; then
     echo "ERROR: .vv file is empty or was not created: ${RYLL_VV}" >&2
