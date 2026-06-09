@@ -190,6 +190,19 @@ echo "[lane-up] .vv file written to ${RYLL_VV}"
 # ── Step 7: Launch ryll ───────────────────────────────────────────────────────
 
 echo "[lane-up] Launching ryll headless"
+# Confirm the SPICE proxy is listening on both the insecure (5901)
+# and TLS (5900) ports.  start-kerbside.sh only probes 5901, so a
+# silent failure during SSL context init would leave 5900 unbound
+# without us noticing.  Also confirm port 5900 actually accepts TCP
+# so we know any ryll failure is in the TLS handshake or later, not
+# at TCP refuse.
+echo "[lane-up] SPICE proxy listen state:"
+ss -tlnp '( sport = :5900 or sport = :5901 )' || true
+# Run ryll with debug logging so the SPICE client emits the actual
+# host:port it connects to and any TLS/rustls error -- the headless
+# event loop currently swallows connect_channel errors with just
+# "Connection task completed".
+RUST_LOG="${RUST_LOG:-debug,rustls=info,hyper=info,h2=info}" \
 ryll --headless --file "${RYLL_VV}" --control-socket "${RYLL_SOCK}" \
     > "${RYLL_STDOUT}" 2> "${RYLL_STDERR}" &
 RYLL_PID=$!
