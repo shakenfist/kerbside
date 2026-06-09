@@ -81,7 +81,7 @@ qemu-system-x86_64 \
     -m 512 \
     -drive "if=pflash,format=raw,readonly=on,file=${OVMF_CODE}" \
     -drive "if=pflash,format=raw,file=${VARS_COPY}" \
-    -drive "file=${QCOW2},format=qcow2,if=virtio" \
+    -drive "file=${QCOW2},format=qcow2" \
     -vga qxl \
     -spice "port=${SPICE_PORT},password=${TICKET},disable-ticketing=off" \
     -serial "file:${SERIAL_LOG}" \

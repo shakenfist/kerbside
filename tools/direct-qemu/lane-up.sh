@@ -60,11 +60,19 @@ echo "[lane-up] sources.yaml written to ${SOURCES_PATH}"
 
 # ── Step 2: Locate OVMF firmware ──────────────────────────────────────────────
 
-# Prefer split code+vars files (Debian ovmf package installs these)
-if [ -f '/usr/share/OVMF/OVMF_CODE.fd' ] && [ -f '/usr/share/OVMF/OVMF_VARS.fd' ]; then
+# Prefer the 4M OVMF variant -- that is what the Sextant project
+# tests its release artifacts against (see
+# uncalibrated-sextant/scripts/verify-release.sh and spice.sh).
+# Fall back to the 2M split files, then to a single combined
+# image as a last resort.
+if [ -f '/usr/share/OVMF/OVMF_CODE_4M.fd' ] && [ -f '/usr/share/OVMF/OVMF_VARS_4M.fd' ]; then
+    OVMF_CODE='/usr/share/OVMF/OVMF_CODE_4M.fd'
+    OVMF_VARS='/usr/share/OVMF/OVMF_VARS_4M.fd'
+    echo "[lane-up] OVMF: 4M split files (${OVMF_CODE})"
+elif [ -f '/usr/share/OVMF/OVMF_CODE.fd' ] && [ -f '/usr/share/OVMF/OVMF_VARS.fd' ]; then
     OVMF_CODE='/usr/share/OVMF/OVMF_CODE.fd'
     OVMF_VARS='/usr/share/OVMF/OVMF_VARS.fd'
-    echo "[lane-up] OVMF: split files (${OVMF_CODE})"
+    echo "[lane-up] OVMF: 2M split files (${OVMF_CODE})"
 elif [ -f '/usr/share/ovmf/OVMF.fd' ]; then
     # Some Debian configurations ship a single combined image
     OVMF_CODE='/usr/share/ovmf/OVMF.fd'
