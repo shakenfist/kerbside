@@ -25,6 +25,11 @@ mkdir -p "${TLSDIR}"
 echo "[generate-tls] Writing TLS material to ${TLSDIR}"
 
 # --- CA key and self-signed cert ---
+#
+# Emit X.509 v3 explicitly via -addext.  `openssl req -x509` in
+# 3.x defaults to v3, but older toolchains (and `openssl x509
+# -req` further down) silently produce v1 when no extensions are
+# present, and rustls/webpki rejects v1 with UnsupportedCertVersion.
 openssl genrsa -out "${TLSDIR}/ca-key.pem" 2048 2>/dev/null
 
 openssl req \
@@ -33,7 +38,9 @@ openssl req \
     -days 30 \
     -key "${TLSDIR}/ca-key.pem" \
     -out "${TLSDIR}/ca-cert.pem" \
-    -subj '/CN=kerbside-ci-ca'
+    -subj '/CN=kerbside-ci-ca' \
+    -addext 'basicConstraints=critical,CA:TRUE' \
+    -addext 'keyUsage=critical,keyCertSign,cRLSign'
 
 echo "[generate-tls] CA cert: ${TLSDIR}/ca-cert.pem"
 
@@ -47,6 +54,20 @@ openssl req \
     -subj '/C=US/O=Kerbside CI/CN=kerbside-ci'
 
 # --- Sign the proxy cert with our CA ---
+#
+# Add server-cert extensions via -extfile.  Without these,
+# `openssl x509 -req` emits a v1 certificate (no extensions ⇒ v1),
+# which rustls's webpki verifier rejects outright with
+# UnsupportedCertVersion.  Including a SAN covering the loopback
+# address keeps modern TLS clients happy even though ryll's
+# SpiceCaVerifier currently tolerates hostname mismatches.
+cat > "${TLSDIR}/proxy-ext.cnf" << 'EOF'
+basicConstraints = CA:FALSE
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = IP:127.0.0.1, DNS:localhost
+EOF
+
 openssl x509 \
     -req \
     -days 30 \
@@ -54,10 +75,11 @@ openssl x509 \
     -CA "${TLSDIR}/ca-cert.pem" \
     -CAkey "${TLSDIR}/ca-key.pem" \
     -CAcreateserial \
+    -extfile "${TLSDIR}/proxy-ext.cnf" \
     -out "${TLSDIR}/proxy-cert.pem" \
     2>/dev/null
 
-rm -f "${TLSDIR}/proxy.csr" "${TLSDIR}/ca-cert.srl"
+rm -f "${TLSDIR}/proxy.csr" "${TLSDIR}/ca-cert.srl" "${TLSDIR}/proxy-ext.cnf"
 
 echo "[generate-tls] Proxy cert: ${TLSDIR}/proxy-cert.pem"
 
