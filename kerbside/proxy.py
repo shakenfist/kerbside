@@ -98,7 +98,22 @@ class SpiceListener(object):
                 yield conn, addr[0], addr[1], False
             elif read == self.secured:
                 conn, addr = self.secured.accept()
-                conn = self.ssl_context.wrap_socket(conn, server_side=True)
+                # wrap_socket() performs the TLS handshake synchronously.
+                # A misconfigured client (wrong cert, no SNI, plaintext
+                # SPICE on the TLS port) raises SSLError here -- without
+                # this guard the exception bubbles up to the run() loop
+                # and kills the entire proxy mainloop, taking every
+                # other session with it.
+                try:
+                    conn = self.ssl_context.wrap_socket(conn, server_side=True)
+                except (ssl.SSLError, OSError) as e:
+                    LOG.warning(
+                        'TLS handshake failed for %s:%s: %s' % (addr[0], addr[1], e))
+                    try:
+                        conn.close()
+                    except OSError:
+                        ...
+                    continue
                 LOG.info('Accepted secured connection from %s:%s' % addr)
                 yield conn, addr[0], addr[1], True
 

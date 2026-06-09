@@ -198,12 +198,13 @@ echo "[lane-up] Launching ryll headless"
 # at TCP refuse.
 echo "[lane-up] SPICE proxy listen state:"
 ss -tlnp '( sport = :5900 or sport = :5901 )' || true
-# Run ryll with debug logging so the SPICE client emits the actual
+# Run ryll with --verbose so the SPICE client emits the actual
 # host:port it connects to and any TLS/rustls error -- the headless
 # event loop currently swallows connect_channel errors with just
-# "Connection task completed".
-RUST_LOG="${RUST_LOG:-debug,rustls=info,hyper=info,h2=info}" \
-ryll --headless --file "${RYLL_VV}" --control-socket "${RYLL_SOCK}" \
+# "Connection task completed".  ryll does not honour RUST_LOG; it
+# gates DEBUG behind --verbose in ryll/src/main.rs.
+ryll --verbose --headless --file "${RYLL_VV}" \
+    --control-socket "${RYLL_SOCK}" \
     > "${RYLL_STDOUT}" 2> "${RYLL_STDERR}" &
 RYLL_PID=$!
 printf '%d' "${RYLL_PID}" > "${RYLL_PID_FILE}"
