@@ -86,10 +86,15 @@ qemu-system-x86_64 \
     -spice "port=${SPICE_PORT},password=${TICKET},disable-ticketing=off" \
     -serial "file:${SERIAL_LOG}" \
     -display none \
-    -nodefaults \
     -no-reboot \
     -daemonize \
     -pidfile "${PID_FILE}"
+# `-nodefaults` was previously set but removes the implicit AHCI
+# controller on q35.  With a bare `-drive format=qcow2,file=...`
+# (no `if=` modifier, so QEMU defaults to `if=ide`), there is no
+# bus to attach the disk to and OVMF drops to the firmware menu
+# instead of booting Sextant.  Sextant's own verify-release.sh
+# and spice.sh both omit `-nodefaults`, so do the same here.
 # `-vga qxl` is what causes QEMU's SPICE server to advertise the
 # display + cursor channels.  Without it the server only exposes
 # `inputs` (the implicit keyboard), `surfaces` stays empty on the
