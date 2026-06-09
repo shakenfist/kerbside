@@ -5,9 +5,14 @@ Connects to a ryll headless control socket, performs a minimal
 hello / status / screenshot sequence, and asserts that:
 
   - The ryll server speaks protocol version 1.0.
-  - `agent_connected` becomes true within 30 seconds.
   - `surfaces` is a non-empty list within 30 seconds.
   - A screenshot of surface 0 returns a valid (non-empty) PNG.
+
+`agent_connected` is logged for diagnostics but is not asserted:
+the Sextant fixture intentionally ships without a guest-side
+vdagent (see uncalibrated-sextant/README.md and the dedicated
+`spice-ryll.sh` recipe for testing without an agent), so the
+field is expected to remain false in this lane.
 
 Exits 0 on success, 1 on assertion failure, 2 on socket/RPC error.
 
@@ -101,7 +106,12 @@ def _check_hello(sock: socket.socket, buf: bytearray) -> None:
 
 
 def _check_status(sock: socket.socket, buf: bytearray) -> None:
-    """Poll status every 1s for up to 30s; assert agent_connected and non-empty surfaces."""
+    """Poll status every 1s for up to 30s; assert non-empty surfaces.
+
+    `agent_connected` is logged but not asserted -- the Sextant
+    fixture has no guest-side vdagent, so the field never flips
+    to true in this lane.
+    """
     budget = 30.0
     deadline = time.monotonic() + budget
     while True:
@@ -119,17 +129,12 @@ def _check_status(sock: socket.socket, buf: bytearray) -> None:
             f'[smoke] status: agent_connected={agent_connected}, surfaces={surfaces}',
             file=sys.stderr,
         )
-        if agent_connected and surfaces:
-            print('[smoke] agent_connected=true, surfaces populated — ok', file=sys.stderr)
+        if surfaces:
+            print('[smoke] surfaces populated — ok', file=sys.stderr)
             return
         if time.monotonic() >= deadline:
-            missing = []
-            if not agent_connected:
-                missing.append('agent_connected (still false)')
-            if not surfaces:
-                missing.append('surfaces (still empty)')
             print(
-                f'[smoke] ASSERT FAIL: after {budget:.0f}s still missing: {", ".join(missing)}',
+                f'[smoke] ASSERT FAIL: after {budget:.0f}s surfaces still empty',
                 file=sys.stderr,
             )
             sys.exit(1)

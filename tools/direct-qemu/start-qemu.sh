@@ -82,6 +82,7 @@ qemu-system-x86_64 \
     -drive "if=pflash,format=raw,readonly=on,file=${OVMF_CODE}" \
     -drive "if=pflash,format=raw,file=${VARS_COPY}" \
     -drive "file=${QCOW2},format=qcow2,if=virtio" \
+    -vga qxl \
     -spice "port=${SPICE_PORT},password=${TICKET},disable-ticketing=off" \
     -serial "file:${SERIAL_LOG}" \
     -display none \
@@ -89,5 +90,11 @@ qemu-system-x86_64 \
     -no-reboot \
     -daemonize \
     -pidfile "${PID_FILE}"
+# `-vga qxl` is what causes QEMU's SPICE server to advertise the
+# display + cursor channels.  Without it the server only exposes
+# `inputs` (the implicit keyboard), `surfaces` stays empty on the
+# ryll side, and the smoke client times out waiting for a usable
+# display.  Mirrors the Sextant reference recipe at
+# uncalibrated-sextant/scripts/spice.sh:63.
 
 echo "[start-qemu] QEMU daemonized, pid=$(cat "${PID_FILE}")"
