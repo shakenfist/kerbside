@@ -180,6 +180,12 @@ jobs:
               ${{ matrix.test.baseuser }}@10.0.2.2 \
               "sudo chown ${{ matrix.test.baseuser }}:${{ matrix.test.baseuser }} /srv"
 
+      - name: Render oVirt answers file
+        run: |
+          sed 's|{{ ovirt_fqdn }}|ovirt.local|g' \
+              ${GITHUB_WORKSPACE}/actions/etc/${{ matrix.test.name }}-answers.conf.j2 \
+              > /tmp/${{ matrix.test.name }}-answers.conf
+
       - name: Copy tools and config to target
         run: |
           . $GITHUB_ENV
@@ -189,7 +195,7 @@ jobs:
               ${GITHUB_WORKSPACE}/actions/tools/ovirt-*.sh \
               ${GITHUB_WORKSPACE}/actions/tools/start-test-target.py \
               ${GITHUB_WORKSPACE}/actions/tools/test-ovirt-console.py \
-              ${GITHUB_WORKSPACE}/actions/etc/${{ matrix.test.name }}-answers.conf \
+              /tmp/${{ matrix.test.name }}-answers.conf \
               ${GITHUB_WORKSPACE}/actions/etc/${{ matrix.test.name }}-repos.patch \
               ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
 
