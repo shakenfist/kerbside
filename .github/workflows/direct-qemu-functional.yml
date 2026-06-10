@@ -29,13 +29,19 @@ jobs:
         run: sudo chmod a+rw /dev/kvm
 
       - name: Install system packages
+        # Phase 6 step 6d (kerbside test-harness plan):
+        # `cargo build --no-default-features -p ryll` no longer
+        # links eframe/egui-winit/cpal/opus-decoder, so the runtime
+        # libraries libgl1/libx11-6/libxcb1/libxkbcommon0/
+        # libwayland-client0/libasound2 are no longer needed.  The
+        # corresponding `-dev` packages stay because the cargo build
+        # step still needs them at compile time (transitive build-
+        # scripts probe them).
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             qemu-system-x86 ovmf openssl curl jq \
             mariadb-server \
-            libgl1 libx11-6 libxcb1 libxkbcommon0 libwayland-client0 \
-            libasound2 \
             build-essential cmake pkg-config \
             libasound2-dev libxcb1-dev libxkbcommon-dev libwayland-dev \
             libegl1-mesa-dev libgl1-mesa-dev \

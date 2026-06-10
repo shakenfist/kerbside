@@ -48,30 +48,23 @@ FROM debian:bookworm AS runtime
 
 # Python 3 + pip, OpenStack client tools, jq/wget for the
 # makeconsole.sh provisioning logic, and the system shared
-# libraries that the ryll binary links against at runtime:
-#   libasound2       — ALSA (cpal audio, present in headless mode too)
-#   libgl1           — OpenGL (eframe links it unconditionally)
-#   libx11-6         — X11 (egui-winit / eframe)
-#   libxcb1          — XCB (egui-winit backend)
-#   libxkbcommon0    — keyboard input (egui-winit)
-#   libwayland-client0 — Wayland backend for egui-winit
-#   libssl3          — TLS runtime (tokio-rustls / reqwest)
-# Note: ryll's headless mode is driven by the --headless flag at
-# runtime; the binary still links the full GUI stack.  If this
-# runtime dep list proves too heavy, consider building ryll with a
-# headless-only feature flag in a future phase.
+# libraries that the ryll binary links against at runtime.
+#
+# Phase 6 step 6d (kerbside test-harness plan):
+# `cargo build --no-default-features -p ryll` no longer links
+# eframe/egui-winit/cpal/opus-decoder thanks to the new `gui` and
+# `audio` Cargo features (both default-on; both opted out by the
+# stage-1 build above).  The runtime image therefore drops the six
+# GUI/audio shared libraries that the previous Dockerfile installed:
+# libasound2, libgl1, libx11-6, libxcb1, libxkbcommon0,
+# libwayland-client0.  libssl3 stays (still needed by tokio-rustls
+# / reqwest).
 RUN apt-get update && \
     apt-get dist-upgrade -y && \
     apt-get install -y --no-install-recommends \
     git \
     jq \
-    libasound2 \
-    libgl1 \
     libssl3 \
-    libwayland-client0 \
-    libx11-6 \
-    libxcb1 \
-    libxkbcommon0 \
     python3 \
     python3-pip \
     python3-setuptools \
