@@ -52,9 +52,21 @@ is cached at `kerbside/api/static/js`.
 
 ## Ryll
 
-Ryll, located in the `testclient/` directory, is a simple python native SPICE
-client used to implement various load tests. It has its own README file in that
-subdirectory.
+Ryll is the upstream Rust SPICE client at
+[shakenfist/ryll](https://github.com/shakenfist/ryll). The latency loadtest
+image builds the Ryll binary from source (stage 1 of
+`loadtests/latency/Dockerfile`) and ships it in the runtime stage. A Python
+orchestrator at `loadtests/latency/orchestrator.py` drives Ryll's control
+socket and writes a CSV of latency samples.
+
+The latency metric currently measured is SPICE PING/PONG round-trip time (the
+v1 control-socket `latency` event). This is a temporary regression from the
+legacy keypress-to-screen measurement — phase 6 of the test-harness plan will
+restore the original metric via a `surface_drawn` event in the control socket.
+The CSV shape is unchanged from the legacy loadtest: one float per line,
+seconds, no header. See
+`docs/plans/PLAN-test-harness-phase-04-port-latency.md` for the full
+rationale.
 
 ## Creating an oVirt SPICE Test Target
 
@@ -124,8 +136,12 @@ to be build from this top level directory however because of the way
 ### Latency load test
 
 This is the first load test that was implemented. It uses a UEFI binary as a
-test target, and sends keystrokes every two seconds to the instance running that
-binary. It then measures how long it takes to receive a display update back.
+test target and drives Ryll (the upstream Rust SPICE client) in headless mode
+against an OpenStack-provisioned instance. A Python orchestrator at
+`loadtests/latency/orchestrator.py` connects to Ryll via its control socket,
+sends spacebar keypresses every two seconds, collects SPICE PING/PONG
+round-trip latency samples, and writes them to a CSV (one float per line,
+seconds). See the `Ryll` section above for a note on the metric definition.
 
 To build this OCI image, do this:
 

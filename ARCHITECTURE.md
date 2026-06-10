@@ -270,9 +270,20 @@ alembic/               # Database migrations
   versions/            # Migration scripts
 etc/                   # Configuration examples
 tools/                 # Utility scripts (incl. run-tempest-tests)
+  direct-qemu/         # Direct-QEMU CI lane glue scripts (phase 5)
+    generate-tls.sh    # Mint ephemeral self-signed CA + proxy cert
+    start-qemu.sh      # Launch a QEMU guest with SPICE + OVMF
+    start-kerbside.sh  # Start gunicorn API + kerbside daemon run
+    smoke-client.py    # Control-socket smoke test (hello/status/screenshot)
+    lane-up.sh         # Top-level lane orchestrator
+    lane-down.sh       # Best-effort lane teardown
+    rebuild-sextant-qcow2.sh  # Developer tool: refresh Sextant qcow2
+tests/
+  fixtures/            # Committed test fixtures
+    uncalibrated-sextant.qcow2  # Sextant UEFI guest image for CI
 tempest-plugin/        # Kerbside Tempest plugin (separate releasable)
-testclient/            # Ryll test client
 loadtests/             # Load testing tools
+  latency/             # Latency loadtest (orchestrator.py + Dockerfile)
 docs/                  # Protocol documentation
 ```
 

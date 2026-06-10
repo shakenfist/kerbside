@@ -1,0 +1,108 @@
+name: Direct-qemu functional test
+
+on:
+  pull_request:
+    branches:
+      - develop
+
+jobs:
+  direct-qemu-lane:
+    runs-on: [self-hosted, vm, debian-12, l]
+    timeout-minutes: 60
+
+    # The runner image exports http_proxy/https_proxy pointing at an
+    # upstream squid cache for apt, github, and the cargo registry.
+    # Loopback traffic to kerbside on 127.0.0.1 must bypass that proxy
+    # or squid returns 503 ERR_CONNECT_FAIL when it cannot route the
+    # request back through itself.
+    env:
+      no_proxy: 127.0.0.1,localhost
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Probe runner for KVM / qemu / OVMF
+        run: bash tools/direct-qemu/probe-runner.sh
+
+      - name: Grant runner user access to /dev/kvm
+        run: sudo chmod a+rw /dev/kvm
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            qemu-system-x86 ovmf openssl curl jq \
+            mariadb-server \
+            libgl1 libx11-6 libxcb1 libxkbcommon0 libwayland-client0 \
+            libasound2 \
+            build-essential cmake pkg-config \
+            libasound2-dev libxcb1-dev libxkbcommon-dev libwayland-dev \
+            libegl1-mesa-dev libgl1-mesa-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libx11-dev libssl-dev default-libmysqlclient-dev \
+            python3 python3-pip python3-venv
+
+      - name: Ensure Rust toolchain
+        run: |
+          if cargo --version > /dev/null 2>&1; then
+            echo "cargo already available: $(cargo --version)"
+          else
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+              | sh -s -- -y --default-toolchain stable
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Build ryll from main
+        run: |
+          git clone --depth 1 \
+            https://github.com/shakenfist/ryll.git /tmp/ryll-src
+          cd /tmp/ryll-src
+          cargo build --release --no-default-features -p ryll
+          sudo install -m 755 target/release/ryll /usr/local/bin/ryll
+          ryll --version || true
+
+      - name: Install kerbside into venv
+        run: |
+          python3 -m venv /tmp/kerbside-venv
+          /tmp/kerbside-venv/bin/pip install --quiet .
+          echo "/tmp/kerbside-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Initialize MariaDB
+        run: tools/direct-qemu/setup-mariadb.sh
+
+      - name: Bring up the lane
+        run: tools/direct-qemu/lane-up.sh
+
+      - name: Run smoke client
+        run: |
+          set -o pipefail
+          python3 tools/direct-qemu/smoke-client.py \
+            /tmp/kerbside-ci/ryll-ci.sock \
+            2>&1 | tee /tmp/kerbside-ci/smoke-client.log
+
+      - name: Assert Sextant boot banner
+        run: tools/direct-qemu/wait-for-banner.sh /tmp/kerbside-ci/sextant-serial.log 30
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: direct-qemu-artifacts-${{ github.run_id }}
+          retention-days: 90
+          if-no-files-found: warn
+          path: |
+            /tmp/kerbside-ci/kerbside.log
+            /tmp/kerbside-ci/kerbside.log.gunicorn-access
+            /tmp/kerbside-ci/kerbside.log.gunicorn-error
+            /tmp/kerbside-ci/sextant-serial.log
+            /tmp/kerbside-ci/ryll-ci.stderr
+            /tmp/kerbside-ci/ryll-ci.stdout
+            /tmp/kerbside-ci/console.vv
+            /tmp/kerbside-ci/smoke-client.log
+            /tmp/kerbside-ci/tls/
+            /tmp/kerbside-ci/sources.yaml
+
+      - name: Tear down the lane
+        if: always()
+        run: tools/direct-qemu/lane-down.sh

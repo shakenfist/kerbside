@@ -235,7 +235,7 @@ class Auth(sf_api.Resource):
         # Create a JWT containing the user's keystone token
         token = user_session.get_token()
         access_token = create_access_token(
-            identity=[username],
+            identity=username,
             additional_claims={
                 'iss': config.PUBLIC_FQDN,
                 'openstack_token': token

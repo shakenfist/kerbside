@@ -9,3 +9,4 @@ self-hosted-runner:
     - static
     - vm
     - debian-12
+    - l
