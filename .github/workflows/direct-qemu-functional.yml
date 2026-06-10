@@ -82,9 +82,7 @@ jobs:
             2>&1 | tee /tmp/kerbside-ci/smoke-client.log
 
       - name: Assert Sextant boot banner
-        run: |
-          grep 'Hello from Uncalibrated Sextant' \
-            /tmp/kerbside-ci/sextant-serial.log
+        run: tools/direct-qemu/wait-for-banner.sh /tmp/kerbside-ci/sextant-serial.log 30
 
       - name: Upload artifacts
         if: always()
