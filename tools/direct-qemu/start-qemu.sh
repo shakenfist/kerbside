@@ -83,12 +83,19 @@ qemu-system-x86_64 \
     -drive "if=pflash,format=raw,file=${VARS_COPY}" \
     -drive "file=${QCOW2},format=qcow2" \
     -vga qxl \
-    -spice "port=${SPICE_PORT},password=${TICKET},disable-ticketing=off" \
+    -object "secret,id=spice-ticket,data=${TICKET}" \
+    -spice "port=${SPICE_PORT},password-secret=spice-ticket,disable-ticketing=off" \
     -serial "file:${SERIAL_LOG}" \
     -display none \
     -no-reboot \
     -daemonize \
     -pidfile "${PID_FILE}"
+# The SPICE ticket is supplied via `-object secret` +
+# `password-secret=` because the legacy inline `password=` parameter
+# was removed in newer QEMU releases (it fails on QEMU 10 with
+# "Invalid parameter 'password'").  `password-secret` has been
+# supported since QEMU 5.2, so this form works on the debian-12 CI
+# runner (QEMU 7.2) and on newer developer hosts alike.
 # `-nodefaults` was previously set but removes the implicit AHCI
 # controller on q35.  With a bare `-drive format=qcow2,file=...`
 # (no `if=` modifier, so QEMU defaults to `if=ide`), there is no

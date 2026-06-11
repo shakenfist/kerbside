@@ -211,8 +211,14 @@ ss -tlnp '( sport = :5900 or sport = :5901 )' || true
 # event loop currently swallows connect_channel errors with just
 # "Connection task completed".  ryll does not honour RUST_LOG; it
 # gates DEBUG behind --verbose in ryll/src/main.rs.
+# --enable-paste-as-keystrokes is required for the control socket's
+# `paste` verb to reach the guest: the Sextant fixture has no vdagent,
+# and without the flag ryll's inputs channel accepts the paste request
+# but silently drops the keystrokes ("paste-as-keystrokes not enabled").
+# The phase 7 scenario test pastes the bootloader payload this way.
 ryll --verbose --headless --file "${RYLL_VV}" \
     --control-socket "${RYLL_SOCK}" \
+    --enable-paste-as-keystrokes \
     > "${RYLL_STDOUT}" 2> "${RYLL_STDERR}" &
 RYLL_PID=$!
 printf '%d' "${RYLL_PID}" > "${RYLL_PID_FILE}"
