@@ -521,4 +521,42 @@ Items deliberately deferred from phase 7:
 
 ### Bugs fixed during this work
 
-(None yet.)
+Found and fixed in kerbside during step 7c's local lane
+iteration:
+
+- **`start-qemu.sh` used the removed inline SPICE
+  `password=` parameter.** QEMU 10 (newer developer hosts)
+  rejects it with "Invalid parameter 'password'". Switched
+  to `-object secret` + `password-secret=`, supported since
+  QEMU 5.2, so the debian-12 CI runner (QEMU 7.2) is
+  unaffected.
+- **`lane-up.sh` launched ryll without
+  `--enable-paste-as-keystrokes`.** The control socket's
+  `paste` verb returned ok but the inputs channel silently
+  dropped the keystrokes (the Sextant fixture has no
+  vdagent). The scenario's paste beat cannot work anywhere
+  without the flag.
+
+Found in ryll during the same iteration; workarounds in
+kerbside, upstream fixes pending (raise as ryll issues):
+
+- **`send_key` `press`/`up` writes the supplied scancode
+  verbatim into the SPICE KEY_UP message** without setting
+  the AT-set-1 release bit, so every `press` double-types
+  the key in the guest (diagnosed via the digest keypress
+  echo: the paste buffer became `isextant{...}`, len 24).
+  The scenario test works around it with an explicit
+  down(make) / up(make|0x80) pair, which stays correct
+  against a fixed server.
+- **`control-socket-protocol.md` documents `digest_updated`
+  records as `{"kind": ..., "payload": ...}`**, but the
+  implementation passes the digest crate's serde shape
+  through: externally-tagged snake_case single-key objects,
+  e.g. `{"scene_transition": {"from": "awaiting", ...}}`.
+  The doc should be corrected to match the implementation.
+
+Operational wart noted for reused (non-CI) hosts:
+`lane-down.sh` kills the kerbside daemon but not its
+`kerbside-proxy` / `kerbside-insecure-new` children, so
+stale listeners EADDRINUSE the next lane. CI's fresh VMs
+are immune; a proper lane-down fix is follow-up work.
