@@ -194,7 +194,7 @@ jobs:
               -o UserKnownHostsFile=/dev/null \
               ${GITHUB_WORKSPACE}/actions/tools/ovirt-*.sh \
               ${GITHUB_WORKSPACE}/actions/tools/start-test-target.py \
-              ${GITHUB_WORKSPACE}/actions/tools/test-ovirt-console.py \
+              ${GITHUB_WORKSPACE}/kerbside/tools/test-ovirt-console.py \
               /tmp/${{ matrix.test.name }}-answers.conf \
               ${GITHUB_WORKSPACE}/actions/etc/${{ matrix.test.name }}-repos.patch \
               ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
