@@ -418,9 +418,19 @@ Items deliberately deferred:
 ### Bugs fixed during this work
 
 This section should list any bugs we encounter during
-development that we fixed.
+development that we fixed. Per-phase bugs are logged in the
+phase plans; cross-phase interaction bugs are logged here.
 
-(None yet.)
+- **The phase 5 smoke client hard-asserted control-socket
+  protocol version "1.0".** When phase 6's ryll merge bumped
+  main to v1.1, every direct-qemu lane run began failing at
+  the smoke step (the workflow builds ryll from main), which
+  also masked the phase 7 scenario step on the phase 7 PR
+  itself. Fixed post-phase-7-merge: the smoke client now
+  asserts the major version only, matching the protocol's
+  compatibility model. Lesson: lane checks against a
+  fresh-from-main ryll must never assert exact minor
+  versions.
 
 ### Documentation index maintenance
 
