@@ -270,22 +270,52 @@ alembic/               # Database migrations
   versions/            # Migration scripts
 etc/                   # Configuration examples
 tools/                 # Utility scripts (incl. run-tempest-tests)
-  direct-qemu/         # Direct-QEMU CI lane glue scripts (phase 5)
+  direct-qemu/         # Direct-QEMU CI lane glue scripts (phase 5+)
     generate-tls.sh    # Mint ephemeral self-signed CA + proxy cert
     start-qemu.sh      # Launch a QEMU guest with SPICE + OVMF
     start-kerbside.sh  # Start gunicorn API + kerbside daemon run
     smoke-client.py    # Control-socket smoke test (hello/status/screenshot)
     lane-up.sh         # Top-level lane orchestrator
     lane-down.sh       # Best-effort lane teardown
+    run-scenario.sh    # Install tempest + plugin into a venv, write
+                       #   tempest.conf, run test_sextant_scenario —
+                       #   last step in the direct-qemu workflow
     rebuild-sextant-qcow2.sh  # Developer tool: refresh Sextant qcow2
 tests/
   fixtures/            # Committed test fixtures
     uncalibrated-sextant.qcow2  # Sextant UEFI guest image for CI
 tempest-plugin/        # Kerbside Tempest plugin (separate releasable)
+  kerbside_tempest_plugin/
+    ryll_client.py     # Stdlib NDJSON control-socket client
+    config.py          # [kerbside] tempest options incl. scenario opts
+    tests/
+      api/             # OpenStack lane tests (require live cloud)
+      scenario/        # Direct-qemu scenario tests (skip when
+                       #   control_socket_path unset — drop-in safe)
 loadtests/             # Load testing tools
   latency/             # Latency loadtest (orchestrator.py + Dockerfile)
 docs/                  # Protocol documentation
 ```
+
+## Sextant Scenario Test
+
+The tempest plugin contains an end-to-end scenario test
+(`tests/scenario/test_sextant_scenario.py`) that drives the Uncalibrated
+Sextant UEFI guest through the full Awaiting → Booting → bootloader-ignore →
+paste → Parked → shutdown sequence. It connects to Ryll's control socket
+(protocol v1.1), sends keypresses and a paste payload, and asserts two
+independent oracles: the live `digest_updated` QR event stream and the
+post-mortem serial drain. The test requires Ryll built with
+`--features digest-decode`; the direct-qemu workflow enables that feature.
+
+The test skips when `CONF.kerbside.control_socket_path` is unset, keeping the
+plugin drop-in safe on the OpenStack lane. On the direct-qemu lane
+`tools/direct-qemu/run-scenario.sh` sets all four `[kerbside]` tempest
+options (`control_socket_path`, `serial_log_path`, `scenario_artifact_dir`,
+`scenario_step_timeout`) and runs the test as the final lane step. The final
+keypress causes Sextant to drain its event ring to serial and ACPI-shutdown,
+which terminates qemu and unlinks the control socket — nothing in the lane
+is usable afterwards.
 
 ## Related Documentation
 

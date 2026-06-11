@@ -241,7 +241,7 @@ searchable from one place.
 | 4. Port latency loadtest to control socket and remove legacy `testclient/ryll/` | kerbside | [PLAN-test-harness-phase-04-port-latency.md](PLAN-test-harness-phase-04-port-latency.md) | Merged |
 | 5. Direct-qemu CI workflow | kerbside | [PLAN-test-harness-phase-05-direct-qemu-ci.md](PLAN-test-harness-phase-05-direct-qemu-ci.md) | Merged; lane green in CI |
 | 6. Ryll Cargo feature work: digest decoding, headless feature, restore keypress-to-screen latency | ryll | [PLAN-test-harness-phase-06-digest-decoding.md](PLAN-test-harness-phase-06-digest-decoding.md) | Merged (ryll and kerbside sides) |
-| 7. First Sextant scenario tempest test | kerbside | [PLAN-test-harness-phase-07-scenario-test.md](PLAN-test-harness-phase-07-scenario-test.md) | Phase plan drafted |
+| 7. First Sextant scenario tempest test | kerbside | [PLAN-test-harness-phase-07-scenario-test.md](PLAN-test-harness-phase-07-scenario-test.md) | Implementation complete; PR pending operator |
 | 8. OpenStack CI lane disposition | kerbside | PLAN-test-harness-phase-08-openstack-disposition.md | Not started |
 
 Indicative effort and model recommendations (firmed up
