@@ -4,7 +4,7 @@
 Connects to a ryll headless control socket, performs a minimal
 hello / status / screenshot sequence, and asserts that:
 
-  - The ryll server speaks protocol version 1.0.
+  - The ryll server speaks protocol major version 1 (any minor).
   - `surfaces` is a non-empty list within 30 seconds.
   - A screenshot of surface 0 returns a valid (non-empty) PNG.
 
@@ -87,7 +87,14 @@ _PNG_MAGIC = b'\x89PNG\r\n\x1a\n'
 
 
 def _check_hello(sock: socket.socket, buf: bytearray) -> None:
-    """Assert hello succeeds and protocol version is 1.0."""
+    """Assert hello succeeds and the server speaks protocol major version 1.
+
+    The control-socket protocol negotiates at the major-version level:
+    the server replies with its own version, and a v1.0 client remains
+    valid against any v1.x server (ryll moved to 1.1 in phase 6).
+    Asserting the exact minor version here would break the lane on
+    every compatible minor bump.
+    """
     resp = _request(sock, buf, 'hello', {
         'client_name': 'kerbside-ci-smoke',
         'protocol_version': '1.0',
@@ -96,13 +103,13 @@ def _check_hello(sock: socket.socket, buf: bytearray) -> None:
         print(f'[smoke] ERROR: hello failed: {resp.get("error", resp)}', file=sys.stderr)
         sys.exit(1)
     proto = resp.get('result', {}).get('protocol_version', '')
-    if proto != '1.0':
+    if not proto.startswith('1.'):
         print(
-            f'[smoke] ASSERT FAIL: expected protocol_version "1.0", got {proto!r}',
+            f'[smoke] ASSERT FAIL: expected protocol major version 1, got {proto!r}',
             file=sys.stderr,
         )
         sys.exit(1)
-    print('[smoke] hello ok', file=sys.stderr)
+    print(f'[smoke] hello ok (server protocol {proto})', file=sys.stderr)
 
 
 def _check_status(sock: socket.socket, buf: bytearray) -> None:
