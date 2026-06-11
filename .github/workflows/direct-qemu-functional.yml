@@ -58,7 +58,7 @@ jobs:
           git clone --depth 1 \
             https://github.com/shakenfist/ryll.git /tmp/ryll-src
           cd /tmp/ryll-src
-          cargo build --release --no-default-features -p ryll
+          cargo build --release --no-default-features --features digest-decode -p ryll
           sudo install -m 755 target/release/ryll /usr/local/bin/ryll
           ryll --version || true
 
@@ -84,6 +84,12 @@ jobs:
       - name: Assert Sextant boot banner
         run: tools/direct-qemu/wait-for-banner.sh /tmp/kerbside-ci/sextant-serial.log 30
 
+      - name: Run Sextant scenario test
+        run: |
+          set -o pipefail
+          tools/direct-qemu/run-scenario.sh \
+            2>&1 | tee /tmp/kerbside-ci/tempest.log
+
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -102,6 +108,8 @@ jobs:
             /tmp/kerbside-ci/smoke-client.log
             /tmp/kerbside-ci/tls/
             /tmp/kerbside-ci/sources.yaml
+            /tmp/kerbside-ci/scenario/
+            /tmp/kerbside-ci/tempest.log
 
       - name: Tear down the lane
         if: always()

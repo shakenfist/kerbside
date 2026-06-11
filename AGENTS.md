@@ -120,6 +120,19 @@ tox -e bindep
 - Tempest plugin: `tempest-plugin/kerbside_tempest_plugin/` (separate
   releasable, driven via `tools/run-tempest-tests` and the
   `openstack_matrix` job in `.github/workflows/functional-tests.yml`)
+  - `tests/api/test_spice_via_kerbside.py` — OpenStack lane only;
+    requires a live cloud.
+  - `tests/scenario/test_sextant_scenario.py` — direct-qemu lane;
+    drives the full Sextant Awaiting → Parked sequence over Ryll's
+    control socket, asserting the `digest_updated` event stream and
+    the post-mortem serial drain. Skips when
+    `CONF.kerbside.control_socket_path` is unset (OpenStack lane
+    safety). Requires ryll built with `--features digest-decode`.
+    Configured via the `[kerbside]` tempest options:
+    `control_socket_path`, `serial_log_path`,
+    `scenario_artifact_dir`, `scenario_step_timeout`.
+    Run last on the direct-qemu lane because the final keypress
+    shuts the guest down.
 
 ## Code Style
 

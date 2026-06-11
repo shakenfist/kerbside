@@ -127,6 +127,30 @@ Run it manually on a deployed all-in-one node with
 `sudo bash tools/run-tempest-tests`; pass `--help` to see knobs (regex,
 workspace location, CA bundle path, etc.).
 
+### Sextant scenario test (direct-qemu lane)
+
+The plugin also contains an end-to-end scenario test at
+`tempest-plugin/kerbside_tempest_plugin/tests/scenario/test_sextant_scenario.py`.
+It drives an Uncalibrated Sextant UEFI guest through the full
+Awaiting → Booting → bootloader-ignore → paste → Parked → shutdown
+sequence over Ryll's control socket and asserts two independent oracles:
+the live `digest_updated` QR event stream (frame counters strictly
+increasing; per-beat record predicates) and the post-mortem serial drain
+(canonical ordered event subsequence, monotonic timestamps). The test
+requires ryll built with `--features digest-decode` (enabled automatically
+by the direct-qemu workflow).
+
+Four `[kerbside]` tempest options support the scenario test:
+`control_socket_path`, `serial_log_path`, `scenario_artifact_dir`, and
+`scenario_step_timeout` (default 60 s). When `control_socket_path` is
+unset the test skips cleanly, so the plugin remains drop-in safe on the
+OpenStack lane. On the direct-qemu lane all four options are written by
+`tools/direct-qemu/run-scenario.sh`, which runs the test as the final
+(deliberately destructive) lane step — the final keypress causes Sextant
+to drain serial and ACPI-shutdown, terminating the guest and the ryll
+control socket. Screenshots are saved per beat into `scenario_artifact_dir`
+and uploaded as CI artifacts alongside `tempest.log`.
+
 ## Build the load testing OCI container images
 
 There are a series of OCI container images intended for load testing. These need
