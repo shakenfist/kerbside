@@ -68,34 +68,34 @@ seconds, no header. See
 `docs/plans/PLAN-test-harness-phase-04-port-latency.md` for the full
 rationale.
 
-## Creating an oVirt SPICE Test Target
+## Testing the SPICE Console of an oVirt VM
 
-The `tools/start-test-target.py` script creates an oVirt VM suitable as a
-SPICE test target. It uploads a desktop QCOW2 disk image (with
-qemu-guest-agent and spice-vdagent pre-installed), creates a template from
-it, then creates and starts a VM with SPICE display enabled. When
-`--host-address` is provided, it also sets up the full oVirt infrastructure
-(datacenter, cluster, hypervisor host, and local storage domain).
+`tools/test-ovirt-console.py` is Kerbside's oVirt SPICE console probe. It
+connects to the oVirt engine API, finds the booted test VM (by default any
+VM named `smoke-test-*`), checks that SPICE display is configured, and
+performs a SPICE protocol handshake against the console port. This is the
+Kerbside-specific check and lives here because we iterate on it alongside
+the proxy.
 
 ```bash
-python tools/start-test-target.py \
+python tools/test-ovirt-console.py \
     --url https://ovirt-engine.example/ovirt-engine/api \
     --password secret \
-    --ca-file /path/to/ca.pem \
-    --datacenter mydc \
-    --cluster mycluster \
-    --storage-domain mystorage \
-    --disk-image /path/to/desktop.qcow2
+    --ca-file /path/to/ca.pem
 ```
 
-Run with `--help` for all options (disk image path, template name, VM name,
-memory size, host setup, timeout, debug logging).
-
-Supporting shell scripts in `tools/` handle oVirt host preparation in CI:
-- `ovirt-install-base.sh` — base package installation (EPEL, utilities)
-- `ovirt-patch-ovn.sh` — patches oVirt 4.5 OVN Ansible role bug (#949)
-- `ovirt-prepare-host.sh` — engine health check, SSH setup, KVM verification
-- `ovirt-gather-artifacts.sh` — collects RPM lists and logs for CI artifacts
+The generic plumbing it builds on lives in the
+[shakenfist/actions](https://github.com/shakenfist/actions) repo, which CI
+checks out alongside this one:
+- `tools/start-test-target.py` — generic oVirt smoke test: sets up a
+  datacenter, cluster, hypervisor host, and local storage domain, uploads a
+  disk image, and boots a VM (`smoke-test-*`, SPICE display by default) to
+  prove the deployment works. `test-ovirt-console.py` then probes the VM it
+  creates.
+- `tools/ovirt-install-base.sh` — base package installation (EPEL, utilities)
+- `tools/ovirt-patch-ovn.sh` — patches oVirt 4.5 OVN Ansible role bug (#949)
+- `tools/ovirt-prepare-host.sh` — engine health check, SSH setup, KVM verification
+- `tools/ovirt-gather-artifacts.sh` — collects RPM lists and logs for CI artifacts
 
 ## Tempest Tests Against a Kolla-Ansible Deployment
 
