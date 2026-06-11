@@ -147,6 +147,7 @@ deploy/gitrepos/
 
 # Generated version file
 kerbside/_version.py
+tempest-plugin/kerbside_tempest_plugin/_version.py
 
 # Claude Code per-session state
 /.claude/scheduled_tasks.lock
