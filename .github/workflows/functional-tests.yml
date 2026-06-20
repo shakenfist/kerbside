@@ -109,6 +109,15 @@ jobs:
           path: cover.zip
 
   ovirt_matrix:
+    # On a workflow_dispatch run, skip this job cleanly (neutral) when
+    # its target was not selected, rather than running a step that calls
+    # core.setFailed -- which reported an unselected target as red and
+    # then left the always() artifact steps to time out against a guest
+    # that was never provisioned. On pull_request both targets run.
+    # The target name is a literal because the matrix context is not
+    # available in a job-level if:; it mirrors the single matrix entry
+    # below ('ovirt-45-rocky-8').
+    if: github.event_name != 'workflow_dispatch' || contains(inputs.target, 'ovirt-45-rocky-8')
     name: "${{ matrix.test.description }}"
     strategy:
       fail-fast: false
@@ -137,13 +146,6 @@ jobs:
     # variables at https://docs.github.com/en/actions/learn-github-actions/environment-variables
 
     steps:
-      - name: Filter workflow_dispatch runs
-        if: github.event_name == 'workflow_dispatch' && ! contains(inputs.target, matrix.test.name)
-        uses: actions/github-script@v7
-        with:
-          script: |
-              core.setFailed('Target skipped')
-
       - name: Set environment variables
         shell: bash
         run: |
@@ -363,6 +365,15 @@ jobs:
           MINUTES: ${{ inputs.retention }}
 
   openstack_matrix:
+    # On a workflow_dispatch run, skip this job cleanly (neutral) when
+    # its target was not selected, rather than running a step that calls
+    # core.setFailed -- which reported an unselected target as red and
+    # then left the always() artifact steps to time out against a guest
+    # that was never provisioned. On pull_request both targets run.
+    # The target name is a literal because the matrix context is not
+    # available in a job-level if:; it mirrors the single matrix entry
+    # below ('kolla-ansible-master-debian-12').
+    if: github.event_name != 'workflow_dispatch' || contains(inputs.target, 'kolla-ansible-master-debian-12')
     name: "${{ matrix.test.description }}"
     strategy:
       fail-fast: false
@@ -389,13 +400,6 @@ jobs:
     # variables at https://docs.github.com/en/actions/learn-github-actions/environment-variables
 
     steps:
-      - name: Filter workflow_dispatch runs
-        if: github.event_name == 'workflow_dispatch' && ! contains(inputs.target, matrix.test.name)
-        uses: actions/github-script@v7
-        with:
-          script: |
-              core.setFailed('Target skipped')
-
       - name: Setup test environment
         uses: shakenfist/actions/setup-kerbside-environment@main
         with:
