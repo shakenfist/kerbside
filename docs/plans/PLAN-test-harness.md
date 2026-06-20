@@ -242,7 +242,7 @@ searchable from one place.
 | 5. Direct-qemu CI workflow | kerbside | [PLAN-test-harness-phase-05-direct-qemu-ci.md](PLAN-test-harness-phase-05-direct-qemu-ci.md) | Merged; lane green in CI |
 | 6. Ryll Cargo feature work: digest decoding, headless feature, restore keypress-to-screen latency | ryll | [PLAN-test-harness-phase-06-digest-decoding.md](PLAN-test-harness-phase-06-digest-decoding.md) | Merged (ryll and kerbside sides) |
 | 7. First Sextant scenario tempest test | kerbside | [PLAN-test-harness-phase-07-scenario-test.md](PLAN-test-harness-phase-07-scenario-test.md) | Implementation complete; PR pending operator |
-| 8. OpenStack CI lane disposition | kerbside | PLAN-test-harness-phase-08-openstack-disposition.md | Not started |
+| 8. OpenStack CI lane disposition + oVirt provisioning flake | kerbside (+ shakenfist/actions) | [PLAN-test-harness-phase-08-openstack-disposition.md](PLAN-test-harness-phase-08-openstack-disposition.md) | Phase plan drafted |
 
 Indicative effort and model recommendations (firmed up
 when each phase plan is written):
@@ -256,7 +256,7 @@ when each phase plan is written):
 | 5 | high | opus | New CI workflow integrating multiple binaries, debugging KVM/runner-environment unknowns, many edge cases. |
 | 6 | high | opus | Three concerns bundled because they all touch Ryll's Cargo features and channel handlers. (1) SurfaceMirror integration + QR detection on draw-event change + correctness around when to re-decode, gated behind a `digest-decode` Cargo feature off by default. (2) A `headless` Cargo feature that excludes the GUI/audio stack (eframe, egui, egui-winit, cpal) so kerbside's loadtest and direct-qemu CI images can drop libgl1 / libx11-6 / libxcb1 / libxkbcommon0 / libwayland-client0 / libasound2 from the runtime layer. The phase 4 Dockerfile and phase 5 CI image both switch to `cargo build --release --no-default-features --features headless` once this lands; flagged in phase 4's `Bugs fixed during this work` for cross-reference. (3) A `surface_drawn` control-socket event so phase 4's loadtest can restore keypress-to-screen latency semantics (the user-perceivable metric Kerbside is being measured against); orchestrator switch-back is part of this phase. |
 | 7 | high | mixed (fable / opus / sonnet) | Originally rated medium/sonnet ("mostly glue"); re-rated while drafting the phase plan. The scenario test composes two oracles (busy digest event stream, post-mortem serial drain) with destructive teardown ordering and credential-less tempest integration — more than glue. The phase plan assigns Fable 5 (a tier above opus, released after this table was first written) to the scenario-test step as a deliberate first experiment, opus to the CI wiring, sonnet to the glue. |
-| 8 | low | sonnet | A CI workflow tweak plus a documentation update. |
+| 8 | low–medium | opus / sonnet | Originally "a CI workflow tweak plus a documentation update". The disposition decision (keep the cloud-compat lane per-PR for now) is indeed just a documentation record, but during drafting the phase absorbed the root-cause fix for the oVirt provisioning flake — a `shakenfist/actions` ansible change (medium, opus, CI-verified) gating instance readiness on cloud-init completion rather than just an open SSH port — plus a kerbside workflow fix for the cosmetic `workflow_dispatch` target-skip false-red (low, sonnet). Fable not used; phase 7 was the experiment. |
 
 ### Sequencing notes
 
