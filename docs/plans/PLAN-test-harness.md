@@ -224,7 +224,13 @@ master plan, but listed here so they are not forgotten:
   gives us nested KVM during phase 5.
 - **OpenStack CI lane fate.** Once direct-qemu CI is
   proven, do we retire it, demote to nightly, or keep
-  on PRs? Defer until after phase 7.
+  on PRs? Defer until after phase 7. **Resolved in phase
+  8 (2026-06-20): keep the cloud-compat lane per-PR,
+  both legs blocking, for now** — Kerbside PRs are
+  frequent and getting Nova reliable with Kerbside is the
+  primary focus, so the per-PR Nova coverage is worth its
+  cost. A future demotion to a schedule is foreseeable;
+  see the revisit criteria in Future work.
 
 ## Execution
 
@@ -242,7 +248,7 @@ searchable from one place.
 | 5. Direct-qemu CI workflow | kerbside | [PLAN-test-harness-phase-05-direct-qemu-ci.md](PLAN-test-harness-phase-05-direct-qemu-ci.md) | Merged; lane green in CI |
 | 6. Ryll Cargo feature work: digest decoding, headless feature, restore keypress-to-screen latency | ryll | [PLAN-test-harness-phase-06-digest-decoding.md](PLAN-test-harness-phase-06-digest-decoding.md) | Merged (ryll and kerbside sides) |
 | 7. First Sextant scenario tempest test | kerbside | [PLAN-test-harness-phase-07-scenario-test.md](PLAN-test-harness-phase-07-scenario-test.md) | Implementation complete; PR pending operator |
-| 8. OpenStack CI lane disposition + oVirt provisioning flake | kerbside (+ shakenfist/actions) | [PLAN-test-harness-phase-08-openstack-disposition.md](PLAN-test-harness-phase-08-openstack-disposition.md) | Phase plan drafted |
+| 8. OpenStack CI lane disposition + oVirt provisioning flake | kerbside (+ shakenfist/actions) | [PLAN-test-harness-phase-08-openstack-disposition.md](PLAN-test-harness-phase-08-openstack-disposition.md) | Implementation complete; PR pending operator |
 
 Indicative effort and model recommendations (firmed up
 when each phase plan is written):
@@ -387,6 +393,22 @@ Items deliberately deferred:
   `ARCHITECTURE.md`.
 - **Shaken Fist CI lane.** Blocked on the SF installer
   rewrite (per session conversation 2026-06-02).
+- **Demote the cloud-compat lane to a schedule.** Phase 8
+  kept the "Test cloud compatibility" lane (oVirt + kolla
+  legs) per-PR and blocking. Demote it to nightly +
+  `workflow_dispatch` when any of: the Nova+Kerbside
+  integration has been stable for a sustained period and
+  the per-PR signal stops catching regressions; PR volume
+  drops enough that per-PR cost outweighs value; or runner
+  capacity becomes a binding constraint. Until then it
+  stays per-PR.
+- **Audit the multi-node provisioning playbooks for the
+  same port-only SSH wait.** Phase 8 fixed the readiness
+  gate in `shakenfist/actions`
+  `ansible/kerbside-single-node.yml`; the sibling
+  `kerbside-multi-node.yml` and `kerbside-multi-node-2.yml`
+  carry the identical `wait_for port:22 search_regex:OpenSSH`
+  pattern and want the same cloud-init readiness gate.
 - **SPICE MCP server.** The control socket is shaped so
   that an MCP server fronting it is a follow-up
   exercise, not a redesign. Out of scope here.
@@ -431,6 +453,30 @@ phase plans; cross-phase interaction bugs are logged here.
   compatibility model. Lesson: lane checks against a
   fresh-from-main ryll must never assert exact minor
   versions.
+- **The oVirt CI leg's provisioning readiness gate waited
+  only for an open SSH port, not cloud-init completion.**
+  The `shakenfist/actions` `kerbside-single-node.yml` wait
+  (`wait_for port:22 search_regex:OpenSSH`) returned as
+  soon as sshd presented a banner; cloud-init then
+  regenerated host keys and restarted sshd, and the
+  runner's next real SSH was dropped with "connection
+  refused" (~10% of oVirt `pull_request` runs, load-
+  dependent). Fixed in phase 8 by adding a `cloud-init
+  status --wait` readiness gate (plus `wait_for_connection`)
+  after the banner wait. Tracked as `shakenfist/actions`
+  issue #2. Lesson: an open port is not a ready instance;
+  gate on cloud-init.
+- **The cloud-compat lane reported unselected
+  `workflow_dispatch` targets as red.** Each matrix job
+  began with a step calling `core.setFailed('Target
+  skipped')` for the non-selected target, and the
+  `always()` artifact steps then timed out SSHing a guest
+  that was never provisioned — so manual/develop runs
+  looked perpetually broken and masked the real per-PR
+  gate health. Fixed in phase 8 by replacing the
+  `setFailed` step with a job-level `if:` so unselected
+  targets skip cleanly. Lesson: skip, don't fail, for a
+  deliberately-not-run matrix target.
 
 ### Documentation index maintenance
 

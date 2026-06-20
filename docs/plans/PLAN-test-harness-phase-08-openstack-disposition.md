@@ -380,4 +380,27 @@ Items deliberately deferred from phase 8:
 
 ### Bugs fixed during this work
 
-(None yet — populated as steps land.)
+- **oVirt provisioning readiness gate waited for an open
+  SSH port, not cloud-init completion** (`shakenfist/actions`
+  `kerbside-single-node.yml`). The `wait_for port:22
+  search_regex:OpenSSH` task returned on the sshd banner;
+  cloud-init then restarted sshd (host-key regen) and the
+  runner's next real SSH was refused. Fixed by adding a
+  `wait_for_connection` + `cloud-init status --wait`
+  readiness gate (with `failed_when: false` so it waits
+  without asserting cloud-init's exit code). Confirmed by
+  inspection that the kolla all-in-one leg routes through
+  the same playbook, so one fix covers both legs; the
+  multi-node playbooks carry the same pattern and are
+  logged as future work. Tracked as `shakenfist/actions`
+  issue #2.
+- **Cloud-compat lane reported unselected
+  `workflow_dispatch` targets as red** (kerbside
+  `functional-tests.yml`). The `core.setFailed('Target
+  skipped')` filter step marked a deliberately-unselected
+  matrix target as failed, and the `always()` artifact
+  steps then timed out against a never-provisioned guest.
+  Fixed by replacing the step with a job-level `if:` so
+  unselected targets skip cleanly (the target name is a
+  literal because the matrix context is unavailable in a
+  job-level `if:`).
