@@ -336,7 +336,7 @@ implemented later.
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 1. Server-side SPICE primitives in shakenfist-spice-protocol (ryll repo) | PLAN-rust-proxy-phase-01-server-primitives.md | Not started |
+| 1. Server-side SPICE primitives in shakenfist-spice-protocol (ryll repo) | PLAN-rust-proxy-phase-01-server-primitives.md | Planned |
 | 2. gRPC contract and Python UDS server in the kerbside daemon | PLAN-rust-proxy-phase-02-grpc-contract.md | Not started |
 | 3. Proxy crate skeleton: listeners, handshake, backend leg, relay | PLAN-rust-proxy-phase-03-proxy-skeleton.md | Not started |
 | 4. Firewall policy engine: L0 + L1 enforcing | PLAN-rust-proxy-phase-04-firewall.md | Not started |
@@ -653,6 +653,23 @@ implemented because the following statements will be true:
   client population ever requires them.
 * **Wheel matrix growth**: aarch64, musllinux, and
   whatever platforms deployers actually ask for.
+* **Bespoke SPICE servers** (speculative, out of scope
+  for Kerbside): the server-side handshake primitives
+  this plan adds to `shakenfist-spice-protocol` (phase 1)
+  are exactly what a *native* SPICE server needs, not
+  only a proxy. Once the crate can accept a client,
+  present a key, and complete auth, it becomes possible
+  to write standalone SPICE servers that render arbitrary
+  content for any standard SPICE client (virt-viewer,
+  remote-viewer, ryll) — for example rendering a
+  dashboard directly to SPICE instead of a resource-heavy
+  HTML5 web UI (a Home Assistant dashboard was the
+  motivating daydream). This is a red herring for the
+  proxy, but it is a reason to keep the phase-1 server
+  primitives clean, well-documented, and independent of
+  proxy-specific concerns so a future non-proxy consumer
+  can reuse them. No work is planned here; recorded so the
+  idea is not lost.
 * shakenfist/shakenfist#3315 — migrate Shaken Fist's
   privexec/nodelock IPC off the unframed
   protobuf-over-UDS pattern (filed from this design
