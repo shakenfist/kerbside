@@ -287,6 +287,51 @@ passing ryll's pre-commit, `cargo fmt --check`,
 * Crate docs describe the server role; a version is
   tagged that kerbside-proxy can pin in phase 3.
 
+## Outcome
+
+Completed 2026-07-04 on ryll branch `spice-server-primitives`
+(worktree `/home/tars/src/shakenfist/ryll-wt-spice-server-primitives`),
+ten commits `69c4c1e`..`ef01f57`, unmerged and unpushed pending
+operator PR review. All steps validated in the ryll-dev container:
+`cargo fmt --all --check`, `cargo clippy --workspace -- -D warnings`,
+and `cargo test --workspace` (100 protocol-crate tests including the
+duplex end-to-end handshake), plus a nightly `cargo fuzz build` and
+30s smoke-run of all three targets.
+
+Deviations from the plan, all deliberate:
+
+* **No version bump (step 1h).** ryll uses `version.workspace =
+  true` and an operator-driven whole-workspace release
+  (`make propose-release X.Y.Z` → PR → `make tag-release`) from
+  `develop`. Bumping on a feature branch would be wrong, so the
+  release is deferred to that flow after this branch merges;
+  phase 3 pins whichever release contains this work (or a git rev).
+* **`SpiceLinkReply::parse` (existing client parser) was also
+  rewritten onto `BoundedReader`.** The new `fuzz_link_reply_parse`
+  target immediately found an unbounded `Vec::with_capacity` OOM in
+  it (wire-controlled capability count). Fixed in commit `4bf56b5`
+  with a regression test — this both unblocks a green fuzz CI job
+  and makes an early down-payment on the ryll#136 retrofit. See
+  Bugs below.
+* **A fuzz-crate `cargo fmt --check` step was added to the CI job.**
+  The detached fuzz workspace is not reached by the top-level lint
+  job, so the fuzz job format-checks it directly (requires the
+  `rustfmt` component on the nightly toolchain, added in the same
+  job).
+
+### Bugs fixed during this work
+
+* **Unbounded allocation / OOM in `SpiceLinkReply::parse`**
+  (shakenfist-spice-protocol, client-side reply parser). A
+  capability count taken directly from the wire fed
+  `Vec::with_capacity`, so a crafted reply (~4 billion words ≈ 16 GB)
+  could abort the process. Found by the `fuzz_link_reply_parse`
+  target added in this phase; fixed by rewriting the parser onto
+  `BoundedReader` with the same size and cap-count limits as
+  `SpiceLinkMess::parse` (commit `4bf56b5`, ryll branch). Pre-existing
+  bug, not introduced here; it affected the ryll client too, so the
+  fix benefits both consumers.
+
 ## Back brief
 
 Before executing any step, back brief the operator on the
