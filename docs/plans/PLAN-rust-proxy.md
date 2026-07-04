@@ -114,11 +114,16 @@ works, but has structural costs:
   whose demarshalling of client messages has a history of
   memory-safety CVEs. Kerbside closes the pre-auth gap
   but does nothing post-auth.
-- **The dead danger-zone machinery.** The only feature
-  that ever modified traffic (display-channel recording
-  borders) is disabled due to hypervisor OOMs; the
-  inserted-packet/ignore-ack accounting it required is
-  dead weight.
+- **The disabled danger-zone machinery.** The only
+  feature that ever modified traffic — the display-channel
+  "danger zone" border indicating that a session was
+  being recorded — is disabled due to hypervisor OOMs and
+  other bugs, leaving the inserted-packet/ignore-ack
+  accounting it required unused. The *goal* behind it is
+  not abandoned: session recording is a desired future
+  capability (see Mission). It is the buggy Python
+  implementation of the indicator that we are dropping,
+  not the ambition.
 
 Exploration findings that shape this plan (verified
 2026-07-04 against the current trees):
@@ -182,6 +187,29 @@ component that parses untrusted internet-facing bytes,
 and for the headroom to do deeper packet inspection over
 time. Python decides policy; Rust enforces it.
 
+A second long-term capability sits behind the same
+architecture: **active participation in the traffic**,
+not just filtering it. The clearest example is session
+recording — in highly regulated environments (and for
+testing and debugging) the proxy should eventually be
+able to record sessions as they are executed, including
+signalling to the user that recording is in progress (the
+"danger zone" indicator the Python proxy attempted).
+Other envisaged features in this class include defanging
+unsafe traffic by rewriting rather than dropping it,
+Kerbside-provided virtual devices (for example a
+Kerbside-managed USB disk offered to the guest over
+usbredir, making the proxy the *originator* of channel
+traffic), and an LLM/MCP sidecar riding along a session.
+None of these are v1 features, but no v1 implementation
+choice may make them impossible later. Concretely, the
+relay pipeline must retain per-message framing
+everywhere, and its abstractions must leave room for
+passive taps (copying framed traffic to a recorder sink),
+message rewriting, and message origination with
+flow-control-aware ACK accounting — designed for now,
+implemented later.
+
 ### Design decisions (settled)
 
 1. **IPC: tonic/gRPC over a unix domain socket.** The
@@ -204,6 +232,14 @@ time. Python decides policy; Rust enforces it.
    (client→qemu) is also the low-bandwidth direction, so
    strict parsing there is cheap; the bulk direction
    (server→client display data) stays framed-but-opaque.
+   The pipeline design must also leave room for the
+   active-participation features described in the Mission
+   — passive per-message taps (session recording),
+   message rewriting (defanging), and message origination
+   (Kerbside-provided devices) — which is one of the
+   reasons pass-through-without-framing is not an
+   acceptable architecture even where policy is
+   permissive.
 3. **Enforcement on from day one.** L0 (framing sanity:
    header validity, per-channel size caps, buffer and
    rate limits) and L1 (message-type allowlists per
@@ -241,17 +277,29 @@ time. Python decides policy; Rust enforces it.
    current exit-non-zero-on-child-death behaviour. The
    proxy inherits stderr so `tracing` output lands in the
    existing log stream.
-7. **Concurrency and metrics.** Tokio task per accepted
-   connection replaces process-per-channel. The
+7. **Concurrency and observability.** Tokio task per
+   accepted connection replaces process-per-channel. The
    multiprocessing metrics queue is replaced by a
    Rust-native Prometheus `/metrics` endpoint. Firewall
    verdicts are aggregated/rate-limited locally before
-   being reported as audit events.
-8. **Out of scope for v1** (absent or dead in the Python
-   proxy, so parity does not require them): SASL
+   being reported as audit events. The proxy is
+   instrumented with the `tracing` crate from day one —
+   structured spans around the connection lifecycle
+   (accept, TLS, handshake, authorize RPC, backend
+   connect, relay) — and the gRPC contract carries a
+   per-connection correlation id that flows into audit
+   events. Full OpenTelemetry (OTLP export, Python-side
+   instrumentation, cross-boundary trace propagation) is
+   deliberately deferred to a later master plan; the
+   spans and correlation ids added here are the hooks
+   that make attaching it cheap.
+8. **Out of scope for v1** (absent or disabled in the
+   Python proxy, so parity does not require them): SASL
    authentication, the full 18-byte non-mini data header,
-   multi-word capability parsing, and the danger-zone
-   border insertion (L3 rewriting is future work).
+   multi-word capability parsing, session recording, and
+   the danger-zone recording indicator (L3
+   injection/rewriting is future work, but the pipeline
+   must not preclude it — see decision 2).
 
 ## Open questions
 
@@ -325,7 +373,10 @@ before execution):
    verification; framed relay with a no-op policy;
    Prometheus endpoint; CLI bootstrap flags. Verified
    end-to-end against a real qemu with both virt-viewer
-   and ryll headless as clients.
+   and ryll headless as clients. A GitHub Actions
+   workflow running fmt/clippy/test and building the
+   fuzz targets lands in this phase alongside the crate
+   and runs on every PR from then on.
 4. **Firewall.** The policy engine and verdict pipeline;
    L0 limits and L1 per-channel/direction allowlists
    derived from `shakenfist-spice-protocol` constants;
@@ -545,6 +596,12 @@ implemented because the following statements will be true:
   the Rust code passes `cargo fmt --check`, `cargo
   clippy` without warnings, and `cargo test`; parsers of
   untrusted input have cargo-fuzz targets.
+* The Rust proxy is exercised by GitHub Actions CI on
+  every pull request — `cargo fmt --check`, clippy,
+  `cargo test`, a build of the fuzz targets, and the
+  wheel build all run as CI jobs, not merely as local
+  Makefile targets — in addition to the direct-qemu
+  integration lane running against the Rust proxy.
 * Python strings use single quotes except docstrings;
   Python lines wrap at 120 characters; trailing
   whitespace is removed. Rust code is rustfmt-formatted.
@@ -564,10 +621,32 @@ implemented because the following statements will be true:
   vd-agent/clipboard direction policy, file-transfer
   allow/deny, usbredir device-class filtering (the
   `shakenfist-spice-usbredir` crate exists).
-* **L3 rewriting/injection**: revive the danger-zone
-  recording border safely, with flow-control-aware
-  insertion (`Inject` verdict) — and diagnose the
-  hypervisor OOM the Python implementation triggered.
+* **Session recording**: record sessions as they execute,
+  for highly regulated environments and for
+  testing/debugging. Builds on the passive per-message
+  tap the v1 pipeline must already accommodate; needs a
+  storage format, retention policy, and API surface.
+* **L3 rewriting/injection**: reimplement the danger-zone
+  recording indicator safely, with flow-control-aware
+  insertion (`Inject` verdict and ACK accounting) — and
+  diagnose the hypervisor OOM the Python implementation
+  triggered. The same machinery underpins other
+  active-participation features: defanging unsafe traffic
+  by rewriting it, Kerbside-provided virtual devices
+  (e.g. a Kerbside-managed USB disk offered over
+  usbredir), and an LLM/MCP sidecar attached to a
+  session.
+* **Full OpenTelemetry support** as its own master plan:
+  OTLP export from the Rust proxy (layering on the
+  `tracing` spans this plan already requires),
+  instrumentation of the Python API/daemon (Flask,
+  SQLAlchemy, the gRPC servicer), trace-context
+  propagation across the UDS boundary via the
+  correlation ids in the gRPC contract, and sampling
+  policy. Deferred because validating this plan's
+  performance claim needs only the Prometheus metrics
+  and the latency loadtest, and there is no collector
+  infrastructure in any deployment yet.
 * **Per-source / per-console firewall policy profiles**
   in the database, with API and web UI surface.
 * **SASL auth and the full non-mini data header**, if a
