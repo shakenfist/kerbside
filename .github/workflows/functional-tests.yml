@@ -186,7 +186,7 @@ jobs:
               ${GITHUB_WORKSPACE}/shakenfist
 
           ansible-playbook -i /home/debian/ansible-hosts \
-              --extra-vars "identifier=${SHAKENFIST_NAMESPACE} base=${{ matrix.test.base }} environment_name=${{ matrix.test.environment_name }} hostname=${{ matrix.test.hostname }}" \
+              --extra-vars "identifier=${SHAKENFIST_NAMESPACE} base=${{ matrix.test.base }} base_user=${{ matrix.test.baseuser }} environment_name=${{ matrix.test.environment_name }} hostname=${{ matrix.test.hostname }}" \
               --tags all ${GITHUB_WORKSPACE}/actions/ansible/kerbside-single-node.yml
 
       - name: Prepare /srv on target
