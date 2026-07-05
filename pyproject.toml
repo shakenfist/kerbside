@@ -14,7 +14,7 @@ dynamic = ["version"]
 
 description = "A protocol native SPICE VDI proxy"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.9"
 dependencies = [
     "shakenfist-utilities==0.8.4",      # apache2
 
@@ -45,6 +45,12 @@ dependencies = [
     "alembic==1.17.2",                  # mit
     "sqlalchemy==2.0.36",               # mit
     "mysqlclient==2.1.1",               # gpl
+
+    # gRPC service (KerbsideProxy) fronting the database for the proxy.
+    # protobuf is pinned to the version the checked-in stubs were
+    # generated against; regenerate via `tox -egenprotos` if bumped.
+    "grpcio==1.81.1",                   # apache2
+    "protobuf==6.33.6",                 # bsd
 
     # Optional dependancies, depending on what clouds you want to provide access to
     # shakenfist-client               # apache2
@@ -116,7 +122,7 @@ kerbside = "kerbside.main:cli"
 kerbside-util = "kerbside.utilities.main:cli"
 
 [tool.setuptools]
-packages = ["kerbside"]
+packages = ["kerbside", "kerbside.rpc"]
 
 [tool.setuptools_scm]
 git_describe_command = "git describe --dirty --tags --match v* --first-parent"
@@ -130,6 +136,11 @@ test = [
     "stestr",              # apache2
     "tox",                 # mit
     "flake8",              # mit
+
+    # protobuf / gRPC code generation (tox -egenprotos). Pinned to
+    # match the runtime grpcio/protobuf so regeneration is deterministic.
+    "grpcio-tools==1.81.1",            # apache2
+    "mypy-protobuf==5.1.0",           # apache2
 
     "shakenfist-client>=0.7.0.0rc6",   # apache2
     #"ovirt-engine-sdk-python>=4.6.1",  # apache2
