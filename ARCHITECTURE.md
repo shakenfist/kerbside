@@ -49,12 +49,46 @@ The main entry point orchestrates the system lifecycle:
 
 - Parses source configuration from `sources.yaml`
 - Spawns the proxy process as a subprocess
+- Hosts the control-plane gRPC service (see below) on a background
+  thread over a unix domain socket
 - Runs a maintenance loop every 60 seconds to:
   - Refresh console listings from configured sources
   - Reap expired authentication tokens
   - Handle source configuration changes
 
-### 2. Proxy Layer (`proxy.py`)
+### 2. Control-plane gRPC service (`rpc/`)
+
+The `KerbsideProxy` gRPC service (`kerbside/rpc/kerbside.proto`,
+servicer in `kerbside/rpc/servicer.py`, hosting in
+`kerbside/rpc/server.py`) fronts the database operations the SPICE
+proxy needs, so a separate proxy process can consult Python for
+authorization and channel bookkeeping instead of accessing MariaDB
+directly. This is the seam for the planned Rust proxy: Python keeps
+owning the database and policy; the proxy consults this service.
+
+It is exposed over a filesystem-guarded unix domain socket
+(`API_SOCKET_PATH`, default `/run/kerbside/api.sock`) with insecure
+gRPC credentials (the peer is a trusted local process), hosted on a
+`ThreadPoolExecutor` in the daemon process. Errors are signalled via
+gRPC status codes.
+
+| RPC | Maps to | Purpose |
+|-----|---------|---------|
+| `AuthorizeConnection` | `get_token_by_token` + `get_source` + `get_console` | Resolve a decrypted token to a hypervisor `Target`, or `Denied`; records the session and the `Channel created` audit |
+| `RegisterChannel` | `record_channel_info` | Pre-authorization channel record |
+| `RecordAuditEvent` | `add_audit_event` | Write an audit event |
+| `DeregisterChannel` | `remove_proxy_channel` | Remove a channel at teardown |
+| `ClearNodeChannels` | `remove_node_channels` | Clear stale channel rows at proxy startup |
+| `ProxyControl` (streaming) | — | Daemon→proxy control channel (session termination / policy push); a keepalive stub today, real events land with the Rust proxy work |
+
+The `.proto` is compiled with `tox -egenprotos` (see
+`tools/gen-protos.sh`); generated stubs are checked in under
+`kerbside/rpc/`. Channel rows are keyed by a proxy-supplied
+`connection_ref` on the `proxychannels` table (which now has a
+surrogate `id` primary key), while the Python proxy continues to key
+by `(node, pid)` until cutover.
+
+### 3. Proxy Layer (`proxy.py`)
 
 The proxy layer handles all SPICE protocol traffic using a multiprocess worker
 pool architecture.
@@ -83,7 +117,7 @@ pool architecture.
 - Kills stray processes older than 5 seconds without active channels
 - Updates Prometheus worker count metrics
 
-### 3. API Layer (`api.py`)
+### 4. API Layer (`api.py`)
 
 Flask-based REST API with JWT authentication (Keystone integration for
 OpenStack environments).
@@ -99,7 +133,7 @@ OpenStack environments).
 | `GET /session` | List active proxy sessions |
 | `GET /session/<id>/terminate` | Kill specific session |
 
-### 4. SPICE Protocol Layer (`spiceprotocol/`)
+### 5. SPICE Protocol Layer (`spiceprotocol/`)
 
 Deep protocol handling for SPICE connections.
 
@@ -130,7 +164,7 @@ spiceprotocol/
 - `playback` / `record` - Audio channels
 - `usbredir` - USB redirection
 
-### 5. Database Layer (`db.py`)
+### 6. Database Layer (`db.py`)
 
 SQLAlchemy ORM with Alembic migrations. Uses MySQL/MariaDB.
 
@@ -144,7 +178,7 @@ SQLAlchemy ORM with Alembic migrations. Uses MySQL/MariaDB.
 | `proxychannels` | Active proxy connections |
 | `auditevents` | Activity logging |
 
-### 6. Source Abstraction (`sources/`)
+### 7. Source Abstraction (`sources/`)
 
 Pluggable console discovery from different cloud platforms.
 
@@ -262,6 +296,8 @@ kerbside/
   consoletoken.py      # Token generation/validation
   util.py              # Shared utilities
   spiceprotocol/       # SPICE protocol handling
+  rpc/                 # KerbsideProxy gRPC service (.proto, generated
+                       #   stubs, servicer, UDS server)
   sources/             # Cloud source implementations
   api/                 # Web UI assets
     templates/         # Jinja2 templates

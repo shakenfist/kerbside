@@ -306,6 +306,51 @@ in parallel with 2a's proto drafting.
 - `SO_PEERCRED` peer-credential checks on the socket are deferred
   hardening.
 
+## Outcome
+
+Completed 2026-07-06 on the kerbside `rust-proxy` branch, commits
+`d6fe28f`..(2h), unmerged and unpushed pending operator review. All
+eight steps landed and pre-commit (flake8 + the full stestr unit
+suite) passes.
+
+- 2a: `kerbside/rpc/kerbside.proto` + `tools/gen-protos.sh` +
+  `tox -egenprotos`; generated stubs checked in and verified to
+  import as `kerbside.rpc`.
+- 2b: `grpcio==1.81.1`/`protobuf==6.33.6` runtime pins,
+  `grpcio-tools`/`mypy-protobuf` dev pins, `kerbside.rpc` packaged,
+  `requires-python` bumped to `>=3.9`.
+- 2c: alembic migration `9a3f1c7b2e40` (surrogate `id` PK, nullable
+  `node`/`pid`, `connection_ref`, `client_ip`→string). Exercised
+  upgrade/downgrade/re-upgrade against MariaDB 11.4.
+- 2d: `kerbside/rpc/servicer.py` (five unary RPCs) +
+  `record_channel_info_by_ref`/`remove_channel_by_ref` db helpers.
+- 2e: `kerbside/rpc/server.py` serve()/stop() + daemon wiring +
+  `API_SOCKET_PATH`/`API_GRPC_WORKERS` config; smoke-tested live.
+- 2f: `ProxyControl` keepalive stub.
+- 2g: `kerbside/tests/unit/test_rpc.py`, 10 tests over a temp UDS
+  with the db layer mocked; all pass.
+- 2h: this Outcome plus ARCHITECTURE.md / AGENTS.md /
+  docs/configuration.md updates.
+
+Deviations from the plan, all deliberate:
+
+- **Migration shape** refined from "re-key to `(node, connection_ref)`"
+  to the non-breaking "surrogate `id` PK, keep `pid`" superset (see
+  the DECIDED note in Open questions), so the Python proxy and its
+  pid reaper keep working until the phase-8 cutover.
+- **`client_ip`** was already `String(15)` in the DB (only the ORM
+  model wrongly said `Integer`); the migration reconciles the model
+  and widens the column rather than doing a type conversion.
+- **`requires-python`** raised to `>=3.9` (grpcio 1.81 and existing
+  pins already required it; the old `>=3.7` was inaccurate).
+- The **reaper** stays on the Python proxy (deferred to phase 5, per
+  the plan's lean); phase 2 exposes only `DeregisterChannel` /
+  `ClearNodeChannels`.
+
+A harness-environment note (not a code issue): the system `tox`
+rejects `FORCE_COLOR=3`, so pre-commit was run with `FORCE_COLOR`
+normalized.
+
 ## Back brief
 
 Before executing any step, back brief the operator on the intended

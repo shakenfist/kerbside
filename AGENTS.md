@@ -20,6 +20,9 @@ SPICE protocol negotiation, authentication, and bidirectional traffic relay.
 | `kerbside/config.py` | Pydantic-based configuration |
 | `kerbside/spiceprotocol/__init__.py` | SpiceClient class for hypervisor connections |
 | `kerbside/spiceprotocol/packets/linkmessages.py` | SPICE handshake protocol |
+| `kerbside/rpc/kerbside.proto` | KerbsideProxy gRPC contract fronting the DB for the proxy |
+| `kerbside/rpc/servicer.py` | gRPC servicer implementing the contract against db.py |
+| `kerbside/rpc/server.py` | serve()/stop() hosting the servicer over a unix socket in the daemon |
 | `kerbside/sources/static.py` | Static source driver: reads VM-to-console mapping from an inline list in sources.yaml; designed for CI pipelines and ad-hoc debugging (no control plane required) |
 
 ## Architecture Patterns
@@ -81,6 +84,22 @@ alembic revision -m "description_of_changes"
 # Edit the generated file in alembic/versions/
 alembic upgrade head
 ```
+
+### Changing the gRPC contract
+
+The `KerbsideProxy` control-plane service is defined in
+`kerbside/rpc/kerbside.proto`. After editing it, regenerate the
+checked-in Python stubs (they are committed alongside the `.proto`):
+
+```bash
+tox -egenprotos   # runs tools/gen-protos.sh (grpc_tools.protoc + import fixups)
+```
+
+Implement RPC handlers in `kerbside/rpc/servicer.py`; the server is
+hosted over a unix socket by `kerbside/rpc/server.py` (started from
+`daemon_run`). Keep `grpcio`/`protobuf` (runtime) and
+`grpcio-tools`/`mypy-protobuf` (tox genprotos deps) pinned in lockstep
+so regeneration is deterministic.
 
 ### Modifying SPICE Protocol Handling
 
