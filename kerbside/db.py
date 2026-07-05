@@ -513,6 +513,39 @@ def record_channel_info(node, pid, client_ip=None, client_port=None,
         session.commit()
 
 
+def record_channel_info_by_ref(node, connection_ref, client_ip=None, client_port=None,
+                               connection_id=None, channel_type=None, channel_id=None,
+                               session_id=None):
+    with Session(ENGINE) as session:
+        try:
+            channel = session.query(ProxyChannel).\
+                filter(ProxyChannel.connection_ref == connection_ref).\
+                one()
+
+        except exc.NoResultFound:
+            channel = ProxyChannel(node, None, datetime.datetime.now())
+            channel.connection_ref = connection_ref
+            session.add(channel)
+
+        for arg in ['client_ip', 'client_port', 'connection_id',
+                    'channel_type', 'channel_id', 'session_id']:
+            if locals()[arg]:
+                setattr(channel, arg, locals()[arg])
+        session.commit()
+
+
+def remove_channel_by_ref(connection_ref):
+    with Session(ENGINE) as session:
+        try:
+            for c in list(session.query(ProxyChannel).
+                          filter(ProxyChannel.connection_ref == connection_ref).
+                          all()):
+                session.delete(c)
+            session.commit()
+        except exc.NoResultFound:
+            return None
+
+
 def remove_proxy_channel(node, pid):
     with Session(ENGINE) as session:
         try:
