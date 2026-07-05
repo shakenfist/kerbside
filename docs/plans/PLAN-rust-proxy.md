@@ -336,8 +336,8 @@ implemented later.
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 1. Server-side SPICE primitives in shakenfist-spice-protocol (ryll repo) | PLAN-rust-proxy-phase-01-server-primitives.md | Complete (ryll branch spice-server-primitives, unmerged) |
-| 2. gRPC contract and Python UDS server in the kerbside daemon | PLAN-rust-proxy-phase-02-grpc-contract.md | Not started |
+| 1. Server-side SPICE primitives in shakenfist-spice-protocol (ryll repo) | PLAN-rust-proxy-phase-01-server-primitives.md | Complete (merged to ryll develop, PR #138) |
+| 2. gRPC contract and Python UDS server in the kerbside daemon | PLAN-rust-proxy-phase-02-grpc-contract.md | Planned |
 | 3. Proxy crate skeleton: listeners, handshake, backend leg, relay | PLAN-rust-proxy-phase-03-proxy-skeleton.md | Not started |
 | 4. Firewall policy engine: L0 + L1 enforcing | PLAN-rust-proxy-phase-04-firewall.md | Not started |
 | 5. Daemon integration: exec/supervision, termination push | PLAN-rust-proxy-phase-05-daemon-integration.md | Not started |
