@@ -1,3 +1,5 @@
+import time
+
 import grpc
 
 from shakenfist_utilities import logs
@@ -9,6 +11,11 @@ from kerbside.rpc import kerbside_pb2, kerbside_pb2_grpc
 
 
 LOG, _ = logs.setup(__name__, **util.configure_logging())
+
+# Interval between keepalive heartbeats on the ProxyControl stream. The
+# stream is only stubbed this phase; phase 5 replaces the heartbeat loop
+# with real session-termination and policy-push events.
+PROXY_CONTROL_HEARTBEAT_SECONDS = 30
 
 
 class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
@@ -123,3 +130,26 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details('ClearNodeChannels failed: %s' % e)
             return kerbside_pb2.StatusReply()
+
+    def ProxyControl(self, request, context):
+        """Server-streaming control channel from the daemon to the proxy.
+
+        Stubbed this phase: it opens the stream and emits periodic
+        Heartbeat keepalives while the proxy stays connected. Phase 5
+        replaces this with real session-termination and policy-push
+        events (extending the ProxyControlEvent oneof).
+        """
+        LOG.info('ProxyControl stream opened for node %s' % request.node)
+        try:
+            # Emit an immediate heartbeat so the client knows the stream is
+            # live, then keep it alive until the peer goes away.
+            yield kerbside_pb2.ProxyControlEvent(
+                heartbeat=kerbside_pb2.Heartbeat())
+            while context.is_active():
+                time.sleep(PROXY_CONTROL_HEARTBEAT_SECONDS)
+                yield kerbside_pb2.ProxyControlEvent(
+                    heartbeat=kerbside_pb2.Heartbeat())
+        except Exception as e:
+            LOG.error('ProxyControl stream failed: %s' % e)
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details('ProxyControl stream failed: %s' % e)
