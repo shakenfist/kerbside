@@ -232,7 +232,8 @@ def get_consoles(include_audit=True):
     with Session(ENGINE) as session:
         try:
             for channel in session.query(ProxyChannel).all():
-                sessions[channel.session_id].append((channel.node, channel.pid))
+                sessions[channel.session_id].append(
+                    (channel.node, channel.connection_ref or channel.pid))
 
             for console in session.query(Console).order_by(Console.name).all():
                 c = console.export()
@@ -284,7 +285,8 @@ def get_console(source, uuid, detailed=False):
             # consoles.
             sessions = defaultdict(list)
             for channel in session.query(ProxyChannel).all():
-                sessions[channel.session_id].append((channel.node, channel.pid))
+                sessions[channel.session_id].append(
+                    (channel.node, channel.connection_ref or channel.pid))
 
             c['sessions'] = []
             c['token_count'] = 0
@@ -457,15 +459,17 @@ def reap_expired_tokens():
 class ProxyChannel(Base):
     __tablename__ = 'proxychannels'
 
-    node = Column(String, primary_key=True)
-    pid = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    node = Column(String)
+    pid = Column(Integer, nullable=True)
     created = Column(DateTime)
-    client_ip = Column(Integer)
+    client_ip = Column(String)
     client_port = Column(Integer)
     connection_id = Column(Integer)
     channel_type = Column(String)
     channel_id = Column(Integer)
     session_id = Column(String)
+    connection_ref = Column(String, nullable=True)
 
     def __init__(self, node, pid, created):
         self.node = node
@@ -474,6 +478,7 @@ class ProxyChannel(Base):
 
     def export(self):
         return {
+            'id': self.id,
             'node': self.node,
             'pid': self.pid,
             'created': self.created,
@@ -482,7 +487,8 @@ class ProxyChannel(Base):
             'connection_id': self.connection_id,
             'channel_type': self.channel_type,
             'channel_id': self.channel_id,
-            'session_id': self.session_id
+            'session_id': self.session_id,
+            'connection_ref': self.connection_ref
         }
 
 

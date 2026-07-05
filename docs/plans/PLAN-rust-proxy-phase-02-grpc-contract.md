@@ -204,16 +204,27 @@ fields. Proposed methods:
 
 ## Open questions
 
-- **`proxychannels` identity / migration — DECIDED (option b).**
-  The table is PK `(node, pid)`; the Rust proxy is one process with
-  no per-connection pid. The chosen approach (operator, 2026-07-05)
-  is an alembic migration that adds a `connection_ref` column and
-  re-keys to `(node, connection_ref)`, **and** fixes the pre-existing
-  `client_ip` `Integer`→string column mismatch in the same
-  migration. This touches the API's `get_console(detailed=True)`
-  reader and the admin UI, which step 2c must update accordingly.
-  (Rejected: reusing the integer `pid` column, which avoids a
-  migration but semantically overloads `pid`.)
+- **`proxychannels` identity / migration — DECIDED.** The table is
+  PK `(node, pid)`; the Rust proxy is one process with no
+  per-connection pid. Refined decision (operator, 2026-07-06): since
+  kerbside will not be deployed until this whole effort lands, there
+  is no production coexistence risk — but the Python proxy and its
+  tests/CI must stay green through the transition, and its reaper
+  genuinely needs OS pids (it matches psutil children to
+  `proxychannels` rows to kill strays). So the migration is a
+  **non-breaking superset** (the recommended "surrogate id PK + both
+  keys" shape): add an autoincrement `id` primary key; keep `node`
+  and `pid` (now nullable) for the Python-proxy path and its reaper;
+  add a nullable `connection_ref` for the gRPC/Rust path; and fix the
+  pre-existing `client_ip` `Integer`→string mismatch in the same
+  migration. The gRPC servicer keys its rows by `(node,
+  connection_ref)`; the Python proxy continues keying by
+  `(node, pid)`. Readers (`get_sessions`, `get_console(detailed=True)`)
+  key each channel on `node` + (`connection_ref` or `pid`). The
+  `pid` column and the Python-proxy reaper are removed at the phase-8
+  cutover, not now. (Rejected: replacing `pid` outright, which would
+  drag phase-8 reaper work into this phase; and overloading the
+  integer `pid` column with a synthetic id.)
 - **`db.py` thread-safety from the gRPC threadpool.** `db.py` uses a
   module-global `ENGINE`; verify each servicer call uses its own
   Session/connection safely across the threadpool (the current code
