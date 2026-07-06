@@ -1,0 +1,419 @@
+#!/bin/bash
+# Verify the built kerbside-proxy Rust binary end to end, standalone --
+# WITHOUT MariaDB and WITHOUT the kerbside daemon/REST API.
+#
+# Stands up: a real qemu SPICE server (start-qemu.sh), a mock
+# KerbsideProxy gRPC service with canned responses (mock-grpc-server.py),
+# and the built kerbside-proxy binary (start-rust-proxy.sh), all wired
+# together with fresh TLS material (generate-tls.sh). It then writes a
+# console.vv pointed at the proxy for a SPICE client to connect through,
+# and verifies the path via the proxy's /metrics endpoint.
+#
+# This is the standalone sibling of lane-up.sh: lane-up.sh exercises the
+# Python proxy behind the full kerbside daemon + MariaDB; this script
+# exercises the new Rust proxy in isolation, per
+# docs/plans/PLAN-rust-proxy-phase-03-proxy-skeleton.md step 3h. The full
+# ryll-based direct-qemu CI integration against the Rust proxy is phase 7
+# (see docs/proxy-architecture.md).
+#
+# ── The client step is deliberately pluggable ─────────────────────────────
+#
+# Driving a real SPICE client headlessly is the hard part, and is left to
+# the caller of this script (this script only brings the path up and
+# writes console.vv; it does not connect a client itself). Two options:
+#
+#   (a) GUI, manual: run `remote-viewer "${RYLL_VV}"` (see below for the
+#       exact path) and watch it connect. This is the simplest way for an
+#       operator to eyeball the connection.
+#
+#   (b) headless, scripted: launch ryll the way lane-up.sh does --
+#         ryll --verbose --headless --file "${RYLL_VV}" \
+#             --control-socket "${RYLL_SOCK}" \
+#             --enable-paste-as-keystrokes \
+#             > "${RYLL_STDOUT}" 2> "${RYLL_STDERR}" &
+#       then drive it with tools/direct-qemu/smoke-client.py "${RYLL_SOCK}"
+#       once the control socket appears -- exactly as lane-up.sh does for
+#       the Python-proxy lane. This requires ryll to be installed/built
+#       (see the ryll repo's own build instructions); it is not assumed
+#       to be available in every environment this script runs in.
+#
+# Either way, after the client connects, run `verify-rust-proxy.sh assert`
+# (see below) to confirm the proxy actually authorized and relayed traffic
+# -- this is what makes the check pass/fail without a GUI or a full
+# protocol-level client.
+#
+# Usage: verify-rust-proxy.sh [up|down|assert]
+#   up     (default) -- bring up qemu + mock gRPC server + rust proxy,
+#          write console.vv, and print the metrics URL to poll.
+#   assert -- poll the proxy's /metrics (GET http://127.0.0.1:<prometheus
+#          port>/metrics) and assert kerbside_proxy_authorized_total >= 1
+#          and kerbside_proxy_bytes_relayed_total > 0 for BOTH the
+#          client_to_server and server_to_client directions, within
+#          ASSERT_TIMEOUT seconds (default 30). Exits 0 on success, 1 on
+#          assertion failure/timeout, 2 if the endpoint is unreachable.
+#          Run this after driving a client through the proxy (step "up"
+#          only brings the path up; it does not connect a client).
+#   down   -- tear everything down by pidfile (best-effort, never errors).
+#
+# Env overrides (all optional; see the "Lane parameters" section below for
+# defaults): WORKDIR, SPICE_PORT, SPICE_TICKET, PROXY_SECURE_PORT,
+# PROXY_INSECURE_PORT, PROXY_PROMETHEUS_PORT, PROXY_NODE_NAME,
+# PROXY_HOST_SUBJECT, CONSOLE_SOURCE, CONSOLE_UUID, SESSION_ID,
+# RUST_PROXY_BINARY.
+#
+# Part of docs/plans/PLAN-rust-proxy-phase-03-proxy-skeleton.md step 3h.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+ACTION="${1:-up}"
+
+# ── Lane parameters (override via env) ────────────────────────────────────────
+
+WORKDIR="${WORKDIR:-/tmp/kerbside-rust-proxy-verify}"
+TLS_DIR="${TLS_DIR:-${WORKDIR}/tls}"
+
+# The qemu SPICE server (the backend leg the proxy connects to).
+SPICE_PORT="${SPICE_PORT:-5910}"
+SPICE_TICKET="${SPICE_TICKET:-rust-proxy-verify-ticket}"
+QEMU_PID_FILE="${QEMU_PID_FILE:-${WORKDIR}/qemu.pid}"
+QEMU_SERIAL_LOG="${QEMU_SERIAL_LOG:-${WORKDIR}/sextant-serial.log}"
+
+# The mock KerbsideProxy gRPC control-plane service.
+#
+# The socket path must stay under the AF_UNIX SUN_LEN limit (~108 bytes on
+# Linux). A deep WORKDIR (e.g. under a long temp/scratch path) will blow past
+# it, and both the mock's bind and the proxy's connect then fail with
+# "path must be shorter than SUN_LEN". So default the socket to a short path
+# under XDG_RUNTIME_DIR (or /tmp), NOT under WORKDIR, and hard-fail early with
+# a clear message if an override is too long.
+GRPC_SOCKET="${GRPC_SOCKET:-${XDG_RUNTIME_DIR:-/tmp}/kerbside-verify-grpc.sock}"
+if [ "${#GRPC_SOCKET}" -ge 108 ]; then
+    echo "ERROR: GRPC_SOCKET path is ${#GRPC_SOCKET} bytes; the AF_UNIX limit" \
+         "is ~108. Choose a shorter path (e.g. under /tmp): ${GRPC_SOCKET}" >&2
+    exit 2
+fi
+GRPC_PID_FILE="${GRPC_PID_FILE:-${WORKDIR}/mock-grpc.pid}"
+GRPC_LOG="${GRPC_LOG:-${WORKDIR}/mock-grpc.log}"
+CONSOLE_SOURCE="${CONSOLE_SOURCE:-rust-proxy-verify}"
+CONSOLE_UUID="${CONSOLE_UUID:-6f4e2c1a-0000-0000-0000-0000000000f3}"
+SESSION_ID="${SESSION_ID:-rust-proxy-verify-session}"
+# The Python interpreter used to run mock-grpc-server.py. Must have grpcio
+# (matching kerbside's pinned version) installed, and the kerbside package
+# importable -- either `pip install -e .` from ${REPO_ROOT} into a venv, or
+# PYTHONPATH="${REPO_ROOT}" if grpcio/protobuf are otherwise available.
+# This script does NOT create that venv for you.
+MOCK_GRPC_PYTHON="${MOCK_GRPC_PYTHON:-python3}"
+
+# The Rust proxy under test.
+PROXY_SECURE_PORT="${PROXY_SECURE_PORT:-5900}"
+PROXY_INSECURE_PORT="${PROXY_INSECURE_PORT:-5901}"
+PROXY_PROMETHEUS_PORT="${PROXY_PROMETHEUS_PORT:-13030}"
+PROXY_NODE_NAME="${PROXY_NODE_NAME:-kerbside-proxy-verify}"
+PROXY_HOST_SUBJECT="${PROXY_HOST_SUBJECT:-C=US,O=Kerbside CI,CN=kerbside-ci}"
+PROXY_PID_FILE="${PROXY_PID_FILE:-${WORKDIR}/rust-proxy.pid}"
+PROXY_LOG="${PROXY_LOG:-${WORKDIR}/rust-proxy.log}"
+# Optional: pass a specific binary (release or debug) instead of letting
+# start-rust-proxy.sh auto-detect release-then-debug under
+# rust/kerbside-proxy/target/.
+RUST_PROXY_BINARY="${RUST_PROXY_BINARY:-}"
+
+CONSOLE_VV="${CONSOLE_VV:-${WORKDIR}/console.vv}"
+METRICS_URL="http://127.0.0.1:${PROXY_PROMETHEUS_PORT}/metrics"
+
+QCOW2="${REPO_ROOT}/tests/fixtures/uncalibrated-sextant.qcow2"
+
+# ── Teardown ───────────────────────────────────────────────────────────────────
+
+_kill_pid_file() {
+    local label="$1"
+    local pidfile="$2"
+
+    if [ ! -f "${pidfile}" ]; then
+        return 0
+    fi
+
+    local pid
+    pid="$(cat "${pidfile}" 2>/dev/null || true)"
+    if [ -z "${pid}" ]; then
+        return 0
+    fi
+
+    if kill -0 "${pid}" 2>/dev/null; then
+        echo "[verify-rust-proxy] sending SIGTERM to ${label} (pid ${pid})"
+        kill -TERM "${pid}" 2>/dev/null || true
+        sleep 2
+        if kill -0 "${pid}" 2>/dev/null; then
+            echo "[verify-rust-proxy] sending SIGKILL to ${label} (pid ${pid})"
+            kill -KILL "${pid}" 2>/dev/null || true
+        fi
+    else
+        echo "[verify-rust-proxy] ${label} (pid ${pid}) already gone"
+    fi
+}
+
+_down() {
+    # Reverse startup order: proxy, then the mock control service, then qemu.
+    _kill_pid_file 'rust-proxy' "${PROXY_PID_FILE}"
+    _kill_pid_file 'mock-grpc-server' "${GRPC_PID_FILE}"
+    _kill_pid_file 'qemu' "${QEMU_PID_FILE}"
+    echo "[verify-rust-proxy] down"
+}
+
+if [ "${ACTION}" = 'down' ]; then
+    _down
+    exit 0
+fi
+
+# ── Metrics-based assertion ───────────────────────────────────────────────────
+#
+# Parses Prometheus text exposition with grep/awk (no extra Python/jq
+# dependency): an unlabeled counter is a line "name value"; a labelled
+# series is "name{label=\"value\",...} value". A metric that has never
+# been touched may be entirely absent from the output (the `prometheus`
+# crate's IntCounterVec only emits a child series once with_label_values
+# has been called for that label combination) -- that is treated the same
+# as 0, not an error, so the loop just keeps polling until the deadline.
+
+_metric_value() {
+    # $1 = metrics body, $2 = metric name, $3 = optional label grep pattern
+    local body="$1"
+    local name="$2"
+    local label_pattern="${3:-}"
+    local line
+    if [ -n "${label_pattern}" ]; then
+        line="$(printf '%s\n' "${body}" | grep -E "^${name}\{" | grep -F "${label_pattern}" | head -1)"
+    else
+        line="$(printf '%s\n' "${body}" | grep -E "^${name} " | head -1)"
+    fi
+    if [ -z "${line}" ]; then
+        echo '0'
+    else
+        echo "${line}" | awk '{print $NF}'
+    fi
+}
+
+if [ "${ACTION}" = 'assert' ]; then
+    ASSERT_TIMEOUT="${ASSERT_TIMEOUT:-30}"
+    echo "[verify-rust-proxy] asserting relay activity via ${METRICS_URL} (timeout ${ASSERT_TIMEOUT}s)"
+
+    DEADLINE=$(( $(date +%s) + ASSERT_TIMEOUT ))
+    LAST_BODY=''
+    while true; do
+        if ! LAST_BODY="$(curl --silent --fail --max-time 5 "${METRICS_URL}")"; then
+            if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
+                echo "ERROR: could not reach ${METRICS_URL} within ${ASSERT_TIMEOUT}s" >&2
+                exit 2
+            fi
+            sleep 1
+            continue
+        fi
+
+        AUTHORIZED="$(_metric_value "${LAST_BODY}" 'kerbside_proxy_authorized_total')"
+        C2S="$(_metric_value "${LAST_BODY}" 'kerbside_proxy_bytes_relayed_total' 'direction="client_to_server"')"
+        S2C="$(_metric_value "${LAST_BODY}" 'kerbside_proxy_bytes_relayed_total' 'direction="server_to_client"')"
+
+        echo "[verify-rust-proxy] authorized_total=${AUTHORIZED} bytes_relayed{client_to_server}=${C2S}" \
+             "bytes_relayed{server_to_client}=${S2C}"
+
+        if [ "${AUTHORIZED}" -ge 1 ] 2>/dev/null && [ "${C2S}" -gt 0 ] 2>/dev/null && [ "${S2C}" -gt 0 ] 2>/dev/null; then
+            echo "[verify-rust-proxy] PASS: authorized >= 1 and bytes relayed in both directions"
+            exit 0
+        fi
+
+        if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
+            echo "ERROR: assertion not satisfied within ${ASSERT_TIMEOUT}s" >&2
+            echo "  last authorized_total=${AUTHORIZED} client_to_server=${C2S} server_to_client=${S2C}" >&2
+            echo "  full metrics body:" >&2
+            printf '%s\n' "${LAST_BODY}" | grep '^kerbside_proxy_' >&2 || true
+            echo "  rust-proxy log (last 60 lines):" >&2
+            tail -60 "${PROXY_LOG}" >&2 || true
+            exit 1
+        fi
+        sleep 1
+    done
+fi
+
+if [ "${ACTION}" != 'up' ]; then
+    echo "Usage: $0 [up|down|assert]" >&2
+    exit 1
+fi
+
+# ── Step 1: workdir + TLS material ───────────────────────────────────────────
+
+echo "[verify-rust-proxy] WORKDIR=${WORKDIR}"
+mkdir -p "${WORKDIR}"
+
+"${SCRIPT_DIR}/generate-tls.sh" "${TLS_DIR}"
+
+# ── Step 2: locate OVMF firmware and boot qemu ───────────────────────────────
+#
+# Mirrors lane-up.sh's OVMF detection exactly (kept independent rather than
+# factored out, since lane-up.sh is not a library other scripts source).
+
+if [ -f '/usr/share/OVMF/OVMF_CODE_4M.fd' ] && [ -f '/usr/share/OVMF/OVMF_VARS_4M.fd' ]; then
+    OVMF_CODE='/usr/share/OVMF/OVMF_CODE_4M.fd'
+    OVMF_VARS='/usr/share/OVMF/OVMF_VARS_4M.fd'
+elif [ -f '/usr/share/OVMF/OVMF_CODE.fd' ] && [ -f '/usr/share/OVMF/OVMF_VARS.fd' ]; then
+    OVMF_CODE='/usr/share/OVMF/OVMF_CODE.fd'
+    OVMF_VARS='/usr/share/OVMF/OVMF_VARS.fd'
+elif [ -f '/usr/share/ovmf/OVMF.fd' ]; then
+    OVMF_CODE='/usr/share/ovmf/OVMF.fd'
+    OVMF_VARS='/usr/share/ovmf/OVMF.fd'
+else
+    echo "ERROR: OVMF firmware not found; install the ovmf package" >&2
+    exit 1
+fi
+echo "[verify-rust-proxy] OVMF: ${OVMF_CODE}"
+
+if [ ! -f "${QCOW2}" ]; then
+    echo "ERROR: qcow2 fixture not found: ${QCOW2}" >&2
+    exit 1
+fi
+
+"${SCRIPT_DIR}/start-qemu.sh" \
+    --qcow2 "${QCOW2}" \
+    --ovmf-code "${OVMF_CODE}" \
+    --ovmf-vars "${OVMF_VARS}" \
+    --spice-port "${SPICE_PORT}" \
+    --ticket "${SPICE_TICKET}" \
+    --serial-log "${QEMU_SERIAL_LOG}" \
+    --pid-file "${QEMU_PID_FILE}"
+
+# start-qemu.sh's -daemonize only waits for qemu to fork, not for its SPICE
+# server to accept connections; poll it directly so the mock gRPC server's
+# canned Target (below) points at a backend that is actually listening
+# before the rust proxy is started and a client can reach it.
+echo "[verify-rust-proxy] Waiting for qemu SPICE port ${SPICE_PORT}..."
+DEADLINE=$(( $(date +%s) + 30 ))
+while true; do
+    if python3 -c \
+            "import socket; s=socket.socket(); s.settimeout(1); s.connect(('127.0.0.1', ${SPICE_PORT})); s.close()" \
+            2>/dev/null; then
+        break
+    fi
+    if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
+        echo "ERROR: qemu SPICE port ${SPICE_PORT} did not come up within 30s" >&2
+        tail -40 "${QEMU_SERIAL_LOG}" >&2 || true
+        exit 1
+    fi
+    sleep 0.5
+done
+echo "[verify-rust-proxy] qemu SPICE server up on port ${SPICE_PORT}"
+
+# ── Step 3: start the mock KerbsideProxy gRPC server ─────────────────────────
+
+echo "[verify-rust-proxy] Starting mock-grpc-server.py"
+"${MOCK_GRPC_PYTHON}" "${SCRIPT_DIR}/mock-grpc-server.py" \
+    --socket "${GRPC_SOCKET}" \
+    --hypervisor-ip '127.0.0.1' \
+    --insecure-port "${SPICE_PORT}" \
+    --secure-port 0 \
+    --ticket "${SPICE_TICKET}" \
+    --source "${CONSOLE_SOURCE}" \
+    --uuid "${CONSOLE_UUID}" \
+    --session-id "${SESSION_ID}" \
+    --verbose \
+    >> "${GRPC_LOG}" 2>&1 &
+GRPC_PID=$!
+printf '%d' "${GRPC_PID}" > "${GRPC_PID_FILE}"
+echo "[verify-rust-proxy] mock-grpc-server.py started, pid=${GRPC_PID}"
+
+echo "[verify-rust-proxy] Waiting for gRPC socket at ${GRPC_SOCKET}..."
+DEADLINE=$(( $(date +%s) + 15 ))
+while true; do
+    if [ -S "${GRPC_SOCKET}" ]; then
+        break
+    fi
+    if ! kill -0 "${GRPC_PID}" 2>/dev/null; then
+        echo "ERROR: mock-grpc-server.py (pid ${GRPC_PID}) exited before binding its socket" >&2
+        tail -60 "${GRPC_LOG}" >&2 || true
+        exit 1
+    fi
+    if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
+        echo "ERROR: mock-grpc-server.py socket did not appear within 15s" >&2
+        tail -60 "${GRPC_LOG}" >&2 || true
+        exit 1
+    fi
+    sleep 0.5
+done
+echo "[verify-rust-proxy] mock-grpc-server.py socket ready"
+
+# ── Step 4: start the rust proxy ─────────────────────────────────────────────
+
+START_PROXY_ARGS=(
+    --tls-dir "${TLS_DIR}"
+    --api-socket "${GRPC_SOCKET}"
+    --pid-file "${PROXY_PID_FILE}"
+    --log-path "${PROXY_LOG}"
+    --secure-port "${PROXY_SECURE_PORT}"
+    --insecure-port "${PROXY_INSECURE_PORT}"
+    --prometheus-port "${PROXY_PROMETHEUS_PORT}"
+    --node-name "${PROXY_NODE_NAME}"
+    --host-subject "${PROXY_HOST_SUBJECT}"
+    --verbose
+)
+if [ -n "${RUST_PROXY_BINARY}" ]; then
+    START_PROXY_ARGS+=(--binary "${RUST_PROXY_BINARY}")
+fi
+
+"${SCRIPT_DIR}/start-rust-proxy.sh" "${START_PROXY_ARGS[@]}"
+
+# ── Step 5: write console.vv pointed at the rust proxy ───────────────────────
+#
+# Mirrors kerbside/api.py's VIRTVIEWER_TEMPLATE (the "proxy" console.vv
+# variant): host/port/tls-port point the client at the PROXY, not at qemu
+# directly, so this exercises the full ryll -> kerbside-proxy -> qemu path.
+# The password/token value is arbitrary: mock-grpc-server.py's
+# AuthorizeConnection authorizes every token unconditionally, so any string
+# the proxy can RSA-encrypt and decrypt round-trips fine.
+#
+# Unlike the production template, delete-this-file is set to 0 here (not
+# 1): verification runs are typically repeated by hand against the same
+# console.vv, and having virt-viewer/remote-viewer delete it after first
+# use would be surprising for that workflow.
+
+CA_CERT_ESCAPED="$(sed ':a;N;$!ba;s/\n/\\n/g' "${TLS_DIR}/ca-cert.pem")"
+
+cat > "${CONSOLE_VV}" << EOF
+[virt-viewer]
+type=spice
+host=127.0.0.1
+port=${PROXY_INSECURE_PORT}
+tls-port=${PROXY_SECURE_PORT}
+password=rust-proxy-verify-any-token-works
+delete-this-file=0
+fullscreen=0
+title=kerbside-proxy verification
+toggle-fullscreen=shift+f11
+release-cursor=shift+f12
+secure-attention=ctrl+alt+end
+enable-smartcard=1
+enable-usb-autoshare=1
+usb-filter=-1,-1,-1,-1,0
+tls-ciphers=DEFAULT
+ca=${CA_CERT_ESCAPED}
+host-subject=${PROXY_HOST_SUBJECT}
+EOF
+
+echo "[verify-rust-proxy] console.vv written to ${CONSOLE_VV}"
+
+# ── Step 6: report how to finish the check ───────────────────────────────────
+
+echo
+echo "[verify-rust-proxy] up. Next steps:"
+echo "  1. Connect a SPICE client through the proxy, e.g.:"
+echo "       remote-viewer '${CONSOLE_VV}'"
+echo "     or drive ryll headless against it (see the comment block at the"
+echo "     top of this script for the exact invocation + smoke-client.py)."
+echo "  2. After the client connects, verify relay activity via metrics:"
+echo "       curl -s '${METRICS_URL}' | grep kerbside_proxy_"
+echo "     Expect kerbside_proxy_authorized_total >= 1 and"
+echo "     kerbside_proxy_bytes_relayed_total > 0 for both the"
+echo "     client_to_server and server_to_client directions."
+echo "  3. Tear down with: $0 down"
+echo
+echo "[verify-rust-proxy] METRICS_URL=${METRICS_URL}"
+echo "[verify-rust-proxy] CONSOLE_VV=${CONSOLE_VV}"
