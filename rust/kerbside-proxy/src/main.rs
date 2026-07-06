@@ -37,8 +37,12 @@ mod tls;
 /// The per-connection client-facing handshake + authorization.
 mod session;
 
-/// The backend leg + relay handoff (a stub until phases 3e/3f).
+/// The backend leg: hypervisor connect (with the need_secured retry) + relay
+/// handoff.
 mod backend;
+
+/// The inspection-first SPICE relay (a stub until phase 3f).
+mod relay;
 
 /// Kerbside SPICE proxy configuration. Defaults mirror `kerbside/config.py`
 /// so the Python daemon can pass matching values when it spawns the proxy
