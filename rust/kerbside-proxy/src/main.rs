@@ -48,6 +48,10 @@ mod backend;
 /// ships PermissivePolicy; phase 4 fills it with L0/L1 enforcement.
 mod policy;
 
+/// The compiled-in L1 message-type grammar table (per channel + direction).
+/// Consulted by phase 4's firewall engine (`policy.rs`).
+mod allowlist;
+
 /// The inspection-first, per-message-framed SPICE relay.
 mod relay;
 
