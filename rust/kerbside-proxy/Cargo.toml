@@ -46,6 +46,10 @@ http-body-util = "0.1"
 bytes = "1"
 
 clap = { version = "4", features = ["derive"] }
+# TCP keepalive on the accepted client socket (listen.rs), mirroring the
+# backend leg's keepalive in the ryll SpiceClient. Version + "all" features
+# match what the ryll shakenfist-spice-protocol crate uses.
+socket2 = { version = "0.6", features = ["all"] }
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -56,6 +60,10 @@ uuid = { version = "1", features = ["v4"] }
 prometheus = "0.13"
 
 [dev-dependencies]
+# `test-util` enables `#[tokio::test(start_paused = true)]`, used by the relay
+# idle-read-timeout test to auto-advance the clock deterministically instead of
+# waiting the real 15-minute backstop. Feature unification adds it for tests only.
+tokio = { version = "1", features = ["test-util"] }
 # The rpc.rs unit test serves an in-process tonic server over a UnixListener,
 # which requires the server codegen (enabled in build.rs) and a stream adapter
 # for the listener. tempfile provides a private directory for the test socket.

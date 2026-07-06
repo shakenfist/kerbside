@@ -12,6 +12,7 @@
 //! relayed SPICE channel (SPICE opens a TCP connection per channel).
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use shakenfist_spice_protocol::link::SpiceStream;
@@ -36,6 +37,21 @@ const MAX_MESSAGE_SIZE: u32 = 16 * 1024 * 1024;
 /// How much we read from the socket per `read` call. The reassembly buffer
 /// grows as needed for a single large message; this only bounds one read.
 const READ_CHUNK_SIZE: usize = 64 * 1024;
+
+/// Backstop on how long a relay direction may block on a single read with no
+/// bytes arriving before we tear the whole relay down.
+///
+/// This is a RESOURCE guard, not a firewall verdict: it is not subject to
+/// warn-only and is not recorded in the verdict tally/metrics. Its job is to
+/// stop an authorized-but-silent client (or a wedged hypervisor) from pinning
+/// a concurrency permit indefinitely — the phase-3 deferred permit-pinning
+/// finding. Client-side TCP keepalive (set in `listen.rs`, mirroring the
+/// backend leg) is the PRIMARY dead-peer detector — it tears down a peer that
+/// has vanished within ~75 s; this generous 15-minute backstop only catches a
+/// peer that keeps the TCP connection alive but sends nothing, without killing
+/// a legitimately-idle interactive session. Tunable later (per the phase-4
+/// plan) once real idle patterns are observed.
+const IDLE_READ_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 /// Relay the authorized client connection to the connected backend channel.
 ///
@@ -158,17 +174,25 @@ pub async fn run(
 ///
 /// Generic over the reader/writer/policy so it is unit-testable with
 /// `tokio::io::duplex` and in-memory readers (a `SpiceStream` cannot wrap a
-/// duplex). Reads bytes into a reassembly buffer, and for every complete
-/// framed message (`MessageHeader` + `message_size` body) present, consults
-/// `policy` and acts on its [`Verdict`]:
+/// duplex). Reads bytes into a reassembly buffer. As soon as a message's
+/// 6-byte header is parsed — and BEFORE its body is buffered — it consults
+/// [`Policy::check_header`] (L0 size/rate) exactly once per message; a
+/// `Terminate` there flushes and ends the pump without ever accumulating the
+/// body. Otherwise, for every complete framed message (`MessageHeader` +
+/// `message_size` body) present, it consults [`Policy::inspect`] and acts on
+/// its [`Verdict`]:
 ///
 /// - [`Verdict::Forward`]: write the ORIGINAL framed bytes (header + body,
 ///   unchanged — never re-encoded) to `writer`, then advance past them.
 /// - [`Verdict::Drop`]: advance past the message without forwarding it.
 /// - [`Verdict::Terminate`]: flush and end the pump (which ends the relay).
 ///
-/// Returns `Ok(())` on clean EOF, or `Err` on a protocol violation (an
-/// oversized frame) or an underlying I/O error.
+/// Each blocking `read` is bounded by [`IDLE_READ_TIMEOUT`]: on elapse the
+/// pump ends cleanly (a resource guard, not a firewall verdict), so a silent
+/// peer cannot pin a concurrency permit forever.
+///
+/// Returns `Ok(())` on clean EOF (or an idle timeout), or `Err` on a protocol
+/// violation (an oversized frame) or an underlying I/O error.
 async fn pump<R, W, P>(
     mut reader: R,
     mut writer: W,
@@ -185,9 +209,28 @@ where
     // Reassembly buffer holding bytes read but not yet fully framed/consumed.
     let mut buf: Vec<u8> = Vec::with_capacity(READ_CHUNK_SIZE);
     let mut chunk = vec![0u8; READ_CHUNK_SIZE];
+    // Whether the message currently at the FRONT of `buf` (offset 0 after each
+    // `drain`) has already had `check_header` run for it. This dedupes the L0
+    // header check so a message whose body spans several reads is header-
+    // checked exactly once — critical for the rate counter, which must not
+    // count one message many times.
+    let mut header_checked = false;
 
     loop {
-        let n = reader.read(&mut chunk).await?;
+        let n = match tokio::time::timeout(IDLE_READ_TIMEOUT, reader.read(&mut chunk)).await {
+            Ok(result) => result?,
+            Err(_elapsed) => {
+                // Resource guard, not a firewall verdict: end the relay cleanly
+                // so a silent peer cannot pin a concurrency permit forever.
+                warn!(
+                    %connection_ref,
+                    channel = channel.name(),
+                    timeout_secs = IDLE_READ_TIMEOUT.as_secs(),
+                    "relay idle-read timeout; ending relay"
+                );
+                return Ok(());
+            }
+        };
         if n == 0 {
             // EOF: no more messages will arrive on this direction. Flush
             // whatever we have already forwarded and end cleanly.
@@ -217,6 +260,30 @@ where
                     dir,
                     channel.name()
                 ));
+            }
+
+            // L0: consult the policy on the header BEFORE buffering the body, so
+            // an over-cap or over-rate message is refused without accumulating
+            // its body (bounded otherwise only by the absolute guard above).
+            // Run exactly once per message via `header_checked`. Only Terminate
+            // is actioned here; Forward/Drop both let the relay proceed to
+            // buffer the body and call `inspect` (Design decision 3 / step 4c).
+            if !header_checked {
+                header_checked = true;
+                if matches!(
+                    policy.check_header(dir, channel, &header),
+                    Verdict::Terminate
+                ) {
+                    warn!(
+                        %connection_ref,
+                        channel = channel.name(),
+                        message_type = header.message_type,
+                        message_size = header.message_size,
+                        "policy header check verdict Terminate; ending relay"
+                    );
+                    writer.flush().await?;
+                    return Ok(());
+                }
             }
 
             let frame_len = MessageHeader::SIZE + header.message_size as usize;
@@ -257,6 +324,9 @@ where
             }
 
             consumed += frame_len;
+            // The next message (if any) at the new cursor has not been
+            // header-checked yet.
+            header_checked = false;
         }
 
         if consumed > 0 {
@@ -335,6 +405,38 @@ mod tests {
             _: &[u8],
         ) -> Verdict {
             Verdict::Terminate
+        }
+    }
+
+    /// Test-only policy that terminates in the pre-body header check (L0),
+    /// exercising the relay's `check_header` wiring. `inspect` would forward,
+    /// so a Terminate here proves the header check acted before the body.
+    struct HeaderTerminatePolicy;
+    impl Policy for HeaderTerminatePolicy {
+        fn inspect(
+            &mut self,
+            _: Direction,
+            _: ChannelType,
+            _: &MessageHeader,
+            _: &[u8],
+        ) -> Verdict {
+            Verdict::Forward
+        }
+        fn check_header(&mut self, _: Direction, _: ChannelType, _: &MessageHeader) -> Verdict {
+            Verdict::Terminate
+        }
+    }
+
+    /// A reader that is always `Pending`: it never yields bytes and never
+    /// signals EOF, modelling a silent-but-connected peer.
+    struct PendingReader;
+    impl AsyncRead for PendingReader {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            _buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            Poll::Pending
         }
     }
 
@@ -454,5 +556,41 @@ mod tests {
             out.is_empty(),
             "nothing should be forwarded for a bad frame"
         );
+    }
+
+    #[tokio::test]
+    async fn header_check_terminate_ends_without_forwarding() {
+        // The header check must fire before the body is forwarded, so nothing
+        // reaches the writer even though `inspect` would have forwarded.
+        let msg1 = make_message(101, b"hello");
+        let msg2 = make_message(202, b"world");
+        let mut input = Vec::new();
+        input.extend_from_slice(&msg1);
+        input.extend_from_slice(&msg2);
+
+        let (out, result) = run_pump(vec![input], HeaderTerminatePolicy).await;
+        result.expect("header-check terminate should end the pump with Ok");
+        assert!(
+            out.is_empty(),
+            "a header-check Terminate must forward nothing"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn idle_read_timeout_ends_pump_cleanly() {
+        // With the clock paused, tokio auto-advances to the idle-timeout
+        // deadline once the (forever-Pending) reader leaves the task idle, so
+        // this is deterministic and does not wait 15 real minutes.
+        let (out_writer, _out_reader) = tokio::io::duplex(64 * 1024);
+        let result = pump(
+            PendingReader,
+            out_writer,
+            PermissivePolicy,
+            Direction::ClientToServer,
+            ChannelType::Main,
+            "test",
+        )
+        .await;
+        result.expect("idle-read timeout must end the pump cleanly with Ok");
     }
 }

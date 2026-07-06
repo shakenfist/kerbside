@@ -18,6 +18,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use shakenfist_spice_protocol::link::{read_link_mess, send_need_secured, SpiceStream};
+use socket2::{SockRef, TcpKeepalive};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, info, warn};
@@ -30,6 +31,36 @@ use tracing::{debug, info, warn};
 /// lifetime, a stuck handshake would otherwise also pin a permit --
 /// indefinitely.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// TCP keepalive tuning for the accepted CLIENT socket, mirroring the backend
+/// leg (the ryll `SpiceClient`, which matches spice-gtk behaviour): 30 s idle
+/// before the first probe, then probes at 15 s intervals, 3 retries — so a
+/// vanished peer is detected in roughly 75 s. Keepalive is the PRIMARY
+/// dead-peer detector for a relayed session (the relay's idle-read timeout is
+/// only a generous backstop); it closes the phase-3 deferred permit-pinning
+/// finding on the client leg.
+const CLIENT_KEEPALIVE_TIME: Duration = Duration::from_secs(30);
+const CLIENT_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
+const CLIENT_KEEPALIVE_RETRIES: u32 = 3;
+
+/// Enable TCP keepalive on an accepted client socket, mirroring the backend
+/// leg. Best-effort: a keepalive-set failure is logged and NON-fatal — we do
+/// not drop an otherwise healthy connection over it. Called before the TLS
+/// accept so the probes cover the whole session.
+fn set_client_keepalive(stream: &TcpStream, peer: SocketAddr) {
+    let keepalive = TcpKeepalive::new()
+        .with_time(CLIENT_KEEPALIVE_TIME)
+        .with_interval(CLIENT_KEEPALIVE_INTERVAL)
+        .with_retries(CLIENT_KEEPALIVE_RETRIES);
+    let sock = SockRef::from(stream);
+    if let Err(e) = sock.set_keepalive(true) {
+        warn!(%peer, error = %e, "enabling client TCP keepalive failed; continuing");
+        return;
+    }
+    if let Err(e) = sock.set_tcp_keepalive(&keepalive) {
+        warn!(%peer, error = %e, "setting client TCP keepalive parameters failed; continuing");
+    }
+}
 
 /// Run the insecure (plaintext) SPICE listener forever.
 ///
@@ -119,7 +150,7 @@ where
         let handler = handler.clone();
 
         tokio::spawn(async move {
-            match accept_tls(&acceptor, stream).await {
+            match accept_tls(&acceptor, stream, peer).await {
                 Ok(tls_stream) => {
                     debug!(%peer, "secure connection: TLS accepted");
                     handler(SpiceStream::TlsServer(tls_stream), peer).await;
@@ -135,12 +166,49 @@ where
 async fn accept_tls(
     acceptor: &TlsAcceptor,
     stream: TcpStream,
+    peer: SocketAddr,
 ) -> Result<tokio_rustls::server::TlsStream<TcpStream>> {
     stream.set_nodelay(true).context("setting TCP_NODELAY")?;
+    // Enable keepalive on the client leg before TLS so a silent/vanished client
+    // is detected and cannot pin a concurrency permit (mirrors the backend leg).
+    set_client_keepalive(&stream, peer);
 
     let tls_stream = tokio::time::timeout(HANDSHAKE_TIMEOUT, acceptor.accept(stream))
         .await
         .context("TLS accept timed out")??;
 
     Ok(tls_stream)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Smoke test: enabling keepalive on a real loopback socket must not error
+    /// (the call is best-effort, so this only proves the wiring works on the
+    /// common platform, not that the params were rejected elsewhere).
+    #[tokio::test]
+    async fn set_client_keepalive_on_loopback_succeeds() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("binding a loopback listener");
+        let addr = listener.local_addr().expect("local_addr");
+        let connect = tokio::spawn(async move { TcpStream::connect(addr).await });
+        let (server, peer) = listener.accept().await.expect("accept");
+        let _client = connect.await.expect("connect task").expect("connect");
+
+        // Directly assert the socket2 calls succeed here (the production helper
+        // swallows errors as non-fatal); this catches a platform/param regression.
+        let keepalive = TcpKeepalive::new()
+            .with_time(CLIENT_KEEPALIVE_TIME)
+            .with_interval(CLIENT_KEEPALIVE_INTERVAL)
+            .with_retries(CLIENT_KEEPALIVE_RETRIES);
+        let sock = SockRef::from(&server);
+        sock.set_keepalive(true).expect("set_keepalive");
+        sock.set_tcp_keepalive(&keepalive)
+            .expect("set_tcp_keepalive");
+
+        // And the production helper must not panic.
+        set_client_keepalive(&server, peer);
+    }
 }

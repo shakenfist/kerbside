@@ -8,6 +8,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use shakenfist_spice_protocol::messages::MessageHeader;
 use shakenfist_spice_protocol::ChannelType;
@@ -70,6 +71,28 @@ pub trait Policy: Send {
         header: &MessageHeader,
         payload: &[u8],
     ) -> Verdict;
+
+    /// Inspect a message's header BEFORE its body is buffered (L0).
+    ///
+    /// The relay calls this as soon as it has parsed the 6-byte
+    /// [`MessageHeader`], and before it waits to buffer `message_size` body
+    /// bytes — the whole point of the L0 size/rate caps is to refuse a body
+    /// the cap forbids without ever accumulating it. The default forwards.
+    ///
+    /// Only [`Verdict::Forward`] and [`Verdict::Terminate`] are meaningful
+    /// here: returning `Terminate` ends the direction without buffering the
+    /// body; anything else lets the relay proceed to buffer the body and call
+    /// [`inspect`](Policy::inspect). No v1 rule emits `Drop` from a header
+    /// check (skipping an un-buffered body is out of scope), so the relay
+    /// treats a `Drop` from `check_header` as `Forward`.
+    fn check_header(
+        &mut self,
+        _dir: Direction,
+        _channel: ChannelType,
+        _header: &MessageHeader,
+    ) -> Verdict {
+        Verdict::Forward
+    }
 }
 
 /// The phase-3 policy: forward every message unchanged.
@@ -119,8 +142,7 @@ pub enum EnforcementMode {
 }
 
 /// A firewall rule that fired for one framed message. The variant selects the
-/// `rule` metric/audit label; it is low-cardinality and extensible (4c adds
-/// size/rate rules).
+/// `rule` metric/audit label; it is low-cardinality and extensible.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Rule {
     /// L1: a modeled channel+direction received a message type not in its
@@ -129,7 +151,17 @@ enum Rule {
     /// L1: a message arrived on a channel with no modeled grammar. Always
     /// observe-only — never a type-based terminate (Design decision 4).
     UnmodeledType,
+    /// L0: a message's declared body size exceeded the per-(channel,direction)
+    /// policy cap (which sits below the relay's absolute resource guard).
+    SizeCap,
+    /// L0: the per-direction message/byte rate exceeded the configured
+    /// ceiling (disabled by default — see [`RateLimit`]).
+    RateCap,
 }
+
+/// The number of [`Rule`] variants; [`VerdictTally`] holds one counter per
+/// `(Rule, Action)` pair.
+const RULE_COUNT: usize = 4;
 
 impl Rule {
     /// The stable `rule` label used in metrics and the audit summary.
@@ -137,7 +169,29 @@ impl Rule {
         match self {
             Rule::DisallowedType => "disallowed_type",
             Rule::UnmodeledType => "unmodeled_type",
+            Rule::SizeCap => "size_cap",
+            Rule::RateCap => "rate_cap",
         }
+    }
+
+    /// A dense 0-based index into the tally's per-rule counters.
+    fn index(self) -> usize {
+        match self {
+            Rule::DisallowedType => 0,
+            Rule::UnmodeledType => 1,
+            Rule::SizeCap => 2,
+            Rule::RateCap => 3,
+        }
+    }
+
+    /// Every rule, in `index` order — for iterating the tally.
+    fn all() -> [Rule; RULE_COUNT] {
+        [
+            Rule::DisallowedType,
+            Rule::UnmodeledType,
+            Rule::SizeCap,
+            Rule::RateCap,
+        ]
     }
 }
 
@@ -151,12 +205,23 @@ enum Action {
     Observed,
 }
 
+/// The number of [`Action`] variants.
+const ACTION_COUNT: usize = 2;
+
 impl Action {
     /// The stable `action` label used in metrics and the audit summary.
     fn label(self) -> &'static str {
         match self {
             Action::Enforced => "enforced",
             Action::Observed => "observed",
+        }
+    }
+
+    /// A dense 0-based index into the tally's per-action counters.
+    fn index(self) -> usize {
+        match self {
+            Action::Enforced => 0,
+            Action::Observed => 1,
         }
     }
 }
@@ -208,15 +273,55 @@ impl PermittedChannels {
     }
 }
 
+/// The generous L0 policy size cap applied to every (channel, direction) that
+/// is NOT known to carry only small, fixed messages.
+///
+/// This equals the relay's absolute [`MAX_MESSAGE_SIZE`](crate::relay) resource
+/// guard on purpose: the bulk directions (display server especially, which
+/// carries image/surface payloads) have no meaningful per-message policy cap
+/// below the absolute guard *yet*. It is deliberately conservative to avoid
+/// false positives before the step-4f capture validation observes real peak
+/// sizes and tightens it. Until then the absolute guard is the effective bound
+/// for these directions, and the `size_cap` rule only fires on the tight
+/// directions below.
+const GENEROUS_SIZE_CAP: u32 = 16 * 1024 * 1024;
+
+/// The tight L0 policy size cap for the input-event client directions
+/// (inputs-client and cursor-client). Key and mouse events are well-modeled,
+/// fixed, and tiny (tens of bytes); 4 KiB is generous headroom over any
+/// legitimate one while still refusing an absurd body long before the absolute
+/// guard. Validated/tuned by step 4f.
+const INPUT_CLIENT_SIZE_CAP: u32 = 4 * 1024;
+
+/// A coarse per-direction rate/throughput ceiling.
+///
+/// DISABLED by default (`FirewallPolicy::rate_limit == None`): picking real
+/// values needs the step-4f captures, and a wrong default would false-positive
+/// on legitimate bursts (e.g. a display refresh storm). The mechanism ships so
+/// a deployment can opt in once tuned; the counter is a simple fixed window
+/// per relay direction (see [`EnforcingPolicy`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RateLimit {
+    /// Maximum framed messages permitted within `window`.
+    pub max_messages: u64,
+    /// Maximum bytes (header + body) permitted within `window`.
+    pub max_bytes: u64,
+    /// The length of the fixed accounting window.
+    pub window: Duration,
+}
+
 /// The tunable firewall knobs for one connection, delivered per-connection.
 ///
 /// Shared across the two relay directions as an `Arc<FirewallPolicy>` so the
-/// allowlist lookup needs no lock on the hot path (phase-4 plan, Design
-/// decision 2). This holds only the deployment-tunable knobs; the L1 allowlist
-/// tables themselves are a compiled-in fact about the SPICE protocol
-/// (`allowlist.rs`), not policy. L0 (size/rate) knobs are added in step 4c.
+/// allowlist lookup and cap checks need no lock on the hot path (phase-4 plan,
+/// Design decision 2). This holds only the deployment-tunable knobs; the L1
+/// allowlist tables themselves are a compiled-in fact about the SPICE protocol
+/// (`allowlist.rs`), not policy.
 ///
-/// `Default` is **enforcing** and permits ALL known channel types.
+/// `Default` is **enforcing** and permits ALL known channel types. The L0 size
+/// caps are conservative (generous everywhere except the tiny input-event
+/// client directions) and the rate limit is OFF, so the default cannot
+/// false-positive on legitimate traffic before step 4f validates it.
 #[derive(Clone, Debug)]
 pub struct FirewallPolicy {
     /// Whether blocking verdicts are applied or merely observed.
@@ -224,6 +329,15 @@ pub struct FirewallPolicy {
     /// The verdict for an L1 grammar violation (disallowed message type) on a
     /// MODELED channel. Defaults to [`Verdict::Terminate`] (fail closed).
     pub disallowed_type_verdict: Verdict,
+    /// The verdict for an L0 size-cap violation. Defaults to
+    /// [`Verdict::Terminate`] (fail closed).
+    pub size_cap_verdict: Verdict,
+    /// The verdict for an L0 rate-ceiling violation. Defaults to
+    /// [`Verdict::Terminate`]; only consulted when `rate_limit` is `Some`.
+    pub rate_verdict: Verdict,
+    /// The per-direction rate/throughput ceiling, or `None` to disable rate
+    /// accounting entirely (the default — see [`RateLimit`]).
+    pub rate_limit: Option<RateLimit>,
     /// Which channel types may be relayed. Enforced in step 4e (hence the field
     /// is not yet read: `#[allow(dead_code)]`).
     #[allow(dead_code)]
@@ -235,6 +349,9 @@ impl Default for FirewallPolicy {
         FirewallPolicy {
             mode: EnforcementMode::Enforce,
             disallowed_type_verdict: Verdict::Terminate,
+            size_cap_verdict: Verdict::Terminate,
+            rate_verdict: Verdict::Terminate,
+            rate_limit: None,
             permitted_channels: PermittedChannels::all(),
         }
     }
@@ -254,6 +371,23 @@ impl FirewallPolicy {
     pub fn channel_permitted(&self, ch: ChannelType) -> bool {
         self.permitted_channels.contains(ch)
     }
+
+    /// The L0 policy size cap for one (channel, direction), in body bytes.
+    ///
+    /// This is a POLICY cap, distinct from and (for the tight directions) below
+    /// the relay's absolute [`MAX_MESSAGE_SIZE`](crate::relay) resource guard.
+    /// Tight only where the messages are known-small and fixed — the
+    /// input-event client directions (inputs-client, cursor-client key/mouse
+    /// events). Everything else (the display server bulk direction especially,
+    /// and any unmodeled channel) stays generous. Step 4f validates these
+    /// against real captures and tightens the generous default.
+    pub fn max_message_size(&self, channel: ChannelType, dir: Direction) -> u32 {
+        match (channel, dir) {
+            (ChannelType::Inputs, Direction::ClientToServer)
+            | (ChannelType::Cursor, Direction::ClientToServer) => INPUT_CLIENT_SIZE_CAP,
+            _ => GENEROUS_SIZE_CAP,
+        }
+    }
 }
 
 /// A per-connection tally of firewall verdicts, shared (lock-free) by both
@@ -264,12 +398,21 @@ impl FirewallPolicy {
 /// fixed set of atomics on the (cold) violation path, and `relay::run` reads it
 /// once after the `select!` to emit a single coalesced summary audit event per
 /// connection. The `Allowed` hot path never touches it.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct VerdictTally {
-    disallowed_enforced: AtomicU64,
-    disallowed_observed: AtomicU64,
-    unmodeled_enforced: AtomicU64,
-    unmodeled_observed: AtomicU64,
+    /// One atomic per `(rule, action)` pair, indexed by
+    /// [`VerdictTally::slot`]. An array (rather than named fields) so adding a
+    /// rule is one enum arm plus a bump of [`RULE_COUNT`], with no per-field
+    /// churn here.
+    counters: [AtomicU64; RULE_COUNT * ACTION_COUNT],
+}
+
+impl Default for VerdictTally {
+    fn default() -> Self {
+        VerdictTally {
+            counters: std::array::from_fn(|_| AtomicU64::new(0)),
+        }
+    }
 }
 
 impl VerdictTally {
@@ -278,16 +421,20 @@ impl VerdictTally {
         Self::default()
     }
 
+    /// The dense counter index for one `(rule, action)` pair.
+    fn slot(rule: Rule, action: Action) -> usize {
+        rule.index() * ACTION_COUNT + action.index()
+    }
+
     /// Increment the counter for one `(rule, action)` verdict. Lock-free;
     /// called only on the cold violation path, never for `Allowed`.
     fn record(&self, rule: Rule, action: Action) {
-        let counter = match (rule, action) {
-            (Rule::DisallowedType, Action::Enforced) => &self.disallowed_enforced,
-            (Rule::DisallowedType, Action::Observed) => &self.disallowed_observed,
-            (Rule::UnmodeledType, Action::Enforced) => &self.unmodeled_enforced,
-            (Rule::UnmodeledType, Action::Observed) => &self.unmodeled_observed,
-        };
-        counter.fetch_add(1, Ordering::Relaxed);
+        self.counters[Self::slot(rule, action)].fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// The current count for one `(rule, action)` verdict.
+    fn count(&self, rule: Rule, action: Action) -> u64 {
+        self.counters[Self::slot(rule, action)].load(Ordering::Relaxed)
     }
 
     /// Format a single summary line describing every verdict recorded on this
@@ -295,20 +442,19 @@ impl VerdictTally {
     /// audit event). Carries only channel-agnostic rule/action counts — no
     /// ticket or token.
     pub fn summary(&self) -> Option<String> {
-        let de = self.disallowed_enforced.load(Ordering::Relaxed);
-        let dobs = self.disallowed_observed.load(Ordering::Relaxed);
-        let ue = self.unmodeled_enforced.load(Ordering::Relaxed);
-        let uobs = self.unmodeled_observed.load(Ordering::Relaxed);
-        if de + dobs + ue + uobs == 0 {
-            return None;
-        }
-
         let mut parts = Vec::new();
-        if de + dobs > 0 {
-            parts.push(format!("disallowed_type (enforced={de}, observed={dobs})"));
+        for rule in Rule::all() {
+            let enforced = self.count(rule, Action::Enforced);
+            let observed = self.count(rule, Action::Observed);
+            if enforced + observed > 0 {
+                parts.push(format!(
+                    "{} (enforced={enforced}, observed={observed})",
+                    rule.label()
+                ));
+            }
         }
-        if ue + uobs > 0 {
-            parts.push(format!("unmodeled_type (enforced={ue}, observed={uobs})"));
+        if parts.is_empty() {
+            return None;
         }
         Some(format!(
             "Firewall verdicts this connection: {}",
@@ -328,13 +474,51 @@ pub struct EnforcingPolicy {
     policy: Arc<FirewallPolicy>,
     dir: Direction,
     tally: Arc<VerdictTally>,
+    /// Start of the current rate-accounting window, or `None` until the first
+    /// message. Per-direction state; touched only when `policy.rate_limit` is
+    /// `Some`. `&mut self` on the trait methods lets this live inline (no lock).
+    rate_window_start: Option<Instant>,
+    /// Framed messages seen in the current window.
+    rate_messages: u64,
+    /// Bytes (header + body) seen in the current window.
+    rate_bytes: u64,
 }
 
 impl EnforcingPolicy {
     /// Build the enforcing policy for one direction, sharing the connection's
     /// config and verdict tally.
     pub fn new(policy: Arc<FirewallPolicy>, dir: Direction, tally: Arc<VerdictTally>) -> Self {
-        EnforcingPolicy { policy, dir, tally }
+        EnforcingPolicy {
+            policy,
+            dir,
+            tally,
+            rate_window_start: None,
+            rate_messages: 0,
+            rate_bytes: 0,
+        }
+    }
+
+    /// Account for one framed message against `limit` and report whether the
+    /// current fixed window has now exceeded it. Resets the window when it has
+    /// elapsed. Called once per message (the relay de-duplicates header checks
+    /// across partial reads), only when a rate limit is configured.
+    fn rate_exceeds(&mut self, limit: RateLimit, message_size: u32) -> bool {
+        let now = Instant::now();
+        let start = match self.rate_window_start {
+            Some(start) => start,
+            None => {
+                self.rate_window_start = Some(now);
+                now
+            }
+        };
+        if now.duration_since(start) >= limit.window {
+            self.rate_window_start = Some(now);
+            self.rate_messages = 0;
+            self.rate_bytes = 0;
+        }
+        self.rate_messages += 1;
+        self.rate_bytes += MessageHeader::SIZE as u64 + message_size as u64;
+        self.rate_messages > limit.max_messages || self.rate_bytes > limit.max_bytes
     }
 
     /// Record a verdict to both the global metrics and the per-connection tally.
@@ -398,6 +582,36 @@ impl Policy for EnforcingPolicy {
                 Verdict::Forward
             }
         }
+    }
+
+    fn check_header(
+        &mut self,
+        dir: Direction,
+        channel: ChannelType,
+        header: &MessageHeader,
+    ) -> Verdict {
+        // One EnforcingPolicy serves one direction; the relay passes the
+        // matching direction. Recording uses `self.dir`.
+        debug_assert_eq!(dir, self.dir);
+
+        // L0 size cap: the policy cap sits below the relay's absolute resource
+        // guard, so this refuses an oversized body before the relay buffers it.
+        // In WarnOnly, `apply` returns Forward and the relay buffers the body
+        // anyway (still bounded by the absolute guard).
+        if header.message_size > self.policy.max_message_size(channel, dir) {
+            return self.apply(Rule::SizeCap, channel, self.policy.size_cap_verdict);
+        }
+
+        // L0 rate/throughput ceiling: disabled unless a limit is configured.
+        // `RateLimit` is Copy, so this borrows nothing from `self.policy` while
+        // `rate_exceeds` takes `&mut self`.
+        if let Some(limit) = self.policy.rate_limit {
+            if self.rate_exceeds(limit, header.message_size) {
+                return self.apply(Rule::RateCap, channel, self.policy.rate_verdict);
+            }
+        }
+
+        Verdict::Forward
     }
 }
 
@@ -468,8 +682,8 @@ mod tests {
             inspect(&mut engine, ChannelType::Inputs, DISALLOWED_TYPE),
             Verdict::Terminate
         );
-        assert_eq!(tally.disallowed_enforced.load(Ordering::Relaxed), 1);
-        assert_eq!(tally.disallowed_observed.load(Ordering::Relaxed), 0);
+        assert_eq!(tally.count(Rule::DisallowedType, Action::Enforced), 1);
+        assert_eq!(tally.count(Rule::DisallowedType, Action::Observed), 0);
     }
 
     #[test]
@@ -480,8 +694,8 @@ mod tests {
             inspect(&mut engine, ChannelType::Record, DISALLOWED_TYPE),
             Verdict::Forward
         );
-        assert_eq!(tally.unmodeled_observed.load(Ordering::Relaxed), 1);
-        assert_eq!(tally.unmodeled_enforced.load(Ordering::Relaxed), 0);
+        assert_eq!(tally.count(Rule::UnmodeledType, Action::Observed), 1);
+        assert_eq!(tally.count(Rule::UnmodeledType, Action::Enforced), 0);
     }
 
     // --- WarnOnly mode: same inputs, never blocks. ---
@@ -494,8 +708,8 @@ mod tests {
             inspect(&mut engine, ChannelType::Inputs, DISALLOWED_TYPE),
             Verdict::Forward
         );
-        assert_eq!(tally.disallowed_observed.load(Ordering::Relaxed), 1);
-        assert_eq!(tally.disallowed_enforced.load(Ordering::Relaxed), 0);
+        assert_eq!(tally.count(Rule::DisallowedType, Action::Observed), 1);
+        assert_eq!(tally.count(Rule::DisallowedType, Action::Enforced), 0);
     }
 
     #[test]
@@ -520,9 +734,9 @@ mod tests {
         inspect(&mut engine, ChannelType::Inputs, ALLOWED_TYPE);
         inspect(&mut engine, ChannelType::Record, 101);
 
-        assert_eq!(tally.disallowed_enforced.load(Ordering::Relaxed), 2);
-        assert_eq!(tally.disallowed_observed.load(Ordering::Relaxed), 0);
-        assert_eq!(tally.unmodeled_observed.load(Ordering::Relaxed), 1);
+        assert_eq!(tally.count(Rule::DisallowedType, Action::Enforced), 2);
+        assert_eq!(tally.count(Rule::DisallowedType, Action::Observed), 0);
+        assert_eq!(tally.count(Rule::UnmodeledType, Action::Observed), 1);
     }
 
     // --- Both directions share ONE tally. ---
@@ -555,7 +769,7 @@ mod tests {
             &[],
         );
 
-        assert_eq!(tally.disallowed_enforced.load(Ordering::Relaxed), 2);
+        assert_eq!(tally.count(Rule::DisallowedType, Action::Enforced), 2);
     }
 
     // --- Summary formatting. ---
@@ -579,5 +793,163 @@ mod tests {
         assert!(summary.contains("unmodeled_type"), "summary: {summary}");
         assert!(summary.contains("enforced=2"), "summary: {summary}");
         assert!(summary.contains("observed=1"), "summary: {summary}");
+    }
+
+    #[test]
+    fn summary_mentions_size_and_rate_caps() {
+        let tally = VerdictTally::new();
+        tally.record(Rule::SizeCap, Action::Enforced);
+        tally.record(Rule::RateCap, Action::Observed);
+
+        let summary = tally.summary().expect("non-empty tally has a summary");
+        assert!(summary.contains("size_cap"), "summary: {summary}");
+        assert!(summary.contains("rate_cap"), "summary: {summary}");
+    }
+
+    // --- L0 size cap (check_header). ---
+
+    /// A body size over the tight inputs-client policy cap but well under the
+    /// relay's absolute 16 MiB resource guard.
+    const OVER_POLICY_CAP_UNDER_ABSOLUTE: u32 = INPUT_CLIENT_SIZE_CAP + 1;
+
+    fn sized_header(message_size: u32) -> MessageHeader {
+        MessageHeader {
+            message_type: ALLOWED_TYPE,
+            message_size,
+        }
+    }
+
+    fn check_header(engine: &mut EnforcingPolicy, ch: ChannelType, size: u32) -> Verdict {
+        engine.check_header(Direction::ClientToServer, ch, &sized_header(size))
+    }
+
+    #[test]
+    fn enforce_oversized_for_policy_cap_terminates_and_records_size_cap() {
+        let (mut engine, tally) = inputs_policy(EnforcementMode::Enforce);
+        assert_eq!(
+            check_header(
+                &mut engine,
+                ChannelType::Inputs,
+                OVER_POLICY_CAP_UNDER_ABSOLUTE
+            ),
+            Verdict::Terminate
+        );
+        assert_eq!(tally.count(Rule::SizeCap, Action::Enforced), 1);
+        assert_eq!(tally.count(Rule::SizeCap, Action::Observed), 0);
+    }
+
+    #[test]
+    fn warn_only_oversized_for_policy_cap_forwards_and_records_observed() {
+        let (mut engine, tally) = inputs_policy(EnforcementMode::WarnOnly);
+        assert_eq!(
+            check_header(
+                &mut engine,
+                ChannelType::Inputs,
+                OVER_POLICY_CAP_UNDER_ABSOLUTE
+            ),
+            Verdict::Forward
+        );
+        assert_eq!(tally.count(Rule::SizeCap, Action::Observed), 1);
+        assert_eq!(tally.count(Rule::SizeCap, Action::Enforced), 0);
+    }
+
+    #[test]
+    fn within_policy_cap_forwards_without_recording() {
+        let (mut engine, tally) = inputs_policy(EnforcementMode::Enforce);
+        assert_eq!(
+            check_header(&mut engine, ChannelType::Inputs, INPUT_CLIENT_SIZE_CAP),
+            Verdict::Forward
+        );
+        assert!(tally.summary().is_none(), "within-cap must not be recorded");
+    }
+
+    #[test]
+    fn generous_channel_does_not_trip_the_tight_cap() {
+        // A body that would trip the tight inputs cap is fine on display, which
+        // uses the generous cap (the absolute relay guard is the real bound).
+        let (mut engine, tally) = inputs_policy(EnforcementMode::Enforce);
+        assert_eq!(
+            check_header(
+                &mut engine,
+                ChannelType::Display,
+                OVER_POLICY_CAP_UNDER_ABSOLUTE
+            ),
+            Verdict::Forward
+        );
+        assert!(tally.summary().is_none());
+    }
+
+    // --- L0 rate ceiling. ---
+
+    #[test]
+    fn rate_limit_disabled_by_default_never_trips() {
+        let (mut engine, tally) = inputs_policy(EnforcementMode::Enforce);
+        assert!(engine.policy.rate_limit.is_none(), "default disables rate");
+        for _ in 0..1000 {
+            assert_eq!(
+                check_header(&mut engine, ChannelType::Inputs, 8),
+                Verdict::Forward
+            );
+        }
+        assert!(tally.summary().is_none());
+    }
+
+    #[test]
+    fn rate_limit_trips_when_message_count_exceeded() {
+        let policy = Arc::new(FirewallPolicy {
+            rate_limit: Some(RateLimit {
+                max_messages: 2,
+                max_bytes: u64::MAX,
+                // A long window so the three messages fall inside it.
+                window: Duration::from_secs(3600),
+            }),
+            ..FirewallPolicy::default()
+        });
+        let tally = Arc::new(VerdictTally::new());
+        let mut engine =
+            EnforcingPolicy::new(policy, Direction::ClientToServer, Arc::clone(&tally));
+
+        // First two are within the message allowance.
+        assert_eq!(
+            check_header(&mut engine, ChannelType::Inputs, 8),
+            Verdict::Forward
+        );
+        assert_eq!(
+            check_header(&mut engine, ChannelType::Inputs, 8),
+            Verdict::Forward
+        );
+        // The third exceeds max_messages.
+        assert_eq!(
+            check_header(&mut engine, ChannelType::Inputs, 8),
+            Verdict::Terminate
+        );
+        assert_eq!(tally.count(Rule::RateCap, Action::Enforced), 1);
+    }
+
+    #[test]
+    fn rate_limit_trips_when_byte_ceiling_exceeded() {
+        let policy = Arc::new(FirewallPolicy {
+            rate_limit: Some(RateLimit {
+                max_messages: u64::MAX,
+                max_bytes: 100,
+                window: Duration::from_secs(3600),
+            }),
+            ..FirewallPolicy::default()
+        });
+        let tally = Arc::new(VerdictTally::new());
+        let mut engine =
+            EnforcingPolicy::new(policy, Direction::ClientToServer, Arc::clone(&tally));
+
+        // 6-byte header + 90-byte body = 96 bytes < 100: within the ceiling.
+        assert_eq!(
+            check_header(&mut engine, ChannelType::Inputs, 90),
+            Verdict::Forward
+        );
+        // Another 96 bytes pushes the window total to 192 > 100.
+        assert_eq!(
+            check_header(&mut engine, ChannelType::Inputs, 90),
+            Verdict::Terminate
+        );
+        assert_eq!(tally.count(Rule::RateCap, Action::Enforced), 1);
     }
 }
