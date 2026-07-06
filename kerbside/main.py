@@ -10,6 +10,7 @@ import yaml
 from .config import config as config
 from . import db as kerbside_db
 from . import proxy as kerbside_proxy
+from .rpc import server as rpc_server
 from .sources import ovirt as ovirt_source
 from .sources import shakenfist as shakenfist_source
 from .sources import static as static_source
@@ -195,15 +196,28 @@ def daemon_run(ctx):
     last_maintenance = time.time()
 
     kerbside_db.reset_engine()
+
     proxy = multiprocessing.Process(
         target=kerbside_proxy.run, args=(), name='kerbside-main')
     proxy.start()
+
+    # Stand up the KerbsideProxy gRPC control-plane server AFTER forking the
+    # proxy. The server owns a listening socket and gRPC C-core threads;
+    # forking after it starts would leak that socket fd (and copy locked
+    # thread state) into the proxy and its per-connection SPICE workers --
+    # the processes most exposed to untrusted input. Starting it here keeps
+    # those fds/threads out of the proxy process tree. It runs on its own
+    # ThreadPoolExecutor threads, so serve() returns immediately and the
+    # maintenance loop below is unaffected. There is no client until phase 3.
+    grpc_server = rpc_server.serve()
+    LOG.info('Started KerbsideProxy gRPC server')
 
     while True:
         proxy.join(timeout=0)
         if not proxy.is_alive():
             LOG.error('Proxy process died with exit code %d!' % proxy.exitcode)
             proxy.kill()
+            rpc_server.stop(grpc_server)
             sys.exit(1)
 
         time.sleep(1)

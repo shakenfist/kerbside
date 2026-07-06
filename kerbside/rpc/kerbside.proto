@@ -1,0 +1,178 @@
+syntax = "proto3";
+
+package kerbside.rpc;
+
+// KerbsideProxy is the control-plane RPC contract between a SPICE proxy
+// process and the Kerbside daemon. Today the proxy talks to MariaDB
+// directly via kerbside/db.py; this service replaces that direct database
+// coupling so Python continues to own policy and the database while the
+// proxy (eventually the Rust proxy, phase 3) simply consults this service.
+//
+// The service is hosted over a filesystem-guarded unix domain socket using
+// insecure gRPC credentials (the peer is a trusted local process). Errors
+// are signalled via gRPC status codes (context.set_code/set_details), NOT
+// via fields on the reply messages. The StatusReply.success/error fields
+// exist only to carry an application-level "did the bookkeeping write
+// happen" result for the fire-and-forget bookkeeping RPCs; transport and
+// internal failures use gRPC status codes.
+//
+// Each RPC maps to one or more of the db.py operations the proxy performs
+// today (see per-RPC comments below).
+service KerbsideProxy {
+  // AuthorizeConnection is the core authorization call. It collapses the
+  // proxy's four current db.py operations into a single round trip at the
+  // connection decision point:
+  //   get_token_by_token(token)   -- resolves the decrypted token plaintext,
+  //                                  preserving the server-side expires>now
+  //                                  filter (expired tokens are denied).
+  //   get_source(source)          -- reads the source's ca_cert.
+  //   get_console(source, uuid)   -- reads the hypervisor target details.
+  //   record_channel_info(session_id)  -- records the resolved session_id
+  //                                  against the channel on success.
+  //   add_audit_event('Channel created')  -- writes the creation audit event
+  //                                  on success.
+  // On success it returns a Target; on any miss it returns a Denied.
+  rpc AuthorizeConnection(AuthorizeConnectionRequest) returns (AuthorizeConnectionReply) {}
+
+  // RegisterChannel records the pre-authorization channel identity. It maps
+  // to the proxy's first two record_channel_info() calls today (the bare
+  // (node, connection_ref) upsert followed by the client/connection/channel
+  // identity fields), before the token has been authorized.
+  rpc RegisterChannel(RegisterChannelRequest) returns (StatusReply) {}
+
+  // RecordAuditEvent writes an audit event. It maps to add_audit_event() and
+  // carries the hypervisor connect success/failure and stall events the
+  // proxy emits during a connection's lifetime.
+  rpc RecordAuditEvent(AuditEventRequest) returns (StatusReply) {}
+
+  // DeregisterChannel removes a channel record at teardown. It maps to
+  // remove_channel_by_ref(), keyed on connection_ref alone (which is
+  // unique). The request carries node for symmetry with the other RPCs and
+  // possible future scoping, but the handler does not currently read it.
+  rpc DeregisterChannel(DeregisterChannelRequest) returns (StatusReply) {}
+
+  // ClearNodeChannels clears all stale channel records for a node at proxy
+  // startup. It maps to remove_node_channels(node).
+  rpc ClearNodeChannels(ClearNodeChannelsRequest) returns (StatusReply) {}
+
+  // ProxyControl is a server-streaming control channel from the daemon to
+  // the proxy for session-termination and policy-push events. It is defined
+  // now so phase 3 can pin a stable contract, but is only stubbed this phase
+  // (the server opens the stream and may emit keepalives). Phase 5 adds the
+  // real events and may extend the ProxyControlEvent oneof; keep it
+  // extensible.
+  rpc ProxyControl(ProxyControlRequest) returns (stream ProxyControlEvent) {}
+}
+
+// StatusReply is the generic reply for the bookkeeping RPCs. success/error
+// carry the application-level outcome of the write. Transport and internal
+// errors are signalled via gRPC status codes, not these fields.
+message StatusReply {
+  bool success = 1;
+  string error = 2;
+}
+
+// AuthorizeConnectionRequest carries everything the proxy has recovered by
+// the time it needs an authorization decision.
+message AuthorizeConnectionRequest {
+  // token is the RSA-decrypted plaintext the proxy recovered from the SPICE
+  // client's encrypted password (phase 1, decrypt_password).
+  string token = 1;
+  // connection_ref is a proxy-generated per-connection identifier that
+  // replaces the per-worker pid identity in proxychannels.
+  string connection_ref = 2;
+  string client_ip = 3;
+  uint32 client_port = 4;
+  uint32 connection_id = 5;
+  string channel_type = 6;
+  uint32 channel_id = 7;
+}
+
+// Target is the successful authorization result: everything the proxy needs
+// to open the upstream connection to the hypervisor. The first eight fields
+// (hypervisor .. uuid) are exactly what the proxy reads from get_console;
+// ca_cert comes from get_source; session_id comes from the resolved token.
+message Target {
+  string hypervisor = 1;
+  string hypervisor_ip = 2;
+  uint32 insecure_port = 3;
+  uint32 secure_port = 4;
+  string ticket = 5;
+  string ca_cert = 6;
+  string host_subject = 7;
+  string source = 8;
+  string uuid = 9;
+  string session_id = 10;
+}
+
+// Denied is the unsuccessful authorization result, carrying a human-readable
+// reason (unknown/expired token, unknown console, etc.).
+message Denied {
+  string reason = 1;
+}
+
+// AuthorizeConnectionReply is either a Denied or a Target. The oneof makes
+// the deny/allow decision explicit and unambiguous at the wire level.
+message AuthorizeConnectionReply {
+  oneof result {
+    Denied denied = 1;
+    Target target = 2;
+  }
+}
+
+// RegisterChannelRequest records the pre-authorization channel identity
+// (maps to the proxy's first two record_channel_info() calls).
+message RegisterChannelRequest {
+  string node = 1;
+  string connection_ref = 2;
+  string client_ip = 3;
+  uint32 client_port = 4;
+  uint32 connection_id = 5;
+  string channel_type = 6;
+  uint32 channel_id = 7;
+}
+
+// AuditEventRequest maps to add_audit_event().
+message AuditEventRequest {
+  string source = 1;
+  string uuid = 2;
+  string session_id = 3;
+  string channel = 4;
+  string node = 5;
+  string connection_ref = 6;
+  string message = 7;
+}
+
+// DeregisterChannelRequest maps to remove_proxy_channel(node, connection_ref).
+message DeregisterChannelRequest {
+  string node = 1;
+  string connection_ref = 2;
+}
+
+// ClearNodeChannelsRequest maps to remove_node_channels(node).
+message ClearNodeChannelsRequest {
+  string node = 1;
+}
+
+// ProxyControlRequest opens the control stream for a given proxy node.
+message ProxyControlRequest {
+  string node = 1;
+}
+
+// ProxyControlEvent is a single event pushed to the proxy over the control
+// stream. The oneof is intentionally extensible: phase 5 adds real events.
+message ProxyControlEvent {
+  oneof event {
+    Heartbeat heartbeat = 1;
+    TerminateSession terminate_session = 2;
+  }
+}
+
+// Heartbeat is an empty keepalive event.
+message Heartbeat {
+}
+
+// TerminateSession instructs the proxy to tear down a session.
+message TerminateSession {
+  string session_id = 1;
+}

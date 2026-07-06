@@ -19,7 +19,12 @@ LOG, _ = logs.setup(__name__, **util.configure_logging())
 
 
 Base = declarative_base()
-ENGINE = create_engine(config.SQL_URL, pool_pre_ping=True, pool_recycle=300)
+# hide_parameters=True keeps bound query parameters out of SQLAlchemy
+# exception strings. Without it, a DB error while looking up a token would
+# stringify the (decrypted) token plaintext into the exception — and thence
+# into logs or a gRPC error detail. See kerbside/rpc/servicer.py.
+ENGINE = create_engine(config.SQL_URL, pool_pre_ping=True, pool_recycle=300,
+                       hide_parameters=True)
 
 
 def reset_engine():
@@ -232,7 +237,8 @@ def get_consoles(include_audit=True):
     with Session(ENGINE) as session:
         try:
             for channel in session.query(ProxyChannel).all():
-                sessions[channel.session_id].append((channel.node, channel.pid))
+                sessions[channel.session_id].append(
+                    (channel.node, channel.connection_ref or channel.pid))
 
             for console in session.query(Console).order_by(Console.name).all():
                 c = console.export()
@@ -284,7 +290,8 @@ def get_console(source, uuid, detailed=False):
             # consoles.
             sessions = defaultdict(list)
             for channel in session.query(ProxyChannel).all():
-                sessions[channel.session_id].append((channel.node, channel.pid))
+                sessions[channel.session_id].append(
+                    (channel.node, channel.connection_ref or channel.pid))
 
             c['sessions'] = []
             c['token_count'] = 0
@@ -457,15 +464,22 @@ def reap_expired_tokens():
 class ProxyChannel(Base):
     __tablename__ = 'proxychannels'
 
-    node = Column(String, primary_key=True)
-    pid = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    node = Column(String)
+    pid = Column(Integer, nullable=True)
     created = Column(DateTime)
-    client_ip = Column(Integer)
+    client_ip = Column(String)
     client_port = Column(Integer)
     connection_id = Column(Integer)
     channel_type = Column(String)
     channel_id = Column(Integer)
     session_id = Column(String)
+    # connection_ref is the per-connection key used by the gRPC path (the
+    # Rust proxy has no per-worker pid). Unique so the by-ref upsert lookup
+    # is a single indexed row rather than a table scan; nullable, and MySQL
+    # permits multiple NULLs in a unique index, so pid-keyed Python-proxy
+    # rows (connection_ref NULL) coexist.
+    connection_ref = Column(String, nullable=True, unique=True, index=True)
 
     def __init__(self, node, pid, created):
         self.node = node
@@ -474,6 +488,7 @@ class ProxyChannel(Base):
 
     def export(self):
         return {
+            'id': self.id,
             'node': self.node,
             'pid': self.pid,
             'created': self.created,
@@ -482,7 +497,8 @@ class ProxyChannel(Base):
             'connection_id': self.connection_id,
             'channel_type': self.channel_type,
             'channel_id': self.channel_id,
-            'session_id': self.session_id
+            'session_id': self.session_id,
+            'connection_ref': self.connection_ref
         }
 
 
@@ -505,6 +521,39 @@ def record_channel_info(node, pid, client_ip=None, client_port=None,
             if locals()[arg]:
                 setattr(channel, arg, locals()[arg])
         session.commit()
+
+
+def record_channel_info_by_ref(node, connection_ref, client_ip=None, client_port=None,
+                               connection_id=None, channel_type=None, channel_id=None,
+                               session_id=None):
+    with Session(ENGINE) as session:
+        try:
+            channel = session.query(ProxyChannel).\
+                filter(ProxyChannel.connection_ref == connection_ref).\
+                one()
+
+        except exc.NoResultFound:
+            channel = ProxyChannel(node, None, datetime.datetime.now())
+            channel.connection_ref = connection_ref
+            session.add(channel)
+
+        for arg in ['client_ip', 'client_port', 'connection_id',
+                    'channel_type', 'channel_id', 'session_id']:
+            if locals()[arg]:
+                setattr(channel, arg, locals()[arg])
+        session.commit()
+
+
+def remove_channel_by_ref(connection_ref):
+    with Session(ENGINE) as session:
+        try:
+            for c in list(session.query(ProxyChannel).
+                          filter(ProxyChannel.connection_ref == connection_ref).
+                          all()):
+                session.delete(c)
+            session.commit()
+        except exc.NoResultFound:
+            return None
 
 
 def remove_proxy_channel(node, pid):
@@ -589,6 +638,9 @@ class AuditEvent(Base):
     session_id = Column(String)
     channel = Column(String)
     node = Column(String)
+    # pid holds an OS process id when written by the Python proxy path, or a
+    # proxy-generated connection_ref when written by the gRPC path. It is a
+    # String to accommodate both; treat it as an opaque per-connection tag.
     pid = Column(String)
     timestamp = Column(DATETIME(fsp=6), primary_key=True, server_default=text('CURRENT_TIMESTAMP(6)'))
     message = Column(Text)

@@ -189,6 +189,16 @@ class Config(BaseSettings):
         1,
         description='How long in minutes a console token is valid for.')
 
+    # KerbsideProxy gRPC control-plane service
+    API_SOCKET_PATH: str = Field(
+        '/run/kerbside/api.sock',
+        description='Unix domain socket path for the KerbsideProxy gRPC service '
+                    'the proxy consults for authorization and channel '
+                    'bookkeeping.')
+    API_GRPC_WORKERS: int = Field(
+        8,
+        description='Thread pool size for the KerbsideProxy gRPC server.')
+
     class Config:
         env_prefix = ENV_PREFIX
 
