@@ -1,9 +1,14 @@
 //! kerbside-proxy: an inspection-first SPICE relay.
 //!
-//! This is the phase-3 skeleton: it installs the rustls crypto provider,
-//! parses the CLI configuration (mirroring `kerbside/config.py`), and
-//! initialises tracing. Listeners, the gRPC client, the handshake, and the
-//! relay are added in later steps of phase 3.
+//! This is the phase-3 proxy: it installs the rustls crypto provider, parses
+//! the CLI configuration (mirroring `kerbside/config.py`), and initialises
+//! tracing, then stands up the full connection path -- the plaintext
+//! (redirect-to-secure) and TLS SPICE listeners, the gRPC client to the
+//! `KerbsideProxy` control service, the per-connection handshake +
+//! authorization, the backend hypervisor connect, and the inspection-first
+//! relay -- behind a concurrency cap, with a Prometheus `/metrics` endpoint
+//! and graceful shutdown on SIGTERM/Ctrl-C. Firewall enforcement (L0/L1) is
+//! phase 4; daemon integration and session-termination push are phase 5.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -12,19 +17,17 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use clap::Parser;
 use shakenfist_spice_protocol::link::SpiceStream;
-use tracing::info;
+use tokio::sync::Semaphore;
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
-/// Generated gRPC stubs for the KerbsideProxy control service. The client
-/// type is unused in this skeleton but compiling it here proves the codegen
-/// path works; later steps consume it from `src/rpc.rs`.
+/// Generated gRPC stubs for the KerbsideProxy control service.
 pub mod pb {
     #![allow(dead_code, clippy::all, clippy::pedantic)]
     tonic::include_proto!("kerbside.rpc");
 }
 
 /// gRPC client for the KerbsideProxy control service over the UDS.
-#[allow(dead_code)]
 mod rpc;
 
 /// The plaintext (insecure, redirect-to-secure) and TLS (secure) SPICE
@@ -47,6 +50,17 @@ mod policy;
 
 /// The inspection-first, per-message-framed SPICE relay.
 mod relay;
+
+/// The global Prometheus registry, metric helpers, and the `/metrics` hyper
+/// server.
+mod metrics;
+
+/// A coarse cap on concurrently-handled secure connections, enforced by a
+/// `tokio::sync::Semaphore` in `main`'s secure-connection handler. This is a
+/// blunt process-wide limit to bound resource use under load; phases 4/5 may
+/// make it configurable (a CLI flag) or replace it with finer-grained
+/// backpressure.
+const MAX_CONCURRENT_SESSIONS: usize = 1000;
 
 /// Kerbside SPICE proxy configuration. Defaults mirror `kerbside/config.py`
 /// so the Python daemon can pass matching values when it spawns the proxy
@@ -137,11 +151,34 @@ async fn main() -> Result<()> {
         node_name: args.node_name.clone(),
     });
 
-    // TODO(phase 3g): ClearNodeChannels(node) at startup to drop stale channel
-    // records, spawn the ProxyControl stream consumer, and stand up the
-    // Prometheus /metrics endpoint. The per-connection handshake + authorize
-    // (3d) is wired below; the backend connect + relay (3e/3f) sit behind the
-    // `backend::run` stub the session handler calls.
+    // Drop any stale channel rows this node left behind (e.g. from a crash or
+    // an unclean restart) before accepting new connections. Mirrors
+    // proxy.py's remove_node_channels call at startup. A failure here means
+    // the control service (or its socket) is not reachable yet; that is not
+    // fatal to starting up -- the per-connection RPCs below will surface the
+    // same problem loudly and repeatedly if it persists.
+    if let Err(e) = state.rpc.clear_node_channels(&args.node_name).await {
+        warn!(
+            node_name = %args.node_name,
+            error = %e,
+            "ClearNodeChannels at startup failed; continuing"
+        );
+    }
+
+    // Consume the ProxyControl event stream in the background. This phase
+    // only logs events (heartbeats, TerminateSession) -- acting on them is
+    // phase 5. A failure to even open the stream (e.g. the daemon is not up
+    // yet) is logged and the task simply ends; it is not reconnected this
+    // phase.
+    {
+        let state = state.clone();
+        tokio::spawn(async move {
+            if let Err(e) = state.rpc.run_proxy_control(state.node_name.clone()).await {
+                warn!(error = %e, "ProxyControl consumer task ended with an error");
+            }
+        });
+    }
+
     let acceptor = tls::load_acceptor(&args.cert, &args.cert_key).with_context(|| {
         format!(
             "loading TLS cert {} / key {} for the secure SPICE listener",
@@ -156,22 +193,93 @@ async fn main() -> Result<()> {
         .with_context(|| format!("parsing --vdi-address {}", args.vdi_address))?;
     let secure_addr = SocketAddr::new(vdi_ip, args.secure_port);
     let insecure_addr = SocketAddr::new(vdi_ip, args.insecure_port);
+    // The Python proxy's start_http_server exposes metrics on all interfaces;
+    // binding the same address the SPICE listeners use keeps that behaviour
+    // (0.0.0.0 by default) while still respecting an operator-narrowed
+    // --vdi-address. SECURITY: like the Python proxy, this endpoint is
+    // unauthenticated -- do not expose it to untrusted networks (see
+    // config.py's PROMETHEUS_METRICS_PORT documentation).
+    let metrics_addr = SocketAddr::new(vdi_ip, args.prometheus_port);
+
+    // Coarse cap on concurrently-handled secure connections. A permit is
+    // acquired before a session runs and held for its whole lifetime; when
+    // the cap is reached, new connections simply wait for a permit
+    // (backpressure) rather than being rejected.
+    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_SESSIONS));
 
     // Per accepted (TLS-terminated) connection, run the client-facing
     // handshake + authorization (and, on success, the backend handoff).
     // `run_secure` clones this handler per connection, so each spawned task
-    // owns its own `Arc` clone of the shared state.
+    // owns its own `Arc` clone of the shared state and the semaphore.
     let secure_handler = move |stream: SpiceStream, peer: SocketAddr| {
         let state = state.clone();
+        let semaphore = semaphore.clone();
         async move {
+            // Never closed, so acquiring a permit only fails if the
+            // semaphore itself is dropped -- which it isn't while `main` is
+            // running.
+            let _permit = semaphore
+                .acquire_owned()
+                .await
+                .expect("concurrency-cap semaphore is never closed");
             session::handle_connection(state, stream, peer).await;
         }
     };
 
-    tokio::try_join!(
-        listen::run_insecure(insecure_addr),
-        listen::run_secure(secure_addr, acceptor, secure_handler),
-    )?;
+    tokio::select! {
+        res = listen::run_insecure(insecure_addr) => {
+            res.context("insecure SPICE listener failed")?;
+        }
+        res = listen::run_secure(secure_addr, acceptor, secure_handler) => {
+            res.context("secure SPICE listener failed")?;
+        }
+        res = metrics::serve(metrics_addr) => {
+            res.context("Prometheus metrics server failed")?;
+        }
+        () = shutdown_signal() => {
+            info!("shutdown signal received; shutting down");
+        }
+    }
 
+    // In-flight connection tasks are detached, not drained, when we return
+    // here: they keep running until they finish on their own, but nothing
+    // waits for them. A full graceful drain (stop accepting, wait for
+    // in-flight sessions with a deadline) is a phase-5 nicety.
     Ok(())
+}
+
+/// Resolve once either Ctrl-C or SIGTERM is received.
+///
+/// `tokio::select!` in `main` races this against the listeners and the
+/// metrics server; whichever finishes first cancels (drops) the others, so a
+/// signal here cleanly unwinds the accept loops instead of the process being
+/// killed out from under them.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut stream) => {
+                stream.recv().await;
+            }
+            Err(e) => {
+                warn!(error = %e, "failed to install SIGTERM handler");
+                // Fall back to only Ctrl-C rather than returning immediately
+                // (which would make `select!` treat "can't install SIGTERM"
+                // the same as "SIGTERM received").
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        () = ctrl_c => {},
+        () = terminate => {},
+    }
 }

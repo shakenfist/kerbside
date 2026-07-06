@@ -34,6 +34,7 @@ use shakenfist_spice_protocol::link::{
 use shakenfist_spice_protocol::{ChannelType, SpiceError};
 use tracing::{debug, info, warn};
 
+use crate::metrics;
 use crate::rpc::{AuthzOutcome, KerbsideRpc};
 
 /// Shared, cheaply-cloneable process state handed to every connection task.
@@ -60,6 +61,12 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
 /// and, once it succeeds, `DeregisterChannel` runs on every exit path.
 pub async fn handle_connection(state: Arc<SharedState>, mut stream: SpiceStream, peer: SocketAddr) {
     let connection_ref = uuid::Uuid::new_v4().to_string();
+
+    // Count this accepted secure connection, and keep `active_connections`
+    // accurate for its whole lifetime: the guard decrements on drop, which
+    // covers every exit path below (early `return`s included).
+    metrics::inc_connections();
+    let _connection_guard = metrics::connection_guard();
 
     // Read the client's link message under a time bound (the driver bounds
     // memory but not time).
@@ -207,6 +214,7 @@ async fn serve(
             // Cleaner than proxy.py, which just drops the connection: send the
             // protocol-correct PermissionDenied so the client reports it. The
             // token is never logged; the human-readable reason is.
+            metrics::record_denied();
             info!(%peer, %connection_ref, %reason, "connection denied by control service");
             send_auth_result(&mut stream, SpiceError::PermissionDenied)
                 .await
@@ -216,6 +224,7 @@ async fn serve(
         Ok(AuthzOutcome::Target(target)) => {
             // Authorized: tell the client, then hand the stream to the backend
             // leg + relay. `stream` is moved into `backend::run`.
+            metrics::record_authorized();
             send_auth_result(&mut stream, SpiceError::Ok).await?;
             crate::backend::run(
                 state,

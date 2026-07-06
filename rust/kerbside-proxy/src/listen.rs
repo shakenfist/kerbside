@@ -25,8 +25,10 @@ use tracing::{debug, info, warn};
 /// Timeout applied to the accept-path handshake reads on both listeners
 /// (the link-message read and, on the secure port, the TLS accept). The
 /// crate's handshake drivers bound memory but not time, so a slow or
-/// hostile peer must not be able to stall a task -- and, once phase 3g adds
-/// a concurrency cap, the connection budget -- indefinitely.
+/// hostile peer must not be able to stall a task -- and, since `main`'s
+/// concurrency-cap semaphore permit is held for the connection's whole
+/// lifetime, a stuck handshake would otherwise also pin a permit --
+/// indefinitely.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Run the insecure (plaintext) SPICE listener forever.

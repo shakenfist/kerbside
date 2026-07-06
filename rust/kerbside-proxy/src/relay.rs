@@ -49,7 +49,10 @@ const READ_CHUNK_SIZE: usize = 64 * 1024;
 /// such as an oversized frame, or an I/O error) are logged here; we still
 /// return `Ok(())` because the caller deregisters the channel and closes the
 /// client either way, and a torn-down socket is not separately actionable.
-/// (Fault counts surface via metrics in step 3g, not via this return value.)
+/// Bytes forwarded on each `Verdict::Forward` are counted via
+/// `metrics::add_relayed_bytes`; a dedicated fault-count metric is not part
+/// of this step and is left for phase 4, which is where faults gain
+/// interesting structure (which policy rule tripped, on which channel).
 pub async fn run(
     client: SpiceStream,
     backend: SpiceStream,
@@ -188,6 +191,7 @@ where
                 Verdict::Forward => {
                     // Forward the exact framed bytes, never re-encoded.
                     writer.write_all(&buf[frame_start..frame_end]).await?;
+                    crate::metrics::add_relayed_bytes(dir, frame_len as u64);
                 }
                 Verdict::Drop => {
                     debug!(
