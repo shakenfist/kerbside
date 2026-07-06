@@ -105,6 +105,27 @@ static BYTES_RELAYED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     vec
 });
 
+/// Total firewall verdicts, labelled by `channel`, `direction`, `rule`
+/// (`disallowed_type` / `unmodeled_type`, extended by later L0 rules), and
+/// `action` (`enforced` — the blocking verdict was applied — vs `observed` —
+/// `WarnOnly` let it through, or the rule is intrinsically observe-only). The
+/// enforced/observed split directly answers "what would `Enforce` have tripped?"
+/// during a `WarnOnly` run (phase-4 plan, Design decision 3).
+static FIREWALL_VERDICTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    let vec = IntCounterVec::new(
+        Opts::new(
+            "kerbside_proxy_firewall_verdicts_total",
+            "Total firewall verdicts by channel, direction, rule, and action",
+        ),
+        &["channel", "direction", "rule", "action"],
+    )
+    .expect("static metric options are valid");
+    REGISTRY
+        .register(Box::new(vec.clone()))
+        .expect("firewall_verdicts_total registers exactly once");
+    vec
+});
+
 /// Map a relay [`Direction`] to its Prometheus label value.
 fn direction_label(dir: Direction) -> &'static str {
     match dir {
@@ -136,6 +157,14 @@ pub fn add_relayed_bytes(dir: Direction, n: u64) {
     BYTES_RELAYED_TOTAL
         .with_label_values(&[direction_label(dir)])
         .inc_by(n);
+}
+
+/// Record one firewall verdict. `rule` and `action` are the stable low-
+/// cardinality labels the policy engine supplies (see [`FIREWALL_VERDICTS_TOTAL`]).
+pub fn record_firewall_verdict(channel: &str, dir: Direction, rule: &str, action: &str) {
+    FIREWALL_VERDICTS_TOTAL
+        .with_label_values(&[channel, direction_label(dir), rule, action])
+        .inc();
 }
 
 /// An RAII guard that increments `active_connections` on creation and
@@ -242,5 +271,30 @@ pub async fn serve(addr: SocketAddr) -> Result<()> {
                 debug!(%peer, error = %e, "metrics connection ended with an error");
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn record_firewall_verdict_increments_labelled_series() {
+        // Use a distinctive channel label so this series is not perturbed by
+        // any other test sharing the process-wide registry.
+        let series = FIREWALL_VERDICTS_TOTAL.with_label_values(&[
+            "test_metric_channel",
+            direction_label(Direction::ClientToServer),
+            "disallowed_type",
+            "enforced",
+        ]);
+        let before = series.get();
+        record_firewall_verdict(
+            "test_metric_channel",
+            Direction::ClientToServer,
+            "disallowed_type",
+            "enforced",
+        );
+        assert_eq!(series.get(), before + 1);
     }
 }

@@ -64,7 +64,6 @@ const CLIENT_BASE_LAST: u16 = main_client::DISCONNECTING; // 6
 /// `Disallowed`: an unmodeled channel gets L0-only enforcement plus observe,
 /// whereas a `Disallowed` type on a modeled channel is a real grammar
 /// violation the engine may terminate on.
-#[allow(dead_code)] // Consumed by the step-4a firewall engine (policy.rs).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MsgClass {
     /// A known/valid message type for this channel+direction (either a
@@ -82,7 +81,6 @@ pub enum MsgClass {
 /// This is a pure lookup over the compiled-in grammar; it inspects only the
 /// message type (opcode), never the body. See the module docs for how the
 /// table is built.
-#[allow(dead_code)] // Consumed by the step-4a firewall engine (policy.rs).
 pub fn classify(channel: ChannelType, dir: Direction, msg_type: u16) -> MsgClass {
     match channel_table(channel, dir) {
         // Unmodeled channel: no grammar at all, regardless of type. The engine

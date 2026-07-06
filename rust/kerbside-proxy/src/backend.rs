@@ -18,6 +18,7 @@
 //! emits the hypervisor connect success/failure audit events, and then hands
 //! the two streams to the relay seam (`crate::relay::run`, a stub until 3f).
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Error, Result};
@@ -26,6 +27,7 @@ use shakenfist_spice_protocol::{ChannelType, ConnectionConfig, SpiceClient};
 use tracing::{info, warn};
 
 use crate::pb;
+use crate::policy::FirewallPolicy;
 use crate::session::SharedState;
 
 /// Upper bound on a single backend connect attempt (TCP connect + SPICE link +
@@ -64,6 +66,7 @@ fn is_need_secured(err: &Error) -> bool {
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     state: &SharedState,
+    policy: Arc<FirewallPolicy>,
     connection_ref: &str,
     client_stream: SpiceStream,
     connection_id: u32,
@@ -147,8 +150,19 @@ pub async fn run(
         "hypervisor connection successful; handing off to relay"
     );
 
-    // Hand both owned streams to the relay seam (phase 3f fills the body).
-    crate::relay::run(client_stream, backend_stream, channel_type, connection_ref).await
+    // Hand both owned streams to the relay seam, along with the connection's
+    // firewall policy and the state/target the relay needs to flush a single
+    // coalesced firewall-verdict audit event on teardown.
+    crate::relay::run(
+        state,
+        policy,
+        client_stream,
+        backend_stream,
+        channel_type,
+        connection_ref,
+        target,
+    )
+    .await
 }
 
 /// Build the base `ConnectionConfig` from an authorized `Target`.

@@ -11,6 +11,8 @@
 //! One accepted client connection = one backend channel connection = one
 //! relayed SPICE channel (SPICE opens a TCP connection per channel).
 
+use std::sync::Arc;
+
 use anyhow::{anyhow, Result};
 use shakenfist_spice_protocol::link::SpiceStream;
 use shakenfist_spice_protocol::messages::MessageHeader;
@@ -18,7 +20,9 @@ use shakenfist_spice_protocol::ChannelType;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tracing::{debug, info, warn};
 
-use crate::policy::{Direction, PermissivePolicy, Policy, Verdict};
+use crate::pb;
+use crate::policy::{Direction, EnforcingPolicy, FirewallPolicy, Policy, Verdict, VerdictTally};
+use crate::session::SharedState;
 
 /// Sanity cap on a single framed SPICE message's declared body size.
 ///
@@ -37,27 +41,34 @@ const READ_CHUNK_SIZE: usize = 64 * 1024;
 ///
 /// Splits both streams into read/write halves and runs two framing pumps
 /// concurrently (client->server and server->client), each with its own
-/// [`PermissivePolicy`] instance. A SPICE channel is a single duplex TCP
-/// connection: once EITHER direction ends (EOF, an I/O error, or a policy
-/// `Terminate`), the whole session is over, so we `select!` and let the first
-/// pump to finish tear the other down (dropping its future).
+/// [`EnforcingPolicy`] instance built from the shared `Arc<FirewallPolicy>` and
+/// a single shared [`VerdictTally`] (phase-4 plan, Design decision 2: per-
+/// direction policy instances, shared verdict counters). A SPICE channel is a
+/// single duplex TCP connection: once EITHER direction ends (EOF, an I/O error,
+/// or a policy `Terminate`), the whole session is over, so we `select!` and let
+/// the first pump to finish tear the other down (dropping its future).
 ///
-/// Phase 4 swaps `PermissivePolicy` here for the enforcing policy type; the
-/// `run` signature is unchanged.
+/// After the `select!`, the shared tally is read once and — if any firewall
+/// verdict was recorded — a single coalesced summary audit event is emitted for
+/// the connection (never one event per blocked message). The tally is shared by
+/// `Arc`, so the losing pump's counts survive its dropped future.
 ///
 /// Returns `Ok(())` on normal teardown. Genuine faults (a protocol violation
 /// such as an oversized frame, or an I/O error) are logged here; we still
 /// return `Ok(())` because the caller deregisters the channel and closes the
 /// client either way, and a torn-down socket is not separately actionable.
 /// Bytes forwarded on each `Verdict::Forward` are counted via
-/// `metrics::add_relayed_bytes`; a dedicated fault-count metric is not part
-/// of this step and is left for phase 4, which is where faults gain
-/// interesting structure (which policy rule tripped, on which channel).
+/// `metrics::add_relayed_bytes`; firewall verdicts are counted via
+/// `metrics::record_firewall_verdict` inside the policy.
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
+    state: &SharedState,
+    policy: Arc<FirewallPolicy>,
     client: SpiceStream,
     backend: SpiceStream,
     channel_type: ChannelType,
     connection_ref: &str,
+    target: &pb::Target,
 ) -> Result<()> {
     info!(
         %connection_ref,
@@ -68,13 +79,19 @@ pub async fn run(
     let (client_reader, client_writer) = tokio::io::split(client);
     let (backend_reader, backend_writer) = tokio::io::split(backend);
 
-    // Each direction gets its OWN policy instance. PermissivePolicy is
-    // stateless, so this needs no lock; see policy.rs for the phase-4
-    // shared-state note.
+    // Each direction gets its OWN EnforcingPolicy instance, so the allowlist
+    // lookup needs no lock on the hot path. Both share the connection's
+    // Arc<FirewallPolicy> config and ONE Arc<VerdictTally>, so verdict counts
+    // from both directions survive the dropped losing pump for the audit flush.
+    let tally = Arc::new(VerdictTally::new());
     let client_to_server = pump(
         client_reader,
         backend_writer,
-        PermissivePolicy,
+        EnforcingPolicy::new(
+            Arc::clone(&policy),
+            Direction::ClientToServer,
+            Arc::clone(&tally),
+        ),
         Direction::ClientToServer,
         channel_type,
         connection_ref,
@@ -82,7 +99,11 @@ pub async fn run(
     let server_to_client = pump(
         backend_reader,
         client_writer,
-        PermissivePolicy,
+        EnforcingPolicy::new(
+            Arc::clone(&policy),
+            Direction::ServerToClient,
+            Arc::clone(&tally),
+        ),
         Direction::ServerToClient,
         channel_type,
         connection_ref,
@@ -105,6 +126,27 @@ pub async fn run(
             error = %e,
             "relay ended with error"
         ),
+    }
+
+    // Flush a single coalesced firewall-verdict audit event for the whole
+    // connection, if anything was recorded. Best-effort: an audit RPC failure
+    // is logged, not propagated (the connection is already tearing down).
+    if let Some(summary) = tally.summary() {
+        if let Err(e) = state
+            .rpc
+            .record_audit_event(
+                &target.source,
+                &target.uuid,
+                &target.session_id,
+                channel_type.name(),
+                &state.node_name,
+                connection_ref,
+                &summary,
+            )
+            .await
+        {
+            warn!(%connection_ref, error = %e, "recording firewall-verdict-summary audit event failed");
+        }
     }
 
     // Normal teardown is uniform from the caller's perspective; do not
@@ -229,6 +271,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::policy::PermissivePolicy;
     use shakenfist_spice_protocol::messages::make_message;
     use std::collections::VecDeque;
     use std::io;

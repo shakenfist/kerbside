@@ -35,6 +35,7 @@ use shakenfist_spice_protocol::{ChannelType, SpiceError};
 use tracing::{debug, info, warn};
 
 use crate::metrics;
+use crate::policy::FirewallPolicy;
 use crate::rpc::{AuthzOutcome, KerbsideRpc};
 
 /// Shared, cheaply-cloneable process state handed to every connection task.
@@ -226,8 +227,13 @@ async fn serve(
             // leg + relay. `stream` is moved into `backend::run`.
             metrics::record_authorized();
             send_auth_result(&mut stream, SpiceError::Ok).await?;
+            // 4e: replace with the FirewallPolicy delivered in the
+            // AuthorizeConnection reply. The compiled default is enforcing and
+            // permits every channel, so it is the correct fallback.
+            let policy = Arc::new(FirewallPolicy::default());
             crate::backend::run(
                 state,
+                policy,
                 connection_ref,
                 stream,
                 connection_id,
