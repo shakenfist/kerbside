@@ -41,7 +41,11 @@ mod session;
 /// handoff.
 mod backend;
 
-/// The inspection-first SPICE relay (a stub until phase 3f).
+/// The relay's inspection policy seam (Policy/Verdict/Direction). Phase 3
+/// ships PermissivePolicy; phase 4 fills it with L0/L1 enforcement.
+mod policy;
+
+/// The inspection-first, per-message-framed SPICE relay.
 mod relay;
 
 /// Kerbside SPICE proxy configuration. Defaults mirror `kerbside/config.py`
