@@ -5,10 +5,12 @@
 //! initialises tracing. Listeners, the gRPC client, the handshake, and the
 //! relay are added in later steps of phase 3.
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
+use shakenfist_spice_protocol::link::SpiceStream;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -25,6 +27,13 @@ pub mod pb {
 /// is unit-tested now.
 #[allow(dead_code)]
 mod rpc;
+
+/// The plaintext (insecure, redirect-to-secure) and TLS (secure) SPICE
+/// listeners.
+mod listen;
+
+/// TLS acceptor construction (cert/key loading) for the secure listener.
+mod tls;
 
 /// Kerbside SPICE proxy configuration. Defaults mirror `kerbside/config.py`
 /// so the Python daemon can pass matching values when it spawns the proxy
@@ -105,8 +114,39 @@ async fn main() -> Result<()> {
         "kerbside-proxy starting"
     );
 
-    // Listeners, gRPC client, handshake, and relay are wired up in later
-    // steps of phase 3. For the skeleton we log the bound config and exit 0.
-    info!("kerbside-proxy skeleton: nothing to serve yet, exiting cleanly");
+    // The gRPC client, handshake, authorization, backend connect, and relay
+    // are wired up in later steps of phase 3 (3d/3g). This step binds both
+    // listeners and keeps the process running: the insecure port redirects
+    // to TLS, and the secure port TLS-accepts and hands off to a stub
+    // session handler.
+    let acceptor = tls::load_acceptor(&args.cert, &args.cert_key).with_context(|| {
+        format!(
+            "loading TLS cert {} / key {} for the secure SPICE listener",
+            args.cert.display(),
+            args.cert_key.display()
+        )
+    })?;
+
+    let vdi_ip: std::net::IpAddr = args
+        .vdi_address
+        .parse()
+        .with_context(|| format!("parsing --vdi-address {}", args.vdi_address))?;
+    let secure_addr = SocketAddr::new(vdi_ip, args.secure_port);
+    let insecure_addr = SocketAddr::new(vdi_ip, args.insecure_port);
+
+    // TODO(phase 3d/3g): replace this stub with the real per-connection
+    // session handler (link handshake + authorize + backend connect +
+    // inspection-first relay), likely wrapping an `Arc` of shared state
+    // (the gRPC client, node name, metrics) that `run_secure` clones per
+    // connection.
+    let secure_handler = |_stream: SpiceStream, peer: SocketAddr| async move {
+        info!(%peer, "secure connection accepted; session handling not yet wired");
+    };
+
+    tokio::try_join!(
+        listen::run_insecure(insecure_addr),
+        listen::run_secure(secure_addr, acceptor, secure_handler),
+    )?;
+
     Ok(())
 }
