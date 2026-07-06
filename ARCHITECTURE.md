@@ -75,9 +75,9 @@ gRPC status codes.
 | RPC | Maps to | Purpose |
 |-----|---------|---------|
 | `AuthorizeConnection` | `get_token_by_token` + `get_source` + `get_console` | Resolve a decrypted token to a hypervisor `Target`, or `Denied`; records the session and the `Channel created` audit |
-| `RegisterChannel` | `record_channel_info` | Pre-authorization channel record |
+| `RegisterChannel` | `record_channel_info_by_ref` | Pre-authorization channel record |
 | `RecordAuditEvent` | `add_audit_event` | Write an audit event |
-| `DeregisterChannel` | `remove_proxy_channel` | Remove a channel at teardown |
+| `DeregisterChannel` | `remove_channel_by_ref` | Remove a channel at teardown |
 | `ClearNodeChannels` | `remove_node_channels` | Clear stale channel rows at proxy startup |
 | `ProxyControl` (streaming) | — | Daemon→proxy control channel (session termination / policy push); a keepalive stub today, real events land with the Rust proxy work |
 

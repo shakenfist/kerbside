@@ -203,6 +203,45 @@ class KerbsideProxyRpcTestCase(testtools.TestCase):
         self.assertTrue(reply.success)
         mock_remove.assert_called_once_with('n')
 
+    @mock.patch('kerbside.db.add_audit_event')
+    def test_record_audit_event_internal_error(self, mock_add):
+        mock_add.side_effect = RuntimeError('boom')
+
+        try:
+            self.stub.RecordAuditEvent(
+                kerbside_pb2.AuditEventRequest(
+                    source='s', uuid='u', session_id='sid', channel='main',
+                    node='n', connection_ref='cr', message='m'),
+                timeout=5)
+            self.fail('expected grpc.RpcError')
+        except grpc.RpcError as e:
+            self.assertEqual(grpc.StatusCode.INTERNAL, e.code())
+
+    @mock.patch('kerbside.db.remove_channel_by_ref')
+    def test_deregister_channel_internal_error(self, mock_remove):
+        mock_remove.side_effect = RuntimeError('boom')
+
+        try:
+            self.stub.DeregisterChannel(
+                kerbside_pb2.DeregisterChannelRequest(
+                    node='n', connection_ref='cr'),
+                timeout=5)
+            self.fail('expected grpc.RpcError')
+        except grpc.RpcError as e:
+            self.assertEqual(grpc.StatusCode.INTERNAL, e.code())
+
+    @mock.patch('kerbside.db.remove_node_channels')
+    def test_clear_node_channels_internal_error(self, mock_remove):
+        mock_remove.side_effect = RuntimeError('boom')
+
+        try:
+            self.stub.ClearNodeChannels(
+                kerbside_pb2.ClearNodeChannelsRequest(node='n'),
+                timeout=5)
+            self.fail('expected grpc.RpcError')
+        except grpc.RpcError as e:
+            self.assertEqual(grpc.StatusCode.INTERNAL, e.code())
+
     def test_proxy_control_heartbeat(self):
         call = self.stub.ProxyControl(
             kerbside_pb2.ProxyControlRequest(node='n'))

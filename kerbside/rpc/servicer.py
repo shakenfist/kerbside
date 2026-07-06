@@ -75,7 +75,7 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
         except Exception as e:
             LOG.error('AuthorizeConnection failed: %s' % e)
             context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details('AuthorizeConnection failed: %s' % e)
+            context.set_details('AuthorizeConnection failed (see server logs)')
             return kerbside_pb2.AuthorizeConnectionReply()
 
     def RegisterChannel(self, request, context):
@@ -92,7 +92,7 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
         except Exception as e:
             LOG.error('RegisterChannel failed: %s' % e)
             context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details('RegisterChannel failed: %s' % e)
+            context.set_details('RegisterChannel failed (see server logs)')
             return kerbside_pb2.StatusReply()
 
     def RecordAuditEvent(self, request, context):
@@ -106,7 +106,7 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
         except Exception as e:
             LOG.error('RecordAuditEvent failed: %s' % e)
             context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details('RecordAuditEvent failed: %s' % e)
+            context.set_details('RecordAuditEvent failed (see server logs)')
             return kerbside_pb2.StatusReply()
 
     def DeregisterChannel(self, request, context):
@@ -117,7 +117,7 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
         except Exception as e:
             LOG.error('DeregisterChannel failed: %s' % e)
             context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details('DeregisterChannel failed: %s' % e)
+            context.set_details('DeregisterChannel failed (see server logs)')
             return kerbside_pb2.StatusReply()
 
     def ClearNodeChannels(self, request, context):
@@ -128,7 +128,7 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
         except Exception as e:
             LOG.error('ClearNodeChannels failed: %s' % e)
             context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details('ClearNodeChannels failed: %s' % e)
+            context.set_details('ClearNodeChannels failed (see server logs)')
             return kerbside_pb2.StatusReply()
 
     def ProxyControl(self, request, context):
@@ -152,4 +152,4 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
         except Exception as e:
             LOG.error('ProxyControl stream failed: %s' % e)
             context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details('ProxyControl stream failed: %s' % e)
+            context.set_details('ProxyControl stream failed (see server logs)')

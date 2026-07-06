@@ -19,7 +19,12 @@ LOG, _ = logs.setup(__name__, **util.configure_logging())
 
 
 Base = declarative_base()
-ENGINE = create_engine(config.SQL_URL, pool_pre_ping=True, pool_recycle=300)
+# hide_parameters=True keeps bound query parameters out of SQLAlchemy
+# exception strings. Without it, a DB error while looking up a token would
+# stringify the (decrypted) token plaintext into the exception — and thence
+# into logs or a gRPC error detail. See kerbside/rpc/servicer.py.
+ENGINE = create_engine(config.SQL_URL, pool_pre_ping=True, pool_recycle=300,
+                       hide_parameters=True)
 
 
 def reset_engine():
@@ -469,7 +474,12 @@ class ProxyChannel(Base):
     channel_type = Column(String)
     channel_id = Column(Integer)
     session_id = Column(String)
-    connection_ref = Column(String, nullable=True)
+    # connection_ref is the per-connection key used by the gRPC path (the
+    # Rust proxy has no per-worker pid). Unique so the by-ref upsert lookup
+    # is a single indexed row rather than a table scan; nullable, and MySQL
+    # permits multiple NULLs in a unique index, so pid-keyed Python-proxy
+    # rows (connection_ref NULL) coexist.
+    connection_ref = Column(String, nullable=True, unique=True, index=True)
 
     def __init__(self, node, pid, created):
         self.node = node
@@ -628,6 +638,9 @@ class AuditEvent(Base):
     session_id = Column(String)
     channel = Column(String)
     node = Column(String)
+    # pid holds an OS process id when written by the Python proxy path, or a
+    # proxy-generated connection_ref when written by the gRPC path. It is a
+    # String to accommodate both; treat it as an opaque per-connection tag.
     pid = Column(String)
     timestamp = Column(DATETIME(fsp=6), primary_key=True, server_default=text('CURRENT_TIMESTAMP(6)'))
     message = Column(Text)

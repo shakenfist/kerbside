@@ -42,6 +42,16 @@ def upgrade() -> None:
         'proxychannels',
         sa.Column('connection_ref', sa.String(255), nullable=True))
 
+    # connection_ref is the gRPC path's per-connection key and the lookup
+    # key for every by-ref RPC. A unique index makes that lookup a single
+    # indexed row (not a table scan) and enforces uniqueness so the by-ref
+    # upsert's .one() cannot see duplicates. On MySQL a unique index permits
+    # multiple NULLs, so pid-keyed Python-proxy rows (connection_ref NULL)
+    # are unaffected.
+    op.create_index(
+        'ix_proxychannels_connection_ref', 'proxychannels',
+        ['connection_ref'], unique=True)
+
     # client_ip is declared Integer in the ORM model but was created as
     # String(15) by the initial migration and the proxy writes a host string.
     # Reconcile the model to a string and widen the column so it can hold
@@ -53,11 +63,20 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # proxychannels is ephemeral bookkeeping (cleared on proxy start). The
+    # gRPC path writes rows with a NULL pid (and NULL node is possible);
+    # those cannot satisfy the restored NOT NULL (node, pid) primary key and
+    # would either error the MODIFY or collide as (node, 0) duplicates on the
+    # re-added PK. Delete them first so the downgrade is deterministic.
+    op.execute(
+        'DELETE FROM proxychannels WHERE pid IS NULL OR node IS NULL')
+
     op.alter_column(
         'proxychannels', 'client_ip',
         existing_type=sa.String(255), type_=sa.String(15),
         existing_nullable=True)
 
+    op.drop_index('ix_proxychannels_connection_ref', 'proxychannels')
     op.drop_column('proxychannels', 'connection_ref')
 
     op.alter_column(

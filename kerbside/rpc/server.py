@@ -34,17 +34,23 @@ def serve(socket_path=None, workers=None):
     kerbside_pb2_grpc.add_KerbsideProxyServicer_to_server(
         KerbsideProxyServicer(), server)
 
-    # Prepare the socket: the containing directory is created with
-    # restrictive permissions and any stale socket file is removed before
-    # we bind (mirroring shakenfist's trusted-local-peer model).
+    # Prepare the socket. The trust model is filesystem permissions on a
+    # local socket for a same-UID trusted peer (mirroring shakenfist), so
+    # restrict access explicitly: the containing directory to 0700, and the
+    # socket file to 0600 after bind (don't rely on umask). makedirs' mode
+    # only applies when it creates the directory, so chmod unconditionally
+    # in case the directory pre-existed with looser permissions. Any stale
+    # socket is removed before we bind.
     socket_dir = os.path.dirname(socket_path)
     if socket_dir:
         os.makedirs(socket_dir, mode=0o700, exist_ok=True)
+        os.chmod(socket_dir, 0o700)
     if os.path.exists(socket_path):
         os.unlink(socket_path)
 
     server.add_insecure_port('unix:%s' % socket_path)
     server.start()
+    os.chmod(socket_path, 0o600)
     LOG.info('KerbsideProxy gRPC server listening on unix:%s' % socket_path)
     return server
 
