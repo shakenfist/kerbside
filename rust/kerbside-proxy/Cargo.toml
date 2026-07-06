@@ -29,6 +29,12 @@ rustls-pemfile = "2"
 # mutually-compatible trio.
 tonic = "0.12"
 prost = "0.13"
+# tonic has no `unix:` transport, so the UDS channel is built from a custom
+# tower connector that dials a tokio UnixStream; hyper-util's TokioIo adapts
+# the stream to hyper's IO traits. The Uri type the connector closure is
+# handed comes from tonic's re-export (tonic::transport::Uri).
+tower = { version = "0.5", features = ["util"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
@@ -36,6 +42,13 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+# The rpc.rs unit test serves an in-process tonic server over a UnixListener,
+# which requires the server codegen (enabled in build.rs) and a stream adapter
+# for the listener. tempfile provides a private directory for the test socket.
+tokio-stream = { version = "0.1", features = ["net", "sync"] }
+tempfile = "3"
 
 [build-dependencies]
 # tonic-build 0.12 matches tonic 0.12. protoc-bin-vendored ships a protoc

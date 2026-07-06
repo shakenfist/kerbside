@@ -681,16 +681,20 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "hyper-util",
  "prost",
  "protoc-bin-vendored",
  "rustls",
  "rustls-pemfile",
  "shakenfist-spice-protocol",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-rustls",
+ "tokio-stream",
  "tonic",
  "tonic-build",
+ "tower 0.5.3",
  "tracing",
  "tracing-subscriber",
  "uuid",
@@ -1496,6 +1500,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

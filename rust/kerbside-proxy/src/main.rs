@@ -20,6 +20,12 @@ pub mod pb {
     tonic::include_proto!("kerbside.rpc");
 }
 
+/// gRPC client for the KerbsideProxy control service over the UDS. Consumed by
+/// the accept loop in later steps of phase 3; declared here so it compiles and
+/// is unit-tested now.
+#[allow(dead_code)]
+mod rpc;
+
 /// Kerbside SPICE proxy configuration. Defaults mirror `kerbside/config.py`
 /// so the Python daemon can pass matching values when it spawns the proxy
 /// (phase 5).

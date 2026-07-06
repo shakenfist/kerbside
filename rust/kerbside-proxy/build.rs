@@ -24,8 +24,12 @@ fn main() {
     );
 
     tonic_build::configure()
-        // We are a client of the KerbsideProxy service, not a server.
-        .build_server(false)
+        // We are a client of the KerbsideProxy service in production, but the
+        // rpc.rs unit test stands up an in-process server with canned
+        // responses, so we generate the server stubs too. The generated
+        // server code is unused in non-test builds; the `pb` module's
+        // module-level allow(dead_code) suppresses the resulting warnings.
+        .build_server(true)
         .build_client(true)
         // tonic-build 0.12 renamed compile() to compile_protos().
         .compile_protos(&[proto], &[proto_dir])
