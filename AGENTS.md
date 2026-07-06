@@ -23,6 +23,7 @@ SPICE protocol negotiation, authentication, and bidirectional traffic relay.
 | `kerbside/rpc/kerbside.proto` | KerbsideProxy gRPC contract fronting the DB for the proxy |
 | `kerbside/rpc/servicer.py` | gRPC servicer implementing the contract against db.py |
 | `kerbside/rpc/server.py` | serve()/stop() hosting the servicer over a unix socket in the daemon |
+| `rust/kerbside-proxy/` | Rust reimplementation of the SPICE proxy (in progress): TLS termination, handshake, gRPC-authorised inspection-first relay. Builds in Docker via its Makefile |
 | `kerbside/sources/static.py` | Static source driver: reads VM-to-console mapping from an inline list in sources.yaml; designed for CI pipelines and ad-hoc debugging (no control plane required) |
 
 ## Architecture Patterns
@@ -100,6 +101,29 @@ hosted over a unix socket by `kerbside/rpc/server.py` (started from
 `daemon_run`). Keep `grpcio`/`protobuf` (runtime) and
 `grpcio-tools`/`mypy-protobuf` (tox genprotos deps) pinned in lockstep
 so regeneration is deterministic.
+
+### Building / working on the Rust proxy
+
+The Rust SPICE proxy lives in `rust/kerbside-proxy/` (its own crate;
+`.gitignore`d `target/`). Builds are wrapped in Docker (matching the
+"don't install Rust toolchains on the host" preference) via the crate's
+Makefile, which mounts the repo root so the crate can reach
+`kerbside/rpc/kerbside.proto`:
+
+```bash
+make -C rust/kerbside-proxy build   # cargo build in the kerbside-proxy-dev image
+make -C rust/kerbside-proxy test    # cargo test
+make -C rust/kerbside-proxy lint    # cargo fmt --check + clippy -D warnings
+```
+
+`build.rs` generates the tonic gRPC client from the same
+`kerbside/rpc/kerbside.proto` the Python side uses (vendored protoc, no
+system protobuf needed). The crate depends on the ryll
+`shakenfist-spice-protocol` crate as a git dependency pinned to a specific
+rev in `Cargo.toml`; bump the `rev` (and commit the updated `Cargo.lock`)
+when picking up ryll changes. CI runs fmt/clippy/test/build via
+`.github/workflows/rust.yml`; end-to-end verification against qemu is
+`tools/direct-qemu/VERIFY-RUST-PROXY.md`.
 
 ### Modifying SPICE Protocol Handling
 

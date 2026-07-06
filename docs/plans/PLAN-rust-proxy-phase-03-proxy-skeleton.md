@@ -293,6 +293,48 @@ stays Rust-free per their preference).
 - Switch the ryll dependency from a git rev to a published/tagged
   release when ryll publishes one.
 
+## Outcome
+
+Completed 2026-07-06 on the kerbside `rust-proxy-phase-3` branch,
+commits `ce10ef7`..(3i), unmerged and unpushed pending operator
+review. The nine steps landed as planned; every Rust step was built,
+linted (`clippy -D warnings`), and tested in the Docker build.
+
+- 3a: `rust/kerbside-proxy/` crate skeleton, git-pinned ryll dep,
+  tonic codegen (vendored protoc), Docker build + Makefile.
+- 3b: tonic gRPC client over the UDS (mock-server tests).
+- 3c: TLS acceptor + dual listeners (plaintext `need_secured`
+  redirect; secure handler seam).
+- 3d: client-facing handshake + `AuthorizeConnection`.
+- 3e: backend leg via `SpiceClient` with the insecure-first
+  `need_secured` retry.
+- 3f: inspection-first framed relay + `Policy`/`Verdict` seam
+  (permissive).
+- 3g: lifecycle wiring, concurrency cap, Prometheus `/metrics`,
+  SIGTERM shutdown.
+- 3h: end-to-end verification harness (mock gRPC + qemu + proxy). A
+  live run drove `remote-viewer` through the proxy to a booted qemu
+  SPICE server: 4 channels authorised via the gRPC service and ~345
+  KB of display data relayed server→client (plus input
+  client→server) — the full client → proxy → hypervisor path.
+- 3i: this Outcome, the `.github/workflows/rust.yml` CI (fmt / clippy
+  / test / build), and doc updates.
+
+Notable deviations / findings, all deliberate:
+
+- **`protoc-bin-vendored` is at 3.x, not 0.5** (a sub-agent guessed);
+  corrected during 3a.
+- **`host_subject` not enforced** — the ryll `SpiceClient` relaxes
+  subject matching; accepted for the skeleton and tracked in the
+  master plan (Future work), documented inline at `backend.rs`.
+- **`need_secured` retry uses a fragile string match** on the crate's
+  error, since the crate has no typed `NeedSecured` error — noted for
+  a future ryll-crate improvement.
+- **AF_UNIX `SUN_LEN` (~108 bytes)** — the gRPC socket path must stay
+  short; discovered during 3h and guarded in `verify-rust-proxy.sh`.
+- CI runs on the repo's self-hosted debian-12 runners (matching the
+  existing workflows), not hosted ubuntu.
+
 ## Back brief
 
 Before executing any step, back brief the operator on the intended

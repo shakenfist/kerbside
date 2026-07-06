@@ -117,6 +117,20 @@ pool architecture.
 - Kills stray processes older than 5 seconds without active channels
 - Updates Prometheus worker count metrics
 
+**Rust proxy (`rust/kerbside-proxy/`, in progress).** A Rust
+reimplementation of this layer is being built to replace the Python proxy:
+it terminates client TLS, performs the SPICE handshake, and relays traffic
+as async tokio tasks (one per connection) instead of forked worker
+processes. Rather than accessing the database directly, it consults the
+control-plane gRPC service (component 2) over the unix socket for
+authorization and channel/audit bookkeeping, and it reuses the ryll
+`shakenfist-spice-protocol` crate for the SPICE wire format. The relay is
+inspection-first (every SPICE message is framed and passed through a policy
+hook), which is the seam a future SPICE application-firewall builds on. It
+exposes its own Prometheus `/metrics` endpoint. The Python proxy remains the
+active proxy until the Rust proxy is wired into the daemon and cut over in
+later phases; see `docs/plans/PLAN-rust-proxy.md`.
+
 ### 4. API Layer (`api.py`)
 
 Flask-based REST API with JWT authentication (Keystone integration for
