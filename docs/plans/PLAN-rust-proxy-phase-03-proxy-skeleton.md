@@ -335,6 +335,79 @@ Notable deviations / findings, all deliberate:
 - CI runs on the repo's self-hosted debian-12 runners (matching the
   existing workflows), not hosted ubuntu.
 
+### Pre-push audit (2026-07-06)
+
+Ran the `PUSH-TEMPLATE.md` pre-push audit against
+`git diff origin/develop..HEAD` (kerbside only; ryll is a pinned
+dependency, unchanged this phase). Wave 1 (mechanical) was clean: Docker
+`make lint` (fmt + `clippy -D warnings`) and `make test` green, flake8
+clean on both phase-3 Python files, no `unsafe`, all `expect()` on
+non-network invariants. Wave 2 was four judgment agents (code quality,
+tests, docs, security-opus). **No blocking, critical, or high findings.**
+The security pass confirmed the skeleton is memory-safe, panic-safe
+against a hostile client, credential-safe (the decrypted token and
+hypervisor ticket are never logged), and TLS fail-closed.
+
+Two findings were fixed before push:
+
+- **Unused `thiserror` dependency** (code quality) — dropped from
+  `Cargo.toml`; the crate is consistently `anyhow`-based.
+- **Backend connect had no timeout** (security, MEDIUM — the top
+  permit-pinning DoS: a hypervisor that accepts TCP but stalls the SPICE
+  handshake would hold a concurrency permit forever). Wrapped each
+  `connect_once` attempt in a 30 s `BACKEND_CONNECT_TIMEOUT`
+  (`backend.rs`); the timeout message deliberately does not match
+  `is_need_secured`, so a stalled insecure attempt is not mistaken for a
+  TLS-required signal. Also extracted the `ConnectionConfig`-from-`Target`
+  mapping into a testable `build_config` and added unit tests for it
+  (host fallback, always-`Some` ticket, empty-string → `None`) plus the
+  timeout-message check — closing the test-review's cheapest regression
+  gap. Test count 14 → 19.
+
+Deferred (non-blocking; hardening/coverage for phase 4/5, not the
+phase-3 charter):
+
+- **Relay idle timeout / client TCP keepalive** (security, MEDIUM/LOW) —
+  an authorized-but-silent client (or a client whose network is yanked)
+  can pin a permit; the backend leg already has keepalive, the client leg
+  only `set_nodelay`. A generous idle bound wants real interactive-SPICE
+  traffic to pick a safe value → phase 4/5.
+- **gRPC per-call deadlines** (security, LOW) — a hung (not crashed)
+  daemon would stall permit-holding tasks; the UDS is local/trusted. Must
+  be per-unary-call, not a channel-wide timeout (that would kill the
+  long-lived `ProxyControl` stream).
+- **`/metrics` bind defaults to the public VDI address, unauthenticated,
+  no connection cap** (security, LOW) — soft DoS surface, no credential
+  leak (aggregate counts only). Consider a loopback/management-address
+  default and an accept cap; keep the "firewall the metrics port" note
+  loud in deploy docs.
+- **Metrics-server bind failure tears down the SPICE listeners** via the
+  shared `main.rs` `select!` (code quality) — confirm this
+  "any-startup-failure-is-fatal" coupling is intentional, or make the
+  metrics server non-fatal.
+- **Session denial/error signalling paths untested** (tests) — neither
+  unit tests nor the 3h harness drive a `Denied`/RPC-error outcome (the
+  mock always returns `Target`), so `send_auth_result(PermissionDenied)`
+  vs `Error` back to the client is unverified end-to-end. Best closed by
+  a "deny this token" mode in the mock gRPC server (phase-7 e2e) and/or a
+  `serve` unit test.
+- **`need_secured` retry orchestration untested** (tests) — the string
+  match is well covered, but the retry-triggering flow in `run()` is
+  exercised nowhere (the mock's `secure_port` defaults to 0). Wants a
+  TLS-required backend leg in the harness.
+- **`ConnectionGuard` gauge-balance test** (tests) and advisory polish
+  (`rpc.rs` `StatusReply{success:false}` branch, `tls.rs` missing-key /
+  empty-cert branches, `listen.rs` timeout/malformed-stream paths).
+- **Struct-ify the repeated identity params** (code quality) — five
+  `#[allow(clippy::too_many_arguments)]` functions share a
+  loosely-typed `client_port`/`connection_id`/`channel_id` `u32` bundle;
+  a `ConnectionContext` struct would remove the allows and a latent
+  transposition risk. Phase 4.
+- **Relay reassembly buffer capacity is never shrunk** (code quality) —
+  bounded and freed on close, but a direction that relays one ~16 MiB
+  message retains that capacity for the connection's life; revisit if
+  phase 4 tightens memory budgets.
+
 ## Back brief
 
 Before executing any step, back brief the operator on the intended

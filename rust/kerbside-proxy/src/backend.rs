@@ -18,13 +18,23 @@
 //! emits the hypervisor connect success/failure audit events, and then hands
 //! the two streams to the relay seam (`crate::relay::run`, a stub until 3f).
 
-use anyhow::{Error, Result};
+use std::time::Duration;
+
+use anyhow::{anyhow, Error, Result};
 use shakenfist_spice_protocol::link::SpiceStream;
 use shakenfist_spice_protocol::{ChannelType, ConnectionConfig, SpiceClient};
 use tracing::{info, warn};
 
 use crate::pb;
 use crate::session::SharedState;
+
+/// Upper bound on a single backend connect attempt (TCP connect + SPICE link +
+/// auth handshake). Without this, a hypervisor that accepts TCP but stalls the
+/// SPICE handshake would pin the connection's concurrency permit indefinitely
+/// (the session `HANDSHAKE_TIMEOUT` deliberately covers only the client leg,
+/// and the crate's `connect_channel` has no timeout of its own). Applied per
+/// attempt, so the insecure-then-secure retry gets a fresh budget each time.
+const BACKEND_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Detect the crate's "server requires TLS" (`NeedSecured`) error.
 ///
@@ -63,38 +73,7 @@ pub async fn run(
 ) -> Result<()> {
     // Build the base connection config from the authorized target. The ports
     // are set per attempt below (insecure first, TLS on retry).
-    //
-    // `host`: prefer the numeric hypervisor_ip when the control plane provided
-    // one, else the hypervisor name (mirrors proxy.py's server selection).
-    let host = if target.hypervisor_ip.is_empty() {
-        target.hypervisor.clone()
-    } else {
-        target.hypervisor_ip.clone()
-    };
-    let base_config = ConnectionConfig {
-        host,
-        port: target.insecure_port as u16,
-        tls_port: None,
-        // The crate encrypts even an empty ticket; an empty ticket is valid for
-        // the shakenfist/openstack sources, so always pass Some(...).
-        password: Some(target.ticket.clone()),
-        ca_cert: if target.ca_cert.is_empty() {
-            None
-        } else {
-            Some(target.ca_cert.clone())
-        },
-        // TODO(host_subject): the ryll crate does NOT enforce host_subject --
-        // its CA verifier accepts a hostname/subject mismatch (see
-        // client.rs::create_tls_connector). We pass it through for parity, but
-        // real hypervisor-cert subject pinning is future work tracked as the
-        // "Backend host_subject enforcement" item in docs/plans/PLAN-rust-proxy.md
-        // (likely a ryll-crate change). Do NOT rely on this for security here.
-        host_subject: if target.host_subject.is_empty() {
-            None
-        } else {
-            Some(target.host_subject.clone())
-        },
-    };
+    let base_config = build_config(target);
 
     // Connect, mirroring proxy.py's insecure-first + RetrySecured fallback:
     // attempt the insecure leg and, only on a NeedSecured signal, retry over
@@ -172,8 +151,54 @@ pub async fn run(
     crate::relay::run(client_stream, backend_stream, channel_type, connection_ref).await
 }
 
+/// Build the base `ConnectionConfig` from an authorized `Target`.
+///
+/// The ports are set per attempt by the caller (insecure first, TLS on the
+/// `need_secured` retry), so `tls_port` starts `None` here. Extracted from
+/// `run` so the several `Target` field mappings (host fallback, always-`Some`
+/// ticket, empty-string -> `None`) are unit-testable in isolation.
+fn build_config(target: &pb::Target) -> ConnectionConfig {
+    // `host`: prefer the numeric hypervisor_ip when the control plane provided
+    // one, else the hypervisor name (mirrors proxy.py's server selection).
+    let host = if target.hypervisor_ip.is_empty() {
+        target.hypervisor.clone()
+    } else {
+        target.hypervisor_ip.clone()
+    };
+    ConnectionConfig {
+        host,
+        port: target.insecure_port as u16,
+        tls_port: None,
+        // The crate encrypts even an empty ticket; an empty ticket is valid for
+        // the shakenfist/openstack sources, so always pass Some(...).
+        password: Some(target.ticket.clone()),
+        ca_cert: if target.ca_cert.is_empty() {
+            None
+        } else {
+            Some(target.ca_cert.clone())
+        },
+        // TODO(host_subject): the ryll crate does NOT enforce host_subject --
+        // its CA verifier accepts a hostname/subject mismatch (see
+        // client.rs::create_tls_connector). We pass it through for parity, but
+        // real hypervisor-cert subject pinning is future work tracked as the
+        // "Backend host_subject enforcement" item in docs/plans/PLAN-rust-proxy.md
+        // (likely a ryll-crate change). Do NOT rely on this for security here.
+        host_subject: if target.host_subject.is_empty() {
+            None
+        } else {
+            Some(target.host_subject.clone())
+        },
+    }
+}
+
 /// One backend connect attempt: build a `SpiceClient` from the config and open
 /// the requested channel. TLS is used iff `config.tls_port.is_some()`.
+///
+/// Bounded by `BACKEND_CONNECT_TIMEOUT` so a hypervisor that accepts TCP but
+/// stalls the handshake cannot pin the connection's permit forever. A timeout
+/// is a hard failure -- its message deliberately does not match
+/// `is_need_secured`, so a stalled insecure attempt is not mistaken for a
+/// "requires TLS" signal and does not trigger the secure retry.
 async fn connect_once(
     config: &ConnectionConfig,
     connection_id: u32,
@@ -183,9 +208,18 @@ async fn connect_once(
     // `ConnectionConfig` is not Copy; clone it so callers can reuse/adjust the
     // base config across attempts.
     let client = SpiceClient::new(config.clone())?;
-    client
-        .connect_channel(connection_id, channel_type, channel_id)
-        .await
+    match tokio::time::timeout(
+        BACKEND_CONNECT_TIMEOUT,
+        client.connect_channel(connection_id, channel_type, channel_id),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_elapsed) => Err(anyhow!(
+            "backend connect timed out after {}s",
+            BACKEND_CONNECT_TIMEOUT.as_secs()
+        )),
+    }
 }
 
 /// Record the hypervisor-connect-failure audit event (mirrors
@@ -251,5 +285,70 @@ mod tests {
             "TLS handshake failed: bad certificate"
         )));
         assert!(!is_need_secured(&anyhow!("invalid ticket")));
+    }
+
+    #[test]
+    fn connect_timeout_message_is_not_mistaken_for_need_secured() {
+        // A stalled insecure attempt must surface as a hard failure, not be
+        // retried over TLS -- so the timeout message must not match.
+        let err = anyhow!(
+            "backend connect timed out after {}s",
+            BACKEND_CONNECT_TIMEOUT.as_secs()
+        );
+        assert!(!is_need_secured(&err));
+    }
+
+    #[test]
+    fn build_config_prefers_hypervisor_ip_when_present() {
+        let target = pb::Target {
+            hypervisor: "hv.example".to_string(),
+            hypervisor_ip: "10.0.0.5".to_string(),
+            insecure_port: 5901,
+            ticket: "vmticket".to_string(),
+            ..Default::default()
+        };
+        let config = build_config(&target);
+        assert_eq!(config.host, "10.0.0.5");
+        assert_eq!(config.port, 5901);
+        assert!(config.tls_port.is_none());
+    }
+
+    #[test]
+    fn build_config_falls_back_to_hypervisor_name_without_ip() {
+        let target = pb::Target {
+            hypervisor: "hv.example".to_string(),
+            hypervisor_ip: String::new(),
+            ..Default::default()
+        };
+        assert_eq!(build_config(&target).host, "hv.example");
+    }
+
+    #[test]
+    fn build_config_always_passes_some_ticket_even_when_empty() {
+        // An empty ticket is valid for the shakenfist/openstack sources; the
+        // crate encrypts even an empty ticket, so it must stay Some(...).
+        let empty = build_config(&pb::Target::default());
+        assert_eq!(empty.password.as_deref(), Some(""));
+
+        let set = build_config(&pb::Target {
+            ticket: "secret".to_string(),
+            ..Default::default()
+        });
+        assert_eq!(set.password.as_deref(), Some("secret"));
+    }
+
+    #[test]
+    fn build_config_maps_empty_ca_cert_and_host_subject_to_none() {
+        let empty = build_config(&pb::Target::default());
+        assert!(empty.ca_cert.is_none());
+        assert!(empty.host_subject.is_none());
+
+        let set = build_config(&pb::Target {
+            ca_cert: "-----BEGIN CERT-----".to_string(),
+            host_subject: "C=US,CN=hv".to_string(),
+            ..Default::default()
+        });
+        assert_eq!(set.ca_cert.as_deref(), Some("-----BEGIN CERT-----"));
+        assert_eq!(set.host_subject.as_deref(), Some("C=US,CN=hv"));
     }
 }
