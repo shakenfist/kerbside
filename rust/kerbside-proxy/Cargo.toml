@@ -1,0 +1,44 @@
+[package]
+name = "kerbside-proxy"
+version = "0.1.0"
+edition = "2021"
+description = "Kerbside SPICE proxy: an inspection-first TLS relay between SPICE clients and hypervisors, authorised via the Kerbside gRPC control service."
+
+[[bin]]
+name = "kerbside-proxy"
+path = "src/main.rs"
+
+[dependencies]
+# The ryll SPICE protocol crate provides the server-role handshake drivers,
+# the SpiceClient connector, SpiceStream, constants, and the mini-header
+# framing this proxy reuses. Pinned to ryll develop (contains the phase-1
+# server primitives). Cargo resolves the workspace member by package name and
+# builds only it plus its dependency subtree, not the ryll GUI binary.
+shakenfist-spice-protocol = { git = "https://github.com/shakenfist/ryll", rev = "62d6737e8b2441b7beadefa5aedb42b1399aac27" }
+
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "macros", "signal", "sync"] }
+tokio-rustls = "0.26"
+# rustls is declared directly (feature "ring") so we can install the ring
+# crypto provider at startup; the version matches what tokio-rustls 0.26 (and
+# thus the ryll crate) resolves.
+rustls = { version = "0.23", features = ["ring"] }
+rustls-pemfile = "2"
+
+# gRPC client for the KerbsideProxy control service over the UDS. tonic 0.12
+# pairs with prost 0.13 (and tonic-build 0.12 below); this is the standard
+# mutually-compatible trio.
+tonic = "0.12"
+prost = "0.13"
+
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4"] }
+
+[build-dependencies]
+# tonic-build 0.12 matches tonic 0.12. protoc-bin-vendored ships a protoc
+# binary so the build needs no system protoc package.
+tonic-build = "0.12"
+protoc-bin-vendored = "3"
