@@ -7,6 +7,7 @@
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -22,9 +23,7 @@ pub mod pb {
     tonic::include_proto!("kerbside.rpc");
 }
 
-/// gRPC client for the KerbsideProxy control service over the UDS. Consumed by
-/// the accept loop in later steps of phase 3; declared here so it compiles and
-/// is unit-tested now.
+/// gRPC client for the KerbsideProxy control service over the UDS.
 #[allow(dead_code)]
 mod rpc;
 
@@ -34,6 +33,12 @@ mod listen;
 
 /// TLS acceptor construction (cert/key loading) for the secure listener.
 mod tls;
+
+/// The per-connection client-facing handshake + authorization.
+mod session;
+
+/// The backend leg + relay handoff (a stub until phases 3e/3f).
+mod backend;
 
 /// Kerbside SPICE proxy configuration. Defaults mirror `kerbside/config.py`
 /// so the Python daemon can pass matching values when it spawns the proxy
@@ -114,11 +119,21 @@ async fn main() -> Result<()> {
         "kerbside-proxy starting"
     );
 
-    // The gRPC client, handshake, authorization, backend connect, and relay
-    // are wired up in later steps of phase 3 (3d/3g). This step binds both
-    // listeners and keeps the process running: the insecure port redirects
-    // to TLS, and the secure port TLS-accepts and hands off to a stub
-    // session handler.
+    // gRPC client for the control service over the UDS. The channel is lazy,
+    // so this is infallible and only dials the socket on first use.
+    let rpc = rpc::KerbsideRpc::connect(&args.api_socket);
+
+    // Shared, cheaply-cloneable state cloned into each connection task.
+    let state = Arc::new(session::SharedState {
+        rpc,
+        node_name: args.node_name.clone(),
+    });
+
+    // TODO(phase 3g): ClearNodeChannels(node) at startup to drop stale channel
+    // records, spawn the ProxyControl stream consumer, and stand up the
+    // Prometheus /metrics endpoint. The per-connection handshake + authorize
+    // (3d) is wired below; the backend connect + relay (3e/3f) sit behind the
+    // `backend::run` stub the session handler calls.
     let acceptor = tls::load_acceptor(&args.cert, &args.cert_key).with_context(|| {
         format!(
             "loading TLS cert {} / key {} for the secure SPICE listener",
@@ -134,13 +149,15 @@ async fn main() -> Result<()> {
     let secure_addr = SocketAddr::new(vdi_ip, args.secure_port);
     let insecure_addr = SocketAddr::new(vdi_ip, args.insecure_port);
 
-    // TODO(phase 3d/3g): replace this stub with the real per-connection
-    // session handler (link handshake + authorize + backend connect +
-    // inspection-first relay), likely wrapping an `Arc` of shared state
-    // (the gRPC client, node name, metrics) that `run_secure` clones per
-    // connection.
-    let secure_handler = |_stream: SpiceStream, peer: SocketAddr| async move {
-        info!(%peer, "secure connection accepted; session handling not yet wired");
+    // Per accepted (TLS-terminated) connection, run the client-facing
+    // handshake + authorization (and, on success, the backend handoff).
+    // `run_secure` clones this handler per connection, so each spawned task
+    // owns its own `Arc` clone of the shared state.
+    let secure_handler = move |stream: SpiceStream, peer: SocketAddr| {
+        let state = state.clone();
+        async move {
+            session::handle_connection(state, stream, peer).await;
+        }
     };
 
     tokio::try_join!(
