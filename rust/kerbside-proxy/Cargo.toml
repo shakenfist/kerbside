@@ -1,0 +1,72 @@
+[package]
+name = "kerbside-proxy"
+version = "0.1.0"
+edition = "2021"
+description = "Kerbside SPICE proxy: an inspection-first TLS relay between SPICE clients and hypervisors, authorised via the Kerbside gRPC control service."
+
+[[bin]]
+name = "kerbside-proxy"
+path = "src/main.rs"
+
+[dependencies]
+# The ryll SPICE protocol crate provides the server-role handshake drivers,
+# the SpiceClient connector, SpiceStream, constants, and the mini-header
+# framing this proxy reuses. Pinned to ryll develop (contains the phase-1
+# server primitives). Cargo resolves the workspace member by package name and
+# builds only it plus its dependency subtree, not the ryll GUI binary.
+shakenfist-spice-protocol = { git = "https://github.com/shakenfist/ryll", rev = "62d6737e8b2441b7beadefa5aedb42b1399aac27" }
+
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "macros", "signal", "sync"] }
+tokio-rustls = "0.26"
+# rustls is declared directly (feature "ring") so we can install the ring
+# crypto provider at startup; the version matches what tokio-rustls 0.26 (and
+# thus the ryll crate) resolves.
+rustls = { version = "0.23", features = ["ring"] }
+rustls-pemfile = "2"
+
+# gRPC client for the KerbsideProxy control service over the UDS. tonic 0.12
+# pairs with prost 0.13 (and tonic-build 0.12 below); this is the standard
+# mutually-compatible trio.
+tonic = "0.12"
+prost = "0.13"
+# tonic has no `unix:` transport, so the UDS channel is built from a custom
+# tower connector that dials a tokio UnixStream; hyper-util's TokioIo adapts
+# the stream to hyper's IO traits. The Uri type the connector closure is
+# handed comes from tonic's re-export (tonic::transport::Uri).
+tower = { version = "0.5", features = ["util"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+# hyper 1.x has no built-in Server; the /metrics endpoint (metrics.rs) runs a
+# manual accept loop + http1::Builder::new().serve_connection(...) over each
+# accepted TcpStream, wrapped in hyper-util's TokioIo. Already present
+# transitively via tonic, pinned here as a direct dependency with the
+# features that code path needs.
+hyper = { version = "1", features = ["server", "http1"] }
+# Response bodies for the /metrics handler (a single in-memory buffer).
+http-body-util = "0.1"
+bytes = "1"
+
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4"] }
+# Process metrics: a global registry + counters/gauges exposed over the
+# /metrics endpoint (metrics.rs). The exposition format matches what the
+# Python proxy's prometheus_client emits.
+prometheus = "0.13"
+
+[dev-dependencies]
+# The rpc.rs unit test serves an in-process tonic server over a UnixListener,
+# which requires the server codegen (enabled in build.rs) and a stream adapter
+# for the listener. tempfile provides a private directory for the test socket.
+tokio-stream = { version = "0.1", features = ["net", "sync"] }
+tempfile = "3"
+# The tls.rs unit test generates a self-signed cert/key pair to exercise
+# load_acceptor end to end without a checked-in fixture.
+rcgen = "0.13"
+
+[build-dependencies]
+# tonic-build 0.12 matches tonic 0.12. protoc-bin-vendored ships a protoc
+# binary so the build needs no system protoc package.
+tonic-build = "0.12"
+protoc-bin-vendored = "3"

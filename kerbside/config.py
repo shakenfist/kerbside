@@ -194,7 +194,9 @@ class Config(BaseSettings):
         '/run/kerbside/api.sock',
         description='Unix domain socket path for the KerbsideProxy gRPC service '
                     'the proxy consults for authorization and channel '
-                    'bookkeeping.')
+                    'bookkeeping. Keep this short: AF_UNIX socket paths are '
+                    'limited to about 108 bytes (SUN_LEN), and an over-long '
+                    'path fails to bind/connect. A path under /run is safe.')
     API_GRPC_WORKERS: int = Field(
         8,
         description='Thread pool size for the KerbsideProxy gRPC server.')

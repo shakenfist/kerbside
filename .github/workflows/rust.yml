@@ -1,0 +1,60 @@
+name: Rust proxy
+
+# Lint, test, and build the kerbside-proxy Rust crate. Scoped to the Rust
+# crate and the gRPC proto it generates from, so Python-only changes don't
+# trigger it. The full ryll-driven direct-qemu integration of the proxy is a
+# separate lane (phase 7).
+on:
+  push:
+    branches: [develop]
+    paths:
+      - 'rust/**'
+      - 'kerbside/rpc/kerbside.proto'
+      - '.github/workflows/rust.yml'
+  pull_request:
+    branches: [develop]
+    paths:
+      - 'rust/**'
+      - 'kerbside/rpc/kerbside.proto'
+      - '.github/workflows/rust.yml'
+  workflow_dispatch:
+
+jobs:
+  rust:
+    name: fmt / clippy / test / build
+    runs-on: [self-hosted, vm, debian-12]
+    defaults:
+      run:
+        # build.rs and the shakenfist-spice-protocol git dependency reference
+        # ../../kerbside/rpc; running cargo from the crate dir (with the full
+        # repo checked out) resolves it. protoc is vendored via
+        # protoc-bin-vendored, so no system protobuf package is needed, and
+        # the rustls `ring` provider needs no OpenSSL.
+        working-directory: rust/kerbside-proxy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config git
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust/kerbside-proxy
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test
+
+      - name: Build (release)
+        run: cargo build --release

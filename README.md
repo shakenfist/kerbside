@@ -12,6 +12,13 @@ those at the moment because there are patches to add deployment support for
 Kerbside to Kolla-Ansible, whereas there is no deployment support for Shaken
 Fist just yet.
 
+The SPICE proxy is being reimplemented in Rust (`rust/kerbside-proxy/`) for
+performance and safety, and to give room for deeper SPICE traffic inspection
+over time. The Rust proxy consults the Python side over a gRPC control
+socket for authorization and bookkeeping; the Python proxy remains active
+until the rewrite is cut over. See `docs/plans/PLAN-rust-proxy.md`,
+`ARCHITECTURE.md`, and `tools/direct-qemu/VERIFY-RUST-PROXY.md`.
+
 ## Documentation
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - High-level system architecture
