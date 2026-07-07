@@ -113,6 +113,12 @@ class Config(BaseSettings):
     NODE_NAME: str = Field(
         'kerbside',
         description='The private unique name for this machine.')
+    PROXY_IMPLEMENTATION: str = Field(
+        'python',
+        description=('Which SPICE proxy the daemon runs: "python" (default, '
+                     'the in-process multiprocessing proxy) or "rust" (the '
+                     'kerbside-proxy binary, supervised as a child process). '
+                     'The default flips to "rust" at cutover.'))
     VDI_ADDRESS: str = Field(
         '0.0.0.0',
         description='The IPv4 address to bind the SPICE proxy to.')

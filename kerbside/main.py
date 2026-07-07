@@ -3,6 +3,7 @@ from shakenfist_utilities import logs
 import logging
 import multiprocessing
 import os
+import signal
 import sys
 import time
 import yaml
@@ -10,6 +11,7 @@ import yaml
 from .config import config as config
 from . import db as kerbside_db
 from . import proxy as kerbside_proxy
+from . import proxy_supervisor
 from .rpc import server as rpc_server
 from .sources import ovirt as ovirt_source
 from .sources import shakenfist as shakenfist_source
@@ -188,6 +190,50 @@ def _reap_expired_console_tokens():
             None, None, None, 'Reaped expired and unused token')
 
 
+# How long to wait for the Rust proxy to exit after SIGTERM before we SIGKILL
+# it. Longer than the proxy's own graceful-drain deadline (see main.rs
+# DRAIN_TIMEOUT) so it can finish draining in-flight sessions first.
+RUST_PROXY_SIGTERM_DEADLINE = 15
+
+
+def _run_rust_proxy(last_maintenance):
+    """Supervise the Rust proxy binary as a child (PROXY_IMPLEMENTATION=rust).
+
+    Binds the gRPC control server FIRST -- the Rust proxy dials the UDS at
+    startup (ClearNodeChannels) and lazily thereafter, so the socket must
+    exist. Unlike the multiprocessing fork, a subprocess child (close_fds=True)
+    does not inherit the gRPC C-core threads/fds, so serving first is safe.
+    Forwards SIGTERM to the child with a deadline, and exits non-zero if the
+    child dies -- matching the Python-proxy supervision semantics.
+    """
+    grpc_server = rpc_server.serve()
+    LOG.info('Started KerbsideProxy gRPC server')
+
+    proc = proxy_supervisor.launch_rust_proxy(config)
+    LOG.info('Launched Rust proxy child (pid %s)' % proc.pid)
+
+    def _handle_sigterm(signum, frame):
+        LOG.info('SIGTERM received; stopping Rust proxy child')
+        proxy_supervisor.terminate_child(proc, RUST_PROXY_SIGTERM_DEADLINE)
+        rpc_server.stop(grpc_server)
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+
+    while True:
+        rc = proc.poll()
+        if rc is not None:
+            LOG.error('Rust proxy child died with exit code %s!' % rc)
+            rpc_server.stop(grpc_server)
+            sys.exit(1)
+
+        time.sleep(1)
+        if time.time() - last_maintenance > 60:
+            _parse_sources()
+            _reap_expired_console_tokens()
+            last_maintenance = time.time()
+
+
 @daemon.command(name='run', help='Run the kerbside proxy')
 @click.pass_context
 def daemon_run(ctx):
@@ -196,6 +242,11 @@ def daemon_run(ctx):
     last_maintenance = time.time()
 
     kerbside_db.reset_engine()
+
+    # Rust proxy (opt-in): supervise the kerbside-proxy binary as a child.
+    if (config.PROXY_IMPLEMENTATION or 'python').strip().lower() == 'rust':
+        _run_rust_proxy(last_maintenance)
+        return
 
     proxy = multiprocessing.Process(
         target=kerbside_proxy.run, args=(), name='kerbside-main')
