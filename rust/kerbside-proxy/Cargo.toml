@@ -20,6 +20,10 @@ shakenfist-spice-protocol = { git = "https://github.com/shakenfist/ryll", rev = 
 
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "macros", "signal", "sync"] }
 tokio-rustls = "0.26"
+# CancellationToken for the phase-5 session-termination registry (session.rs):
+# one token per session, shared by its channel relays, cancelled when the
+# control plane sends TerminateSession.
+tokio-util = "0.7"
 # rustls is declared directly (feature "ring") so we can install the ring
 # crypto provider at startup; the version matches what tokio-rustls 0.26 (and
 # thus the ryll crate) resolves.

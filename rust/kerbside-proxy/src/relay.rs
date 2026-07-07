@@ -19,6 +19,7 @@ use shakenfist_spice_protocol::link::SpiceStream;
 use shakenfist_spice_protocol::messages::MessageHeader;
 use shakenfist_spice_protocol::ChannelType;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
 use crate::pb;
@@ -85,6 +86,7 @@ pub async fn run(
     channel_type: ChannelType,
     connection_ref: &str,
     target: &pb::Target,
+    cancel: CancellationToken,
 ) -> Result<()> {
     info!(
         %connection_ref,
@@ -128,6 +130,17 @@ pub async fn run(
     let result = tokio::select! {
         r = client_to_server => r,
         r = server_to_client => r,
+        // The control plane terminated this session (phase 5). Ending here
+        // drops both pump futures, closing the stream halves and disconnecting
+        // the client -- the same teardown as a finishing pump.
+        () = cancel.cancelled() => {
+            info!(
+                %connection_ref,
+                channel_type = channel_type.name(),
+                "session terminated by control plane; ending relay"
+            );
+            Ok(())
+        }
     };
 
     match &result {

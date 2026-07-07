@@ -26,16 +26,89 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use std::collections::HashMap;
+use std::sync::Mutex;
+
 use anyhow::{Context, Result};
 use shakenfist_spice_protocol::link::{
     generate_ticket_keypair, read_auth_ticket, read_link_mess, send_auth_result, send_link_reply,
     SpiceLinkReply, SpiceStream,
 };
 use shakenfist_spice_protocol::{ChannelType, SpiceError};
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
 use crate::metrics;
 use crate::rpc::{AuthzOutcome, KerbsideRpc};
+
+/// One session's cancellation state: a token shared by all the session's live
+/// channel connections, and a refcount of those connections.
+struct SessionEntry {
+    token: CancellationToken,
+    refs: usize,
+}
+
+/// A `session_id -> CancellationToken` registry so the control plane can drop
+/// every in-flight channel of a session at once (phase-5 `TerminateSession`).
+///
+/// A SPICE session is several channels, each its own connection/task; they all
+/// share one [`CancellationToken`] keyed by `session_id`, so cancelling it
+/// tears the whole session down. Entries are refcounted and removed when the
+/// last channel of a session ends. This node only ever tracks the channels it
+/// hosts (a load balancer may place other channels of the same session on other
+/// nodes, which each terminate their own — see the distributed-deployment note
+/// in the phase-5 plan). All methods are short synchronous map operations; the
+/// `std::sync::Mutex` is never held across an `.await`.
+#[derive(Default)]
+pub struct SessionRegistry {
+    inner: Mutex<HashMap<String, SessionEntry>>,
+}
+
+impl SessionRegistry {
+    /// Register a channel of `session_id`, returning the session's shared
+    /// cancellation token (created on the first channel of the session).
+    pub fn register(&self, session_id: &str) -> CancellationToken {
+        let mut map = self.inner.lock().expect("session registry mutex poisoned");
+        let entry = map
+            .entry(session_id.to_string())
+            .or_insert_with(|| SessionEntry {
+                token: CancellationToken::new(),
+                refs: 0,
+            });
+        entry.refs += 1;
+        entry.token.clone()
+    }
+
+    /// Deregister a channel of `session_id`; drop the entry (and its token) when
+    /// its last channel ends.
+    pub fn deregister(&self, session_id: &str) {
+        let mut map = self.inner.lock().expect("session registry mutex poisoned");
+        if let Some(entry) = map.get_mut(session_id) {
+            entry.refs -= 1;
+            if entry.refs == 0 {
+                map.remove(session_id);
+            }
+        }
+    }
+
+    /// Cancel every live channel of `session_id`. Returns whether the session
+    /// was present; terminating an unknown/already-gone session is a harmless
+    /// no-op (idempotent), so the caller need not check.
+    ///
+    /// `#[allow(dead_code)]`: the caller (`run_proxy_control`'s
+    /// `TerminateSession` arm) is wired in step 5b, which removes this allow.
+    #[allow(dead_code)]
+    pub fn terminate(&self, session_id: &str) -> bool {
+        let map = self.inner.lock().expect("session registry mutex poisoned");
+        match map.get(session_id) {
+            Some(entry) => {
+                entry.token.cancel();
+                true
+            }
+            None => false,
+        }
+    }
+}
 
 /// Shared, cheaply-cloneable process state handed to every connection task.
 ///
@@ -45,6 +118,9 @@ use crate::rpc::{AuthzOutcome, KerbsideRpc};
 pub struct SharedState {
     pub rpc: KerbsideRpc,
     pub node_name: String,
+    /// Per-session cancellation registry (phase 5): the `ProxyControl`
+    /// consumer terminates a session by cancelling its token here.
+    pub sessions: SessionRegistry,
 }
 
 /// Overall time budget for the client-facing handshake reads/writes (link
@@ -260,7 +336,12 @@ async fn serve(
             // service delivered. `stream` is moved into `backend::run`.
             metrics::record_authorized();
             send_auth_result(&mut stream, SpiceError::Ok).await?;
-            crate::backend::run(
+            // Register this channel under its session so a control-plane
+            // TerminateSession can cancel the whole session's relays; the token
+            // is threaded into the relay. Deregister on every exit path (incl.
+            // a backend-connect error), pairing with the register above.
+            let cancel = state.sessions.register(&target.session_id);
+            let result = crate::backend::run(
                 state,
                 Arc::new(policy),
                 connection_ref,
@@ -269,15 +350,66 @@ async fn serve(
                 channel_type,
                 channel_id,
                 &target,
+                cancel,
             )
-            .await
+            .await;
+            state.sessions.deregister(&target.session_id);
+            result
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::SessionRegistry;
     use shakenfist_spice_protocol::ChannelType;
+
+    #[test]
+    fn registry_shares_one_token_per_session_and_refcounts() {
+        let reg = SessionRegistry::default();
+        // Two channels of the same session share one token.
+        let a = reg.register("sess-1");
+        let b = reg.register("sess-1");
+        assert!(!a.is_cancelled());
+        // Terminating cancels the shared token seen by both channels.
+        assert!(reg.terminate("sess-1"));
+        assert!(a.is_cancelled());
+        assert!(b.is_cancelled());
+        // Refcount: still one live entry until BOTH channels deregister.
+        reg.deregister("sess-1");
+        assert!(
+            reg.terminate("sess-1"),
+            "entry must survive until the last channel deregisters"
+        );
+        reg.deregister("sess-1");
+        assert!(
+            !reg.terminate("sess-1"),
+            "entry must be gone after the last channel deregisters"
+        );
+    }
+
+    #[test]
+    fn terminate_unknown_session_is_a_noop() {
+        let reg = SessionRegistry::default();
+        assert!(!reg.terminate("never-registered"));
+        // A fresh registration after an unknown terminate still works and is
+        // not pre-cancelled.
+        let t = reg.register("sess-2");
+        assert!(!t.is_cancelled());
+    }
+
+    #[test]
+    fn distinct_sessions_have_independent_tokens() {
+        let reg = SessionRegistry::default();
+        let one = reg.register("sess-a");
+        let two = reg.register("sess-b");
+        reg.terminate("sess-a");
+        assert!(one.is_cancelled());
+        assert!(
+            !two.is_cancelled(),
+            "terminating one session must not affect another"
+        );
+    }
 
     /// The channel-type mapping is the contract between the raw link-message
     /// byte and the `channel_type` strings we send to the gRPC control service

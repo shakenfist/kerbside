@@ -153,6 +153,7 @@ async fn main() -> Result<()> {
     let state = Arc::new(session::SharedState {
         rpc,
         node_name: args.node_name.clone(),
+        sessions: session::SessionRegistry::default(),
     });
 
     // Drop any stale channel rows this node left behind (e.g. from a crash or

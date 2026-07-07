@@ -24,6 +24,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Error, Result};
 use shakenfist_spice_protocol::link::SpiceStream;
 use shakenfist_spice_protocol::{ChannelType, ConnectionConfig, SpiceClient};
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::pb;
@@ -73,6 +74,7 @@ pub async fn run(
     channel_type: ChannelType,
     channel_id: u8,
     target: &pb::Target,
+    cancel: CancellationToken,
 ) -> Result<()> {
     // Build the base connection config from the authorized target. The ports
     // are set per attempt below (insecure first, TLS on retry).
@@ -161,6 +163,7 @@ pub async fn run(
         channel_type,
         connection_ref,
         target,
+        cancel,
     )
     .await
 }
