@@ -106,7 +106,8 @@ class MockKerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
 
     def __init__(self, hypervisor, hypervisor_ip, insecure_port, secure_port,
                  ticket, ca_cert, host_subject, source, uuid, session_id,
-                 firewall_mode, permitted_channels, deny_tokens, deny_all):
+                 firewall_mode, permitted_channels, deny_tokens, deny_all,
+                 terminate_after=0):
         self.hypervisor = hypervisor
         self.hypervisor_ip = hypervisor_ip
         self.insecure_port = insecure_port
@@ -125,6 +126,15 @@ class MockKerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
         self.permitted_channels = list(permitted_channels)
         self.deny_tokens = set(deny_tokens)
         self.deny_all = deny_all
+        # Phase 5 (5f): if > 0, the ProxyControl stream emits a one-shot
+        # TerminateSession(session_id) this many seconds AFTER THE FIRST client
+        # authorization (so the client is reliably connected when it fires),
+        # to drive a live "termination drops the in-flight connection" test.
+        self.terminate_after = terminate_after
+        # Wall-clock of the first successful AuthorizeConnection (a client
+        # connected), or None. Written by AuthorizeConnection, read by the
+        # ProxyControl stream thread; a float assignment is atomic under the GIL.
+        self._first_auth_time = None
 
     def _build_firewall_policy(self):
         """Build the FirewallPolicy attached to a SUCCESS reply.
@@ -157,6 +167,11 @@ class MockKerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
             LOG.info('AuthorizeConnection: returning Denied(reason=%r)', reason)
             return kerbside_pb2.AuthorizeConnectionReply(
                 denied=kerbside_pb2.Denied(reason=reason))
+
+        # Record the first authorization time so a --terminate-after-seconds
+        # countdown starts from a reliably-connected client.
+        if self._first_auth_time is None:
+            self._first_auth_time = time.time()
 
         target = kerbside_pb2.Target(
             hypervisor=self.hypervisor,
@@ -215,11 +230,28 @@ class MockKerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
         LOG.info('ProxyControl: stream opened for node=%s', request.node)
         try:
             yield kerbside_pb2.ProxyControlEvent(heartbeat=kerbside_pb2.Heartbeat())
+            last_heartbeat = time.time()
+            terminated = False
+            # Poll on a short interval so the one-shot terminate fires promptly;
+            # emit heartbeats on their own cadence. The terminate deadline is
+            # relative to the FIRST client authorization (self._first_auth_time),
+            # so it fires while a client is reliably connected regardless of
+            # when the client connects relative to the proxy starting.
             while context.is_active():
-                time.sleep(PROXY_CONTROL_HEARTBEAT_SECONDS)
-                if not context.is_active():
-                    break
-                yield kerbside_pb2.ProxyControlEvent(heartbeat=kerbside_pb2.Heartbeat())
+                if (self.terminate_after > 0 and not terminated
+                        and self._first_auth_time is not None
+                        and time.time() >= self._first_auth_time + self.terminate_after):
+                    LOG.info('ProxyControl: emitting TerminateSession(session_id=%s) '
+                             '(%ss after first authorization)',
+                             self.session_id, self.terminate_after)
+                    yield kerbside_pb2.ProxyControlEvent(
+                        terminate_session=kerbside_pb2.TerminateSession(
+                            session_id=self.session_id))
+                    terminated = True
+                if time.time() - last_heartbeat >= PROXY_CONTROL_HEARTBEAT_SECONDS:
+                    yield kerbside_pb2.ProxyControlEvent(heartbeat=kerbside_pb2.Heartbeat())
+                    last_heartbeat = time.time()
+                time.sleep(1)
         except Exception as e:
             LOG.error('ProxyControl stream failed: %s', e)
             context.set_code(grpc.StatusCode.INTERNAL)
@@ -296,6 +328,14 @@ def _parse_args():
         default=bool(os.environ.get('MOCK_GRPC_DENY_ALL')),
         help='Deny EVERY AuthorizeConnection (return Denied), to exercise the proxy denial '
              'path unconditionally. May also be set via MOCK_GRPC_DENY_ALL.')
+    parser.add_argument(
+        '--terminate-after-seconds', type=int,
+        default=int(os.environ.get('MOCK_GRPC_TERMINATE_AFTER', '0')),
+        help='If > 0, the ProxyControl stream emits a one-shot '
+             'TerminateSession(session_id) this many seconds after the proxy '
+             'opens it, to drive a live "termination drops the in-flight '
+             'connection" test. May also be set via MOCK_GRPC_TERMINATE_AFTER. '
+             'Default 0 (disabled).')
     parser.add_argument(
         '--workers', type=int, default=int(os.environ.get('MOCK_GRPC_WORKERS', '8')),
         help='gRPC server ThreadPoolExecutor size.')
@@ -390,7 +430,8 @@ def main():
         firewall_mode=args.firewall_mode,
         permitted_channels=args.permitted_channel_ids,
         deny_tokens=args.deny_tokens,
-        deny_all=args.deny_all)
+        deny_all=args.deny_all,
+        terminate_after=args.terminate_after_seconds)
 
     server, _ = _bind(args.socket, args.workers)
     kerbside_pb2_grpc.add_KerbsideProxyServicer_to_server(servicer, server)
