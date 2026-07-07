@@ -355,11 +355,44 @@ the `kerbside/tests/unit` suite rather than this live run; the full
 daemon+API+MariaDB path with a deterministic headless client (ryll) is
 recorded as the natural phase-7 CI-lane driver.
 
-### Pre-push audit
+### Pre-push audit (2026-07-08)
 
-_(Placeholder — the management session runs the `PUSH-TEMPLATE.md`
-audit against `git diff origin/develop..HEAD` before push and records
-the result here. This Outcome does not claim the audit has passed.)_
+Ran the `PUSH-TEMPLATE.md` audit against the phase-5 diff (`git diff
+rust-proxy-phase-4..HEAD`; phase 4 was audited separately). Wave 1
+(mechanical) was clean: Docker `make lint`/`make test` and
+`flake8`/`py3` green, and the only non-test `expect()`s are the
+idiomatic `mutex.lock().expect("poisoned")` in the session registry (the
+lock is held only across short synchronous map ops that cannot panic, so
+it is never poisoned). Wave 2 was a security review and a
+correctness/tests review of the phase-5 code. **No blocking, high, or
+medium findings.**
+
+The security pass verified: `subprocess.Popen` uses a list argv with no
+`shell=True` and `close_fds` (no command injection from any config
+value); the `db.py` helpers are fully parameterized SQLAlchemy (no
+injection via `session_id`/`node`); the session refcount is balanced
+across every `serve()` exit path with no underflow (`register` at one
+site after authorize, `deregister` unconditionally after `backend::run`
+on every outcome; the permit-denied path returns before registering);
+the drain is hard-bounded (10 s, below the daemon's 15 s
+SIGTERM→SIGKILL); `/metrics` on loopback is a net improvement; no
+token/ticket is logged; and termination is node-scoped for the
+distributed premise. The correctness review (with the trickiest items —
+refcount and drain — corroborated by the security trace) found no
+wrong-verdict/lost-count/hang/mapping bug.
+
+Two low-severity findings were fixed before push (commit `74bc4f9`):
+`find_proxy_bin` now treats an invalid `KERBSIDE_PROXY_BIN` override as a
+hard error instead of falling through; and the `ProxyControl` `sent`
+dedup set is bounded to the current active intents each poll.
+
+Accepted / documented (not fixed): the relay cancel arm and
+`drain_in_flight` at the `run()` level, and the `_run_rust_proxy`
+daemon-supervises-Rust integration, are covered by their unit-tested
+components plus the 5f live run; a full `kerbside daemon run`
+(`PROXY_IMPLEMENTATION=rust`) integration test is left to the phase-7 CI
+lane. All re-validated: Rust 60 tests + clippy clean, Python `flake8` +
+`py3` (66 tests) clean, `pre-commit` clean.
 
 ## Back brief
 

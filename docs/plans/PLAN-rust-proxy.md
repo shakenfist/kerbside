@@ -340,7 +340,7 @@ implemented later.
 | 2. gRPC contract and Python UDS server in the kerbside daemon | PLAN-rust-proxy-phase-02-grpc-contract.md | Complete (kerbside branch rust-proxy, unmerged) |
 | 3. Proxy crate skeleton: listeners, handshake, backend leg, relay | PLAN-rust-proxy-phase-03-proxy-skeleton.md | Complete (kerbside branch rust-proxy-phase-3, unmerged) |
 | 4. Firewall policy engine: L0 + L1 enforcing | PLAN-rust-proxy-phase-04-firewall.md | Complete (kerbside branch rust-proxy-phase-4, unmerged) |
-| 5. Daemon integration: exec/supervision, termination push | PLAN-rust-proxy-phase-05-daemon-integration.md | In progress |
+| 5. Daemon integration: exec/supervision, termination push | PLAN-rust-proxy-phase-05-daemon-integration.md | Complete (kerbside branch rust-proxy-phase-5, unmerged) |
 | 6. Packaging: maturin wheel, CI build matrix, version pinning | PLAN-rust-proxy-phase-06-packaging.md | Not started |
 | 7. CI: direct-qemu lane on the Rust proxy, loadtest comparison | PLAN-rust-proxy-phase-07-ci.md | Not started |
 | 8. Cutover: Rust as default, retire the Python proxy, docs | PLAN-rust-proxy-phase-08-cutover.md | Not started |
