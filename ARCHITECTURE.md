@@ -124,12 +124,44 @@ as async tokio tasks (one per connection) instead of forked worker
 processes. Rather than accessing the database directly, it consults the
 control-plane gRPC service (component 2) over the unix socket for
 authorization and channel/audit bookkeeping, and it reuses the ryll
-`shakenfist-spice-protocol` crate for the SPICE wire format. The relay is
-inspection-first (every SPICE message is framed and passed through a policy
-hook), which is the seam a future SPICE application-firewall builds on. It
-exposes its own Prometheus `/metrics` endpoint. The Python proxy remains the
-active proxy until the Rust proxy is wired into the daemon and cut over in
-later phases; see `docs/plans/PLAN-rust-proxy.md`.
+`shakenfist-spice-protocol` crate for the SPICE wire format. It exposes its
+own Prometheus `/metrics` endpoint. The Python proxy remains the active
+proxy until the Rust proxy is wired into the daemon and cut over in later
+phases; see `docs/plans/PLAN-rust-proxy.md`.
+
+The relay is inspection-first: every framed SPICE message is passed through
+a `Policy` (the `Policy`/`Verdict` seam) before being forwarded, and as of
+phase 4 that seam is a real, **enforcing** application-level SPICE
+firewall, on by default. `EnforcingPolicy` (`policy.rs`) consults:
+
+- **L1 (message grammar)**: a compiled-in per-channel, per-direction
+  message-type allowlist (`allowlist.rs`), derived from the ryll
+  `shakenfist-spice-protocol` name tables unioned with the SPICE
+  common-base opcodes. A disallowed type on a modeled channel (main,
+  display, inputs, cursor, playback, and usbredir/port/webdav via the
+  spicevmc tables) terminates the session; record/smartcard/tunnel have no
+  modeled grammar and get observe-only handling instead of a type-based
+  terminate.
+- **L0 (resource limits)**: per-(channel, direction) message-size caps
+  (tight on the inputs/cursor client directions, generous elsewhere, both
+  below the relay's unconditional 16 MiB absolute frame guard), a
+  rate/throughput ceiling (disabled by default), a 15-minute idle-read
+  timeout, and client-side TCP keepalive — closing the phase-3 deferred
+  permit-pinning findings.
+
+Policy is delivered per-connection over gRPC in the `AuthorizeConnection`
+reply (`FirewallPolicy`, in `kerbside.proto`): Python continues to own and
+tune policy (enforcement mode, permitted channels); the Rust proxy only
+enforces it. A channel type the deployment forbids is denied before relay.
+An `EnforcementMode::WarnOnly` mode downgrades every blocking verdict to
+forward-and-log (`action=observed` in both the metric and the audit
+summary) instead of terminating, so an operator can validate a
+deployment's real traffic against the firewall before switching it to the
+default `Enforce` mode. Verdicts are exported as the Prometheus metric
+`kerbside_proxy_firewall_verdicts_total{channel,direction,rule,action}` and
+coalesced into a single audit event per connection (never one per
+message). L2 body validation, session recording, and L3 rewriting remain
+future work; see `docs/plans/PLAN-rust-proxy-phase-04-firewall.md`.
 
 ### 4. API Layer (`api.py`)
 

@@ -436,6 +436,109 @@ Each connection runs in its own process:
 - Independent crash handling
 - Resource limits can be applied per-process
 
+## Rust Proxy: the SPICE Firewall
+
+The Python proxy above relays post-authentication traffic opaquely; the
+Rust proxy's relay (`rust/kerbside-proxy/src/relay.rs`) is inspection-first
+instead, framing every message by its 6-byte `MessageHeader` and passing it
+through a `Policy` before forwarding. As of phase 4 (see
+`docs/plans/PLAN-rust-proxy-phase-04-firewall.md`), that policy is
+`EnforcingPolicy` (`policy.rs`): a real, enforcing application-level SPICE
+firewall, on by default.
+
+### Per-message pipeline
+
+For every framed message the relay's `pump` runs:
+
+1. **Header parse.** The 6-byte header (`message_type: u16`,
+   `message_size: u32`) is parsed first; nothing below inspects the body
+   until this succeeds.
+2. **`Policy::check_header` (L0, pre-body).** Called exactly once per
+   message, before its body is buffered, so an over-cap or over-rate
+   message is refused without ever accumulating it:
+   - a per-(channel, direction) **size cap** — tight (4 KiB) on the
+     inputs-client and cursor-client directions (key/mouse events are
+     small and fixed), generous (16 MiB) everywhere else (the display
+     server bulk direction and any channel with no modeled grammar);
+   - a coarse per-direction **rate/throughput ceiling** (fixed window),
+     disabled by default — a deployment can opt in once real traffic
+     patterns justify a value.
+
+   These policy caps sit below the relay's own unconditional
+   `MAX_MESSAGE_SIZE` (16 MiB) absolute frame guard, which the relay
+   enforces unconditionally regardless of policy — a peer that claims an
+   absurd `message_size` is refused before the relay would buffer
+   gigabytes waiting for a body that never arrives.
+3. **`Policy::inspect` (L1).** Once the full body has been buffered, the
+   message type is classified against a compiled-in per-channel,
+   per-direction allowlist (`allowlist.rs`), derived from the ryll
+   `shakenfist-spice-protocol` name tables unioned with the SPICE
+   common-base opcodes (server `SPICE_MSG_*` 1..=7, client `SPICE_MSGC_*`
+   1..=6, valid on every channel). Main, display, inputs, cursor, and
+   playback have their own tables; usbredir/port/webdav ride the spicevmc
+   table. **Record, smartcard, and tunnel have no modeled grammar** — they
+   classify as `ChannelUnmodeled` and get L0-only enforcement plus
+   observe-only handling for their message types (never a type-based
+   terminate), rather than treating every type on those channels as a
+   violation.
+4. **Verdict.** `Forward` (write the original framed bytes unchanged) or
+   `Terminate` (flush and end the whole relay — a single SPICE channel is
+   one duplex TCP connection, so either direction ending ends the
+   session). `Drop` is a variant on the `Verdict` enum reserved for future
+   L2/L3 use (e.g. defanging); no v1 rule emits it, because silently
+   dropping a mid-stream SPICE message would desynchronise the channel.
+
+### Warn-only mode
+
+`FirewallPolicy.mode` (`EnforcementMode::Enforce` default, or `WarnOnly`)
+is the single place the enforcement decision is made
+(`EnforcingPolicy::apply`). In `Enforce`, a rule's blocking verdict is
+applied and recorded `action=enforced`. In `WarnOnly`, the SAME blocking
+verdict is downgraded to `Forward` — the session is never actually
+blocked — but still recorded `action=observed` plus a `tracing::warn!`.
+This lets an operator run real traffic through a deployment and see
+exactly what `Enforce` would have tripped before switching to it; it is a
+mode, not a grace period, since the compiled default ships `Enforce`.
+
+A forbidden **channel type** (a whole channel the deployment's
+`FirewallPolicy.permitted_channels` excludes) is denied earlier, in
+`session.rs`, before any relay is set up — a protocol-correct
+`PermissionDenied` to the client plus an audit event, the same shape as
+the existing unknown-channel-type rejection.
+
+### Audit and metrics
+
+Firewall violations must not become one audit event per message — a
+hostile or broken peer could otherwise flood the audit log. Instead, both
+relay directions share one lock-free per-connection `VerdictTally` (atomic
+counters keyed by `(rule, action)`); `relay::run` reads it once after the
+two pumps finish and, if anything was recorded, emits a single coalesced
+summary `RecordAuditEvent` for the whole connection (e.g. "Firewall
+verdicts this connection: disallowed_type (enforced=2, observed=0)").
+Every verdict is also exported live as the Prometheus counter
+`kerbside_proxy_firewall_verdicts_total{channel,direction,rule,action}`,
+where `rule` is one of `disallowed_type`, `unmodeled_type`, `size_cap`, or
+`rate_cap`, and `action` is `enforced` or `observed`.
+
+### Policy delivery
+
+Python continues to own policy; the Rust proxy only enforces it
+("Python decides policy; Rust enforces it"). The tunable knobs — mode and
+permitted channels — are delivered per-connection in the
+`AuthorizeConnection` gRPC reply as a `FirewallPolicy` protobuf message,
+built from Python's `FIREWALL_MODE`/`FIREWALL_PERMITTED_CHANNELS` config
+(see `docs/configuration.md`). The L1 allowlist tables themselves are
+**not** delivered over gRPC: which message types are structurally valid on
+a channel is a fact about the SPICE protocol, not a deployment policy, so
+they are compiled into the proxy. Size caps, the rate ceiling, and
+per-verdict severities keep their compiled defaults in v1 (no gRPC config
+surface yet).
+
+Out of scope for phase 4, and not yet implemented anywhere in the Rust
+proxy: L2 body validation (scancode ranges, clipboard/file-transfer/
+usbredir device-class filtering), session recording, and L3
+rewriting/injection.
+
 ## Related Documentation
 
 - [Protocol Overview](protocol-overview.md) - SPICE protocol introduction

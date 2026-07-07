@@ -23,7 +23,9 @@ SPICE protocol negotiation, authentication, and bidirectional traffic relay.
 | `kerbside/rpc/kerbside.proto` | KerbsideProxy gRPC contract fronting the DB for the proxy |
 | `kerbside/rpc/servicer.py` | gRPC servicer implementing the contract against db.py |
 | `kerbside/rpc/server.py` | serve()/stop() hosting the servicer over a unix socket in the daemon |
-| `rust/kerbside-proxy/` | Rust reimplementation of the SPICE proxy (in progress): TLS termination, handshake, gRPC-authorised inspection-first relay. Builds in Docker via its Makefile |
+| `rust/kerbside-proxy/` | Rust reimplementation of the SPICE proxy (in progress): TLS termination, handshake, gRPC-authorised inspection-first relay that enforces an L0+L1 SPICE firewall (phase 4). Builds in Docker via its Makefile |
+| `rust/kerbside-proxy/src/policy.rs` | The `Policy`/`Verdict` seam and the phase-4 firewall engine: `FirewallPolicy` (tunable knobs), `EnforcementMode` (Enforce/WarnOnly), `EnforcingPolicy` (L0 size/rate caps + L1 allowlist lookup), `VerdictTally` (coalesced per-connection audit) |
+| `rust/kerbside-proxy/src/allowlist.rs` | The compiled-in L1 message-type grammar: `classify(channel, dir, msg_type) -> Allowed \| Disallowed \| ChannelUnmodeled`, derived from the ryll `shakenfist-spice-protocol` name tables |
 | `kerbside/sources/static.py` | Static source driver: reads VM-to-console mapping from an inline list in sources.yaml; designed for CI pipelines and ad-hoc debugging (no control plane required) |
 
 ## Architecture Patterns
@@ -124,6 +126,30 @@ rev in `Cargo.toml`; bump the `rev` (and commit the updated `Cargo.lock`)
 when picking up ryll changes. CI runs fmt/clippy/test/build via
 `.github/workflows/rust.yml`; end-to-end verification against qemu is
 `tools/direct-qemu/VERIFY-RUST-PROXY.md`.
+
+#### SPICE firewall (phase 4)
+
+The relay enforces L0 (size caps, a disabled-by-default rate ceiling,
+idle-read timeout, TCP keepalive) and L1 (per-channel/direction
+message-type allowlist) firewall policy on every relayed message, on by
+default. Python owns the tunable knobs and delivers them per-connection
+over gRPC in the `AuthorizeConnection` reply; the L1 allowlist tables are
+compiled into the proxy (they are a fact about the SPICE protocol, not
+deployment policy). See `docs/proxy-architecture.md` (per-message
+pipeline detail) and `docs/configuration.md` (the `FIREWALL_MODE` /
+`FIREWALL_PERMITTED_CHANNELS` config knobs) for the full picture.
+
+To validate the firewall against a real client without risking a broken
+session, run the harness in `tools/direct-qemu/VERIFY-FIREWALL.md`: it
+brings the mock gRPC server up delivering a `WARN_ONLY` `FirewallPolicy`,
+drives a real SPICE client (remote-viewer/virt-viewer/ryll headless)
+through the proxy, then asserts
+`kerbside_proxy_firewall_verdicts_total` is entirely zero (a clean
+capture) via `verify-rust-proxy.sh assert-firewall`. Any non-zero
+`observed` verdict on legitimate traffic means the compiled allowlist or
+a size cap needs widening — never the verdict weakening. The same harness
+also has a deny-token/deny-all mode for exercising the
+`PermissionDenied` denial path end to end.
 
 ### Modifying SPICE Protocol Handling
 

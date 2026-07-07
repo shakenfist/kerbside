@@ -16,7 +16,13 @@ The SPICE proxy is being reimplemented in Rust (`rust/kerbside-proxy/`) for
 performance and safety, and to give room for deeper SPICE traffic inspection
 over time. The Rust proxy consults the Python side over a gRPC control
 socket for authorization and bookkeeping; the Python proxy remains active
-until the rewrite is cut over. See `docs/plans/PLAN-rust-proxy.md`,
+until the rewrite is cut over. The Rust proxy also acts as an enforcing
+SPICE application firewall (L0 resource limits + L1 message-type grammar),
+on by default, with a warn-only mode available for validating a
+deployment's traffic before enabling enforcement; see
+`docs/configuration.md` for the `FIREWALL_MODE` /
+`FIREWALL_PERMITTED_CHANNELS` knobs. L2 body validation and session
+recording are future work. See `docs/plans/PLAN-rust-proxy.md`,
 `ARCHITECTURE.md`, and `tools/direct-qemu/VERIFY-RUST-PROXY.md`.
 
 ## Documentation

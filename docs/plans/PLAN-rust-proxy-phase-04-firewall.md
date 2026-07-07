@@ -335,8 +335,111 @@ small number of self-contained commits.
 
 ## Outcome
 
-_(To be written when the phase completes — steps landed, deviations,
-pre-push audit result, capture-validation numbers.)_
+Completed 2026-07-07 on the kerbside `rust-proxy-phase-4` branch,
+unmerged and unpushed pending operator review and the pre-push audit
+(below). All planned steps landed, including the conditional 4b-ryll
+step — the capture validation showed it was needed for main/display
+false positives, not for record/smartcard. Every Rust step was built,
+linted (`clippy -D warnings`), and tested in the Docker build; every
+Python step passed `flake8`/`py3`.
+
+- 4b (`b928b44`): the L1 message-type allowlist grammar
+  (`allowlist.rs`) — `classify(channel, dir, msg_type) -> Allowed |
+  Disallowed | ChannelUnmodeled`, derived from the ryll `logging.rs`
+  name tables unioned with the SPICE common-base opcode ranges;
+  record/smartcard/tunnel return `ChannelUnmodeled` (no modeled
+  grammar).
+- 4a + 4d (`513a7e4`): the L1 enforcement engine — `FirewallPolicy`,
+  `EnforcementMode` (Enforce default / WarnOnly), `EnforcingPolicy`
+  wired into the relay in place of `PermissivePolicy`, the
+  lock-free per-connection `VerdictTally`, and the
+  `kerbside_proxy_firewall_verdicts_total` metric.
+- 4c (`d8ced99`): L0 resource limits — the pre-body `check_header`
+  hook, per-(channel,direction) size caps (4 KiB tight on
+  inputs/cursor-client, 16 MiB generous elsewhere), a disabled-by-
+  default rate/throughput ceiling, the 15-minute idle-read timeout,
+  and client-side TCP keepalive — closing the phase-3 deferred
+  permit-pinning findings.
+- 4e (`d243b8b`): policy delivery over gRPC — the `FirewallPolicy`
+  proto message carried in the `AuthorizeConnection` reply, Python's
+  `FIREWALL_MODE`/`FIREWALL_PERMITTED_CHANNELS` config feeding
+  `servicer.py`, and the Rust `session.rs` channel-permit gate
+  (`PermissionDenied` before relay for a forbidden channel type).
+- ryll pin bump (`0e96ecb`): bumped to develop rev `1c6f19f`, picking
+  up the cross-repo ryll change (PR #141: completed main/display
+  message-type tables plus a corrected `INVAL_ALL_PIXMAPS` opcode
+  that had been mislabelled — the fix also corrected a latent
+  renderer-side bug from the same mislabelling; PR #142: the
+  `crossbeam-epoch` RUSTSEC-2026-0204 bump), both merged to ryll
+  develop.
+- 4f harness (`eb75cb4`): warn-only capture and deny-token/deny-all
+  modes added to `mock-grpc-server.py` and
+  `tools/direct-qemu/verify-rust-proxy.sh` (new `assert-firewall`
+  action), plus `tools/direct-qemu/VERIFY-FIREWALL.md`.
+- 4f live results (`ab511a0`): the live capture run recorded in
+  `VERIFY-FIREWALL.md`, plus a bugfix to `assert-firewall` (the
+  `set -o pipefail` `_verdict_sum` helper aborted on the
+  all-zero-verdicts case — exactly the clean result it needed to
+  detect).
+
+Notable decisions and deviations, all deliberate:
+
+- The two operator-level decisions taken during planning both held
+  without revision: policy delivered over gRPC in the
+  `AuthorizeConnection` reply now (not deferred to phase 5), and
+  Terminate-by-default with a first-class `WarnOnly` mode rather than
+  a log-only grace period.
+- **4b-ryll became necessary, but for main/display, not
+  record/smartcard.** The plan's Design decision 4 flagged
+  record/smartcard as the likely trigger for a ryll change; in
+  practice the pinned ryll name tables for main and display were
+  incomplete (missing `CLIENT_INFO` and the migrate family on
+  main-client, `NAME`/`UUID` on main-server, and several display
+  invalidate/quality opcodes) and contained a mislabelled constant
+  (`display_server::INVAL_ALL_PIXMAPS` held the wire value that
+  `enums.h` assigns to `INVAL_ALL_PALETTES`). Left unfixed, these
+  would have been real false positives under `Enforce` mode against
+  legitimate remote-viewer/virt-viewer traffic. Filed and merged as
+  ryll PR #141 (plus the unrelated but co-landed `crossbeam-epoch`
+  advisory fix, PR #142), then the pin was bumped here. Record and
+  smartcard were never carried by the 4f capture, so their
+  `ChannelUnmodeled` observe-only handling needed no further ryll
+  work.
+- Size caps, the rate ceiling, and per-verdict severities all kept
+  their compiled-default values for v1 — only `mode` and
+  `permitted_channels` are delivered over gRPC (the plan's Open
+  questions left the concrete cap/ceiling values to be fixed from
+  the 4f captures rather than guessed; the 4f run approached none of
+  the compiled defaults, so none were retuned and none were promoted
+  to a gRPC-delivered knob this phase).
+- The `need_secured` backend-retry orchestration (a phase-3 deferred
+  test gap) remains exercised only by the `is_need_secured` unit
+  tests; the 4f harness does not yet have a TLS-requiring backend
+  leg to drive it live. Tracked as a follow-up, not a phase-4
+  blocker (the plan's success criteria do not require it).
+
+### Live capture validation (step 4f, 2026-07-07)
+
+Full results are in `tools/direct-qemu/VERIFY-FIREWALL.md`. Summary:
+remote-viewer (spice-gtk) driven through the proxy in `WarnOnly` mode
+against the `uncalibrated-sextant.qcow2` guest completed a clean
+session across 4 channels (main, display, inputs, cursor), ~1.17 MB
+relayed (`bytes{s2c}=1,174,716`, `bytes{c2s}=1,468`), with **zero**
+firewall verdicts (`enforced=0`, `observed=0`) — no false positives
+against a real client, satisfying the plan's success criterion. No
+size cap was approached, so none needed retuning. A separate
+`DENY_ALL=1` run confirmed the `PermissionDenied` client-denial path
+end to end (`authorized=0`, `denied=1`, no bytes relayed). virt-viewer
+was not run separately (it shares remote-viewer's spice-gtk client
+engine); ryll headless was not run this pass and remains a worthwhile
+follow-up capture.
+
+### Pre-push audit
+
+_(Run by the management session against
+`git diff origin/develop..HEAD` before this branch merges. Not yet
+completed as of this writing — do not treat phase 4 as audit-clean
+until that pass lands and this section is updated with its result.)_
 
 ## Back brief
 
