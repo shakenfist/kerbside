@@ -26,12 +26,20 @@ use tower::service_fn;
 
 /// The outcome of an `AuthorizeConnection` call: either the connection was
 /// denied (with a human-readable reason) or authorised with a `Target`
-/// describing the upstream hypervisor. `Target` is boxed because it is much
-/// larger than the `Denied` string, keeping the enum compact.
+/// describing the upstream hypervisor plus the firewall `policy` the proxy must
+/// enforce for the connection. `Target` is boxed because it is much larger than
+/// the `Denied` string, keeping the enum compact.
+///
+/// The `policy` is built from the `firewall_policy` the daemon delivers on the
+/// success path ("Python decides policy; Rust enforces it"); an older daemon
+/// that omits it falls back to the enforcing [`FirewallPolicy::default`].
 #[derive(Debug)]
 pub enum AuthzOutcome {
     Denied(String),
-    Target(Box<pb::Target>),
+    Target {
+        target: Box<pb::Target>,
+        policy: crate::policy::FirewallPolicy,
+    },
 }
 
 /// A gRPC client for the KerbsideProxy control service over the UDS.
@@ -112,9 +120,20 @@ impl KerbsideRpc {
             .context("AuthorizeConnection RPC failed")?
             .into_inner();
 
+        // Present only on the success path; an absent policy falls back to the
+        // enforcing compiled default (handles an older daemon that never sets
+        // it). Taken before matching `result` since both are fields of `reply`.
+        let policy = match reply.firewall_policy {
+            Some(fp) => crate::policy::FirewallPolicy::from_proto(fp),
+            None => crate::policy::FirewallPolicy::default(),
+        };
+
         match reply.result {
             Some(pb::authorize_connection_reply::Result::Target(target)) => {
-                Ok(AuthzOutcome::Target(Box::new(target)))
+                Ok(AuthzOutcome::Target {
+                    target: Box::new(target),
+                    policy,
+                })
             }
             Some(pb::authorize_connection_reply::Result::Denied(denied)) => {
                 Ok(AuthzOutcome::Denied(denied.reason))
@@ -273,6 +292,7 @@ impl KerbsideRpc {
 mod tests {
     use super::*;
 
+    use shakenfist_spice_protocol::ChannelType;
     use tokio::net::UnixListener;
     use tokio_stream::wrappers::UnixListenerStream;
     use tonic::transport::Server;
@@ -293,26 +313,38 @@ mod tests {
             request: Request<pb::AuthorizeConnectionRequest>,
         ) -> std::result::Result<Response<pb::AuthorizeConnectionReply>, Status> {
             let req = request.into_inner();
-            let result = if req.token == "good-token" {
-                pb::authorize_connection_reply::Result::Target(pb::Target {
-                    hypervisor: "hv1".to_string(),
-                    hypervisor_ip: "10.0.0.1".to_string(),
-                    insecure_port: 5900,
-                    secure_port: 5901,
-                    ticket: "ticket".to_string(),
-                    ca_cert: "ca".to_string(),
-                    host_subject: "CN=hv1".to_string(),
-                    source: "src".to_string(),
-                    uuid: "uuid".to_string(),
-                    session_id: "session".to_string(),
-                })
+            // On success, deliver a WarnOnly policy permitting only main+inputs,
+            // so the client-side proto->FirewallPolicy mapping is exercised.
+            let (result, firewall_policy) = if req.token == "good-token" {
+                (
+                    pb::authorize_connection_reply::Result::Target(pb::Target {
+                        hypervisor: "hv1".to_string(),
+                        hypervisor_ip: "10.0.0.1".to_string(),
+                        insecure_port: 5900,
+                        secure_port: 5901,
+                        ticket: "ticket".to_string(),
+                        ca_cert: "ca".to_string(),
+                        host_subject: "CN=hv1".to_string(),
+                        source: "src".to_string(),
+                        uuid: "uuid".to_string(),
+                        session_id: "session".to_string(),
+                    }),
+                    Some(pb::FirewallPolicy {
+                        mode: pb::firewall_policy::Mode::WarnOnly as i32,
+                        permitted_channels: vec![1, 3],
+                    }),
+                )
             } else {
-                pb::authorize_connection_reply::Result::Denied(pb::Denied {
-                    reason: "unknown token".to_string(),
-                })
+                (
+                    pb::authorize_connection_reply::Result::Denied(pb::Denied {
+                        reason: "unknown token".to_string(),
+                    }),
+                    None,
+                )
             };
             Ok(Response::new(pb::AuthorizeConnectionReply {
                 result: Some(result),
+                firewall_policy,
             }))
         }
 
@@ -410,7 +442,15 @@ mod tests {
             .await
             .expect("authorize good token");
         match outcome {
-            AuthzOutcome::Target(t) => assert_eq!(t.hypervisor, "hv1"),
+            AuthzOutcome::Target { target, policy } => {
+                assert_eq!(target.hypervisor, "hv1");
+                // The delivered policy (WarnOnly, permit main+inputs) must be
+                // mapped onto the AuthzOutcome the session then enforces.
+                assert_eq!(policy.mode, crate::policy::EnforcementMode::WarnOnly);
+                assert!(policy.channel_permitted(ChannelType::Main));
+                assert!(policy.channel_permitted(ChannelType::Inputs));
+                assert!(!policy.channel_permitted(ChannelType::Display));
+            }
             AuthzOutcome::Denied(r) => panic!("expected Target, got Denied({r})"),
         }
 
@@ -420,7 +460,7 @@ mod tests {
             .expect("authorize bad token");
         match outcome {
             AuthzOutcome::Denied(reason) => assert_eq!(reason, "unknown token"),
-            AuthzOutcome::Target(_) => panic!("expected Denied, got Target"),
+            AuthzOutcome::Target { .. } => panic!("expected Denied, got Target"),
         }
     }
 

@@ -141,7 +141,9 @@ class KerbsideProxyServicer:
 
     def DeregisterChannel(self, request, context):
         """DeregisterChannel removes a channel record at teardown. It maps to
-        remove_proxy_channel(), keyed by (node, connection_ref).
+        remove_channel_by_ref(), keyed on connection_ref alone (which is
+        unique). The request carries node for symmetry with the other RPCs and
+        possible future scoping, but the handler does not currently read it.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')

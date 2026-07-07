@@ -135,9 +135,8 @@ pub enum EnforcementMode {
     /// `tracing::warn!`. This lets an operator run real traffic and see exactly
     /// what enforcement WOULD have tripped before flipping to `Enforce`.
     ///
-    /// `#[allow(dead_code)]`: only tests select this today; step 4e constructs
-    /// it from the `FirewallPolicy` delivered over gRPC.
-    #[allow(dead_code)]
+    /// Constructed from the `FirewallPolicy` delivered over gRPC (step 4e) when
+    /// the daemon selects `WARN_ONLY`, and by the enforcement-mode unit tests.
     WarnOnly,
 }
 
@@ -263,11 +262,28 @@ impl PermittedChannels {
         PermittedChannels(mask)
     }
 
-    /// Whether `ch` is in the permitted set.
+    /// Build the permitted set from the `ChannelType` discriminants delivered in
+    /// the gRPC `FirewallPolicy` (step 4e).
     ///
-    /// `#[allow(dead_code)]`: reached only via [`FirewallPolicy::channel_permitted`],
-    /// whose enforcement point is wired in step 4e.
-    #[allow(dead_code)]
+    /// An EMPTY slice means "permit all" — a deployment that restricts channels
+    /// lists the permitted ones, while permitting NONE is nonsensical (it would
+    /// block every connection). This mirrors the documented proto contract.
+    /// Discriminants outside the known 1..=11 range are ignored (they can never
+    /// be relayed: `session.rs` rejects unknown channel types before authz).
+    pub fn from_discriminants(discriminants: &[u32]) -> Self {
+        if discriminants.is_empty() {
+            return Self::all();
+        }
+        let mut mask = 0u16;
+        for &d in discriminants {
+            if (1..=11).contains(&d) {
+                mask |= 1u16 << d;
+            }
+        }
+        PermittedChannels(mask)
+    }
+
+    /// Whether `ch` is in the permitted set.
     fn contains(self, ch: ChannelType) -> bool {
         self.0 & (1u16 << (ch as u16)) != 0
     }
@@ -338,9 +354,9 @@ pub struct FirewallPolicy {
     /// The per-direction rate/throughput ceiling, or `None` to disable rate
     /// accounting entirely (the default — see [`RateLimit`]).
     pub rate_limit: Option<RateLimit>,
-    /// Which channel types may be relayed. Enforced in step 4e (hence the field
-    /// is not yet read: `#[allow(dead_code)]`).
-    #[allow(dead_code)]
+    /// Which channel types may be relayed. Consulted via
+    /// [`FirewallPolicy::channel_permitted`] by the pre-relay channel gate in
+    /// `session.rs`.
     permitted_channels: PermittedChannels,
 }
 
@@ -358,16 +374,32 @@ impl Default for FirewallPolicy {
 }
 
 impl FirewallPolicy {
+    /// Build the connection's policy from the `FirewallPolicy` delivered in the
+    /// gRPC `AuthorizeConnection` reply (step 4e).
+    ///
+    /// Maps the two deployment-tunable knobs Python delivers — the enforcement
+    /// `mode` and the `permitted_channels` set — onto a policy whose OTHER
+    /// fields (size caps, rate limit, per-verdict severities) stay at their
+    /// enforcing compiled [`Default`]s (they have no gRPC config surface in v1).
+    /// An empty `permitted_channels` means "permit all" (see
+    /// [`PermittedChannels::from_discriminants`]).
+    pub fn from_proto(proto: crate::pb::FirewallPolicy) -> Self {
+        let mode = match proto.mode() {
+            crate::pb::firewall_policy::Mode::Enforce => EnforcementMode::Enforce,
+            crate::pb::firewall_policy::Mode::WarnOnly => EnforcementMode::WarnOnly,
+        };
+        FirewallPolicy {
+            mode,
+            permitted_channels: PermittedChannels::from_discriminants(&proto.permitted_channels),
+            ..FirewallPolicy::default()
+        }
+    }
+
     /// Whether `ch` may be relayed under this policy.
     ///
-    /// The enforcement point that consults this (denying a forbidden channel
-    /// before relay, in `session.rs`) is wired in step 4e, once the policy is
-    /// delivered over gRPC. The default permits every channel, so defining it
-    /// now introduces no behavioural gap.
-    ///
-    /// `#[allow(dead_code)]`: the caller (the pre-relay channel gate in
-    /// `session.rs`) is wired in step 4e.
-    #[allow(dead_code)]
+    /// Consulted by the pre-relay channel gate in `session.rs`: a forbidden
+    /// channel is denied (`PermissionDenied`) before any relay. The default
+    /// permits every channel, so with the default config this never fires.
     pub fn channel_permitted(&self, ch: ChannelType) -> bool {
         self.permitted_channels.contains(ch)
     }
@@ -651,6 +683,30 @@ mod tests {
     }
 
     // --- FirewallPolicy defaults / channel permit. ---
+
+    #[test]
+    fn from_proto_maps_mode_and_permitted_channels() {
+        let fp = FirewallPolicy::from_proto(crate::pb::FirewallPolicy {
+            mode: crate::pb::firewall_policy::Mode::WarnOnly as i32,
+            permitted_channels: vec![1, 3], // main, inputs
+        });
+        assert_eq!(fp.mode, EnforcementMode::WarnOnly);
+        assert!(fp.channel_permitted(ChannelType::Main));
+        assert!(fp.channel_permitted(ChannelType::Inputs));
+        assert!(!fp.channel_permitted(ChannelType::Display));
+    }
+
+    #[test]
+    fn from_proto_empty_permitted_channels_means_all() {
+        let fp = FirewallPolicy::from_proto(crate::pb::FirewallPolicy {
+            mode: crate::pb::firewall_policy::Mode::Enforce as i32,
+            permitted_channels: vec![],
+        });
+        assert_eq!(fp.mode, EnforcementMode::Enforce);
+        for ch in ALL_CHANNELS {
+            assert!(fp.channel_permitted(ch), "empty list must permit {ch:?}");
+        }
+    }
 
     #[test]
     fn default_policy_is_enforcing_and_permits_all_channels() {

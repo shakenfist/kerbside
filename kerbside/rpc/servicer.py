@@ -17,6 +17,59 @@ LOG, _ = logs.setup(__name__, **util.configure_logging())
 # with real session-termination and policy-push events.
 PROXY_CONTROL_HEARTBEAT_SECONDS = 30
 
+# SPICE ChannelType name -> discriminant (matches ryll's ChannelType and the
+# FirewallPolicy.permitted_channels contract in kerbside.proto). Used to map the
+# FIREWALL_PERMITTED_CHANNELS config names to the wire discriminants.
+CHANNEL_NAME_TO_DISCRIMINANT = {
+    'main': 1,
+    'display': 2,
+    'inputs': 3,
+    'cursor': 4,
+    'playback': 5,
+    'record': 6,
+    'tunnel': 7,
+    'smartcard': 8,
+    'usbredir': 9,
+    'port': 10,
+    'webdav': 11,
+}
+
+
+def build_firewall_policy():
+    """Build the FirewallPolicy delivered in an AuthorizeConnection success.
+
+    Python owns policy; the proxy enforces it. For v1 the value is
+    deployment-wide (built from config, identical on every reply); the
+    per-connection delivery mechanism lets per-console policy become a
+    Python-only change later. Only the knobs with a config surface are set --
+    size caps and the rate ceiling keep the proxy's compiled defaults.
+    """
+    mode = (config.FIREWALL_MODE or '').strip().lower()
+    if mode == 'warn':
+        proto_mode = kerbside_pb2.FirewallPolicy.WARN_ONLY
+    elif mode in ('', 'enforce'):
+        proto_mode = kerbside_pb2.FirewallPolicy.ENFORCE
+    else:
+        LOG.warning(
+            'Unknown FIREWALL_MODE %r, defaulting to enforce' % config.FIREWALL_MODE)
+        proto_mode = kerbside_pb2.FirewallPolicy.ENFORCE
+
+    # Empty config -> empty permitted_channels, which the proxy reads as
+    # "permit all". A named channel maps to its ChannelType discriminant.
+    permitted = []
+    for name in (config.FIREWALL_PERMITTED_CHANNELS or '').split(','):
+        name = name.strip().lower()
+        if not name:
+            continue
+        discriminant = CHANNEL_NAME_TO_DISCRIMINANT.get(name)
+        if discriminant is None:
+            LOG.warning('Ignoring unknown firewall channel name %r' % name)
+            continue
+        permitted.append(discriminant)
+
+    return kerbside_pb2.FirewallPolicy(
+        mode=proto_mode, permitted_channels=permitted)
+
 
 class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
     """gRPC servicer implementing the unary control-plane RPCs.
@@ -70,7 +123,8 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
                     host_subject=console['host_subject'] or '',
                     source=console['source'],
                     uuid=console['uuid'],
-                    session_id=token['session_id']))
+                    session_id=token['session_id']),
+                firewall_policy=build_firewall_policy())
 
         except Exception as e:
             LOG.error('AuthorizeConnection failed: %s' % e)

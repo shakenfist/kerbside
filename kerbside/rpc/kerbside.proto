@@ -111,6 +111,43 @@ message Denied {
   string reason = 1;
 }
 
+// FirewallPolicy carries the deployment-tunable firewall knobs the proxy
+// enforces for one connection. Python owns policy and fills this from
+// deployment-wide config; the Rust proxy builds the connection's enforcing
+// policy from it ("Python decides policy; Rust enforces it"). For v1 the value
+// is identical on every reply (deployment-wide), but the mechanism is
+// per-connection so per-source/per-console policy is a later Python-only
+// change.
+//
+// This carries ONLY the tunable knobs with a config surface today: the
+// enforcement mode and the permitted channel set. The L1 message-type
+// allowlist tables are a compiled-in fact about the SPICE protocol (not
+// policy) and are NOT delivered here. Size caps, rate ceilings and per-verdict
+// severities keep their enforcing compiled defaults in the proxy for v1 and are
+// a future extension of this message (fields 3+ are reserved for them).
+message FirewallPolicy {
+  // How the proxy acts on a rule that decides to block a message. ENFORCE is
+  // the proto3 default (0), so an unset mode means enforce.
+  enum Mode {
+    ENFORCE = 0;    // Blocking verdicts are applied (recorded action=enforced).
+    WARN_ONLY = 1;  // Blocking verdicts are downgraded to forward + warn
+                    // (recorded action=observed) so an operator can watch what
+                    // enforcement WOULD trip before flipping to ENFORCE.
+  }
+  Mode mode = 1;
+
+  // The ChannelType discriminants (values 1..=11: main=1, display=2, inputs=3,
+  // cursor=4, playback=5, record=6, tunnel=7, smartcard=8, usbredir=9,
+  // port=10, webdav=11) the deployment permits the proxy to relay. A channel
+  // not in this set is denied before relay (PermissionDenied), same shape as
+  // the existing unknown-channel rejection.
+  //
+  // An EMPTY list means "permit all": a deployment that restricts channels
+  // lists the permitted ones, while permitting NONE is nonsensical (it would
+  // block every connection). Documented identically on the Rust side.
+  repeated uint32 permitted_channels = 2;
+}
+
 // AuthorizeConnectionReply is either a Denied or a Target. The oneof makes
 // the deny/allow decision explicit and unambiguous at the wire level.
 message AuthorizeConnectionReply {
@@ -118,6 +155,13 @@ message AuthorizeConnectionReply {
     Denied denied = 1;
     Target target = 2;
   }
+
+  // The firewall policy the proxy must enforce for this connection. Present
+  // ONLY on the success (target) path; a Denied reply carries no policy. Being
+  // a message field it is presence-tracked (Option in prost, HasField in
+  // Python), so an older daemon that never sets it is handled by the proxy
+  // falling back to its enforcing compiled default.
+  FirewallPolicy firewall_policy = 3;
 }
 
 // RegisterChannelRequest records the pre-authorization channel identity

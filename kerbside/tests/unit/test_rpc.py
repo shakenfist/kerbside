@@ -81,6 +81,14 @@ class KerbsideProxyRpcTestCase(testtools.TestCase):
         self.assertEqual('u', target.uuid)
         self.assertEqual('s', target.session_id)
 
+        # A success reply carries the firewall policy the proxy enforces. With
+        # the default config that is enforce mode and an empty permitted list
+        # (which the proxy reads as "permit all").
+        self.assertTrue(reply.HasField('firewall_policy'))
+        self.assertEqual(
+            kerbside_pb2.FirewallPolicy.ENFORCE, reply.firewall_policy.mode)
+        self.assertEqual([], list(reply.firewall_policy.permitted_channels))
+
         mock_record.assert_called_once_with(
             'test-node', 'cr', session_id='s')
         mock_audit.assert_called_once_with(
@@ -99,6 +107,8 @@ class KerbsideProxyRpcTestCase(testtools.TestCase):
 
         self.assertEqual('denied', reply.WhichOneof('result'))
         self.assertEqual('client token invalid', reply.denied.reason)
+        # A denied reply carries no firewall policy.
+        self.assertFalse(reply.HasField('firewall_policy'))
         mock_get_source.assert_not_called()
 
     @mock.patch('kerbside.db.get_source')
@@ -251,3 +261,47 @@ class KerbsideProxyRpcTestCase(testtools.TestCase):
         self.assertEqual('heartbeat', event.WhichOneof('event'))
         # Cancel so we do not block on the loop's sleep.
         call.cancel()
+
+
+class BuildFirewallPolicyTestCase(testtools.TestCase):
+    """Unit-test the config -> FirewallPolicy mapping in isolation.
+
+    No gRPC server is needed: build_firewall_policy reads the config
+    singleton and returns a proto message.
+    """
+
+    def test_defaults_to_enforce_and_permit_all(self):
+        with mock.patch.object(servicer_module.config, 'FIREWALL_MODE',
+                               'enforce'), \
+             mock.patch.object(servicer_module.config,
+                               'FIREWALL_PERMITTED_CHANNELS', ''):
+            fp = servicer_module.build_firewall_policy()
+        self.assertEqual(kerbside_pb2.FirewallPolicy.ENFORCE, fp.mode)
+        # Empty config -> empty list, which the proxy reads as "permit all".
+        self.assertEqual([], list(fp.permitted_channels))
+
+    def test_warn_mode_and_named_channels_map_to_discriminants(self):
+        with mock.patch.object(servicer_module.config, 'FIREWALL_MODE',
+                               'WARN'), \
+             mock.patch.object(servicer_module.config,
+                               'FIREWALL_PERMITTED_CHANNELS', 'main, inputs'):
+            fp = servicer_module.build_firewall_policy()
+        self.assertEqual(kerbside_pb2.FirewallPolicy.WARN_ONLY, fp.mode)
+        self.assertEqual([1, 3], list(fp.permitted_channels))
+
+    def test_unknown_mode_falls_back_to_enforce(self):
+        with mock.patch.object(servicer_module.config, 'FIREWALL_MODE',
+                               'bogus'), \
+             mock.patch.object(servicer_module.config,
+                               'FIREWALL_PERMITTED_CHANNELS', ''):
+            fp = servicer_module.build_firewall_policy()
+        self.assertEqual(kerbside_pb2.FirewallPolicy.ENFORCE, fp.mode)
+
+    def test_unknown_channel_name_is_ignored(self):
+        with mock.patch.object(servicer_module.config, 'FIREWALL_MODE',
+                               'enforce'), \
+             mock.patch.object(servicer_module.config,
+                               'FIREWALL_PERMITTED_CHANNELS',
+                               'main, bogus, display'):
+            fp = servicer_module.build_firewall_policy()
+        self.assertEqual([1, 2], list(fp.permitted_channels))

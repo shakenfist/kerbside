@@ -3,8 +3,11 @@
 isort:skip_file
 """
 
+from collections import abc as _abc
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
+from google.protobuf.internal import containers as _containers
+from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 import builtins as _builtins
 import sys
 import typing as _typing
@@ -166,6 +169,77 @@ class Denied(_message.Message):
 Global___Denied: _TypeAlias = Denied  # noqa: Y015
 
 @_typing.final
+class FirewallPolicy(_message.Message):
+    """FirewallPolicy carries the deployment-tunable firewall knobs the proxy
+    enforces for one connection. Python owns policy and fills this from
+    deployment-wide config; the Rust proxy builds the connection's enforcing
+    policy from it ("Python decides policy; Rust enforces it"). For v1 the value
+    is identical on every reply (deployment-wide), but the mechanism is
+    per-connection so per-source/per-console policy is a later Python-only
+    change.
+
+    This carries ONLY the tunable knobs with a config surface today: the
+    enforcement mode and the permitted channel set. The L1 message-type
+    allowlist tables are a compiled-in fact about the SPICE protocol (not
+    policy) and are NOT delivered here. Size caps, rate ceilings and per-verdict
+    severities keep their enforcing compiled defaults in the proxy for v1 and are
+    a future extension of this message (fields 3+ are reserved for them).
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    class _Mode:
+        ValueType = _typing.NewType("ValueType", _builtins.int)
+        V: _TypeAlias = ValueType  # noqa: Y015
+
+    class _ModeEnumTypeWrapper(_enum_type_wrapper._EnumTypeWrapper[FirewallPolicy._Mode.ValueType], _builtins.type):
+        DESCRIPTOR: _descriptor.EnumDescriptor
+        ENFORCE: FirewallPolicy._Mode.ValueType  # 0
+        """Blocking verdicts are applied (recorded action=enforced)."""
+        WARN_ONLY: FirewallPolicy._Mode.ValueType  # 1
+        """Blocking verdicts are downgraded to forward + warn"""
+
+    class Mode(_Mode, metaclass=_ModeEnumTypeWrapper):
+        """How the proxy acts on a rule that decides to block a message. ENFORCE is
+        the proto3 default (0), so an unset mode means enforce.
+        """
+
+    ENFORCE: FirewallPolicy.Mode.ValueType  # 0
+    """Blocking verdicts are applied (recorded action=enforced)."""
+    WARN_ONLY: FirewallPolicy.Mode.ValueType  # 1
+    """Blocking verdicts are downgraded to forward + warn"""
+
+    MODE_FIELD_NUMBER: _builtins.int
+    PERMITTED_CHANNELS_FIELD_NUMBER: _builtins.int
+    mode: Global___FirewallPolicy.Mode.ValueType
+    @_builtins.property
+    def permitted_channels(self) -> _containers.RepeatedScalarFieldContainer[_builtins.int]:
+        """The ChannelType discriminants (values 1..=11: main=1, display=2, inputs=3,
+        cursor=4, playback=5, record=6, tunnel=7, smartcard=8, usbredir=9,
+        port=10, webdav=11) the deployment permits the proxy to relay. A channel
+        not in this set is denied before relay (PermissionDenied), same shape as
+        the existing unknown-channel rejection.
+
+        An EMPTY list means "permit all": a deployment that restricts channels
+        lists the permitted ones, while permitting NONE is nonsensical (it would
+        block every connection). Documented identically on the Rust side.
+        """
+
+    def __init__(
+        self,
+        *,
+        mode: Global___FirewallPolicy.Mode.ValueType = ...,
+        permitted_channels: _abc.Iterable[_builtins.int] | None = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["mode", b"mode", "permitted_channels", b"permitted_channels"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___FirewallPolicy: _TypeAlias = FirewallPolicy  # noqa: Y015
+
+@_typing.final
 class AuthorizeConnectionReply(_message.Message):
     """AuthorizeConnectionReply is either a Denied or a Target. The oneof makes
     the deny/allow decision explicit and unambiguous at the wire level.
@@ -175,19 +249,30 @@ class AuthorizeConnectionReply(_message.Message):
 
     DENIED_FIELD_NUMBER: _builtins.int
     TARGET_FIELD_NUMBER: _builtins.int
+    FIREWALL_POLICY_FIELD_NUMBER: _builtins.int
     @_builtins.property
     def denied(self) -> Global___Denied: ...
     @_builtins.property
     def target(self) -> Global___Target: ...
+    @_builtins.property
+    def firewall_policy(self) -> Global___FirewallPolicy:
+        """The firewall policy the proxy must enforce for this connection. Present
+        ONLY on the success (target) path; a Denied reply carries no policy. Being
+        a message field it is presence-tracked (Option in prost, HasField in
+        Python), so an older daemon that never sets it is handled by the proxy
+        falling back to its enforcing compiled default.
+        """
+
     def __init__(
         self,
         *,
         denied: Global___Denied | None = ...,
         target: Global___Target | None = ...,
+        firewall_policy: Global___FirewallPolicy | None = ...,
     ) -> None: ...
-    _HasFieldArgType: _TypeAlias = _typing.Literal["denied", b"denied", "result", b"result", "target", b"target"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["denied", b"denied", "firewall_policy", b"firewall_policy", "result", b"result", "target", b"target"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["denied", b"denied", "result", b"result", "target", b"target"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["denied", b"denied", "firewall_policy", b"firewall_policy", "result", b"result", "target", b"target"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     _WhichOneofReturnType_result: _TypeAlias = _typing.Literal["denied", "target"]  # noqa: Y015
     _WhichOneofArgType_result: _TypeAlias = _typing.Literal["result", b"result"]  # noqa: Y015

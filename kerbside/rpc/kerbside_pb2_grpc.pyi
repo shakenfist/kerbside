@@ -77,7 +77,9 @@ class KerbsideProxyStub:
     """
     DeregisterChannel: _grpc.UnaryUnaryMultiCallable[_kerbside_pb2.DeregisterChannelRequest, _kerbside_pb2.StatusReply]
     """DeregisterChannel removes a channel record at teardown. It maps to
-    remove_proxy_channel(), keyed by (node, connection_ref).
+    remove_channel_by_ref(), keyed on connection_ref alone (which is
+    unique). The request carries node for symmetry with the other RPCs and
+    possible future scoping, but the handler does not currently read it.
     """
     ClearNodeChannels: _grpc.UnaryUnaryMultiCallable[_kerbside_pb2.ClearNodeChannelsRequest, _kerbside_pb2.StatusReply]
     """ClearNodeChannels clears all stale channel records for a node at proxy
@@ -141,7 +143,9 @@ class KerbsideProxyAsyncStub(KerbsideProxyStub):
     """
     DeregisterChannel: _aio.UnaryUnaryMultiCallable[_kerbside_pb2.DeregisterChannelRequest, _kerbside_pb2.StatusReply]  # type: ignore[assignment]
     """DeregisterChannel removes a channel record at teardown. It maps to
-    remove_proxy_channel(), keyed by (node, connection_ref).
+    remove_channel_by_ref(), keyed on connection_ref alone (which is
+    unique). The request carries node for symmetry with the other RPCs and
+    possible future scoping, but the handler does not currently read it.
     """
     ClearNodeChannels: _aio.UnaryUnaryMultiCallable[_kerbside_pb2.ClearNodeChannelsRequest, _kerbside_pb2.StatusReply]  # type: ignore[assignment]
     """ClearNodeChannels clears all stale channel records for a node at proxy
@@ -226,7 +230,9 @@ class KerbsideProxyServicer(metaclass=_abc_1.ABCMeta):
         context: _ServicerContext,
     ) -> _typing.Union[_kerbside_pb2.StatusReply, _abc.Awaitable[_kerbside_pb2.StatusReply]]:
         """DeregisterChannel removes a channel record at teardown. It maps to
-        remove_proxy_channel(), keyed by (node, connection_ref).
+        remove_channel_by_ref(), keyed on connection_ref alone (which is
+        unique). The request carries node for symmetry with the other RPCs and
+        possible future scoping, but the handler does not currently read it.
         """
 
     @_abc_1.abstractmethod

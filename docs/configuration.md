@@ -63,6 +63,28 @@ These settings configure the `KerbsideProxy` gRPC service the daemon hosts over 
 | API_SOCKET_PATH | String (default /run/kerbside/api.sock) | The unix domain socket the KerbsideProxy gRPC service listens on. The containing directory is created with 0700 permissions; access is guarded by filesystem permissions since the peer is a trusted local process. The proxy must be co-located with the daemon to share this socket. Keep the path short: AF_UNIX socket paths are limited to ~108 bytes (SUN_LEN), and an over-long path will fail to bind/connect; a path under /run is safe. |
 | API_GRPC_WORKERS | Integer (default 8) | The size of the thread pool serving KerbsideProxy gRPC requests. |
 
+## SPICE firewall
+
+The proxy enforces an application-level SPICE firewall on every relayed
+message: L0 framing/size limits and an L1 per-channel, per-direction message
+-type allowlist derived from the SPICE protocol. Python owns the tunable policy
+and delivers it to the proxy in the `AuthorizeConnection` reply (Python decides
+policy; the Rust proxy enforces it). These settings are deployment-wide.
+
+Firewall verdicts are exported as the Prometheus metric
+`kerbside_proxy_firewall_verdicts_total{channel,direction,rule,action}` (where
+`action` is `enforced` or `observed`) and coalesced into one audit event per
+connection.
+
+| Configuration Option | Type | Description |
+|---------------------|------|-------------|
+| FIREWALL_MODE | String (default "enforce") | Enforcement mode delivered to the proxy. "enforce" applies blocking verdicts (a disallowed message type or an over-cap message terminates the session). "warn" downgrades every blocking verdict to forward-and-log (metric `action=observed`) so an operator can observe what enforcement *would* trip against real traffic before enabling it. Case-insensitive; an unrecognised value falls back to "enforce". |
+| FIREWALL_PERMITTED_CHANNELS | String (default empty) | Comma-separated SPICE channel names the proxy may relay (main, display, inputs, cursor, playback, record, tunnel, smartcard, usbredir, port, webdav). Empty means permit all channels; a channel not listed is denied before relay (the client receives a protocol-correct permission-denied). |
+
+The per-channel message-size caps and the (default-off) rate ceiling currently
+use the proxy's compiled-in defaults and are not yet configurable; they are a
+planned extension of the delivered policy.
+
 ## Traffic Inspection
 
 Being able to inspect traffic being passed by the proxy is useful during both

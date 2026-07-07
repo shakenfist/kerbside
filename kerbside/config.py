@@ -157,6 +157,25 @@ class Config(BaseSettings):
         description=('The path to write traffic inspection logs to. This must be'
                      'be set if TRAFFIC_INSPECTION is True.'))
 
+    # Firewall policy delivered to the (Rust) SPICE proxy in the
+    # AuthorizeConnection reply. Python owns the policy; the proxy enforces it.
+    # Only the knobs with a real config surface are delivered; size caps and
+    # the rate ceiling keep the proxy's enforcing compiled defaults for now.
+    FIREWALL_MODE: str = Field(
+        'enforce',
+        description=('Firewall enforcement mode delivered to the proxy: '
+                     '"enforce" (default) applies blocking verdicts, "warn" '
+                     'downgrades them to forward-and-log so an operator can '
+                     'observe what enforcement would trip before enabling it. '
+                     'Case-insensitive.'))
+    FIREWALL_PERMITTED_CHANNELS: str = Field(
+        '',
+        description=('Comma-separated list of SPICE channel NAMES the proxy is '
+                     'permitted to relay (main, display, inputs, cursor, '
+                     'playback, record, tunnel, smartcard, usbredir, port, '
+                     'webdav). Empty (the default) means permit all channels; '
+                     'a channel not listed is denied before relay.'))
+
     # Metrics for monitoring
     PROMETHEUS_METRICS_PORT: int = Field(
         13003,

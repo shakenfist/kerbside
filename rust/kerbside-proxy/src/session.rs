@@ -35,7 +35,6 @@ use shakenfist_spice_protocol::{ChannelType, SpiceError};
 use tracing::{debug, info, warn};
 
 use crate::metrics;
-use crate::policy::FirewallPolicy;
 use crate::rpc::{AuthzOutcome, KerbsideRpc};
 
 /// Shared, cheaply-cloneable process state handed to every connection task.
@@ -222,18 +221,48 @@ async fn serve(
                 .ok();
             Ok(())
         }
-        Ok(AuthzOutcome::Target(target)) => {
-            // Authorized: tell the client, then hand the stream to the backend
-            // leg + relay. `stream` is moved into `backend::run`.
+        Ok(AuthzOutcome::Target { target, policy }) => {
+            // Channel-level firewall gate: even with a valid token, a channel
+            // type the deployment forbids must not be relayed. Deny before the
+            // relay -- protocol-correctly (PermissionDenied) -- and audit it.
+            // The default policy permits every channel, so this never fires
+            // unless a deployment restricts `permitted_channels`.
+            if !policy.channel_permitted(channel_type) {
+                metrics::record_denied();
+                warn!(
+                    %peer, %connection_ref,
+                    channel = channel_type.name(),
+                    "channel type not permitted by firewall policy; denying"
+                );
+                if let Err(e) = state
+                    .rpc
+                    .record_audit_event(
+                        &target.source,
+                        &target.uuid,
+                        &target.session_id,
+                        channel_type.name(),
+                        &state.node_name,
+                        connection_ref,
+                        "Channel type not permitted by firewall policy",
+                    )
+                    .await
+                {
+                    warn!(%connection_ref, error = %e, "recording firewall channel-denied audit event failed");
+                }
+                send_auth_result(&mut stream, SpiceError::PermissionDenied)
+                    .await
+                    .ok();
+                return Ok(());
+            }
+
+            // Authorized and channel permitted: tell the client, then hand the
+            // stream to the backend leg + relay with the policy the control
+            // service delivered. `stream` is moved into `backend::run`.
             metrics::record_authorized();
             send_auth_result(&mut stream, SpiceError::Ok).await?;
-            // 4e: replace with the FirewallPolicy delivered in the
-            // AuthorizeConnection reply. The compiled default is enforcing and
-            // permits every channel, so it is the correct fallback.
-            let policy = Arc::new(FirewallPolicy::default());
             crate::backend::run(
                 state,
-                policy,
+                Arc::new(policy),
                 connection_ref,
                 stream,
                 connection_id,
