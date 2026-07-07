@@ -9,15 +9,30 @@ kerbside-proxy Rust binary end to end -- gRPC authorization, channel
 bookkeeping, and audit events -- without a running kerbside daemon or
 database.
 
-AuthorizeConnection authorizes ANY token unconditionally and always
+AuthorizeConnection authorizes ANY token unconditionally by default and
 answers with the same Target, built from this script's --hypervisor-ip /
 --insecure-port / --secure-port / --ticket / --source / --uuid /
 --session-id arguments (typically pointed at the qemu SPICE server the
-verification harness also starts). RegisterChannel, RecordAuditEvent,
-DeregisterChannel, and ClearNodeChannels all log their request and reply
-with StatusReply(success=True). ProxyControl mirrors the real servicer:
-it opens the stream, emits an immediate Heartbeat, then keeps emitting
-heartbeats until the peer (the Rust proxy) disconnects.
+verification harness also starts). Two behaviours make it a full
+firewall/denial test rig for phase 4:
+
+  * --firewall-mode {enforce,warn} + --permitted-channels CSV attach a
+    FirewallPolicy to every SUCCESS reply, so the proxy can be launched in
+    warn-only mode for a safe capture run (blocking verdicts downgraded to
+    forward+log, recorded as metric action=observed). The policy is built
+    exactly like kerbside/rpc/servicer.py's build_firewall_policy (channel
+    NAMES -> ChannelType discriminants); the small mapping is copied here to
+    keep this script standalone.
+  * --deny-token TOKEN (repeatable) / --deny-all make AuthorizeConnection
+    return a Denied reply instead of a Target, driving the proxy's
+    send_auth_result(PermissionDenied) path end to end. Denied replies carry
+    NO firewall_policy.
+
+RegisterChannel, RecordAuditEvent, DeregisterChannel, and ClearNodeChannels
+all log their request and reply with StatusReply(success=True). ProxyControl
+mirrors the real servicer: it opens the stream, emits an immediate
+Heartbeat, then keeps emitting heartbeats until the peer (the Rust proxy)
+disconnects.
 
 Because this speaks the identical protobuf/gRPC contract as the real
 servicer, the Rust proxy under test cannot distinguish this mock from the
@@ -54,6 +69,25 @@ from kerbside.rpc import kerbside_pb2_grpc
 
 LOG = logging.getLogger('mock-grpc-server')
 
+# SPICE ChannelType name -> discriminant. Copied verbatim from
+# kerbside/rpc/servicer.py's CHANNEL_NAME_TO_DISCRIMINANT so this mock stays
+# standalone (importing only the generated kerbside_pb2). Matches ryll's
+# ChannelType and the FirewallPolicy.permitted_channels contract in
+# kerbside.proto: an empty permitted set means "permit all channels".
+CHANNEL_NAME_TO_DISCRIMINANT = {
+    'main': 1,
+    'display': 2,
+    'inputs': 3,
+    'cursor': 4,
+    'playback': 5,
+    'record': 6,
+    'tunnel': 7,
+    'smartcard': 8,
+    'usbredir': 9,
+    'port': 10,
+    'webdav': 11,
+}
+
 # Interval between keepalive heartbeats on the ProxyControl stream. Mirrors
 # kerbside/rpc/servicer.py's PROXY_CONTROL_HEARTBEAT_SECONDS; kept short here
 # because verification runs are short-lived and we would rather see a couple
@@ -71,7 +105,8 @@ class MockKerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
     """
 
     def __init__(self, hypervisor, hypervisor_ip, insecure_port, secure_port,
-                 ticket, ca_cert, host_subject, source, uuid, session_id):
+                 ticket, ca_cert, host_subject, source, uuid, session_id,
+                 firewall_mode, permitted_channels, deny_tokens, deny_all):
         self.hypervisor = hypervisor
         self.hypervisor_ip = hypervisor_ip
         self.insecure_port = insecure_port
@@ -82,14 +117,46 @@ class MockKerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
         self.source = source
         self.uuid = uuid
         self.session_id = session_id
+        # Firewall / denial behaviour (phase 4). firewall_mode is 'enforce' or
+        # 'warn'; permitted_channels is a list of ChannelType discriminants
+        # (empty => permit all); deny_tokens is a set of decrypted plaintext
+        # tokens to reject; deny_all rejects every token.
+        self.firewall_mode = firewall_mode
+        self.permitted_channels = list(permitted_channels)
+        self.deny_tokens = set(deny_tokens)
+        self.deny_all = deny_all
+
+    def _build_firewall_policy(self):
+        """Build the FirewallPolicy attached to a SUCCESS reply.
+
+        Mirrors kerbside/rpc/servicer.py's build_firewall_policy: the mode maps
+        to the FirewallPolicy.Mode enum and the (already-resolved) permitted
+        channel discriminants are carried as-is. An empty list is sent as-is
+        and the proxy reads it as "permit all".
+        """
+        if self.firewall_mode == 'warn':
+            proto_mode = kerbside_pb2.FirewallPolicy.WARN_ONLY
+        else:
+            proto_mode = kerbside_pb2.FirewallPolicy.ENFORCE
+        return kerbside_pb2.FirewallPolicy(
+            mode=proto_mode, permitted_channels=self.permitted_channels)
 
     def AuthorizeConnection(self, request, context):
+        deny = self.deny_all or (request.token in self.deny_tokens)
         LOG.info(
             'AuthorizeConnection: connection_ref=%s client=%s:%s connection_id=%s '
-            'channel_type=%s channel_id=%s token=%s (authorizing unconditionally)',
+            'channel_type=%s channel_id=%s token=%s decision=%s',
             request.connection_ref, request.client_ip, request.client_port,
             request.connection_id, request.channel_type, request.channel_id,
-            '<redacted, len=%d>' % len(request.token))
+            '<redacted, len=%d>' % len(request.token),
+            'DENIED' if deny else 'AUTHORIZED')
+
+        if deny:
+            reason = ('all connections denied (--deny-all)' if self.deny_all
+                      else 'token on --deny-token deny list')
+            LOG.info('AuthorizeConnection: returning Denied(reason=%r)', reason)
+            return kerbside_pb2.AuthorizeConnectionReply(
+                denied=kerbside_pb2.Denied(reason=reason))
 
         target = kerbside_pb2.Target(
             hypervisor=self.hypervisor,
@@ -102,7 +169,14 @@ class MockKerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
             source=self.source,
             uuid=self.uuid,
             session_id=self.session_id)
-        return kerbside_pb2.AuthorizeConnectionReply(target=target)
+        policy = self._build_firewall_policy()
+        LOG.info(
+            'AuthorizeConnection: returning Target + FirewallPolicy(mode=%s, '
+            'permitted_channels=%s)',
+            'WARN_ONLY' if self.firewall_mode == 'warn' else 'ENFORCE',
+            self.permitted_channels or '<permit all>')
+        return kerbside_pb2.AuthorizeConnectionReply(
+            target=target, firewall_policy=policy)
 
     def RegisterChannel(self, request, context):
         LOG.info(
@@ -200,6 +274,29 @@ def _parse_args():
         '--session-id', default=os.environ.get('MOCK_GRPC_SESSION_ID', 'rust-proxy-verify-session'),
         help='Target.session_id -- a fixed test session id, used only for audit logging.')
     parser.add_argument(
+        '--firewall-mode', choices=('enforce', 'warn'),
+        default=(os.environ.get('MOCK_GRPC_FIREWALL_MODE', 'enforce') or 'enforce').strip().lower(),
+        help='FirewallPolicy.mode attached to every SUCCESS reply: enforce (blocking '
+             'verdicts applied, action=enforced) or warn (blocking verdicts downgraded to '
+             'forward+log, action=observed -- the safe capture-run mode). May also be set '
+             'via MOCK_GRPC_FIREWALL_MODE. Default enforce.')
+    parser.add_argument(
+        '--permitted-channels', default=os.environ.get('MOCK_GRPC_PERMITTED_CHANNELS', ''),
+        help='Comma-separated SPICE channel NAMES (main,display,inputs,cursor,playback,'
+             'record,tunnel,smartcard,usbredir,port,webdav) permitted by the FirewallPolicy. '
+             'Empty (default) => empty permitted_channels, which the proxy reads as "permit '
+             'all". May also be set via MOCK_GRPC_PERMITTED_CHANNELS.')
+    parser.add_argument(
+        '--deny-token', action='append', default=None, dest='deny_tokens', metavar='TOKEN',
+        help='Decrypted plaintext token to DENY (return Denied instead of a Target). '
+             'Repeatable. The token is the client.vv password after the proxy RSA-decrypts '
+             'it. May also be seeded from MOCK_GRPC_DENY_TOKEN (comma-separated).')
+    parser.add_argument(
+        '--deny-all', action='store_true',
+        default=bool(os.environ.get('MOCK_GRPC_DENY_ALL')),
+        help='Deny EVERY AuthorizeConnection (return Denied), to exercise the proxy denial '
+             'path unconditionally. May also be set via MOCK_GRPC_DENY_ALL.')
+    parser.add_argument(
         '--workers', type=int, default=int(os.environ.get('MOCK_GRPC_WORKERS', '8')),
         help='gRPC server ThreadPoolExecutor size.')
     parser.add_argument(
@@ -217,6 +314,31 @@ def _parse_args():
     ]
     if missing:
         parser.error('missing required argument(s): %s' % ', '.join(missing))
+
+    # Resolve --permitted-channels NAMES to ChannelType discriminants, the same
+    # way servicer.build_firewall_policy does; unknown names are a hard error
+    # here (a verification harness should fail loudly on a typo).
+    permitted = []
+    for name in (args.permitted_channels or '').split(','):
+        name = name.strip().lower()
+        if not name:
+            continue
+        discriminant = CHANNEL_NAME_TO_DISCRIMINANT.get(name)
+        if discriminant is None:
+            parser.error(
+                'unknown --permitted-channels name %r (known: %s)'
+                % (name, ', '.join(sorted(CHANNEL_NAME_TO_DISCRIMINANT))))
+        permitted.append(discriminant)
+    args.permitted_channel_ids = permitted
+
+    # Seed deny tokens from the env var (comma-separated) in addition to any
+    # repeated --deny-token flags.
+    deny_tokens = list(args.deny_tokens or [])
+    for token in (os.environ.get('MOCK_GRPC_DENY_TOKEN', '') or '').split(','):
+        token = token.strip()
+        if token:
+            deny_tokens.append(token)
+    args.deny_tokens = deny_tokens
 
     return args
 
@@ -264,17 +386,29 @@ def main():
         host_subject=args.host_subject,
         source=args.source,
         uuid=args.uuid,
-        session_id=args.session_id)
+        session_id=args.session_id,
+        firewall_mode=args.firewall_mode,
+        permitted_channels=args.permitted_channel_ids,
+        deny_tokens=args.deny_tokens,
+        deny_all=args.deny_all)
 
     server, _ = _bind(args.socket, args.workers)
     kerbside_pb2_grpc.add_KerbsideProxyServicer_to_server(servicer, server)
     server.add_insecure_port('unix:%s' % args.socket)
     server.start()
     os.chmod(args.socket, 0o600)
+    if args.deny_all:
+        auth_desc = 'DENYING every token (--deny-all)'
+    elif args.deny_tokens:
+        auth_desc = 'authorizing every token except %d on the deny list' % len(args.deny_tokens)
+    else:
+        auth_desc = 'authorizing every token'
     LOG.info(
-        'mock KerbsideProxy gRPC server listening on unix:%s (authorizing every token; '
-        'target hypervisor_ip=%s insecure_port=%s secure_port=%s)',
-        args.socket, args.hypervisor_ip, args.insecure_port, args.secure_port)
+        'mock KerbsideProxy gRPC server listening on unix:%s (%s; firewall_mode=%s '
+        'permitted_channels=%s; target hypervisor_ip=%s insecure_port=%s secure_port=%s)',
+        args.socket, auth_desc, args.firewall_mode,
+        args.permitted_channel_ids or '<permit all>',
+        args.hypervisor_ip, args.insecure_port, args.secure_port)
 
     stop_event = threading.Event()
 

@@ -11,6 +11,10 @@ the hypervisor, and the bidirectional inspection-first relay.
 The full ryll-driven direct-qemu lane (with surface/digest assertions) is CI,
 and lands in phase 7. This standalone harness is for local verification.
 
+For validating the phase-4 L0/L1 **firewall** — running a safe warn-only
+capture session and driving the connection-denial path — see
+[`VERIFY-FIREWALL.md`](VERIFY-FIREWALL.md).
+
 ## Pieces
 
 - `mock-grpc-server.py` — a standalone `KerbsideProxy` gRPC server on a unix
