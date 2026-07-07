@@ -262,6 +262,51 @@ class KerbsideProxyRpcTestCase(testtools.TestCase):
         # Cancel so we do not block on the loop's sleep.
         call.cancel()
 
+    @mock.patch('kerbside.db.get_terminations_for_node')
+    def test_proxy_control_terminate_session(self, mock_get):
+        # A session that is terminated AND live on this node yields a
+        # TerminateSession, exactly once, interleaved with heartbeats.
+        mock_get.return_value = ['sess-1']
+
+        with mock.patch.object(servicer_module, 'PROXY_CONTROL_POLL_SECONDS',
+                               0.05), \
+             mock.patch.object(servicer_module,
+                               'PROXY_CONTROL_HEARTBEAT_SECONDS', 0.05):
+            call = self.stub.ProxyControl(
+                kerbside_pb2.ProxyControlRequest(node='n'))
+            events = [next(call) for _ in range(6)]
+            call.cancel()
+
+        # The stream polled this node's terminations.
+        mock_get.assert_called_with('test-node')
+
+        terminates = [
+            e for e in events if e.WhichOneof('event') == 'terminate_session']
+        # Sent once, not repeated every poll despite the intent persisting.
+        self.assertEqual(1, len(terminates))
+        self.assertEqual('sess-1', terminates[0].terminate_session.session_id)
+        # Heartbeats still flow.
+        self.assertTrue(
+            any(e.WhichOneof('event') == 'heartbeat' for e in events))
+
+    @mock.patch('kerbside.db.get_terminations_for_node')
+    def test_proxy_control_db_error_does_not_kill_stream(self, mock_get):
+        # A transient DB error is logged and swallowed; the stream keeps
+        # heartbeating rather than tearing down.
+        mock_get.side_effect = RuntimeError('boom')
+
+        with mock.patch.object(servicer_module, 'PROXY_CONTROL_POLL_SECONDS',
+                               0.05), \
+             mock.patch.object(servicer_module,
+                               'PROXY_CONTROL_HEARTBEAT_SECONDS', 0.05):
+            call = self.stub.ProxyControl(
+                kerbside_pb2.ProxyControlRequest(node='n'))
+            events = [next(call) for _ in range(3)]
+            call.cancel()
+
+        self.assertTrue(
+            all(e.WhichOneof('event') == 'heartbeat' for e in events))
+
 
 class BuildFirewallPolicyTestCase(testtools.TestCase):
     """Unit-test the config -> FirewallPolicy mapping in isolation.

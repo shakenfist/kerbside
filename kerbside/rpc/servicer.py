@@ -12,10 +12,13 @@ from kerbside.rpc import kerbside_pb2, kerbside_pb2_grpc
 
 LOG, _ = logs.setup(__name__, **util.configure_logging())
 
-# Interval between keepalive heartbeats on the ProxyControl stream. The
-# stream is only stubbed this phase; phase 5 replaces the heartbeat loop
-# with real session-termination and policy-push events.
+# Interval between keepalive heartbeats on the ProxyControl stream.
 PROXY_CONTROL_HEARTBEAT_SECONDS = 30
+
+# How often the ProxyControl stream polls the database for terminations that
+# apply to this node. Short so API-driven termination reaches the proxy
+# promptly; the trade-off is termination latency vs DB load.
+PROXY_CONTROL_POLL_SECONDS = 2
 
 # SPICE ChannelType name -> discriminant (matches ryll's ChannelType and the
 # FirewallPolicy.permitted_channels contract in kerbside.proto). Used to map the
@@ -195,21 +198,49 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
     def ProxyControl(self, request, context):
         """Server-streaming control channel from the daemon to the proxy.
 
-        Stubbed this phase: it opens the stream and emits periodic
-        Heartbeat keepalives while the proxy stays connected. Phase 5
-        replaces this with real session-termination and policy-push
-        events (extending the ProxyControlEvent oneof).
+        Each poll it emits a TerminateSession for every session that is BOTH
+        marked for termination AND live on this node (scoped to NODE_NAME),
+        skipping ids already sent on this stream, and interleaves Heartbeat
+        keepalives. Natural token expiry is NOT a termination (matching the
+        Python proxy); only an explicit session_terminations row is. The
+        stream is local (this daemon and the single proxy it supervises); the
+        database is the only bus that reaches proxies on other machines.
         """
         LOG.info('ProxyControl stream opened for node %s' % request.node)
+        # session_ids already pushed on THIS stream, so a still-present intent
+        # row is not re-sent every poll. The Rust side is idempotent anyway.
+        sent = set()
         try:
             # Emit an immediate heartbeat so the client knows the stream is
-            # live, then keep it alive until the peer goes away.
+            # live, then poll+heartbeat until the peer goes away.
             yield kerbside_pb2.ProxyControlEvent(
                 heartbeat=kerbside_pb2.Heartbeat())
+            last_heartbeat = time.time()
+
             while context.is_active():
-                time.sleep(PROXY_CONTROL_HEARTBEAT_SECONDS)
-                yield kerbside_pb2.ProxyControlEvent(
-                    heartbeat=kerbside_pb2.Heartbeat())
+                try:
+                    for session_id in db.get_terminations_for_node(config.NODE_NAME):
+                        if session_id in sent:
+                            continue
+                        sent.add(session_id)
+                        LOG.info(
+                            'ProxyControl terminating session %s on node %s'
+                            % (session_id, config.NODE_NAME))
+                        yield kerbside_pb2.ProxyControlEvent(
+                            terminate_session=kerbside_pb2.TerminateSession(
+                                session_id=session_id))
+                except Exception as e:
+                    # A transient DB error must not kill the stream: log and
+                    # keep polling/heartbeating so the proxy stays connected.
+                    LOG.error('ProxyControl termination poll failed: %s' % e)
+
+                if time.time() - last_heartbeat >= PROXY_CONTROL_HEARTBEAT_SECONDS:
+                    yield kerbside_pb2.ProxyControlEvent(
+                        heartbeat=kerbside_pb2.Heartbeat())
+                    last_heartbeat = time.time()
+
+                # Sleep the poll interval each iteration so we do not spin.
+                time.sleep(PROXY_CONTROL_POLL_SECONDS)
         except Exception as e:
             LOG.error('ProxyControl stream failed: %s' % e)
             context.set_code(grpc.StatusCode.INTERNAL)

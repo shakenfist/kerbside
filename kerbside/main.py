@@ -190,6 +190,19 @@ def _reap_expired_console_tokens():
             None, None, None, 'Reaped expired and unused token')
 
 
+# How long a session_terminations intent row lives before the reaper deletes
+# it. By then every proxy node has had ample time to poll and push the
+# TerminateSession (the ProxyControl poll interval is a couple of seconds), and
+# the Rust side is idempotent so a late or duplicate event is a no-op.
+SESSION_TERMINATION_TTL_SECONDS = 300
+
+
+def _reap_session_terminations():
+    count = kerbside_db.reap_session_terminations(SESSION_TERMINATION_TTL_SECONDS)
+    if count:
+        LOG.info('Reaped %d expired session termination intents' % count)
+
+
 # How long to wait for the Rust proxy to exit after SIGTERM before we SIGKILL
 # it. Longer than the proxy's own graceful-drain deadline (see main.rs
 # DRAIN_TIMEOUT) so it can finish draining in-flight sessions first.
@@ -231,6 +244,7 @@ def _run_rust_proxy(last_maintenance):
         if time.time() - last_maintenance > 60:
             _parse_sources()
             _reap_expired_console_tokens()
+            _reap_session_terminations()
             last_maintenance = time.time()
 
 
@@ -275,6 +289,7 @@ def daemon_run(ctx):
         if time.time() - last_maintenance > 60:
             _parse_sources()
             _reap_expired_console_tokens()
+            _reap_session_terminations()
             last_maintenance = time.time()
 
 

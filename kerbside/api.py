@@ -496,6 +496,12 @@ class ConsolesTerminate(sf_api.Resource):
         for token in db.get_tokens_by_console(source, uuid):
             db.expire_token(token['token'])
             db.remove_session(token['session_id'])
+            # Expiring/removing the token blocks NEW connections. Recording a
+            # termination intent is what drops the IN-FLIGHT ones: each proxy
+            # node's daemon polls session_terminations for the sessions it
+            # holds live channels for and pushes a TerminateSession event.
+            db.request_session_termination(
+                token['session_id'], reason='console terminated by request')
             db.add_audit_event(
                 token['source'], token['uuid'], token['session_id'],
                 None, None, None, 'Session terminated by request')
@@ -673,6 +679,10 @@ class SessionTerminate(sf_api.Resource):
             return sf_api.error(404, 'session not found')
 
         db.remove_session(token['session_id'])
+        # Removing the token blocks NEW connections; the termination intent is
+        # what drops the IN-FLIGHT ones (polled and pushed per proxy node).
+        db.request_session_termination(
+            token['session_id'], reason='session terminated by request')
         db.add_audit_event(
             token['source'], token['uuid'], token['session_id'],
             None, None, None, 'Session terminated by request')
