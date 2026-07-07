@@ -233,9 +233,12 @@ _metric_value() {
 _verdict_sum() {
     local body="$1"
     local action="$2"
+    # The grep stages `|| true` so that ZERO matching series (the clean-session
+    # case, where firewall_verdicts_total is entirely absent) yields 0 rather
+    # than a failed pipeline that would abort the caller under `set -o pipefail`.
     printf '%s\n' "${body}" \
-        | grep -E '^kerbside_proxy_firewall_verdicts_total\{' \
-        | grep -F "action=\"${action}\"" \
+        | { grep -E '^kerbside_proxy_firewall_verdicts_total\{' || true; } \
+        | { grep -F "action=\"${action}\"" || true; } \
         | awk '{sum += $NF} END {print sum + 0}'
 }
 

@@ -107,16 +107,45 @@ and errors early if a `GRPC_SOCKET` override is too long.
 
 ## Live capture RESULTS
 
-_(To be filled in by the management session after the live capture run.)_
+Run 2026-07-07, proxy built at ryll pin `1c6f19f` (the completed
+main/display message-type tables), release binary, against the
+`uncalibrated-sextant.qcow2` guest under qemu (TCG, no KVM in this env).
 
-- **Date / proxy build:**
-- **Client versions:** virt-viewer __, remote-viewer __, ryll __
-- **Channels carried** (decides whether 4b-ryll runs for record/smartcard):
-- **Warn-only verdict counts per client** (expect all `observed=0`):
-  - virt-viewer:
-  - remote-viewer:
-  - ryll headless:
-- **Observed max message sizes fed back into 4c caps:**
-- **Deny-mode check:** `denied_total` observed = __
-- **Caps / allowlist tuned as a result:**
-- **Notes / anomalies:**
+- **Date / proxy build:** 2026-07-07; `rust/kerbside-proxy` release, ryll
+  rev `1c6f19f`.
+- **Client versions:** remote-viewer (spice-gtk) — the primary client
+  driven. virt-viewer was not run separately: it links the same
+  spice-gtk client engine as remote-viewer, so the client→server message
+  grammar it emits is the same. **ryll headless was NOT run in this
+  pass** — it is a distinct client implementation and remains a
+  worthwhile follow-up capture.
+- **Channels carried:** 4 — main, display, inputs, cursor. record,
+  playback, smartcard, usbredir/port/webdav were NOT opened by this
+  client+guest. This confirms the `ChannelUnmodeled` (observe-only)
+  handling of record/smartcard is safe for this workload, and **no
+  4b-ryll table work is needed** for them right now.
+- **Warn-only verdict counts** (proxy run with `FIREWALL_MODE=warn`;
+  expect all `observed=0`):
+  - remote-viewer: **PASS** — 4 channels authorized, ~1.17 MB relayed
+    (`bytes{s2c}=1,174,716`, `bytes{c2s}=1,468`), and
+    `firewall_verdicts_total` had **zero series** (enforced=0,
+    observed=0). Every framed message across the four channels was
+    Allowed and within its size cap — no false positives.
+  - virt-viewer: not run (same spice-gtk engine as remote-viewer).
+  - ryll headless: not run (follow-up).
+- **Observed max message sizes fed back into 4c caps:** no cap was
+  approached — the tight 4 KiB inputs/cursor-client cap and the generous
+  16 MiB elsewhere held with zero `size_cap` verdicts, so no cap was
+  retuned. (Display server frames stayed well under the generous cap.)
+- **Deny-mode check:** `DENY_ALL=1`, `FIREWALL_EXPECT=deny` → **PASS**:
+  `authorized=0`, `denied=1`, no bytes relayed. The proxy sent
+  `PermissionDenied` and refused the connection before relay, exercising
+  the client-denial path end to end.
+- **Caps / allowlist tuned as a result:** none needed.
+- **Notes / anomalies:** the `assert-firewall` helper had a bug — under
+  `set -o pipefail`, `_verdict_sum` aborted the script when the
+  `firewall_verdicts_total` series was entirely absent (exactly the
+  clean, zero-verdict case); fixed so a no-match yields 0. The
+  `need_secured` backend retry orchestration was NOT exercised here
+  (would need a TLS-requiring backend); it remains covered only by the
+  `is_need_secured` unit tests, tracked as a follow-up.
