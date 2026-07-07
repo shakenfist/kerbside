@@ -37,11 +37,16 @@ def find_proxy_bin():
     """
     searched = []
 
+    # An explicit override is authoritative: if it is set but not a usable
+    # executable, fail rather than silently falling through to a different
+    # binary on PATH or in the build tree (which would launch something the
+    # operator did not intend).
     env = os.environ.get(PROXY_BIN_ENV)
     if env:
-        searched.append('%s=%s' % (PROXY_BIN_ENV, env))
         if os.path.isfile(env) and os.access(env, os.X_OK):
             return env
+        raise RuntimeError(
+            '%s is set to %r, which is not an executable file.' % (PROXY_BIN_ENV, env))
 
     on_path = shutil.which(PROXY_BIN_NAME)
     if on_path:

@@ -219,7 +219,8 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
 
             while context.is_active():
                 try:
-                    for session_id in db.get_terminations_for_node(config.NODE_NAME):
+                    current = set(db.get_terminations_for_node(config.NODE_NAME))
+                    for session_id in current:
                         if session_id in sent:
                             continue
                         sent.add(session_id)
@@ -229,6 +230,11 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
                         yield kerbside_pb2.ProxyControlEvent(
                             terminate_session=kerbside_pb2.TerminateSession(
                                 session_id=session_id))
+                    # Bound `sent` to what is still an active intent so it does
+                    # not grow for the life of a long-lived stream: once a row
+                    # is reaped it drops out here. Re-sending an id that later
+                    # reappears is a harmless idempotent no-op on the proxy.
+                    sent &= current
                 except Exception as e:
                     # A transient DB error must not kill the stream: log and
                     # keep polling/heartbeating so the proxy stays connected.

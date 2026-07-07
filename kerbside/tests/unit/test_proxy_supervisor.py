@@ -61,6 +61,15 @@ class FindProxyBinTestCase(testtools.TestCase):
         with mock.patch.dict(os.environ, {proxy_supervisor.PROXY_BIN_ENV: binary}):
             self.assertEqual(binary, proxy_supervisor.find_proxy_bin())
 
+    def test_env_override_set_but_invalid_raises(self):
+        # An explicit override is authoritative: if set but not executable it
+        # must fail, not silently fall through to a different binary.
+        with mock.patch.dict(
+                os.environ,
+                {proxy_supervisor.PROXY_BIN_ENV: '/nonexistent/kerbside-proxy'}):
+            e = self.assertRaises(RuntimeError, proxy_supervisor.find_proxy_bin)
+        self.assertIn(proxy_supervisor.PROXY_BIN_ENV, str(e))
+
     def test_not_found_raises_naming_searched_locations(self):
         # No env override, nothing on PATH, and treat every candidate as
         # non-executable so the in-repo dev binary (if built) is not picked up.
