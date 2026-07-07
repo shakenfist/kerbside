@@ -273,6 +273,57 @@ mod tests {
 
     // --- Disallowed: modeled channel+direction, bogus type. ---
 
+    // --- Opcodes the ryll tables gained when the crate's main/display tables
+    //     were completed (ryll PR #141, pinned here): before, these returned
+    //     the "unknown" name and would have been Disallowed; now they are
+    //     Allowed. This guards the pin bump that wired the completed tables in.
+    #[test]
+    fn newly_modeled_main_and_display_opcodes_are_allowed() {
+        use shakenfist_spice_protocol::constants::{
+            display_server, main_client, main_server as ms,
+        };
+
+        // main client CLIENT_INFO(101) -- the motivating gap: a real client
+        // message that must not be rejected.
+        assert_eq!(main_client::CLIENT_INFO, 101);
+        assert_eq!(
+            classify(
+                ChannelType::Main,
+                Direction::ClientToServer,
+                main_client::CLIENT_INFO
+            ),
+            MsgClass::Allowed
+        );
+        // main server NAME(113) / UUID(114).
+        assert_eq!(
+            classify(ChannelType::Main, Direction::ServerToClient, ms::NAME),
+            MsgClass::Allowed
+        );
+        assert_eq!(
+            classify(ChannelType::Main, Direction::ServerToClient, ms::UUID),
+            MsgClass::Allowed
+        );
+        // display server QUALITY_INDICATOR(322) and the INVAL mislabel fix:
+        // 106 is now the real INVAL_ALL_PIXMAPS (was mislabelled 108).
+        assert_eq!(display_server::INVAL_ALL_PIXMAPS, 106);
+        assert_eq!(
+            classify(
+                ChannelType::Display,
+                Direction::ServerToClient,
+                display_server::INVAL_ALL_PIXMAPS
+            ),
+            MsgClass::Allowed
+        );
+        assert_eq!(
+            classify(
+                ChannelType::Display,
+                Direction::ServerToClient,
+                display_server::QUALITY_INDICATOR
+            ),
+            MsgClass::Allowed
+        );
+    }
+
     #[test]
     fn bogus_type_on_modeled_channel_is_disallowed() {
         assert_eq!(
