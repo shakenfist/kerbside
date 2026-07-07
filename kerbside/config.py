@@ -187,6 +187,13 @@ class Config(BaseSettings):
         13003,
         description='Where to expose internal metrics. Do not allow '
                     'access from untrusted clients!')
+    PROMETHEUS_METRICS_ADDRESS: str = Field(
+        '127.0.0.1',
+        description='Address the Rust proxy binds its /metrics server to. '
+                    'Defaults to loopback because the endpoint is '
+                    'unauthenticated and must not be exposed on the public '
+                    'VDI interface; set a management address (or 0.0.0.0 '
+                    'behind a firewall) to scrape from another host.')
 
     # Database and cloud inspection
     SQL_URL: str = Field(

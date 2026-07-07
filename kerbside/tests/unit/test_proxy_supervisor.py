@@ -22,6 +22,7 @@ def _fake_config(verbose=False):
         PROXY_HOST_SUBJECT='C=US,O=Shaken Fist,CN=Kerbside Proxy',
         NODE_NAME='kerbside',
         PROMETHEUS_METRICS_PORT=13003,
+        PROMETHEUS_METRICS_ADDRESS='127.0.0.1',
         API_SOCKET_PATH='/run/kerbside/api.sock',
         LOG_VERBOSE=verbose)
 
@@ -40,6 +41,7 @@ class BuildProxyArgvTestCase(testtools.TestCase):
             '--host-subject', 'C=US,O=Shaken Fist,CN=Kerbside Proxy',
             '--node-name', 'kerbside',
             '--prometheus-port', '13003',
+            '--metrics-address', '127.0.0.1',
             '--api-socket', '/run/kerbside/api.sock',
         ], argv)
 

@@ -13,6 +13,7 @@ from . import db as kerbside_db
 from . import proxy as kerbside_proxy
 from . import proxy_supervisor
 from .rpc import server as rpc_server
+from .rpc import servicer as rpc_servicer
 from .sources import ovirt as ovirt_source
 from .sources import shakenfist as shakenfist_source
 from .sources import static as static_source
@@ -256,6 +257,15 @@ def daemon_run(ctx):
     last_maintenance = time.time()
 
     kerbside_db.reset_engine()
+
+    # Validate the firewall policy config once at startup so a bad
+    # FIREWALL_PERMITTED_CHANNELS (e.g. a typo'd channel name) fails the daemon
+    # loudly here rather than failing every AuthorizeConnection at runtime.
+    try:
+        rpc_servicer.build_firewall_policy()
+    except ValueError as e:
+        LOG.error('Invalid firewall configuration: %s' % e)
+        sys.exit(1)
 
     # Rust proxy (opt-in): supervise the kerbside-proxy binary as a child.
     if (config.PROXY_IMPLEMENTATION or 'python').strip().lower() == 'rust':

@@ -131,6 +131,7 @@ Values tracked include:
 | LOG_OUTPUT_JSON | Boolean (default False) | If true, log entries are in JSON format. |
 | LOG_VERBOSE | Boolean (default False) | Whether to log verbose debugging information. |
 | PROMETHEUS_METRICS_PORT | Integer (default 13003) | The TCP port that the prometheus metrics HTTP server will listen on. |
+| PROMETHEUS_METRICS_ADDRESS | String (default 127.0.0.1) | The address the Rust proxy binds its `/metrics` server to. Defaults to loopback because the endpoint is unauthenticated and must not be exposed on the public VDI interface; set a management address (or 0.0.0.0 behind a firewall) to scrape it from another host. |
 
 ## Related Documentation
 

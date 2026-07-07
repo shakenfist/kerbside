@@ -109,6 +109,13 @@ struct Args {
     #[arg(long, default_value_t = 13003)]
     prometheus_port: u16,
 
+    /// Address to bind the Prometheus /metrics server to. Defaults to
+    /// loopback: the endpoint is unauthenticated, so it must not be exposed on
+    /// the public VDI interface. Set to a management address (or 0.0.0.0
+    /// behind a firewall) to scrape from another host.
+    #[arg(long, default_value = "127.0.0.1")]
+    metrics_address: String,
+
     /// Unix domain socket path for the KerbsideProxy gRPC service.
     #[arg(long, default_value = "/run/kerbside/api.sock")]
     api_socket: PathBuf,
@@ -208,13 +215,15 @@ async fn main() -> Result<()> {
         .with_context(|| format!("parsing --vdi-address {}", args.vdi_address))?;
     let secure_addr = SocketAddr::new(vdi_ip, args.secure_port);
     let insecure_addr = SocketAddr::new(vdi_ip, args.insecure_port);
-    // The Python proxy's start_http_server exposes metrics on all interfaces;
-    // binding the same address the SPICE listeners use keeps that behaviour
-    // (0.0.0.0 by default) while still respecting an operator-narrowed
-    // --vdi-address. SECURITY: like the Python proxy, this endpoint is
-    // unauthenticated -- do not expose it to untrusted networks (see
-    // config.py's PROMETHEUS_METRICS_PORT documentation).
-    let metrics_addr = SocketAddr::new(vdi_ip, args.prometheus_port);
+    // The /metrics endpoint is unauthenticated, so it binds its OWN address
+    // (--metrics-address, loopback by default) rather than the public VDI
+    // interface -- do not expose it to untrusted networks (see config.py's
+    // PROMETHEUS_METRICS_ADDRESS / PROMETHEUS_METRICS_PORT documentation).
+    let metrics_ip: std::net::IpAddr = args
+        .metrics_address
+        .parse()
+        .with_context(|| format!("parsing --metrics-address {}", args.metrics_address))?;
+    let metrics_addr = SocketAddr::new(metrics_ip, args.prometheus_port);
 
     // Coarse cap on concurrently-handled secure connections. A permit is
     // acquired before a session runs and held for its whole lifetime; when

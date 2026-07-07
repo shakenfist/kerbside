@@ -79,6 +79,7 @@ def build_proxy_argv(bin_path, cfg):
         '--host-subject', cfg.PROXY_HOST_SUBJECT,
         '--node-name', cfg.NODE_NAME,
         '--prometheus-port', str(cfg.PROMETHEUS_METRICS_PORT),
+        '--metrics-address', cfg.PROMETHEUS_METRICS_ADDRESS,
         '--api-socket', cfg.API_SOCKET_PATH,
     ]
     if cfg.LOG_VERBOSE:
