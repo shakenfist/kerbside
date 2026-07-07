@@ -434,12 +434,46 @@ was not run separately (it shares remote-viewer's spice-gtk client
 engine); ryll headless was not run this pass and remains a worthwhile
 follow-up capture.
 
-### Pre-push audit
+### Pre-push audit (2026-07-07)
 
-_(Run by the management session against
-`git diff origin/develop..HEAD` before this branch merges. Not yet
-completed as of this writing — do not treat phase 4 as audit-clean
-until that pass lands and this section is updated with its result.)_
+Ran the `PUSH-TEMPLATE.md` audit against `git diff origin/develop..HEAD`.
+Wave 1 (mechanical) was clean: Docker `make lint` (fmt + `clippy -D
+warnings`) and `make test` green, `flake8`/`py3` green, no
+`unsafe`/`unwrap`/`panic!`/`todo!` on any non-test enforcement path, no
+new TODO/FIXME. Wave 2 was two judgment passes — security and
+correctness/tests — on the internet-facing enforcement code. **No
+blocking, critical, or high findings.**
+
+The security pass verified as correct: the `header_checked` dedup (no
+frame can skip `check_header`, the rate counter cannot be under-counted),
+the guard ordering (absolute 16 MiB → L0 `check_header` before body
+buffering → L1 `inspect`, all fail-closed), panic-safety on untrusted
+input (all indexing bounded, shifts bounded to discriminants 1..=11, no
+overflow), warn-only isolation (the downgrade lives only in `apply`; the
+absolute guard and idle timeout are correctly NOT subject to it), and
+credential-log safety (token/ticket never logged). The correctness pass
+independently traced the `header_checked` dedup and the shared
+`VerdictTally` (single-task `select!`, losing pump's counts survive) and
+confirmed the `from_proto` bitmask and the Python↔Rust discriminant
+mapping.
+
+Two findings were fixed before push (commit `f060d73`):
+
+- **Firewall fail-open on misconfiguration** (security, MEDIUM):
+  `build_firewall_policy` now raises on an unknown
+  `FIREWALL_PERMITTED_CHANNELS` name instead of warn-and-skip — a typo'd
+  restrict-list no longer silently collapses to permit-all.
+- **check_header-exactly-once test** (correctness): a relay unit test
+  now guards the dedup invariant that drives the rate counter.
+
+Accepted / documented (not fixed): the idle-read timeout is a backstop
+that does not catch a slow-trickle client (bounded by the permit pool +
+the 16 MiB reassembly cap); the allowlist fails open by design
+(name-table-as-ground-truth); and the session channel-permit gate and
+the `relay::run` teardown audit-flush are covered by the 4f live run
+rather than unit tests (expensive to unit-test; their building blocks
+are individually covered). All re-validated: Rust 56 tests + clippy
+clean, Python `flake8`/`py3` clean, `pre-commit` clean.
 
 ## Back brief
 
