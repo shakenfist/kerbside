@@ -55,7 +55,12 @@ def build_firewall_policy():
         proto_mode = kerbside_pb2.FirewallPolicy.ENFORCE
 
     # Empty config -> empty permitted_channels, which the proxy reads as
-    # "permit all". A named channel maps to its ChannelType discriminant.
+    # "permit all". A named channel maps to its ChannelType discriminant. An
+    # UNKNOWN name is a hard error, not a skip: silently dropping a typo'd name
+    # would narrow the permitted set (or, if every name is invalid, leave it
+    # empty == permit-all) -- turning a policy meant to RESTRICT channels into
+    # a weaker or wide-open one. Fail closed and loud instead so the
+    # misconfiguration is caught rather than silently disabling the gate.
     permitted = []
     for name in (config.FIREWALL_PERMITTED_CHANNELS or '').split(','):
         name = name.strip().lower()
@@ -63,8 +68,10 @@ def build_firewall_policy():
             continue
         discriminant = CHANNEL_NAME_TO_DISCRIMINANT.get(name)
         if discriminant is None:
-            LOG.warning('Ignoring unknown firewall channel name %r' % name)
-            continue
+            raise ValueError(
+                'FIREWALL_PERMITTED_CHANNELS contains unknown channel name %r; '
+                'valid names: %s' % (
+                    name, ', '.join(sorted(CHANNEL_NAME_TO_DISCRIMINANT))))
         permitted.append(discriminant)
 
     return kerbside_pb2.FirewallPolicy(

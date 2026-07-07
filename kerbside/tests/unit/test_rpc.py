@@ -297,11 +297,13 @@ class BuildFirewallPolicyTestCase(testtools.TestCase):
             fp = servicer_module.build_firewall_policy()
         self.assertEqual(kerbside_pb2.FirewallPolicy.ENFORCE, fp.mode)
 
-    def test_unknown_channel_name_is_ignored(self):
+    def test_unknown_channel_name_is_rejected(self):
+        # A typo'd channel name must fail closed and loud, not be silently
+        # dropped (which would weaken a restrictive policy, or -- if every
+        # name is invalid -- leave permitted empty == permit-all).
         with mock.patch.object(servicer_module.config, 'FIREWALL_MODE',
                                'enforce'), \
              mock.patch.object(servicer_module.config,
                                'FIREWALL_PERMITTED_CHANNELS',
                                'main, bogus, display'):
-            fp = servicer_module.build_firewall_policy()
-        self.assertEqual([1, 2], list(fp.permitted_channels))
+            self.assertRaises(ValueError, servicer_module.build_firewall_policy)

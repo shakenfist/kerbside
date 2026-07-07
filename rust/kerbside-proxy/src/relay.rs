@@ -346,6 +346,8 @@ mod tests {
     use std::collections::VecDeque;
     use std::io;
     use std::pin::Pin;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
     use std::task::{Context, Poll};
     use tokio::io::ReadBuf;
 
@@ -405,6 +407,29 @@ mod tests {
             _: &[u8],
         ) -> Verdict {
             Verdict::Terminate
+        }
+    }
+
+    /// Test-only policy that counts `check_header` calls via a shared counter,
+    /// to prove the pump runs the L0 header check EXACTLY once per message even
+    /// when the message body is split across several reads (the `header_checked`
+    /// dedup invariant that guards the rate counter from double-counting).
+    struct CountingCheckPolicy {
+        header_checks: Arc<AtomicUsize>,
+    }
+    impl Policy for CountingCheckPolicy {
+        fn check_header(&mut self, _: Direction, _: ChannelType, _: &MessageHeader) -> Verdict {
+            self.header_checks.fetch_add(1, Ordering::Relaxed);
+            Verdict::Forward
+        }
+        fn inspect(
+            &mut self,
+            _: Direction,
+            _: ChannelType,
+            _: &MessageHeader,
+            _: &[u8],
+        ) -> Verdict {
+            Verdict::Forward
         }
     }
 
@@ -506,6 +531,34 @@ mod tests {
         let (out, result) = run_pump(chunks, PermissivePolicy).await;
         result.expect("pump returned an error");
         assert_eq!(out, whole, "split messages must reassemble unchanged");
+    }
+
+    #[tokio::test]
+    async fn check_header_runs_exactly_once_per_message_across_split_reads() {
+        // The L0 header check (which drives the rate counter) MUST run exactly
+        // once per message. This guards the `header_checked` dedup: a
+        // regression that re-ran check_header on every partial read would
+        // double-count a body that spans reads. One message, body split so its
+        // header completes in the second chunk and its body spans into a third.
+        let msg = make_message(101, b"a body that spans several reads");
+        let chunks = vec![
+            msg[..3].to_vec(),  // partial header (3 of 6 bytes)
+            msg[3..9].to_vec(), // finishes the header + a little body
+            msg[9..].to_vec(),  // the rest of the body
+        ];
+        let counter = Arc::new(AtomicUsize::new(0));
+        let policy = CountingCheckPolicy {
+            header_checks: Arc::clone(&counter),
+        };
+        let (out, result) = run_pump(chunks, policy).await;
+        result.expect("pump returned an error");
+        assert_eq!(out, msg, "the message must be forwarded intact");
+        assert_eq!(
+            counter.load(Ordering::Relaxed),
+            1,
+            "check_header must run exactly once per message even when the body \
+             is split across reads"
+        );
     }
 
     #[tokio::test]
