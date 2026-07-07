@@ -248,7 +248,118 @@ whole; 5g last. 5a/5b and 5c/5d can be developed in parallel worktrees.
 
 ## Outcome
 
-_(To be written when the phase completes.)_
+Completed 2026-07-08 on the kerbside `rust-proxy-phase-5` branch,
+unmerged and unpushed pending operator review and the pre-push audit
+(below). All planned steps landed. Every Rust step was built, linted
+(`clippy -D warnings`), and tested in the Docker build (60 tests as of
+5e, the last step to add Rust tests); every Python step passed
+`flake8`/`py3`.
+
+- 5a (`7f4c54b`): the Rust session cancellation registry —
+  `SessionRegistry` (`session.rs`) mapping `session_id ->
+  CancellationToken`, refcounted across a session's live channels and
+  removed when the last one ends; threaded into `relay::run` as a
+  third `select!` arm alongside the two pumps.
+- 5b (`0f9eacd`): wired `TerminateSession` to the registry
+  (`rpc.rs::run_proxy_control`, idempotent against a session this node
+  does not host) and added graceful drain on shutdown — `main.rs`
+  cancels every live session (`terminate_all()`) and waits up to a
+  10-second `DRAIN_TIMEOUT` for the active-connection gauge to reach
+  zero, replacing the phase-3 "detach and return" shutdown.
+- 5c (`44f4519`): the daemon supervises the Rust proxy —
+  `PROXY_IMPLEMENTATION` config (`python` default | `rust`),
+  `kerbside/proxy_supervisor.py` (`find_proxy_bin()`,
+  `build_proxy_argv()`, `launch_rust_proxy()`, `terminate_child()`), and
+  `main.py:daemon_run`'s `rust` branch: bind the gRPC server first (a
+  `Popen` child, unlike the multiprocessing fork, does not inherit its
+  fds/threads, so the ordering constraint that protects the Python-proxy
+  path does not apply here), launch, poll liveness, forward SIGTERM with
+  a 15-second deadline then SIGKILL, exit non-zero on child death.
+- 5d (`8664efe`): the cross-machine termination bridge — the
+  `session_terminations` table (migration `c4e7a1b9d2f3`;
+  `request_session_termination`, `get_terminations_for_node`,
+  `reap_session_terminations` in `db.py`), `api.py`'s
+  `ConsolesTerminate`/`SessionTerminate` recording the intent alongside
+  the existing token expire/remove, and `servicer.py::ProxyControl`
+  rewritten from a bare heartbeat generator to poll-and-push
+  `TerminateSession` for sessions terminated and live on the polling
+  node, interleaved with heartbeats and robust to transient DB errors.
+- 5e (`256e973`): the deferred phase-3/4 cleanups — a proxy
+  `--metrics-address` flag (default loopback, config
+  `PROMETHEUS_METRICS_ADDRESS`) decoupling `/metrics` from the public
+  VDI address, and daemon-startup firewall config validation
+  (`build_firewall_policy()` called once in `daemon_run` so a bad
+  `FIREWALL_PERMITTED_CHANNELS` fails fast and loud rather than failing
+  every `AuthorizeConnection` at runtime). Per-unary gRPC deadlines
+  stayed deferred (the UDS is local/trusted; a channel-wide timeout
+  would break the long-lived `ProxyControl` stream).
+- 5f (`fdc935d`): end-to-end live validation — a
+  `--terminate-after-seconds` / `MOCK_GRPC_TERMINATE_AFTER` option added
+  to `mock-grpc-server.py` so its `ProxyControl` stream emits a one-shot
+  `TerminateSession` a configurable number of seconds after the first
+  client authorization (firing reliably while a client is connected,
+  regardless of connect timing), and
+  `tools/direct-qemu/VERIFY-TERMINATION.md` recording the live result.
+
+Notable decisions, all deliberate and none revised from planning:
+
+- The two operator-level decisions held: a `session_terminations` intent
+  table (not an implicit token-absence signal, and not an API→daemon
+  RPC, which is impossible across machines / behind a load balancer),
+  and `PROXY_IMPLEMENTATION` defaulting to `python` so phase 5 is a
+  no-op for existing deployments until they opt in.
+- **In-flight termination is effective only where a proxy consumes
+  `ProxyControl` and acts on it — today, only the Rust proxy.** The
+  API's intent-write (step 1 of the bridge) is unconditional, and the
+  daemon's `ProxyControl` poll-and-push logic runs regardless of which
+  local proxy is configured, but the Python proxy has no `ProxyControl`
+  client at all, so a `PROXY_IMPLEMENTATION=python` node's in-flight
+  connections are unaffected by termination, unchanged from before this
+  phase — matching the plan's success criterion that the Python-proxy
+  path stays unchanged.
+- Subprocess supervision uses `subprocess.Popen`, not `os.execv`, per
+  the plan (the daemon must keep running to host the gRPC server and
+  the maintenance loop). The gRPC-server-bound-before-child-launch
+  ordering is the *opposite* of the Python-proxy path's
+  fork-before-server ordering, and for a different reason each way: the
+  multiprocessing fork must not inherit the gRPC C-core's fds/threads,
+  while the Rust child dials the UDS at its own startup and needs the
+  socket to already exist.
+- The drain deadline (10 s, Rust) and the daemon's SIGTERM-to-SIGKILL
+  deadline (15 s) were fixed as plan-recommended defaults, with the
+  daemon's deadline deliberately longer so the proxy gets first crack at
+  draining gracefully before being forced.
+- `find_proxy_bin()` hard-fails (`RuntimeError` naming every searched
+  location) at launch time when `PROXY_IMPLEMENTATION=rust` and no
+  binary is found, per the plan's recommended answer to that open
+  question.
+
+### Live termination validation (step 5f, 2026-07-08)
+
+Full results are in `tools/direct-qemu/VERIFY-TERMINATION.md`. Summary:
+`remote-viewer` was driven through the release proxy binary against the
+`uncalibrated-sextant.qcow2` guest under qemu, establishing its 4 core
+channels (`authorized_total=4`: main, display, inputs, cursor). 15
+seconds after the first authorization the mock's `ProxyControl` stream
+emitted `TerminateSession(session_id=rust-proxy-verify-session)`; the
+proxy log showed the event received with `terminated=true` (the session
+was found in the registry) followed by four `session terminated by
+control plane; ending relay` lines, one per channel, and
+`remote-viewer`'s process exited as its streams closed. **PASS**: a
+live, connected session was dropped by a control-plane
+`TerminateSession`, with the proxy log (not a coarse `/metrics` poll,
+which could miss the simultaneous-teardown window) as the definitive
+oracle. The Python half of the bridge (the intent table, the API write,
+`ProxyControl`'s node-scoped selection, and the reaper) is covered by
+the `kerbside/tests/unit` suite rather than this live run; the full
+daemon+API+MariaDB path with a deterministic headless client (ryll) is
+recorded as the natural phase-7 CI-lane driver.
+
+### Pre-push audit
+
+_(Placeholder — the management session runs the `PUSH-TEMPLATE.md`
+audit against `git diff origin/develop..HEAD` before push and records
+the result here. This Outcome does not claim the audit has passed.)_
 
 ## Back brief
 

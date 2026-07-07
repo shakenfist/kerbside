@@ -48,12 +48,16 @@ tokens, and relays traffic bidirectionally between client and server.
 The main entry point orchestrates the system lifecycle:
 
 - Parses source configuration from `sources.yaml`
-- Spawns the proxy process as a subprocess
+- Spawns the proxy as a subprocess — either the in-process Python proxy
+  (`multiprocessing.Process`, the default) or, when `PROXY_IMPLEMENTATION=rust`,
+  the `kerbside-proxy` binary as a supervised child (`kerbside/proxy_supervisor.py`;
+  see "Rust proxy supervision" below)
 - Hosts the control-plane gRPC service (see below) on a background
   thread over a unix domain socket
 - Runs a maintenance loop every 60 seconds to:
   - Refresh console listings from configured sources
   - Reap expired authentication tokens
+  - Reap expired `session_terminations` intent rows (phase 5, see below)
   - Handle source configuration changes
 
 ### 2. Control-plane gRPC service (`rpc/`)
@@ -79,7 +83,12 @@ gRPC status codes.
 | `RecordAuditEvent` | `add_audit_event` | Write an audit event |
 | `DeregisterChannel` | `remove_channel_by_ref` | Remove a channel at teardown |
 | `ClearNodeChannels` | `remove_node_channels` | Clear stale channel rows at proxy startup |
-| `ProxyControl` (streaming) | — | Daemon→proxy control channel (session termination / policy push); a keepalive stub today, real events land with the Rust proxy work |
+| `ProxyControl` (streaming) | `get_terminations_for_node` | Daemon→proxy control channel: interleaves `Heartbeat`s with real `TerminateSession` events (phase 5) for sessions marked for termination that are live on this node; policy push is future work |
+
+`ProxyControl` is deliberately **local only** — one stream between a daemon
+and the single proxy it supervises on the same host, over the same UDS as
+every other RPC. It is not a mechanism for reaching a proxy on another
+machine (see "Session termination" below).
 
 The `.proto` is compiled with `tox -egenprotos` (see
 `tools/gen-protos.sh`); generated stubs are checked in under
@@ -125,9 +134,80 @@ processes. Rather than accessing the database directly, it consults the
 control-plane gRPC service (component 2) over the unix socket for
 authorization and channel/audit bookkeeping, and it reuses the ryll
 `shakenfist-spice-protocol` crate for the SPICE wire format. It exposes its
-own Prometheus `/metrics` endpoint. The Python proxy remains the active
-proxy until the Rust proxy is wired into the daemon and cut over in later
-phases; see `docs/plans/PLAN-rust-proxy.md`.
+own Prometheus `/metrics` endpoint, bound to its own `--metrics-address`
+(default loopback, config `PROMETHEUS_METRICS_ADDRESS`) rather than the
+public VDI address, since the endpoint is unauthenticated. The Python proxy
+remains the **default**, active proxy; a deployment opts into the Rust
+proxy with `PROXY_IMPLEMENTATION=rust`. Full cutover (flipping the default
+and removing the Python path) is a later phase; see
+`docs/plans/PLAN-rust-proxy.md`.
+
+**Rust proxy supervision (phase 5).** When `PROXY_IMPLEMENTATION=rust`,
+`daemon_run` (`main.py`) binds the gRPC UDS server *first* — the proxy
+dials it at startup (`ClearNodeChannels`) and lazily thereafter, so the
+socket must already exist — then launches `kerbside-proxy` as a
+`subprocess.Popen` child via `kerbside/proxy_supervisor.py`:
+`find_proxy_bin()` resolves the binary (`KERBSIDE_PROXY_BIN` env override →
+`PATH` → the in-repo dev build dir; an installed-wheel PATH entry is phase
+6) and `build_proxy_argv()` maps config to the proxy's CLI flags (the
+firewall knobs are NOT among them — they are delivered per connection over
+gRPC, see below). The daemon polls child liveness each second; on SIGTERM
+it forwards SIGTERM to the child with a 15-second deadline (longer than the
+proxy's own 10-second drain, so the proxy can finish draining first) before
+SIGKILLing it, and exits non-zero if the child dies unexpectedly — the same
+supervision contract the Python-proxy fork has always had. The
+Python-proxy path (the default) is unchanged.
+
+**Session termination drops in-flight connections, on the Rust proxy
+(phase 5).** Before phase 5, the API's terminate endpoints only
+deleted/expired the DB token, which blocked *new* connections; an
+already-connected client kept its SPICE channels open until it
+disconnected itself. Kerbside can run distributed — the REST API and proxy
+nodes may be on different machines, and a load balancer can spread one
+session's channels across several proxy nodes — so the API cannot signal a
+specific proxy directly; the shared MariaDB is the only bus every
+component can reach. Termination is therefore threaded through the
+database as an explicit intent, unconditionally (the API always records
+the intent, regardless of `PROXY_IMPLEMENTATION`):
+
+1. `ConsolesTerminate`/`SessionTerminate` (`api.py`) keep the existing
+   token expire/remove and additionally insert a `session_terminations`
+   row (`session_id`, `requested_at`, `reason`) via `db.py`'s
+   `request_session_termination`.
+2. Each proxy node's daemon, in its local `ProxyControl` stream handler
+   (`servicer.py`), polls `get_terminations_for_node(NODE_NAME)` — the
+   sessions that are BOTH marked for termination AND have a live
+   `proxychannels` row on this node — and pushes a `TerminateSession`
+   event for each one not already sent on this stream, interleaved with
+   heartbeats. A session only live on another node is that node's job; a
+   merely-expired (not explicitly terminated) token is never pushed.
+3. The Rust proxy's `SessionRegistry` (`session.rs`) maps `session_id ->
+   CancellationToken`, refcounted across that session's channels. On
+   `TerminateSession` (`rpc.rs::run_proxy_control`), the registry cancels
+   the token; the relay's `select!` (`relay.rs`) has a third arm on
+   `token.cancelled()` alongside the two pumps, so every channel of the
+   session tears down cleanly and the client is disconnected. Cancelling
+   an unregistered/already-gone session is a harmless no-op, so a late or
+   duplicate event (a node that pushed the same id twice, or one that
+   arrives after the session already ended) is safe.
+4. A TTL reaper in the maintenance loop (`reap_session_terminations`,
+   5-minute default) deletes aged intent rows once every node has had time
+   to poll and act.
+
+Only the Rust proxy consumes `ProxyControl` and acts on step 3 today; the
+Python proxy has no `ProxyControl` client. So while the API's intent-write
+in step 1 is unconditional, in-flight drop only happens on a node running
+`PROXY_IMPLEMENTATION=rust` — the default `python` deployment is
+unchanged (in-flight connections still outlive termination until the
+client disconnects itself).
+
+**Graceful drain on shutdown (Rust, phase 5).** On SIGTERM,
+`shutdown_signal` stops the proxy's listeners from accepting new
+connections, cancels every live session via the same `SessionRegistry`
+(`terminate_all`), then waits up to a 10-second deadline for the active
+connection count to reach zero before the process exits — sized below the
+daemon's 15-second SIGTERM-to-SIGKILL window so a supervised restart drains
+in-flight sessions rather than abruptly cutting them.
 
 The relay is inspection-first: every framed SPICE message is passed through
 a `Policy` (the `Policy`/`Verdict` seam) before being forwarded, and as of

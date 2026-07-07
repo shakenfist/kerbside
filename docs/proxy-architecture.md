@@ -539,6 +539,164 @@ proxy: L2 body validation (scancode ranges, clipboard/file-transfer/
 usbredir device-class filtering), session recording, and L3
 rewriting/injection.
 
+## Rust Proxy: Process Supervision and Session Termination
+
+Phase 5 (`docs/plans/PLAN-rust-proxy-phase-05-daemon-integration.md`) makes
+the Python daemon able to **run** the Rust proxy, and makes API-driven
+session termination actually drop in-flight connections rather than only
+blocking new ones.
+
+### Process model: the daemon supervises the Rust proxy as a child
+
+`PROXY_IMPLEMENTATION` (`python` default, or `rust`) selects which proxy
+`kerbside daemon run` starts:
+
+```
++---------------------------+
+|    kerbside-daemon        |  main.py:daemon_run
+|    (main.py)               |  - binds the gRPC UDS server FIRST
++-------------+-------------+
+              |
+              | subprocess.Popen (PROXY_IMPLEMENTATION=rust)
+              v
++---------------------------+
+|    kerbside-proxy         |  the Rust binary (rust/kerbside-proxy/)
+|    (async tokio tasks)    |  - dials the gRPC UDS at startup
++---------------------------+  (ClearNodeChannels) and lazily thereafter
+```
+
+This is a *sibling* of the existing Python-proxy fork (component 1 in
+`ARCHITECTURE.md`), not a replacement of it — the default remains the
+Python proxy, unchanged. When `rust` is configured:
+
+- The gRPC UDS server is bound **before** the child is launched, because
+  the Rust proxy dials it at startup and would fail if the socket did not
+  yet exist. (For the Python-proxy path the ordering is reversed for an
+  unrelated reason — see `ARCHITECTURE.md` component 2 — because that
+  proxy is a fork, not a subprocess, and must not inherit the gRPC
+  server's fds/threads.)
+- `kerbside/proxy_supervisor.py`'s `find_proxy_bin()` resolves the binary
+  (env `KERBSIDE_PROXY_BIN` → `PATH` → the in-repo `target/{release,debug}`
+  dev build dir) and `build_proxy_argv()` maps config to the proxy's CLI
+  flags (`--vdi-address`, `--secure-port`, `--cert`, `--metrics-address`,
+  etc.) — the firewall knobs are excluded, since those are delivered
+  per-connection over gRPC (see the firewall section above), not on the
+  command line.
+- The daemon polls the child's liveness every second (mirroring the
+  Python-proxy fork's supervision loop) and forwards SIGTERM with a
+  15-second deadline before SIGKILLing it; exits non-zero if the child
+  dies unexpectedly. The 15-second deadline is sized above the proxy's own
+  10-second graceful-drain window (below), so the daemon gives the proxy a
+  chance to drain before forcing it.
+
+### Session termination: dropping in-flight connections
+
+Before phase 5, `ConsolesTerminate`/`SessionTerminate` only removed or
+expired the DB token, which blocks a **new** connection attempt; a client
+already connected kept its channels open until it disconnected itself —
+there was no path from "the API terminated this session" to "the proxy
+holding that session's sockets finds out".
+
+**The distributed-deployment constraint.** Kerbside can run with the REST
+API and the proxy processes on different machines (the proxy is often
+sized separately from the API), and proxies can sit behind a load balancer
+so that different channels of the *same* session land on *different* proxy
+nodes. The only component every one of these can reach is the shared
+MariaDB — there is no API→proxy or proxy→proxy RPC across machines. The
+`ProxyControl` gRPC stream, by contrast, is strictly **local**: one stream
+between a daemon and the single proxy it supervises on the same host, over
+the same UDS as every other RPC in the table above. Termination therefore
+has to be a DB-mediated intent that each node acts on independently for
+the channels it happens to hold:
+
+```
+REST API                         Proxy node A              Proxy node B
+(may be elsewhere)                (holds channels           (holds other
+                                    1,2 of session S)         channels of S)
+    |                                   |                          |
+    | INSERT session_terminations(S)    |                          |
+    v                                   |                          |
++----------+                            |                          |
+| MariaDB  | <--- polls get_terminations_for_node("A") ------------+
+| (only    | <--- polls get_terminations_for_node("B") -------------------+
+|  shared  |                            |                          |
+|  bus)    |                            |                          |
++----------+                            |                          |
+                                         v                          v
+                              ProxyControl: TerminateSession(S)   ...same...
+                                         |
+                                         v
+                          Rust proxy: SessionRegistry.terminate(S)
+                                         |
+                                         v
+                    relay::run's select! sees token.cancelled() -> teardown
+                    (once per channel this node holds -- here, 2 relays end)
+```
+
+Concretely:
+
+1. **API** (`api.py`, `ConsolesTerminate`/`SessionTerminate`): keeps the
+   existing token expire/remove and additionally calls
+   `db.request_session_termination(session_id, reason)`, which
+   upserts a row into the new `session_terminations` table
+   (`session_id` primary key, `requested_at`, optional `reason`; migration
+   `c4e7a1b9d2f3`). Idempotent — re-terminating an already-terminated
+   session just refreshes `requested_at`.
+2. **Daemon** (`servicer.py::ProxyControl`, one stream per local proxy):
+   each poll interval, calls `db.get_terminations_for_node(NODE_NAME)` —
+   an intersection of `session_terminations` with this node's live
+   `proxychannels` rows — and yields a `TerminateSession(session_id)` for
+   every id not already sent on this stream, interleaved with `Heartbeat`s
+   so the stream stays alive between events. A DB error is logged and the
+   loop continues rather than killing the stream. Natural token *expiry*
+   (no explicit termination) is never pushed — this matches the Python
+   proxy's existing behaviour, where expiry only blocks new connections.
+3. **Rust proxy** (`session.rs::SessionRegistry`, `rpc.rs::
+   run_proxy_control`): a `Mutex<HashMap<session_id, CancellationToken>>`
+   refcounted across the session's live channels (one entry per session,
+   incremented on each channel's registration, decremented and removed on
+   the last channel's teardown). Receiving `TerminateSession` cancels the
+   token; `relay.rs`'s `select!` gained a third arm on
+   `token.cancelled()` alongside the two pumps, so every channel of the
+   session this node holds tears down cleanly (no error, same shape as a
+   protocol-level `Terminate` verdict) and the client is disconnected.
+   Cancelling an unknown or already-torn-down session is a no-op, so a
+   late or duplicate push (another node's poll cycle, a retry) is safe.
+4. **Reaper** (daemon maintenance loop, `reap_session_terminations`):
+   deletes `session_terminations` rows older than 5 minutes — long past
+   the point every node has polled and acted — keeping the table small.
+
+The API always records the intent (step 1 is unconditional), but step 3 —
+acting on `TerminateSession` — only happens where a proxy actually consumes
+`ProxyControl`. Today that is the Rust proxy only; the Python proxy has no
+`ProxyControl` client, so a `PROXY_IMPLEMENTATION=python` node's in-flight
+connections still survive a termination request until the client
+disconnects itself, exactly as before phase 5.
+
+### Graceful drain on shutdown (Rust)
+
+On SIGTERM, the proxy's `shutdown_signal` future resolving triggers the
+same teardown path used for termination: it stops the listeners from
+accepting new connections, then calls `SessionRegistry::terminate_all()`
+(cancelling every live session's token at once) and waits up to a
+10-second deadline for the active-connection count (the same gauge behind
+`/metrics`) to reach zero before returning. The 10-second drain deadline is
+deliberately shorter than the daemon's 15-second SIGTERM-to-SIGKILL window
+above it, so a supervised restart lets in-flight sessions finish tearing
+down on their own terms rather than being cut off mid-drain by the
+daemon's SIGKILL.
+
+### Verifying it live
+
+`tools/direct-qemu/VERIFY-TERMINATION.md` drives this end to end against a
+real client: the mock gRPC server's `ProxyControl` stream emits a one-shot
+`TerminateSession` a configurable number of seconds after the first
+authorization (`MOCK_GRPC_TERMINATE_AFTER`), standing in for the
+API→DB→daemon-poll leg so the harness can exercise just the proxy side
+live. A recorded run against `remote-viewer` shows all four of its
+channels (main, display, inputs, cursor) torn down by a single
+`TerminateSession` event.
+
 ## Related Documentation
 
 - [Protocol Overview](protocol-overview.md) - SPICE protocol introduction

@@ -26,6 +26,9 @@ SPICE protocol negotiation, authentication, and bidirectional traffic relay.
 | `rust/kerbside-proxy/` | Rust reimplementation of the SPICE proxy (in progress): TLS termination, handshake, gRPC-authorised inspection-first relay that enforces an L0+L1 SPICE firewall (phase 4). Builds in Docker via its Makefile |
 | `rust/kerbside-proxy/src/policy.rs` | The `Policy`/`Verdict` seam and the phase-4 firewall engine: `FirewallPolicy` (tunable knobs), `EnforcementMode` (Enforce/WarnOnly), `EnforcingPolicy` (L0 size/rate caps + L1 allowlist lookup), `VerdictTally` (coalesced per-connection audit) |
 | `rust/kerbside-proxy/src/allowlist.rs` | The compiled-in L1 message-type grammar: `classify(channel, dir, msg_type) -> Allowed \| Disallowed \| ChannelUnmodeled`, derived from the ryll `shakenfist-spice-protocol` name tables |
+| `kerbside/proxy_supervisor.py` | Phase 5: launches/supervises the Rust `kerbside-proxy` binary as a daemon child when `PROXY_IMPLEMENTATION=rust` — `find_proxy_bin()` (env/PATH/dev-build resolution), `build_proxy_argv()` (config → CLI flags), `terminate_child()` (SIGTERM-then-SIGKILL with a deadline) |
+| `kerbside/db.py` (`SessionTermination`, migration `c4e7a1b9d2f3`) | Phase 5: the `session_terminations` intent table (`request_session_termination`, `get_terminations_for_node`, `reap_session_terminations`) that bridges API-driven termination to each proxy node's local `ProxyControl` push — see "Session termination" below |
+| `rust/kerbside-proxy/src/session.rs` (`SessionRegistry`) | Phase 5: the `session_id -> CancellationToken` registry the relay's `select!` and `ProxyControl`'s `TerminateSession` handler share, plus the shutdown-time `terminate_all()` drain |
 | `kerbside/sources/static.py` | Static source driver: reads VM-to-console mapping from an inline list in sources.yaml; designed for CI pipelines and ad-hoc debugging (no control plane required) |
 
 ## Architecture Patterns
@@ -150,6 +153,42 @@ capture) via `verify-rust-proxy.sh assert-firewall`. Any non-zero
 a size cap needs widening — never the verdict weakening. The same harness
 also has a deny-token/deny-all mode for exercising the
 `PermissionDenied` denial path end to end.
+
+#### Daemon supervision + session termination (phase 5)
+
+`PROXY_IMPLEMENTATION` (`kerbside/config.py`, default `python`) selects
+whether `kerbside daemon run` forks the in-process Python proxy (unchanged
+default) or supervises the Rust `kerbside-proxy` binary as a child via
+`kerbside/proxy_supervisor.py`. When `rust`, the daemon binds the gRPC UDS
+server before launching the child (the proxy dials it at startup), polls
+child liveness, and forwards SIGTERM with a 15-second deadline before
+SIGKILLing — exiting non-zero if the child dies. The proxy binds its
+`/metrics` server on its own `--metrics-address` (default loopback, config
+`PROMETHEUS_METRICS_ADDRESS`) rather than the public VDI address.
+
+API-driven session termination now drops in-flight connections, not just
+new ones. Because the REST API and proxy nodes may be on different
+machines (and a load-balanced session's channels may span nodes), the only
+shared bus is the database: `ConsolesTerminate`/`SessionTerminate`
+(`api.py`) insert a `session_terminations` intent row; each node's daemon
+polls it (scoped to sessions live on that node) in its `ProxyControl`
+handler (`servicer.py`) and pushes `TerminateSession`; the Rust proxy's
+`SessionRegistry` (`session.rs`) cancels that session's shared
+`CancellationToken`, and the relay's `select!` (`relay.rs`) tears every
+channel down. A TTL reaper cleans up old intent rows. The API always
+records the intent regardless of `PROXY_IMPLEMENTATION`, but only the Rust
+proxy consumes `ProxyControl` today — a `python`-mode node's in-flight
+connections are unaffected, unchanged from before phase 5. See
+`docs/proxy-architecture.md` ("Rust Proxy: Process Supervision and Session
+Termination") for the full flow and `ARCHITECTURE.md` for the
+distributed-deployment rationale.
+
+To validate live termination against a real client without a full
+API+daemon+MariaDB stack, use `tools/direct-qemu/VERIFY-TERMINATION.md`:
+the mock gRPC server's `ProxyControl` stream emits a one-shot
+`TerminateSession` a configurable number of seconds after the first
+authorization (`MOCK_GRPC_TERMINATE_AFTER`), standing in for the API/DB
+leg so the harness exercises the proxy-side cancellation path live.
 
 ### Modifying SPICE Protocol Handling
 

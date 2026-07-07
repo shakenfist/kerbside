@@ -50,6 +50,7 @@ These settings configure Keystone integration for OpenStack deployments.
 | PUBLIC_SECURE_PORT | Integer (default 5900) | Port secure connections should connect to on the PUBLIC_FQDN. This can be different from VDI_SECURE_PORT if there is a load balancing layer in front of Kerbside. |
 | PUBLIC_INSECURE_PORT | Integer (default 5901) | Port insecure connections should connect to on the PUBLIC_FQDN. This can be different from VDI_INSECURE_PORT if there is a load balancing layer in front of Kerbside. |
 | NODE_NAME | String (default "kerbside") | A unique name for each machine or container running the VDI proxy. This is used for logging and tracking purposes. |
+| PROXY_IMPLEMENTATION | String (default "python") | Which SPICE proxy the daemon runs: "python" (the in-process multiprocessing proxy) or "rust" (the kerbside-proxy binary, supervised as a child process). The default flips to "rust" at cutover. Only the Rust proxy honours API-driven termination of in-flight connections. |
 | VDI_ADDRESS | String (default 0.0.0.0) | The IPv4 address to bind the SPICE proxy to. |
 | VDI_SECURE_PORT | Integer (default 5900) | The port the VDI proxy will serve TLS SPICE sessions over. |
 | VDI_INSECURE_PORT | Integer (default 5901) | The port the VDI proxy will serve insecure SPICE sessions over. These insecure sessions are only used to redirect the user to the secure port. |

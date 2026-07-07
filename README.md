@@ -15,14 +15,25 @@ Fist just yet.
 The SPICE proxy is being reimplemented in Rust (`rust/kerbside-proxy/`) for
 performance and safety, and to give room for deeper SPICE traffic inspection
 over time. The Rust proxy consults the Python side over a gRPC control
-socket for authorization and bookkeeping; the Python proxy remains active
-until the rewrite is cut over. The Rust proxy also acts as an enforcing
-SPICE application firewall (L0 resource limits + L1 message-type grammar),
-on by default, with a warn-only mode available for validating a
-deployment's traffic before enabling enforcement; see
+socket for authorization and bookkeeping; the Python proxy remains the
+**default, active proxy** until the rewrite is cut over. The Rust proxy
+also acts as an enforcing SPICE application firewall (L0 resource limits +
+L1 message-type grammar), on by default, with a warn-only mode available
+for validating a deployment's traffic before enabling enforcement; see
 `docs/configuration.md` for the `FIREWALL_MODE` /
 `FIREWALL_PERMITTED_CHANNELS` knobs. L2 body validation and session
-recording are future work. See `docs/plans/PLAN-rust-proxy.md`,
+recording are future work.
+
+Setting `PROXY_IMPLEMENTATION=rust` opts a deployment into running the
+`kerbside daemon` as a supervisor of the Rust proxy binary instead of the
+in-process Python proxy. With the Rust proxy, terminating a session via the
+REST API now drops that session's in-flight connections too (previously
+only new connections were blocked) — see `ARCHITECTURE.md` for how
+termination is bridged through the database to work across
+distributed/load-balanced proxy nodes. The default `PROXY_IMPLEMENTATION=
+python` deployment is unchanged: in-flight connections still survive until
+the client disconnects itself. Full cutover to the Rust proxy as the
+default is a later phase. See `docs/plans/PLAN-rust-proxy.md`,
 `ARCHITECTURE.md`, and `tools/direct-qemu/VERIFY-RUST-PROXY.md`.
 
 ## Documentation
