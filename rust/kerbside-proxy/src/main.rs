@@ -13,6 +13,7 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -153,7 +154,7 @@ async fn main() -> Result<()> {
     let state = Arc::new(session::SharedState {
         rpc,
         node_name: args.node_name.clone(),
-        sessions: session::SessionRegistry::default(),
+        sessions: Arc::new(session::SessionRegistry::default()),
     });
 
     // Drop any stale channel rows this node left behind (e.g. from a crash or
@@ -170,19 +171,28 @@ async fn main() -> Result<()> {
         );
     }
 
-    // Consume the ProxyControl event stream in the background. This phase
-    // only logs events (heartbeats, TerminateSession) -- acting on them is
-    // phase 5. A failure to even open the stream (e.g. the daemon is not up
-    // yet) is logged and the task simply ends; it is not reconnected this
-    // phase.
+    // Consume the ProxyControl event stream in the background: heartbeats are
+    // logged, TerminateSession cancels the session's in-flight channels via the
+    // shared registry. A failure to even open the stream (e.g. the daemon is
+    // not up yet) is logged and the task simply ends; it is not reconnected
+    // this phase.
     {
         let state = state.clone();
         tokio::spawn(async move {
-            if let Err(e) = state.rpc.run_proxy_control(state.node_name.clone()).await {
+            let sessions = state.sessions.clone();
+            if let Err(e) = state
+                .rpc
+                .run_proxy_control(state.node_name.clone(), sessions)
+                .await
+            {
                 warn!(error = %e, "ProxyControl consumer task ended with an error");
             }
         });
     }
+
+    // Kept for the graceful-drain step on shutdown (below); cloned before the
+    // secure handler moves `state`.
+    let drain_sessions = state.sessions.clone();
 
     let acceptor = tls::load_acceptor(&args.cert, &args.cert_key).with_context(|| {
         format!(
@@ -242,15 +252,52 @@ async fn main() -> Result<()> {
             res.context("Prometheus metrics server failed")?;
         }
         () = shutdown_signal() => {
-            info!("shutdown signal received; shutting down");
+            // The `select!` returning here stops the accept loops (no new
+            // connections). Terminate in-flight sessions so their relays tear
+            // down cleanly (close sockets, flush audit) rather than being
+            // abruptly dropped when the runtime stops, then wait for the active
+            // count to reach zero within a deadline. Pairs with the daemon
+            // supervisor's SIGTERM-then-SIGKILL (its deadline is longer).
+            let active = metrics::active_connections();
+            info!(
+                active,
+                drain_timeout_secs = DRAIN_TIMEOUT.as_secs(),
+                "shutdown signal received; draining in-flight sessions"
+            );
+            drain_sessions.terminate_all();
+            drain_in_flight(DRAIN_TIMEOUT).await;
         }
     }
 
-    // In-flight connection tasks are detached, not drained, when we return
-    // here: they keep running until they finish on their own, but nothing
-    // waits for them. A full graceful drain (stop accepting, wait for
-    // in-flight sessions with a deadline) is a phase-5 nicety.
     Ok(())
+}
+
+/// Deadline for the graceful drain on shutdown: how long to wait for in-flight
+/// sessions to tear down before returning (after which the runtime drops any
+/// stragglers). Sized below the daemon supervisor's SIGTERM-then-SIGKILL
+/// window so the proxy exits cleanly first.
+const DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Poll the active-connection gauge until it reaches zero or `deadline`
+/// elapses, so a clean shutdown waits for terminated sessions to finish
+/// tearing down instead of dropping them mid-relay.
+async fn drain_in_flight(deadline: Duration) {
+    let start = tokio::time::Instant::now();
+    loop {
+        let active = metrics::active_connections();
+        if active <= 0 {
+            info!("all in-flight sessions drained");
+            return;
+        }
+        if start.elapsed() >= deadline {
+            warn!(
+                active,
+                "drain deadline reached; exiting with sessions still in flight"
+            );
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 }
 
 /// Resolve once either Ctrl-C or SIGTERM is received.

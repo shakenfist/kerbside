@@ -192,6 +192,12 @@ pub fn connection_guard() -> ConnectionGuard {
     ConnectionGuard { _private: () }
 }
 
+/// The current number of active (in-flight) connections. Used by the shutdown
+/// drain to wait for sessions to finish tearing down.
+pub fn active_connections() -> i64 {
+    ACTIVE_CONNECTIONS.get()
+}
+
 /// Render the current registry in Prometheus text exposition format.
 fn gather_text() -> Result<Vec<u8>> {
     let metric_families = REGISTRY.gather();

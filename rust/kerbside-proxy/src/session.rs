@@ -94,10 +94,6 @@ impl SessionRegistry {
     /// Cancel every live channel of `session_id`. Returns whether the session
     /// was present; terminating an unknown/already-gone session is a harmless
     /// no-op (idempotent), so the caller need not check.
-    ///
-    /// `#[allow(dead_code)]`: the caller (`run_proxy_control`'s
-    /// `TerminateSession` arm) is wired in step 5b, which removes this allow.
-    #[allow(dead_code)]
     pub fn terminate(&self, session_id: &str) -> bool {
         let map = self.inner.lock().expect("session registry mutex poisoned");
         match map.get(session_id) {
@@ -107,6 +103,17 @@ impl SessionRegistry {
             }
             None => false,
         }
+    }
+
+    /// Cancel every live session (graceful shutdown). Returns how many were
+    /// cancelled. Each session's relays then tear down cleanly, so a drain can
+    /// wait for the active-connection count to fall to zero.
+    pub fn terminate_all(&self) -> usize {
+        let map = self.inner.lock().expect("session registry mutex poisoned");
+        for entry in map.values() {
+            entry.token.cancel();
+        }
+        map.len()
     }
 }
 
@@ -119,8 +126,10 @@ pub struct SharedState {
     pub rpc: KerbsideRpc,
     pub node_name: String,
     /// Per-session cancellation registry (phase 5): the `ProxyControl`
-    /// consumer terminates a session by cancelling its token here.
-    pub sessions: SessionRegistry,
+    /// consumer terminates a session by cancelling its token here. Held behind
+    /// its own `Arc` so it can be cloned into the ProxyControl consumer task
+    /// and the shutdown drain independently of the rest of `SharedState`.
+    pub sessions: Arc<SessionRegistry>,
 }
 
 /// Overall time budget for the client-facing handshake reads/writes (link
@@ -409,6 +418,16 @@ mod tests {
             !two.is_cancelled(),
             "terminating one session must not affect another"
         );
+    }
+
+    #[test]
+    fn terminate_all_cancels_every_registered_session() {
+        let reg = SessionRegistry::default();
+        let a = reg.register("s-a");
+        let b = reg.register("s-b");
+        assert_eq!(reg.terminate_all(), 2, "both sessions counted");
+        assert!(a.is_cancelled());
+        assert!(b.is_cancelled());
     }
 
     /// The channel-type mapping is the contract between the raw link-message

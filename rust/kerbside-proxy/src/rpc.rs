@@ -14,12 +14,14 @@
 //! underlying channel), so each method clones the stub for its call.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
 use tonic::transport::{Channel, Endpoint, Uri};
 use tracing::{debug, info, warn};
 
 use crate::pb;
+use crate::session::SessionRegistry;
 use hyper_util::rt::TokioIo;
 use tokio::net::UnixStream;
 use tower::service_fn;
@@ -241,11 +243,15 @@ impl KerbsideRpc {
 
     /// ProxyControl: open the server-streaming control channel and consume it.
     ///
-    /// This phase only logs the events it receives; session termination and
-    /// policy push are wired up in phase 5. It is intended to be run as a
-    /// spawned background task: it loops until the stream ends or errors, logs
-    /// the outcome, and returns.
-    pub async fn run_proxy_control(&self, node: String) -> Result<()> {
+    /// Acts on `TerminateSession` by cancelling the session in `sessions`
+    /// (dropping all of this node's in-flight channels for it); heartbeats are
+    /// logged. Intended to run as a spawned background task: it loops until the
+    /// stream ends or errors, logs the outcome, and returns.
+    pub async fn run_proxy_control(
+        &self,
+        node: String,
+        sessions: Arc<SessionRegistry>,
+    ) -> Result<()> {
         let request = pb::ProxyControlRequest { node: node.clone() };
 
         let mut client = self.client.clone();
@@ -264,11 +270,16 @@ impl KerbsideRpc {
                         debug!(node = %node, "ProxyControl heartbeat");
                     }
                     Some(pb::proxy_control_event::Event::TerminateSession(ts)) => {
-                        // Phase 5 acts on this; for now we only observe it.
+                        // Cancel every in-flight channel of the session on this
+                        // node. Idempotent: a session we do not host (its
+                        // channels may be on other nodes behind a load balancer)
+                        // is simply not found.
+                        let hit = sessions.terminate(&ts.session_id);
                         info!(
                             node = %node,
                             session_id = %ts.session_id,
-                            "ProxyControl TerminateSession event (no-op this phase)"
+                            terminated = hit,
+                            "ProxyControl TerminateSession event"
                         );
                     }
                     None => {
@@ -396,12 +407,21 @@ mod tests {
             &self,
             _request: Request<pb::ProxyControlRequest>,
         ) -> std::result::Result<Response<Self::ProxyControlStream>, Status> {
-            // Emit one heartbeat then close the stream.
-            let (tx, rx) = tokio::sync::mpsc::channel(1);
+            // Emit one heartbeat and one TerminateSession, then close.
+            let (tx, rx) = tokio::sync::mpsc::channel(2);
             tokio::spawn(async move {
                 let _ = tx
                     .send(Ok(pb::ProxyControlEvent {
                         event: Some(pb::proxy_control_event::Event::Heartbeat(pb::Heartbeat {})),
+                    }))
+                    .await;
+                let _ = tx
+                    .send(Ok(pb::ProxyControlEvent {
+                        event: Some(pb::proxy_control_event::Event::TerminateSession(
+                            pb::TerminateSession {
+                                session_id: "term-me".to_string(),
+                            },
+                        )),
                     }))
                     .await;
             });
@@ -487,13 +507,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn proxy_control_consumes_stream() {
+    async fn proxy_control_consumes_stream_and_terminates_session() {
         let (client, _dir) = spawn_mock().await;
-        // The mock emits a heartbeat then closes; the consumer should return
-        // Ok once the stream ends.
+        // A session registered here; the mock will emit TerminateSession for it.
+        let sessions = Arc::new(crate::session::SessionRegistry::default());
+        let token = sessions.register("term-me");
+        // The mock emits a heartbeat + a TerminateSession then closes; the
+        // consumer should act on the terminate and return Ok once the stream
+        // ends.
         client
-            .run_proxy_control("node".to_string())
+            .run_proxy_control("node".to_string(), sessions.clone())
             .await
             .expect("run_proxy_control");
+        assert!(
+            token.is_cancelled(),
+            "TerminateSession must cancel the registered session"
+        );
     }
 }
