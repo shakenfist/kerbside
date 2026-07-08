@@ -1,11 +1,10 @@
 """Launch and supervise the Rust kerbside-proxy as a child process.
 
-Phase 5: when PROXY_IMPLEMENTATION is "rust", the daemon runs the Rust proxy
-binary as a supervised child instead of forking the in-process Python proxy.
-This module locates the binary, builds its argv from config (the flags mirror
-the proxy's clap CLI in rust/kerbside-proxy/src/main.rs), launches it, and
-terminates it with a SIGTERM-then-SIGKILL deadline. The firewall knobs are NOT
-passed as flags -- they are delivered per connection over gRPC.
+The daemon runs the Rust proxy binary as a supervised child. This module
+locates the binary, builds its argv from config (the flags mirror the proxy's
+clap CLI in rust/kerbside-proxy/src/main.rs), launches it, and terminates it
+with a SIGTERM-then-SIGKILL deadline. The firewall knobs are NOT passed as
+flags -- they are delivered per connection over gRPC.
 """
 
 import os

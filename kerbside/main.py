@@ -1,7 +1,6 @@
 import click
 from shakenfist_utilities import logs
 import logging
-import multiprocessing
 import os
 import signal
 import sys
@@ -10,7 +9,6 @@ import yaml
 
 from .config import config as config
 from . import db as kerbside_db
-from . import proxy as kerbside_proxy
 from . import proxy_supervisor
 from .rpc import server as rpc_server
 from .rpc import servicer as rpc_servicer
@@ -211,14 +209,13 @@ RUST_PROXY_SIGTERM_DEADLINE = 15
 
 
 def _run_rust_proxy(last_maintenance):
-    """Supervise the Rust proxy binary as a child (PROXY_IMPLEMENTATION=rust).
+    """Supervise the Rust kerbside-proxy binary as a child.
 
     Binds the gRPC control server FIRST -- the Rust proxy dials the UDS at
     startup (ClearNodeChannels) and lazily thereafter, so the socket must
-    exist. Unlike the multiprocessing fork, a subprocess child (close_fds=True)
-    does not inherit the gRPC C-core threads/fds, so serving first is safe.
-    Forwards SIGTERM to the child with a deadline, and exits non-zero if the
-    child dies -- matching the Python-proxy supervision semantics.
+    exist. The subprocess child (close_fds=True) does not inherit the gRPC
+    C-core threads/fds. Forwards SIGTERM to the child with a deadline, and
+    exits non-zero if the child dies.
     """
     grpc_server = rpc_server.serve()
     LOG.info('Started KerbsideProxy gRPC server')
@@ -267,40 +264,8 @@ def daemon_run(ctx):
         LOG.error('Invalid firewall configuration: %s' % e)
         sys.exit(1)
 
-    # Rust proxy (opt-in): supervise the kerbside-proxy binary as a child.
-    if (config.PROXY_IMPLEMENTATION or 'python').strip().lower() == 'rust':
-        _run_rust_proxy(last_maintenance)
-        return
-
-    proxy = multiprocessing.Process(
-        target=kerbside_proxy.run, args=(), name='kerbside-main')
-    proxy.start()
-
-    # Stand up the KerbsideProxy gRPC control-plane server AFTER forking the
-    # proxy. The server owns a listening socket and gRPC C-core threads;
-    # forking after it starts would leak that socket fd (and copy locked
-    # thread state) into the proxy and its per-connection SPICE workers --
-    # the processes most exposed to untrusted input. Starting it here keeps
-    # those fds/threads out of the proxy process tree. It runs on its own
-    # ThreadPoolExecutor threads, so serve() returns immediately and the
-    # maintenance loop below is unaffected. There is no client until phase 3.
-    grpc_server = rpc_server.serve()
-    LOG.info('Started KerbsideProxy gRPC server')
-
-    while True:
-        proxy.join(timeout=0)
-        if not proxy.is_alive():
-            LOG.error('Proxy process died with exit code %d!' % proxy.exitcode)
-            proxy.kill()
-            rpc_server.stop(grpc_server)
-            sys.exit(1)
-
-        time.sleep(1)
-        if time.time() - last_maintenance > 60:
-            _parse_sources()
-            _reap_expired_console_tokens()
-            _reap_session_terminations()
-            last_maintenance = time.time()
+    # The daemon supervises the Rust kerbside-proxy binary as a child.
+    _run_rust_proxy(last_maintenance)
 
 
 daemon.add_command(daemon_run)
