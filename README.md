@@ -36,6 +36,17 @@ the client disconnects itself. Full cutover to the Rust proxy as the
 default is a later phase. See `docs/plans/PLAN-rust-proxy.md`,
 `ARCHITECTURE.md`, and `tools/direct-qemu/VERIFY-RUST-PROXY.md`.
 
+The Rust proxy ships as a separate PyPI package, `kerbside-proxy` — a
+maturin `bindings = "bin"` wheel that carries the compiled binary and lands
+it on `PATH`. `kerbside` exact-pins `kerbside-proxy` at the same version,
+so `pip install kerbside` installs a matching proxy automatically (the
+daemon finds it via `shutil.which('kerbside-proxy')`); you do not build or
+install it separately. Both packages are released in lockstep from a single
+`v*` tag, and prebuilt manylinux wheels are published for x86_64 and aarch64
+(no source distribution — an unsupported platform gets a clean pip error).
+For development you can instead point `KERBSIDE_PROXY_BIN` at a locally
+built binary, or let the daemon pick up the in-repo `cargo build` output.
+
 ## Documentation
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - High-level system architecture

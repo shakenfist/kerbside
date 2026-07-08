@@ -589,6 +589,31 @@ Python proxy, unchanged. When `rust` is configured:
   10-second graceful-drain window (below), so the daemon gives the proxy a
   chance to drain before forcing it.
 
+### How the binary gets there: packaging (phase 6)
+
+`find_proxy_bin()`'s middle leg — `shutil.which('kerbside-proxy')` — is
+what resolves the binary in a real deployment, and phase 6 is what makes
+that leg succeed. The crate is published to PyPI as a separate
+`kerbside-proxy` package: a maturin `bindings = "bin"` wheel
+(`rust/kerbside-proxy/pyproject.toml`) whose compiled binary is laid into
+the wheel's `*.data/scripts/` directory, which pip installs onto `PATH`.
+`kerbside` exact-pins `kerbside-proxy` at the same version, so `pip install
+kerbside` transitively installs a matching proxy and the gRPC contract
+matches by construction.
+
+The two packages are released in lockstep from a single `v*` tag:
+`setuptools_scm` gives `kerbside` its version, and
+`tools/stamp-proxy-version.sh` stamps that same version into the crate
+(for maturin) and into the `kerbside` dependency pin.
+`tools/build-proxy-wheel.sh` builds prebuilt manylinux_2_28 wheels for
+**x86_64 and aarch64** (the latter cross-compiled with maturin `--zig`, so
+no aarch64 build host is required); no source distribution is published, so
+an unsupported platform gets a clean pip error rather than a doomed source
+build. In development you bypass all of this: `find_proxy_bin()` falls
+through to the in-repo `cargo build` output, or you set
+`KERBSIDE_PROXY_BIN` explicitly. See
+`docs/plans/PLAN-rust-proxy-phase-06-packaging.md` and `RELEASE-SETUP.md`.
+
 ### Session termination: dropping in-flight connections
 
 Before phase 5, `ConsolesTerminate`/`SessionTerminate` only removed or

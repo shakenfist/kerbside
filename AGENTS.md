@@ -130,6 +130,28 @@ when picking up ryll changes. CI runs fmt/clippy/test/build via
 `.github/workflows/rust.yml`; end-to-end verification against qemu is
 `tools/direct-qemu/VERIFY-RUST-PROXY.md`.
 
+#### Packaging and release (phase 6)
+
+The crate is published to PyPI as a separate `kerbside-proxy` package —
+a maturin `bindings = "bin"` wheel (`rust/kerbside-proxy/pyproject.toml`)
+that carries the compiled binary in the wheel's `*.data/scripts/` dir, so
+`pip install` puts `kerbside-proxy` on `PATH` and phase 5's
+`find_proxy_bin()` resolves it via `shutil.which`. `kerbside` exact-pins
+`kerbside-proxy`, and both release in lockstep from one `v*` tag:
+
+- `tools/stamp-proxy-version.sh <version>` propagates the tag version into
+  the crate's `Cargo.toml` `[package] version` (maturin reads it) and
+  inserts the `kerbside-proxy==<version>` pin into `pyproject.toml` before
+  the `# KERBSIDE_PROXY_PIN` marker. The committed tree carries no pin (the
+  sibling is not on PyPI in a dev checkout — `find_proxy_bin()` uses the
+  build tree / `KERBSIDE_PROXY_BIN` there).
+- `tools/build-proxy-wheel.sh <x86_64|aarch64>` builds a manylinux_2_28
+  wheel; aarch64 is cross-compiled from x86_64 with maturin `--zig`. No
+  sdist is published (wheels only).
+- `release.yml` runs the matrix build + publishes both packages
+  (proxy first); `rust.yml` builds a wheel on PRs as a packaging guard.
+  See `RELEASE-SETUP.md` for the two trusted publishers.
+
 #### SPICE firewall (phase 4)
 
 The relay enforces L0 (size caps, a disabled-by-default rate ceiling,
