@@ -13,58 +13,33 @@ SPICE protocol negotiation, authentication, and bidirectional traffic relay.
 
 | File | Purpose |
 |------|---------|
-| `kerbside/proxy.py` | Core proxy implementation - start here for connection handling |
 | `kerbside/api.py` | REST API endpoints and web UI |
 | `kerbside/db.py` | Database models (Source, Console, ConsoleToken, ProxyChannel, AuditEvent) |
 | `kerbside/main.py` | Daemon entry point and maintenance loop |
 | `kerbside/config.py` | Pydantic-based configuration |
-| `kerbside/spiceprotocol/__init__.py` | SpiceClient class for hypervisor connections |
-| `kerbside/spiceprotocol/packets/linkmessages.py` | SPICE handshake protocol |
 | `kerbside/rpc/kerbside.proto` | KerbsideProxy gRPC contract fronting the DB for the proxy |
 | `kerbside/rpc/servicer.py` | gRPC servicer implementing the contract against db.py |
 | `kerbside/rpc/server.py` | serve()/stop() hosting the servicer over a unix socket in the daemon |
-| `rust/kerbside-proxy/` | Rust reimplementation of the SPICE proxy (in progress): TLS termination, handshake, gRPC-authorised inspection-first relay that enforces an L0+L1 SPICE firewall (phase 4). Builds in Docker via its Makefile |
+| `rust/kerbside-proxy/` | The SPICE proxy (start here for connection handling): TLS termination, handshake, gRPC-authorised inspection-first relay that enforces an L0+L1 SPICE firewall. Builds in Docker via its Makefile |
 | `rust/kerbside-proxy/src/policy.rs` | The `Policy`/`Verdict` seam and the phase-4 firewall engine: `FirewallPolicy` (tunable knobs), `EnforcementMode` (Enforce/WarnOnly), `EnforcingPolicy` (L0 size/rate caps + L1 allowlist lookup), `VerdictTally` (coalesced per-connection audit) |
 | `rust/kerbside-proxy/src/allowlist.rs` | The compiled-in L1 message-type grammar: `classify(channel, dir, msg_type) -> Allowed \| Disallowed \| ChannelUnmodeled`, derived from the ryll `shakenfist-spice-protocol` name tables |
-| `kerbside/proxy_supervisor.py` | Phase 5: launches/supervises the Rust `kerbside-proxy` binary as a daemon child when `PROXY_IMPLEMENTATION=rust` — `find_proxy_bin()` (env/PATH/dev-build resolution), `build_proxy_argv()` (config → CLI flags), `terminate_child()` (SIGTERM-then-SIGKILL with a deadline) |
+| `kerbside/proxy_supervisor.py` | Launches/supervises the Rust `kerbside-proxy` binary as the daemon's child — `find_proxy_bin()` (env/PATH/dev-build resolution), `build_proxy_argv()` (config → CLI flags), `terminate_child()` (SIGTERM-then-SIGKILL with a deadline) |
 | `kerbside/db.py` (`SessionTermination`, migration `c4e7a1b9d2f3`) | Phase 5: the `session_terminations` intent table (`request_session_termination`, `get_terminations_for_node`, `reap_session_terminations`) that bridges API-driven termination to each proxy node's local `ProxyControl` push — see "Session termination" below |
 | `rust/kerbside-proxy/src/session.rs` (`SessionRegistry`) | Phase 5: the `session_id -> CancellationToken` registry the relay's `select!` and `ProxyControl`'s `TerminateSession` handler share, plus the shutdown-time `terminate_all()` drain |
 | `kerbside/sources/static.py` | Static source driver: reads VM-to-console mapping from an inline list in sources.yaml; designed for CI pipelines and ad-hoc debugging (no control plane required) |
 
 ## Architecture Patterns
 
-### Multiprocess Worker Model
+### SPICE proxy internals
 
-The proxy uses a multiprocess architecture:
-- Main proxy process accepts connections via `SpiceListener`
-- Each client connection spawns a worker process (`SpiceTLSSession`)
-- Workers are monitored and reaped by the parent process
-- State is shared via the database, not shared memory
-
-### State Machine Pattern
-
-`SpiceTLSSession` uses a state machine for connection handling:
-1. `ClientSpiceLinkMess` - Initial handshake
-2. `ClientPassword` - Authentication
-3. `ClientProxy` / `ServerProxy` - Traffic relay
-
-The `client_next_packet` and `server_next_packet` attributes control state
-transitions.
-
-### Exception Handling in Proxy
-
-Connection errors must be caught and converted to `ConnectionRefused` to ensure
-proper cleanup. Key exceptions to handle:
-
-```python
-from .spiceprotocol.packets.linkmessages import (
-    BadMagic, BadMajor, BadMinor,
-    HandshakeFailed,
-    ConnectionError as SpiceConnectionError
-)
-```
-
-The exception handler at line ~290 in `proxy.py` handles graceful termination.
+The SPICE proxy is the Rust `kerbside-proxy` (`rust/kerbside-proxy/src/`):
+it accepts connections, terminates TLS, drives the SPICE link handshake,
+authorises each connection over the gRPC control socket, connects the
+backend leg, and relays framed traffic as async tokio tasks (one per
+connection) while enforcing the L0+L1 firewall. See `ARCHITECTURE.md`
+(section 3) for the connection flow and supervision model, and
+`docs/proxy-architecture.md` for the SPICE protocol and channel
+background.
 
 ## Common Tasks
 
@@ -176,34 +151,29 @@ a size cap needs widening — never the verdict weakening. The same harness
 also has a deny-token/deny-all mode for exercising the
 `PermissionDenied` denial path end to end.
 
-#### Daemon supervision + session termination (phase 5)
+#### Daemon supervision + session termination
 
-`PROXY_IMPLEMENTATION` (`kerbside/config.py`, default `python`) selects
-whether `kerbside daemon run` forks the in-process Python proxy (unchanged
-default) or supervises the Rust `kerbside-proxy` binary as a child via
-`kerbside/proxy_supervisor.py`. When `rust`, the daemon binds the gRPC UDS
-server before launching the child (the proxy dials it at startup), polls
-child liveness, and forwards SIGTERM with a 15-second deadline before
+`kerbside daemon run` supervises the Rust `kerbside-proxy` binary as a
+child via `kerbside/proxy_supervisor.py`: it binds the gRPC UDS server
+before launching the child (the proxy dials it at startup), polls child
+liveness, and forwards SIGTERM with a 15-second deadline before
 SIGKILLing — exiting non-zero if the child dies. The proxy binds its
 `/metrics` server on its own `--metrics-address` (default loopback, config
 `PROMETHEUS_METRICS_ADDRESS`) rather than the public VDI address.
 
-API-driven session termination now drops in-flight connections, not just
-new ones. Because the REST API and proxy nodes may be on different
-machines (and a load-balanced session's channels may span nodes), the only
-shared bus is the database: `ConsolesTerminate`/`SessionTerminate`
-(`api.py`) insert a `session_terminations` intent row; each node's daemon
-polls it (scoped to sessions live on that node) in its `ProxyControl`
-handler (`servicer.py`) and pushes `TerminateSession`; the Rust proxy's
+API-driven session termination drops in-flight connections, not just new
+ones. Because the REST API and proxy nodes may be on different machines
+(and a load-balanced session's channels may span nodes), the only shared
+bus is the database: `ConsolesTerminate`/`SessionTerminate` (`api.py`)
+insert a `session_terminations` intent row; each node's daemon polls it
+(scoped to sessions live on that node) in its `ProxyControl` handler
+(`servicer.py`) and pushes `TerminateSession`; the proxy's
 `SessionRegistry` (`session.rs`) cancels that session's shared
 `CancellationToken`, and the relay's `select!` (`relay.rs`) tears every
-channel down. A TTL reaper cleans up old intent rows. The API always
-records the intent regardless of `PROXY_IMPLEMENTATION`, but only the Rust
-proxy consumes `ProxyControl` today — a `python`-mode node's in-flight
-connections are unaffected, unchanged from before phase 5. See
-`docs/proxy-architecture.md` ("Rust Proxy: Process Supervision and Session
-Termination") for the full flow and `ARCHITECTURE.md` for the
-distributed-deployment rationale.
+channel down. A TTL reaper cleans up old intent rows; a merely-expired
+token is never pushed, so natural expiry does not drop a live session.
+See `docs/proxy-architecture.md` and `ARCHITECTURE.md` for the full flow
+and the distributed-deployment rationale.
 
 To validate live termination against a real client without a full
 API+daemon+MariaDB stack, use `tools/direct-qemu/VERIFY-TERMINATION.md`:
@@ -212,16 +182,16 @@ the mock gRPC server's `ProxyControl` stream emits a one-shot
 authorization (`MOCK_GRPC_TERMINATE_AFTER`), standing in for the API/DB
 leg so the harness exercises the proxy-side cancellation path live.
 
-### Direct-qemu proxy matrix (phase 7)
+### Direct-qemu functional lane
 
-`.github/workflows/direct-qemu-functional.yml` runs the lane as a
-`strategy.matrix.proxy: [python, rust]`. Both legs run the identical
-smoke + banner + Sextant scenario (`run-scenario.sh`) against the real
-daemon+API+MariaDB stack with a headless ryll client; the Rust proxy
-passing the same oracle the Python proxy passes is the functional-parity
-proof. `PROXY_IMPLEMENTATION` flows from the matrix value through
-`lane-up.sh` into `start-kerbside.sh`, which selects the proxy the daemon
-supervises (and, for `rust`, pre-checks the binary via `find_proxy_bin()`).
+`.github/workflows/direct-qemu-functional.yml` runs the smoke + banner +
+Sextant scenario (`run-scenario.sh`) against the real daemon+API+MariaDB
+stack with a headless ryll client through the Rust proxy. `start-kerbside.sh`
+pre-checks the proxy binary via `find_proxy_bin()`, and the lane builds and
+installs the `kerbside-proxy` wheel so it resolves on `PATH` as in a real
+deployment. The lane also runs the live API-terminate test
+(`verify-terminate-live.sh`) and a non-gating relay-latency loadtest
+(`run-loadtest.sh`).
 
 The Rust leg additionally:
 
@@ -243,10 +213,9 @@ database.
 
 ### Modifying SPICE Protocol Handling
 
-Protocol packets are in `kerbside/spiceprotocol/packets/`:
-- Each packet type has a parser class
-- Parsers return consumed byte count (0 if incomplete)
-- Use `struct.unpack_from()` for binary parsing
+SPICE wire-format parsing lives in the Rust proxy, which reuses the ryll
+`shakenfist-spice-protocol` crate (`rust/kerbside-proxy/` depends on it by
+git rev); the L1 firewall grammar is in `rust/kerbside-proxy/src/allowlist.rs`.
 
 See the protocol documentation in `docs/` for detailed information:
 - `docs/protocol-overview.md` - SPICE protocol fundamentals
@@ -346,20 +315,13 @@ ps aux | grep kerbside
 
 ## Common Pitfalls
 
-1. **Exception Handling**: Uncaught exceptions in `SpiceTLSSession` methods
-   cause silent connection drops. Always catch and convert to appropriate
-   exception types.
-
-2. **Socket Blocking**: Server sockets are set non-blocking after connection.
-   Use `select()` for I/O multiplexing.
-
-3. **Token Expiry**: Console tokens have configurable expiry. Ensure the
+1. **Token Expiry**: Console tokens have configurable expiry. Ensure the
    maintenance loop is running to reap expired tokens.
 
-4. **TLS Certificate Paths**: The proxy requires valid TLS certificates.
+2. **TLS Certificate Paths**: The proxy requires valid TLS certificates.
    Check `PROXY_HOST_CERT_PATH` and `PROXY_HOST_CERT_KEY_PATH` config.
 
-5. **Database Connections**: SQLAlchemy sessions should be properly closed.
+3. **Database Connections**: SQLAlchemy sessions should be properly closed.
    Use context managers or explicit `session.close()`.
 
 ## Dependency Management
