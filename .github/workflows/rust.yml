@@ -37,7 +37,7 @@ jobs:
       - name: Install build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential pkg-config git
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config git python3-venv
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -58,3 +58,17 @@ jobs:
 
       - name: Build (release)
         run: cargo build --release
+
+      # Packaging guard: prove the maturin bin-wheel project still builds a
+      # wheel on every rust/** PR, so packaging regressions surface here and
+      # not only at release. A plain maturin build (no zig/manylinux, which
+      # are release-time concerns) is enough to catch pyproject/bindings
+      # breakage cheaply.
+      - name: Install maturin
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/wheelvenv"
+          "${RUNNER_TEMP}/wheelvenv/bin/pip" install --quiet --upgrade pip maturin
+          echo "${RUNNER_TEMP}/wheelvenv/bin" >> "$GITHUB_PATH"
+
+      - name: Build wheel (smoke)
+        run: maturin build --release --out "${RUNNER_TEMP}/wheels"

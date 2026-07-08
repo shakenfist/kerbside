@@ -34,6 +34,14 @@ jobs:
           release-venv/bin/pip3 install --upgrade pip
           release-venv/bin/pip3 install build twine
 
+      # Stamp the exact kerbside-proxy version into the kerbside dependency
+      # list so the released wheel pins the sibling package it was built
+      # against (see tools/stamp-proxy-version.sh). Tag builds only; a
+      # workflow_dispatch test build has no release version to stamp.
+      - name: Stamp lockstep kerbside-proxy version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: tools/stamp-proxy-version.sh "${GITHUB_REF#refs/tags/v}"
+
       - name: Build package
         run: |
           release-venv/bin/python3 -m build
@@ -47,6 +55,47 @@ jobs:
         with:
           name: dist
           path: dist/
+
+  build-proxy-wheels:
+    name: Build kerbside-proxy wheels
+    # The vm/debian-12 runner carries the Rust build environment the crate
+    # needs (same runner as rust.yml). aarch64 is cross-compiled here with
+    # zig, so no aarch64 runner is required.
+    runs-on: [self-hosted, vm, debian-12]
+    strategy:
+      matrix:
+        target: [x86_64, aarch64]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for setuptools_scm-derived version
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config git python3-venv
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install maturin and ziglang
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/wheelvenv"
+          "${RUNNER_TEMP}/wheelvenv/bin/pip" install --quiet --upgrade pip maturin ziglang
+          echo "${RUNNER_TEMP}/wheelvenv/bin" >> "$GITHUB_PATH"
+
+      - name: Stamp lockstep version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: tools/stamp-proxy-version.sh "${GITHUB_REF#refs/tags/v}"
+
+      - name: Build wheel
+        run: tools/build-proxy-wheel.sh ${{ matrix.target }}
+
+      - name: Upload proxy wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: proxy-wheel-${{ matrix.target }}
+          path: dist/proxy-wheels/*.whl
 
   sign-tag:
     name: Sign release tag with Sigstore
@@ -91,9 +140,38 @@ jobs:
           git tag -s "${TAG_NAME}" -m "Release ${TAG_NAME}" "${GITHUB_SHA}"
           git push origin "${TAG_NAME}" --force
 
+  publish-proxy-pypi:
+    name: Publish kerbside-proxy to PyPI
+    needs: [build-proxy-wheels, sign-tag]
+    runs-on: [self-hosted, static]
+    environment: release
+
+    permissions:
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Download proxy wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: proxy-wheel-*
+          merge-multiple: true
+          path: dist/
+
+      - name: Generate attestations for artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'dist/*'
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
   publish-pypi:
     name: Publish to PyPI
-    needs: [build, sign-tag]
+    # kerbside exact-pins kerbside-proxy, so publish the proxy first: this
+    # gate ensures kerbside is never published referencing a proxy version
+    # that failed to publish.
+    needs: [build, sign-tag, publish-proxy-pypi]
     runs-on: [self-hosted, static]
     environment: release
 
