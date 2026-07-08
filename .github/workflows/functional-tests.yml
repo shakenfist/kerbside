@@ -165,6 +165,24 @@ jobs:
           path: kerbside
           fetch-depth: 0
 
+      # The under-cloud playbook creates its test instance with the
+      # shakenfist.shakenfist collection's native sf_* modules (the
+      # client's ansible shims they previously used were retired), so
+      # the collection must be resolvable on this runner. It is built
+      # from a shakenfist repository checkout.
+      - name: Checkout the shakenfist repository
+        uses: actions/checkout@v4
+        with:
+          repository: shakenfist/shakenfist
+          path: shakenfist
+          fetch-depth: 1
+
+      - name: Install the shakenfist.shakenfist collection
+        shell: bash
+        run: |
+          ${GITHUB_WORKSPACE}/actions/tools/install-collection.sh \
+              ${GITHUB_WORKSPACE}/shakenfist
+
       - name: Build infrastructure
         shell: bash
         run: |
