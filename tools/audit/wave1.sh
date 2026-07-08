@@ -14,7 +14,7 @@
 #
 # The fatal style checks (3, 4) inspect only lines ADDED relative to
 # develop, so pre-existing intentional prints (config/logging
-# bootstrap, the kerbside-util CLI) do not trip them. A print() may
+# bootstrap, the kerbside CLI) do not trip them. A print() may
 # still be added deliberately if its file carries the marker comment
 # `audit-allow-print`.
 #

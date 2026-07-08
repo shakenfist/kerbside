@@ -130,7 +130,6 @@ dependencies = [
 
 [project.scripts]
 kerbside = "kerbside.main:cli"
-kerbside-util = "kerbside.utilities.main:cli"
 
 [tool.setuptools]
 packages = ["kerbside", "kerbside.rpc"]

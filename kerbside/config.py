@@ -143,20 +143,6 @@ class Config(BaseSettings):
         False,
         description='Should we output debug logs?')
 
-    # Traffic inspection
-    TRAFFIC_INSPECTION: bool = Field(
-        False,
-        description='Set to true to perform deep packet inspection of traffic.')
-    TRAFFIC_INSPECTION_INTIMATE: bool = Field(
-        False,
-        description=('If TRAFFIC_INSPECTION is true, and TRAFFIC_INSPECTION_INTIMATE '
-                     'is also set to true, then details such as keystrokes and '
-                     'mouse movements will be logged.'))
-    TRAFFIC_OUTPUT_PATH: str = Field(
-        '',
-        description=('The path to write traffic inspection logs to. This must be'
-                     'be set if TRAFFIC_INSPECTION is True.'))
-
     # Firewall policy delivered to the (Rust) SPICE proxy in the
     # AuthorizeConnection reply. Python owns the policy; the proxy enforces it.
     # Only the knobs with a real config surface are delivered; size caps and
