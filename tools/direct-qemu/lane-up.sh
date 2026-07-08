@@ -99,6 +99,12 @@ fi
     --pid-file "${QEMU_PID_FILE}"
 
 # ── Step 5: Start kerbside ────────────────────────────────────────────────────
+#
+# The proxy implementation is selected by the PROXY_IMPLEMENTATION env var
+# (default python), which start-kerbside.sh reads and maps onto the daemon's
+# KERBSIDE_PROXY_IMPLEMENTATION config. It is inherited from this script's
+# environment, so `PROXY_IMPLEMENTATION=rust tools/direct-qemu/lane-up.sh`
+# brings up a Rust-proxy lane with no other change.
 
 "${SCRIPT_DIR}/start-kerbside.sh" \
     --sources-path "${SOURCES_PATH}" \

@@ -75,6 +75,37 @@ export KERBSIDE_PUBLIC_FQDN='127.0.0.1'
 # by generate-tls.sh (subj '/C=US/O=Kerbside CI/CN=kerbside-ci').
 export KERBSIDE_PROXY_HOST_SUBJECT='C=US,O=Kerbside CI,CN=kerbside-ci'
 
+# ── Proxy implementation selection ────────────────────────────────────────────
+#
+# The daemon supervises either the in-process Python proxy (default) or the
+# Rust kerbside-proxy binary, chosen by KERBSIDE_PROXY_IMPLEMENTATION (read by
+# kerbside/config.py). PROXY_IMPLEMENTATION here is the harness-facing knob;
+# it is inherited from the environment (lane-up.sh passes it through) and
+# maps 1:1 onto the daemon's config env var.
+#
+# For the Rust path the binary must be resolvable by find_proxy_bin() -- an
+# installed `kerbside-proxy` on PATH (the phase-6 wheel) or a KERBSIDE_PROXY_BIN
+# override. Rather than reimplement that resolution here, call the real
+# find_proxy_bin() so the pre-check matches exactly what the daemon will do,
+# and fail fast with a clear message instead of letting the daemon exit at
+# launch.
+PROXY_IMPLEMENTATION="${PROXY_IMPLEMENTATION:-python}"
+export KERBSIDE_PROXY_IMPLEMENTATION="${PROXY_IMPLEMENTATION}"
+if [ "${PROXY_IMPLEMENTATION}" = 'rust' ]; then
+    echo "[start-kerbside] Rust proxy selected; resolving binary via find_proxy_bin()"
+    # Importing kerbside configures logging on stdout, so take the last line
+    # (the printed path); pipefail propagates a find_proxy_bin() failure.
+    if ! RESOLVED_BIN="$(python3 -c \
+            'from kerbside.proxy_supervisor import find_proxy_bin; print(find_proxy_bin())' \
+            | tail -n1)"; then
+        echo "ERROR: PROXY_IMPLEMENTATION=rust but find_proxy_bin() could not resolve a" >&2
+        echo "  kerbside-proxy binary. Install the kerbside-proxy wheel (so it is on PATH)" >&2
+        echo "  or set KERBSIDE_PROXY_BIN to a built binary." >&2
+        exit 1
+    fi
+    echo "[start-kerbside] Rust proxy binary: ${RESOLVED_BIN}"
+fi
+
 # ── Locate repo root (needed for alembic.ini) ────────────────────────────────
 
 # Walk upward from this script to find alembic.ini

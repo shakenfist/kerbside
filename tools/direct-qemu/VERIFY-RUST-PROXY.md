@@ -8,8 +8,27 @@ termination, the SPICE link handshake, token decryption, the
 `AuthorizeConnection` round trip over the unix socket, the backend connect to
 the hypervisor, and the bidirectional inspection-first relay.
 
-The full ryll-driven direct-qemu lane (with surface/digest assertions) is CI,
-and lands in phase 7. This standalone harness is for local verification.
+The full ryll-driven direct-qemu lane (with surface/digest assertions) is CI.
+This standalone harness is for local verification.
+
+## Two ways to exercise the Rust proxy
+
+There are two distinct paths, for two purposes:
+
+- **Mock harness (this document): local, MariaDB-free.**
+  `start-rust-proxy.sh` launches the binary directly against
+  `mock-grpc-server.py`, and `verify-rust-proxy.sh` asserts via `/metrics`.
+  No daemon, no REST API, no database — fast to iterate on the proxy itself.
+- **Daemon lane (phase 7): the real integration/parity path, in CI.** The
+  direct-qemu functional lane runs a `proxy: [python, rust]` matrix in which
+  the Rust leg runs the actual `kerbside daemon run` with
+  `PROXY_IMPLEMENTATION=rust`, supervising the wheel-installed
+  `kerbside-proxy` binary (resolved by `find_proxy_bin()` on `PATH`), against
+  real MariaDB + the REST API + ryll. Bring one up locally with
+  `PROXY_IMPLEMENTATION=rust tools/direct-qemu/lane-up.sh` (the phase-6
+  `kerbside-proxy` wheel installed, or `KERBSIDE_PROXY_BIN` set). The Rust
+  proxy passing the same `run-scenario.sh` oracle the Python proxy passes is
+  the parity proof; see `PLAN-rust-proxy-phase-07-ci.md`.
 
 For validating the phase-4 L0/L1 **firewall** — running a safe warn-only
 capture session and driving the connection-denial path — see
