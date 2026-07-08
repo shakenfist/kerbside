@@ -165,8 +165,8 @@ async fn main() -> Result<()> {
     });
 
     // Drop any stale channel rows this node left behind (e.g. from a crash or
-    // an unclean restart) before accepting new connections. Mirrors
-    // proxy.py's remove_node_channels call at startup. A failure here means
+    // an unclean restart) before accepting new connections, via the
+    // ClearNodeChannels RPC. A failure here means
     // the control service (or its socket) is not reachable yet; that is not
     // fatal to starting up -- the per-connection RPCs below will surface the
     // same problem loudly and repeatedly if it persists.

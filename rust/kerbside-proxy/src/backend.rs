@@ -80,9 +80,9 @@ pub async fn run(
     // are set per attempt below (insecure first, TLS on retry).
     let base_config = build_config(target);
 
-    // Connect, mirroring proxy.py's insecure-first + RetrySecured fallback:
-    // attempt the insecure leg and, only on a NeedSecured signal, retry over
-    // TLS. Any other failure on the first attempt is returned as-is (no retry).
+    // Connect with an insecure-first + RetrySecured fallback: attempt the
+    // insecure leg and, only on a NeedSecured signal, retry over TLS. Any
+    // other failure on the first attempt is returned as-is (no retry).
     let backend_stream = match connect_once(&base_config, connection_id, channel_type, channel_id)
         .await
     {
@@ -122,9 +122,9 @@ pub async fn run(
         }
     };
 
-    // Successful hypervisor connection: record the audit event (mirrors
-    // proxy.py:426-429). The ticket is never logged. Audit RPC failures are
-    // non-fatal -- log and continue rather than tearing down a live connection.
+    // Successful hypervisor connection: record the audit event. The ticket is
+    // never logged. Audit RPC failures are non-fatal -- log and continue
+    // rather than tearing down a live connection.
     if let Err(e) = state
         .rpc
         .record_audit_event(
@@ -176,7 +176,7 @@ pub async fn run(
 /// ticket, empty-string -> `None`) are unit-testable in isolation.
 fn build_config(target: &pb::Target) -> ConnectionConfig {
     // `host`: prefer the numeric hypervisor_ip when the control plane provided
-    // one, else the hypervisor name (mirrors proxy.py's server selection).
+    // one, else the hypervisor name.
     let host = if target.hypervisor_ip.is_empty() {
         target.hypervisor.clone()
     } else {
@@ -239,10 +239,9 @@ async fn connect_once(
     }
 }
 
-/// Record the hypervisor-connect-failure audit event (mirrors
-/// proxy.py:442-446). Best-effort: audit RPC errors are logged, not propagated,
-/// so the original connect error still reaches the caller. The ticket is never
-/// logged.
+/// Record the hypervisor-connect-failure audit event. Best-effort: audit RPC
+/// errors are logged, not propagated, so the original connect error still
+/// reaches the caller. The ticket is never logged.
 async fn record_connect_failure(
     state: &SharedState,
     connection_ref: &str,

@@ -295,9 +295,9 @@ async fn serve(
             Ok(())
         }
         Ok(AuthzOutcome::Denied(reason)) => {
-            // Cleaner than proxy.py, which just drops the connection: send the
-            // protocol-correct PermissionDenied so the client reports it. The
-            // token is never logged; the human-readable reason is.
+            // Send the protocol-correct PermissionDenied so the client reports
+            // it, rather than just dropping the connection. The token is never
+            // logged; the human-readable reason is.
             metrics::record_denied();
             info!(%peer, %connection_ref, %reason, "connection denied by control service");
             send_auth_result(&mut stream, SpiceError::PermissionDenied)

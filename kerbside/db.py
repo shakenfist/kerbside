@@ -523,32 +523,6 @@ def remove_channel_by_ref(connection_ref):
             return None
 
 
-def remove_proxy_channel(node, pid):
-    with Session(ENGINE) as session:
-        try:
-            for c in list(session.query(ProxyChannel).
-                          filter(ProxyChannel.node == node).
-                          filter(ProxyChannel.pid == pid).
-                          all()):
-                session.delete(c)
-            session.commit()
-        except exc.NoResultFound:
-            return None
-
-
-def get_node_channels(node):
-    out = []
-    with Session(ENGINE) as session:
-        try:
-            for c in session.query(ProxyChannel).\
-                filter(ProxyChannel.node == node).\
-                    all():
-                out.append(c.export())
-        except exc.NoResultFound:
-            ...
-    return out
-
-
 def remove_node_channels(node):
     with Session(ENGINE) as session:
         try:
