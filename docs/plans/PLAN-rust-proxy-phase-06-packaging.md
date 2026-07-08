@@ -185,16 +185,22 @@ for `kerbside` to exact-pin `kerbside-proxy`, a release-time
 the `kerbside-proxy==X.Y.Z` pin in `kerbside`'s `pyproject.toml`, before
 either package is built. Both build jobs check out the **same tag**, so
 `setuptools_scm` and the stamped Cargo version agree by construction.
-   - **Committed-pin policy (open question below):** the source tree
-     cannot literally carry a future version, so the committed
-     `pyproject.toml` pin will track the **last released** version and the
-     release stamps the new one. Considered and deferred: an in-tree PEP
-     517 build-backend shim that injects `kerbside-proxy==<setuptools_scm
-     version>` dynamically (always-exact in-tree, single source of truth,
-     but more machinery than the repo currently carries). The
-     release-time stamp matches the repo's existing idiom (the
-     pin-indirect-dependencies workflow already `sed`-edits
-     `pyproject.toml`).
+   - **Committed-pin policy (settled during 6b):** the source tree carries
+     **no** `kerbside-proxy` pin — only a `# KERBSIDE_PROXY_PIN` marker
+     comment in the dependency list — and the release *inserts* the exact
+     pin before the marker (mirroring the `# END_OF_INDIRECT_DEPS`
+     insertion idiom the pin-indirect-dependencies workflow uses). A
+     committed `==` pin was tried first and rejected: it makes `tox -epy3`
+     (and any `pip install .`) fail because it tries to install a
+     `kerbside-proxy` release that does not exist on PyPI yet. Omitting it
+     is also semantically right — a dev checkout resolves the proxy from
+     the build tree (or `KERBSIDE_PROXY_BIN`) via `find_proxy_bin()`, not
+     from this pin, so nothing in dev/CI needs the sibling package. The
+     stamp script is idempotent: if a pin is already present it replaces
+     the version, otherwise it inserts one. Considered and deferred: an
+     in-tree PEP 517 build-backend shim injecting
+     `kerbside-proxy==<setuptools_scm version>` dynamically (always-exact
+     in-tree, but more machinery than the repo currently carries).
    - **Publish order:** publish `kerbside-proxy` before/with `kerbside`
      so the exact pin resolves for anyone installing at release time.
      (pip resolves at install, not publish, and both ship in one release,
@@ -214,9 +220,10 @@ rule.
 
 ## Open questions (to settle during the phase)
 
-- **Committed-pin policy** (decision 4): release-time stamp of a
-  last-released pin (recommended, repo-idiomatic) vs a dynamic
-  build-backend hook (always-exact in-tree). Lean: stamp.
+- ~~**Committed-pin policy**~~ (decision 4): **settled during 6b** — no
+  committed pin (a `# KERBSIDE_PROXY_PIN` marker only), inserted at
+  release. A committed `==` pin was tried and rejected because it breaks
+  `tox -epy3` (the sibling is not on PyPI yet).
 - **manylinux floor**: `manylinux_2_28` (glibc 2.28, EL8/Debian 10+;
   recommended, modern and matches the debian-12 build host) vs the older
   `manylinux2014` (glibc 2.17, widest reach). Kolla base images decide
