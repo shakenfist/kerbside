@@ -303,7 +303,97 @@ toolchain); 6b and 6d are safe in the main tree.
 
 ## Outcome
 
-_(To be written after execution and the pre-push audit.)_
+Completed 2026-07-08 on the kerbside `rust-proxy-phase-6` branch,
+unmerged and unpushed pending operator review. All planned steps landed;
+each was proven by building real wheels, not just by inspection.
+
+- 6a (`8915675`): the maturin `bindings = "bin"` project
+  (`rust/kerbside-proxy/pyproject.toml` + a crate `README.md`), version
+  read dynamically from `Cargo.toml`. `build.rs` was left untouched —
+  wheels-only means the CI build always runs from a full repo checkout,
+  so its `../../kerbside/rpc/kerbside.proto` reference resolves. Verified:
+  `maturin build` produces a platform-tagged wheel carrying
+  `kerbside-proxy` under `*.data/scripts/`; installing it into a fresh
+  venv puts the binary on `PATH` and `shutil.which('kerbside-proxy')`
+  (phase 5's `find_proxy_bin` leg) returns it.
+- 6b (`aba9bae`): `tools/stamp-proxy-version.sh` — the single-source-of
+  -truth lockstep. It stamps the release version into the crate
+  `Cargo.toml` and inserts the exact `kerbside-proxy==X.Y.Z` pin into
+  `kerbside`'s `pyproject.toml` (before a `# KERBSIDE_PROXY_PIN` marker;
+  idempotently replacing an existing pin). **Design decision 4 was
+  revised during this step**: a *committed* `==` pin was tried first and
+  broke `tox -epy3` (it resolves a `kerbside-proxy` release that does not
+  exist on PyPI yet), so the committed tree carries only the marker and
+  the release inserts the pin. Verified: insert then replace paths, a dev
+  version rejected, and `tox -epy3` green with the marker-only tree.
+- 6c (`1294d5e`): `tools/build-proxy-wheel.sh` — a manylinux_2_28 wheel
+  per architecture via maturin `--zig` (pinned-glibc sysroot; aarch64
+  cross-compiled from x86_64 with no emulation). Verified in the
+  `rust:slim-bookworm` container: **both** `manylinux_2_28_x86_64` and
+  `manylinux_2_28_aarch64` wheels build; the aarch64 wheel carries a
+  genuine ARM aarch64 ELF whose highest referenced symbol is `GLIBC_2.28`,
+  so the tag is honest. The risky part — cross-compiling the
+  `ring`/`rustls`/`aws-lc-rs`/ryll dependency chain — worked with zig; the
+  documented QEMU-container fallback was not needed.
+- 6d (`3e9769b`): CI wiring. `release.yml` now stamps the pin in the
+  `kerbside` build (tag builds only), builds the proxy wheels in a
+  `[x86_64, aarch64]` matrix job, and publishes them to the separate
+  `kerbside-proxy` PyPI project in a `publish-proxy-pypi` job that
+  `publish-pypi` depends on (so the proxy is on PyPI before `kerbside`,
+  which pins it). `rust.yml` gained a cheap `maturin build` smoke step as
+  a per-PR packaging guard. `RELEASE-SETUP.md` documents the second
+  trusted publisher and the lockstep model.
+- 6e (`6075931`, this commit): docs (`README.md`, `AGENTS.md`,
+  `docs/proxy-architecture.md`) describe the two-package split, and this
+  Outcome + the status flips below.
+
+Notable decisions, deliberate:
+
+- **Wheels-only was a genuine simplification, not just a smaller scope.**
+  It removed the need to make the crate self-contained for an sdist (the
+  proto lives outside the crate); the CI wheel build sees the whole repo,
+  so `build.rs` is unchanged. Making the crate self-contained (relocate
+  the proto) and, ideally, a crates.io release of
+  `shakenfist-spice-protocol` are recorded as the prerequisites for a
+  future sdist.
+- **Both architectures build with `--zig`, including x86_64.** Using zig
+  for the native build too pins the glibc floor at 2.28, so a
+  `manylinux_2_28` tag is honest even though the CI/build host has a newer
+  glibc — avoiding a manylinux container for x86_64.
+- The manylinux floor is `manylinux_2_28` (glibc 2.28). The other open
+  questions (native-vs-container x86_64 — resolved to native+zig;
+  Docker-vs-runner maturin — CI uses the runner toolchain, local proof
+  used Docker) landed on their planned leans.
+
+### Pre-push audit (2026-07-08)
+
+Reviewed the phase-6 diff (`git diff rust-proxy-phase-5..HEAD`; 12 files,
+all intended, no tracked build artifacts). Rust `fmt`/`clippy`/`test` are
+untouched by this phase; `pre-commit` (flake8 + the 66-test py3 suite +
+actionlint on the workflow YAML) is green. **No blocking, high, or medium
+findings.**
+
+- **Injection**: `stamp-proxy-version.sh` validates the version against
+  `^[0-9]+\.[0-9]+\.[0-9]+$` before it reaches any `sed`, so no shell/sed
+  metacharacters can be injected; both scripts are `set -euo pipefail`
+  with explicit argument validation and clear failure on missing
+  files/markers.
+- **Release integrity**: publishing uses the existing OIDC trusted-
+  publisher model (no tokens); a second trusted publisher for the
+  `kerbside-proxy` project is required (documented in `RELEASE-SETUP.md`).
+  The job graph gates both publishes behind `sign-tag` and the `release`
+  environment, and orders the proxy publish before `kerbside` so the pin
+  always resolves.
+- **Correctness**: the wheel-detection glob is architecture-specific
+  (`x86_64`/`aarch64` are not substrings of each other), so a matrix leg
+  cannot mistake the other arch's wheel; the `build` job's incidental
+  stamp of `Cargo.toml` (unused by the Python build) is harmless because
+  each job checks out fresh and the proxy job stamps its own tree.
+
+Observation (not a fix): each `environment: release` job triggers the
+required-reviewer gate, so a release now has three gated jobs (`sign-tag`,
+`publish-proxy-pypi`, `publish-pypi`) rather than two — the pre-existing
+pattern, one more approval. Left as-is.
 
 ## Back brief
 
