@@ -186,10 +186,9 @@ pub async fn handle_connection(state: Arc<SharedState>, mut stream: SpiceStream,
     let client_ip = peer.ip().to_string();
     let client_port = peer.port() as u32;
 
-    // Record the pre-authorization channel identity (mirrors proxy.py's
-    // record_channel_info in ServerLinkMess). A control-plane failure here
-    // means we cannot safely proceed, and nothing was registered, so no
-    // deregister is owed.
+    // Record the pre-authorization channel identity via the RegisterChannel
+    // RPC. A control-plane failure here means we cannot safely proceed, and
+    // nothing was registered, so no deregister is owed.
     if let Err(e) = state
         .rpc
         .register_channel(
