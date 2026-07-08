@@ -408,19 +408,6 @@ def get_token_by_session_id(session_id):
             return None
 
 
-def expire_token(token):
-    with Session(ENGINE) as session:
-        try:
-            for c in session.query(ConsoleToken).\
-                    filter(ConsoleToken.token == token).\
-                    all():
-                c.expires = time.time()
-        except exc.NoResultFound:
-            return None
-        finally:
-            session.commit()
-
-
 def remove_session(session_id):
     with Session(ENGINE) as session:
         try:
@@ -501,27 +488,6 @@ class ProxyChannel(Base):
             'session_id': self.session_id,
             'connection_ref': self.connection_ref
         }
-
-
-def record_channel_info(node, pid, client_ip=None, client_port=None,
-                        connection_id=None, channel_type=None, channel_id=None,
-                        session_id=None):
-    with Session(ENGINE) as session:
-        try:
-            channel = session.query(ProxyChannel).\
-                filter(ProxyChannel.node == node).\
-                filter(ProxyChannel.pid == pid).\
-                one()
-
-        except exc.NoResultFound:
-            channel = ProxyChannel(node, pid, datetime.datetime.now())
-            session.add(channel)
-
-        for arg in ['client_ip', 'client_port', 'connection_id',
-                    'channel_type', 'channel_id', 'session_id']:
-            if locals()[arg]:
-                setattr(channel, arg, locals()[arg])
-        session.commit()
 
 
 def record_channel_info_by_ref(node, connection_ref, client_ip=None, client_port=None,
@@ -683,6 +649,20 @@ def request_session_termination(session_id, reason=None):
             # lookup and insert. The row now exists, which is exactly what we
             # wanted, so roll back and treat it as already recorded.
             session.rollback()
+
+
+def terminate_session(session_id, source, uuid, reason=None):
+    # Terminate a proxy session. Deleting the token blocks NEW connections;
+    # recording a termination intent is what drops the IN-FLIGHT ones (each
+    # proxy node polls session_terminations for the sessions it holds live
+    # channels for and pushes a TerminateSession event to its local proxy).
+    # Then audit it. Shared by the ConsolesTerminate and SessionTerminate API
+    # endpoints so the sequence stays identical.
+    remove_session(session_id)
+    request_session_termination(session_id, reason=reason)
+    add_audit_event(
+        source, uuid, session_id, None, None, None,
+        'Session terminated by request')
 
 
 def get_terminations_for_node(node):

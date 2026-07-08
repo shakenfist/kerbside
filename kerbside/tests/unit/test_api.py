@@ -6,7 +6,7 @@ from kerbside import api
 
 class TerminateApiTestCase(testtools.TestCase):
     """The terminate endpoints must ADD a session-termination intent alongside
-    the existing token expire/remove, so in-flight connections get dropped.
+    removing the token, so in-flight connections get dropped.
 
     Driven through the Flask test client with JWT verification stubbed and the
     db layer mocked, so no real database or auth is required.
@@ -24,11 +24,9 @@ class TerminateApiTestCase(testtools.TestCase):
     @mock.patch('kerbside.db.request_session_termination')
     @mock.patch('kerbside.db.add_audit_event')
     @mock.patch('kerbside.db.remove_session')
-    @mock.patch('kerbside.db.expire_token')
     @mock.patch('kerbside.db.get_tokens_by_console')
     def test_consoles_terminate_writes_intent(
-            self, mock_get_tokens, mock_expire, mock_remove, mock_audit,
-            mock_request):
+            self, mock_get_tokens, mock_remove, mock_audit, mock_request):
         mock_get_tokens.return_value = [{
             'token': 'tok', 'session_id': 'sess-1', 'source': 'src',
             'uuid': 'u'}]
@@ -38,10 +36,10 @@ class TerminateApiTestCase(testtools.TestCase):
             headers={'Accept': 'application/json'})
 
         self.assertEqual(200, resp.status_code)
-        # Existing behaviour preserved.
-        mock_expire.assert_called_once_with('tok')
+        # The token is removed (blocks new connections)...
         mock_remove.assert_called_once_with('sess-1')
-        # New: an intent row for the terminated session.
+        # ...and an intent row is written for the terminated session (drops
+        # in-flight connections).
         mock_request.assert_called_once_with('sess-1', reason=mock.ANY)
 
     @mock.patch('kerbside.db.request_session_termination')
