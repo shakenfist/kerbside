@@ -95,6 +95,16 @@ jobs:
       - name: Initialize MariaDB
         run: tools/direct-qemu/setup-mariadb.sh
 
+      # Rust leg only: prove API-driven session termination drops an in-flight
+      # connection, end to end through the DB intent table + the daemon's
+      # ProxyControl poll. Runs on its own isolated lane (separate WORKDIR,
+      # torn down here) before the shared scenario lane, so it neither
+      # disturbs nor is disturbed by it. The Python proxy does not honour
+      # in-flight termination, so this is Rust-only.
+      - name: Verify API-terminate drops the in-flight connection
+        if: matrix.proxy == 'rust'
+        run: tools/direct-qemu/verify-terminate-live.sh
+
       - name: Bring up the lane
         run: tools/direct-qemu/lane-up.sh
 
@@ -134,6 +144,7 @@ jobs:
             /tmp/kerbside-ci/sources.yaml
             /tmp/kerbside-ci/scenario/
             /tmp/kerbside-ci/tempest.log
+            /tmp/terminate-artifacts/
 
       - name: Tear down the lane
         if: always()
