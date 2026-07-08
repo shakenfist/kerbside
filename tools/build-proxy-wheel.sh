@@ -5,8 +5,9 @@
 # aarch64) and reproducible locally.
 #
 # Usage:
-#   tools/build-proxy-wheel.sh x86_64
-#   tools/build-proxy-wheel.sh aarch64
+#   tools/build-proxy-wheel.sh x86_64     # cross/native manylinux (release)
+#   tools/build-proxy-wheel.sh aarch64    # cross manylinux (release)
+#   tools/build-proxy-wheel.sh --native   # plain host wheel, for local install
 #
 # Output wheels land in ${WHEEL_OUT:-<repo>/dist/proxy-wheels}.
 #
@@ -33,14 +34,23 @@
 # wheel inside the quay.io/pypa/manylinux_2_28_aarch64 image under
 # binfmt/QEMU emulation instead (slower, but the canonical manylinux path).
 
+# NATIVE MODE (--native): build a plain host-arch wheel with no zig, no
+# forced manylinux tag, and no rustup target. This is for callers that build
+# and INSTALL the wheel on the same machine (the phase-7 direct-qemu Rust
+# lane), where portability is irrelevant -- so it needs only maturin + a host
+# cargo, not rustup/ziglang. Release wheels for distribution still use the
+# per-arch manylinux/zig path above.
+
 set -euo pipefail
 
+native=0
 arch="${1:-}"
 case "${arch}" in
-    x86_64)  triple="x86_64-unknown-linux-gnu" ;;
-    aarch64) triple="aarch64-unknown-linux-gnu" ;;
+    x86_64)   triple="x86_64-unknown-linux-gnu" ;;
+    aarch64)  triple="aarch64-unknown-linux-gnu" ;;
+    --native) native=1 ;;
     *)
-        echo "Usage: $0 <x86_64|aarch64>" >&2
+        echo "Usage: $0 <x86_64|aarch64|--native>" >&2
         exit 1
         ;;
 esac
@@ -50,13 +60,28 @@ crate_dir="${repo_root}/rust/kerbside-proxy"
 wheel_out="${WHEEL_OUT:-${repo_root}/dist/proxy-wheels}"
 
 command -v maturin >/dev/null || { echo "ERROR: maturin not found on PATH" >&2; exit 1; }
-command -v rustup  >/dev/null || { echo "ERROR: rustup not found on PATH" >&2; exit 1; }
-
-# Idempotently ensure the target std library is present.
-rustup target add "${triple}"
 
 mkdir -p "${wheel_out}"
 cd "${crate_dir}"
+
+if [ "${native}" = 1 ]; then
+    echo "Building kerbside-proxy wheel for the host (native, no zig/manylinux)..."
+    maturin build --release --out "${wheel_out}"
+    # Accept whatever platform tag maturin produces for the host; a native
+    # host wheel is not required to be manylinux-tagged.
+    wheel="$(ls -1t "${wheel_out}"/*.whl 2>/dev/null | head -1 || true)"
+    if [ -z "${wheel}" ]; then
+        echo "ERROR: no wheel produced in ${wheel_out}" >&2
+        exit 1
+    fi
+    echo "OK: $(basename "${wheel}")"
+    exit 0
+fi
+
+command -v rustup >/dev/null || { echo "ERROR: rustup not found on PATH" >&2; exit 1; }
+
+# Idempotently ensure the target std library is present.
+rustup target add "${triple}"
 
 echo "Building kerbside-proxy wheel for ${arch} (${triple}), manylinux_2_28, zig linker..."
 maturin build \
