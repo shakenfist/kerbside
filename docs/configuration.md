@@ -50,7 +50,6 @@ These settings configure Keystone integration for OpenStack deployments.
 | PUBLIC_SECURE_PORT | Integer (default 5900) | Port secure connections should connect to on the PUBLIC_FQDN. This can be different from VDI_SECURE_PORT if there is a load balancing layer in front of Kerbside. |
 | PUBLIC_INSECURE_PORT | Integer (default 5901) | Port insecure connections should connect to on the PUBLIC_FQDN. This can be different from VDI_INSECURE_PORT if there is a load balancing layer in front of Kerbside. |
 | NODE_NAME | String (default "kerbside") | A unique name for each machine or container running the VDI proxy. This is used for logging and tracking purposes. |
-| PROXY_IMPLEMENTATION | String (default "python") | Which SPICE proxy the daemon runs: "python" (the in-process multiprocessing proxy) or "rust" (the kerbside-proxy binary, supervised as a child process). The default flips to "rust" at cutover. Only the Rust proxy honours API-driven termination of in-flight connections. |
 | VDI_ADDRESS | String (default 0.0.0.0) | The IPv4 address to bind the SPICE proxy to. |
 | VDI_SECURE_PORT | Integer (default 5900) | The port the VDI proxy will serve TLS SPICE sessions over. |
 | VDI_INSECURE_PORT | Integer (default 5901) | The port the VDI proxy will serve insecure SPICE sessions over. These insecure sessions are only used to redirect the user to the secure port. |
@@ -85,33 +84,6 @@ connection.
 The per-channel message-size caps and the (default-off) rate ceiling currently
 use the proxy's compiled-in defaults and are not yet configurable; they are a
 planned extension of the delivered policy.
-
-## Traffic Inspection
-
-Being able to inspect traffic being passed by the proxy is useful during both
-development and whilst diagnosing issues in production but has obvious privacy
-concerns.
-
-The VDI proxy may be configured to log details of traffic for all sessions by
-setting the `KERBSIDE_TRAFFIC_INSPECTION` environment variable to "1". This will
-write session traffic details to the directory configured by
-`KERBSIDE_TRAFFIC_OUTPUT_PATH`, in a sub directory per session identifier.
-Additionally, more detailed information can be logged by also setting
-`KERBSIDE_TRAFFIC_INSPECTION_INTIMATE` to "1".
-
-Traffic inspection is per proxy not per session and implies a restart of the
-proxy before it is enabled. This ensures that users are aware that traffic
-inspection has been enabled. If traffic inspection is enabled, audit messages
-are recorded per channel logged (as not all channels need to flow through the
-same proxy machine). Additionally, the display channel is altered to show a
-dashed red and yellow border to provide a visual warning that this inspection
-is occurring.
-
-| Configuration Option | Type | Description |
-|---------------------|------|-------------|
-| TRAFFIC_INSPECTION | Boolean (default False) | Whether to log detailed traffic information. Defaults to false, but can be useful for debugging service issues in production. |
-| TRAFFIC_INSPECTION_INTIMATE | Boolean (default False) | If TRAFFIC_INSPECTION is true and this option is also set to true, then log intimate debug details of sessions including keystrokes and all display frames. |
-| TRAFFIC_OUTPUT_PATH | String (default empty) | Where to write traffic inspection logs to. This must be set if TRAFFIC_INSPECTION is True. |
 
 ## Logging and Monitoring Settings
 

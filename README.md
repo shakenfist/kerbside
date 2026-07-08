@@ -12,47 +12,42 @@ those at the moment because there are patches to add deployment support for
 Kerbside to Kolla-Ansible, whereas there is no deployment support for Shaken
 Fist just yet.
 
-The SPICE proxy is being reimplemented in Rust (`rust/kerbside-proxy/`) for
-performance and safety, and to give room for deeper SPICE traffic inspection
-over time. The Rust proxy consults the Python side over a gRPC control
-socket for authorization and bookkeeping; the Python proxy remains the
-**default, active proxy** until the rewrite is cut over. The Rust proxy
-also acts as an enforcing SPICE application firewall (L0 resource limits +
-L1 message-type grammar), on by default, with a warn-only mode available
-for validating a deployment's traffic before enabling enforcement; see
+Kerbside is split into two packages: the pure-Python `kerbside` (the REST
+API, the console-source drivers, the SQLAlchemy data model, and the daemon
+that supervises the proxy) and the Rust `kerbside-proxy` (the SPICE proxy
+itself, `rust/kerbside-proxy/`). The proxy terminates TLS, drives the SPICE
+link handshake, and relays traffic between clients and hypervisors,
+consulting the Python side over a gRPC control socket for authorization and
+bookkeeping. It is also an enforcing SPICE application firewall (L0 resource
+limits + L1 message-type grammar), on by default, with a warn-only mode for
+validating a deployment's traffic before enabling enforcement; see
 `docs/configuration.md` for the `FIREWALL_MODE` /
 `FIREWALL_PERMITTED_CHANNELS` knobs. L2 body validation and session
 recording are future work.
 
-Setting `PROXY_IMPLEMENTATION=rust` opts a deployment into running the
-`kerbside daemon` as a supervisor of the Rust proxy binary instead of the
-in-process Python proxy. With the Rust proxy, terminating a session via the
-REST API now drops that session's in-flight connections too (previously
-only new connections were blocked) — see `ARCHITECTURE.md` for how
-termination is bridged through the database to work across
-distributed/load-balanced proxy nodes. The default `PROXY_IMPLEMENTATION=
-python` deployment is unchanged: in-flight connections still survive until
-the client disconnects itself. Full cutover to the Rust proxy as the
-default is a later phase. See `docs/plans/PLAN-rust-proxy.md`,
-`ARCHITECTURE.md`, and `tools/direct-qemu/VERIFY-RUST-PROXY.md`.
+The `kerbside daemon` runs the Rust proxy as a supervised child process.
+Terminating a session via the REST API drops that session's in-flight
+connections, not just new ones — see `ARCHITECTURE.md` for how termination
+is bridged through the database to work across distributed/load-balanced
+proxy nodes.
 
-The Rust proxy ships as a separate PyPI package, `kerbside-proxy` — a
-maturin `bindings = "bin"` wheel that carries the compiled binary and lands
-it on `PATH`. `kerbside` exact-pins `kerbside-proxy` at the same version,
-so `pip install kerbside` installs a matching proxy automatically (the
-daemon finds it via `shutil.which('kerbside-proxy')`); you do not build or
-install it separately. Both packages are released in lockstep from a single
-`v*` tag, and prebuilt manylinux wheels are published for x86_64 and aarch64
-(no source distribution — an unsupported platform gets a clean pip error).
-For development you can instead point `KERBSIDE_PROXY_BIN` at a locally
-built binary, or let the daemon pick up the in-repo `cargo build` output.
+`kerbside-proxy` is published to PyPI as a separate maturin
+`bindings = "bin"` wheel that carries the compiled binary and lands it on
+`PATH`. `kerbside` exact-pins `kerbside-proxy` at the same version, so
+`pip install kerbside` installs a matching proxy automatically (the daemon
+finds it via `shutil.which('kerbside-proxy')`); you do not build or install
+it separately. Both packages are released in lockstep from a single `v*`
+tag, and prebuilt manylinux wheels are published for x86_64 and aarch64 (no
+source distribution — an unsupported platform gets a clean pip error). For
+development you can instead point `KERBSIDE_PROXY_BIN` at a locally built
+binary, or let the daemon pick up the in-repo `cargo build` output.
 
-Both proxies are exercised in CI: the direct-qemu functional lane runs as
-a `proxy: [python, rust]` matrix, and the Rust proxy passing the same
-end-to-end Sextant scenario the Python proxy passes is the functional
--parity proof. The Rust leg additionally proves API-driven session
-termination drops an in-flight connection, and a non-gating loadtest
-records the relay-latency comparison between the two.
+The proxy is exercised end to end in CI: the direct-qemu functional lane
+boots a real qemu/SPICE guest, drives it with the ryll headless client
+through the proxy, and asserts the full Sextant scenario, plus API-driven
+in-flight session termination and a non-gating relay-latency loadtest. See
+`docs/plans/PLAN-rust-proxy.md`, `ARCHITECTURE.md`, and
+`tools/direct-qemu/VERIFY-RUST-PROXY.md`.
 
 ## Documentation
 
