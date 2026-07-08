@@ -118,6 +118,15 @@ jobs:
       - name: Assert Sextant boot banner
         run: tools/direct-qemu/wait-for-banner.sh /tmp/kerbside-ci/sextant-serial.log 30
 
+      # Non-gating: sample relay RTT through this leg's proxy and record the
+      # numbers. Reads off both legs' artifacts to compare Python vs Rust. It
+      # only pings the existing connection, so it does not disturb the
+      # scenario that follows; continue-on-error keeps a measurement hiccup
+      # from failing the lane.
+      - name: Latency loadtest (non-gating)
+        continue-on-error: true
+        run: tools/direct-qemu/run-loadtest.sh
+
       - name: Run Sextant scenario test
         run: |
           set -o pipefail
@@ -145,6 +154,7 @@ jobs:
             /tmp/kerbside-ci/scenario/
             /tmp/kerbside-ci/tempest.log
             /tmp/terminate-artifacts/
+            /tmp/loadtest-artifacts/
 
       - name: Tear down the lane
         if: always()
