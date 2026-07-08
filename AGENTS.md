@@ -212,6 +212,35 @@ the mock gRPC server's `ProxyControl` stream emits a one-shot
 authorization (`MOCK_GRPC_TERMINATE_AFTER`), standing in for the API/DB
 leg so the harness exercises the proxy-side cancellation path live.
 
+### Direct-qemu proxy matrix (phase 7)
+
+`.github/workflows/direct-qemu-functional.yml` runs the lane as a
+`strategy.matrix.proxy: [python, rust]`. Both legs run the identical
+smoke + banner + Sextant scenario (`run-scenario.sh`) against the real
+daemon+API+MariaDB stack with a headless ryll client; the Rust proxy
+passing the same oracle the Python proxy passes is the functional-parity
+proof. `PROXY_IMPLEMENTATION` flows from the matrix value through
+`lane-up.sh` into `start-kerbside.sh`, which selects the proxy the daemon
+supervises (and, for `rust`, pre-checks the binary via `find_proxy_bin()`).
+
+The Rust leg additionally:
+
+- Builds and installs the `kerbside-proxy` wheel into the kerbside venv
+  (`install-proxy-wheel.sh` → `build-proxy-wheel.sh --native`), so
+  `find_proxy_bin()` resolves it via `shutil.which` on `PATH` — the real
+  phase-6 install path, given CI coverage here.
+- Runs `verify-terminate-live.sh` (Rust-only): on an isolated lane, calls
+  the REST terminate endpoint and asserts the in-flight connection drops
+  via the proxy log `session terminated by control plane`, exercising the
+  phase-5 DB→`ProxyControl` bridge end to end (not the mock).
+
+Both legs run `run-loadtest.sh` (non-gating, `continue-on-error`): it
+drives `loadtests/latency/orchestrator.py` to sample relay PING/PONG RTT
+through the leg's proxy and records p50/p95 as an artifact; the
+Python-vs-Rust comparison is read off the two legs. This is distinct from
+the local mock harness (`VERIFY-RUST-PROXY.md`), which needs no daemon or
+database.
+
 ### Modifying SPICE Protocol Handling
 
 Protocol packets are in `kerbside/spiceprotocol/packets/`:

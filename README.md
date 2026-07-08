@@ -47,6 +47,13 @@ install it separately. Both packages are released in lockstep from a single
 For development you can instead point `KERBSIDE_PROXY_BIN` at a locally
 built binary, or let the daemon pick up the in-repo `cargo build` output.
 
+Both proxies are exercised in CI: the direct-qemu functional lane runs as
+a `proxy: [python, rust]` matrix, and the Rust proxy passing the same
+end-to-end Sextant scenario the Python proxy passes is the functional
+-parity proof. The Rust leg additionally proves API-driven session
+termination drops an in-flight connection, and a non-gating loadtest
+records the relay-latency comparison between the two.
+
 ## Documentation
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - High-level system architecture

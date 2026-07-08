@@ -248,7 +248,98 @@ self-hosted-runner iteration is slow.
 
 ## Outcome
 
-_(To be written after execution and the pre-push audit.)_
+Completed 2026-07-08 on the kerbside `rust-proxy-phase-7` branch,
+unmerged and unpushed pending operator review. All planned steps landed.
+Harness logic was verified locally where it can be without the full
+qemu+MariaDB+ryll stack; the end-to-end matrix lane itself runs on the
+self-hosted CI runner and is confirmed when the branch is pushed/PR'd
+(the same mock-vs-live honesty as phases 5/6).
+
+- 7a (`b49798a`): the `PROXY_IMPLEMENTATION` knob in `start-kerbside.sh`
+  (default `python`, unchanged), which for `rust` exports the daemon's
+  config env and pre-checks the binary by calling the daemon's own
+  `find_proxy_bin()` (no bash reimplementation of the resolution),
+  inherited through `lane-up.sh`. Verified: `bash -n`; `find_proxy_bin()`
+  imports and resolves the wheel binary on PATH (last-line capture, since
+  kerbside logs to stdout on import); PATH wins over the dev-tree
+  fallback, as CI needs.
+- 7b (`ebf201f`): a `--native` fast path on `build-proxy-wheel.sh` (plain
+  host build, no zig/manylinux/rustup) and `install-proxy-wheel.sh`, which
+  builds that wheel and pip-installs it into a venv, asserting
+  `shutil.which('kerbside-proxy')` resolves. Verified end to end into a
+  fresh venv locally.
+- 7c (`b54c40b`): the `proxy: [python, rust]` matrix (`fail-fast: false`)
+  over the existing lane; identical smoke + banner + scenario for both
+  legs, `PROXY_IMPLEMENTATION` from the matrix value, the Rust leg also
+  building+installing the wheel, artifacts namespaced per leg. Validated
+  with actionlint.
+- 7d (`60061bd`): `verify-terminate-live.sh` — an isolated Rust lane on
+  which the REST terminate endpoint (`GET /console/<source>/<uuid>/
+  terminate`, keyed by the lane's console) is called and the in-flight
+  drop is asserted via the proxy log `session terminated by control
+  plane`. Confirmed that line is `info!` in `relay.rs` and the daemon lane
+  runs at the default `info` level (no `--verbose`), so the oracle is
+  emitted. Wired Rust-leg-only, before the destructive scenario; its log
+  is stashed for artifact upload before teardown.
+- 7e (`1157a70`): `run-loadtest.sh`, reusing the pre-existing
+  `loadtests/latency/orchestrator.py` (SPICE PING/PONG RTT through the
+  proxy) to record p50/p95 per leg, run on the shared lane (it only pings
+  the existing connection) and non-gating (`continue-on-error` + a
+  best-effort `exit 0`). Verified the nearest-rank percentile math and the
+  no-socket skip path locally.
+- 7f (`this commit`): docs (`AGENTS.md` direct-qemu matrix subsection,
+  `README.md` parity line, the `VERIFY-RUST-PROXY.md` mock-vs-daemon split
+  added in 7a), this Outcome, and the status flips below.
+
+Notable decisions, deliberate:
+
+- **Parity is expressed as one oracle, two proxies.** The Rust leg reuses
+  the exact `run-scenario.sh` the Python leg runs; there is no separate
+  Rust assertion to drift. This is the integration test phases 5/6
+  deferred here.
+- **The terminate test gets its own isolated lane, not a reconnect.**
+  `ConsolesTerminate` expires the token, so the same `.vv` cannot
+  reconnect; a dedicated `WORKDIR` lane (torn down in a trap) is simpler
+  and more robust than re-fetching a `.vv` and relaunching ryll on the
+  scenario lane. It runs sequentially before the scenario lane and shares
+  the default ports safely (full teardown frees them first;
+  `ClearNodeChannels` at the next proxy startup clears stale DB rows).
+- **The loadtest reuses existing tooling and never gates.** The RTT
+  orchestrator already existed; phase 7 only wraps + summarises it. The
+  Python-vs-Rust numbers are read off the two legs' artifacts, not
+  thresholded (shared-runner timing is too noisy).
+
+### Pre-push audit (2026-07-08)
+
+Reviewed the phase-7 diff (`git diff rust-proxy-phase-6..HEAD`; harness
+shell scripts, one workflow, and docs — no Python/Rust package code).
+`pre-commit` (flake8 + the 66-test py3 suite + actionlint on the workflow)
+is green; every shell script passes `bash -n`. **No blocking, high, or
+medium findings.**
+
+- **Oracle validity** (the one real risk): the terminate assertion greps
+  for an `info!`-level line, and the daemon lane runs at the default
+  `info` level, so it is emitted without `--verbose`. The proxy's tracing
+  reaches `kerbside.log` because the daemon (run with `>> kerbside.log
+  2>&1`) launches the proxy child inheriting stderr (phase 5).
+- **Isolation**: the terminate lane derives all state from its own
+  `WORKDIR`; it is sequential with the scenario lane and both fully tear
+  down, so the shared fixed ports and the shared MariaDB do not collide
+  (`ClearNodeChannels` + the intent-row TTL reaper clear anything stale).
+- **Non-gating discipline**: the loadtest step is `continue-on-error` and
+  the script is `set -uo pipefail` (not `-e`) with `exit 0`, so a
+  measurement hiccup cannot fail the lane; the summariser handles the
+  empty-CSV case.
+- **No secrets**: the JWT is minted from the lane's own generated seed
+  (as `lane-up.sh` already does); nothing sensitive is logged.
+
+Observations (not fixed): the Rust leg now runs two qemu boots (terminate
+lane + scenario lane) plus the ryll and wheel builds — the `timeout
+-minutes: 60` headroom should hold but is confirmed on the first CI run
+(Open questions). The firewall runs in its default **enforce** mode
+against real Sextant traffic; if the L1 allowlist has a gap the Rust leg
+will fail and surface it (the phase-4 capture suggests it will not) —
+this is deliberately the stronger test rather than warn-only.
 
 ## Back brief
 
