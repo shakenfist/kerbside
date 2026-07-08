@@ -5,7 +5,7 @@ import testtools
 import time
 
 
-from .. import spiceprotocol
+from . import ryll_helper
 
 
 class ShakenFistTestCase(testtools.TestCase):
@@ -84,10 +84,8 @@ class ShakenFistDirectVirtViewerTests(ShakenFistTestCase):
         # Fetch the virt viewer configuration for the instance from Shaken Fist
         vv = self.namespace_client.get_vdi_console_helper(self.instance['uuid'])
 
-        # Construct a SPICE client from that config
-        sc = spiceprotocol.SpiceClient()
-        sc.from_vv_file(vvconfig=vv)
-        sc.connect()
+        # Assert SPICE connectivity by driving ryll against that .vv
+        ryll_helper.assert_spice_connects(vv)
 
 
 class ShakenFistProxyVirtViewerTests(ShakenFistTestCase):
@@ -117,7 +115,5 @@ class ShakenFistProxyVirtViewerTests(ShakenFistTestCase):
             self.fail('Console for %s never appeared in the proxy'
                       % self.instance['uuid'])
 
-        # Construct a SPICE client from that config
-        sc = spiceprotocol.SpiceClient()
-        sc.from_vv_file(vvconfig=vv)
-        sc.connect()
+        # Assert SPICE connectivity through the proxy by driving ryll
+        ryll_helper.assert_spice_connects(vv)
