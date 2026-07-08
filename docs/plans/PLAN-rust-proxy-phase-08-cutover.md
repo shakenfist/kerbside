@@ -234,7 +234,99 @@ lot, prefer small commits and run `flake8`/`py3` after every one.
 
 ## Outcome
 
-_(To be written after execution and the pre-push audit.)_
+Completed 2026-07-08 on the kerbside `rust-proxy-phase-8` branch,
+unmerged and unpushed pending operator review. This closes the master
+plan. All planned steps landed; the removal spine was a series of small,
+grep-checked deletions, and `flake8`/`py3` (the unit gate) stayed green
+throughout.
+
+- 8a (`613b284`): `daemon_run` runs the Rust proxy unconditionally;
+  removed the `multiprocessing` fork, `import proxy`/`import
+  multiprocessing`, and the `PROXY_IMPLEMENTATION` config field.
+- 8b (`055e034`): deleted `kerbside/proxy.py` (642 lines) — imported only
+  by `main.py`, which no longer references it.
+- 8d, done before 8c to avoid a broken intermediate (`c08b4b8`):
+  re-platformed the live-cloud connectivity tests onto ryll — a new
+  `kerbside/tests/functional/ryll_helper.py` (`assert_spice_connects`
+  driving `ryll --headless` + a `vv_from_static` builder for the OpenStack
+  spice-direct host/port case), with `test_shakenfist`/`test_openstack`
+  swapping `SpiceClient` for it.
+- 8c (`8bc00cc`): deleted the Python SPICE stack — `kerbside/spiceprotocol/`,
+  `kerbside/utilities/` (the `kerbside-util` CLI) + its entry point, the
+  `TRAFFIC_INSPECTION*` config, and `test_proxy.py` (2914 lines). A tree
+  grep confirmed no dangling references; the REST API, tokens, sources,
+  and gRPC control service are untouched.
+- 8e (`68c80fe`): collapsed the direct-qemu `proxy: [python, rust]` matrix
+  to a single Rust lane and unwound the `PROXY_IMPLEMENTATION` plumbing
+  across the workflow and the four harness scripts (the `find_proxy_bin`
+  pre-check and the wheel install are now unconditional).
+- 8f (`0597bf6`, `1500cc1`, `eed2ba8`, `3aafc60`): rewrote the docs as
+  descriptive-not-transitional — `README.md` + `docs/configuration.md`
+  (drop `PROXY_IMPLEMENTATION` and the whole Traffic Inspection section),
+  `ARCHITECTURE.md` (section 3 is now the Rust proxy), `docs/proxy-
+  architecture.md` (banner reframes the Python-internals deep-dive as
+  removed-code background; a full Rust-internals rewrite of those sections
+  is recorded as follow-up rather than rushed), and `AGENTS.md` +
+  `VERIFY-RUST-PROXY.md`.
+- 8h (`this commit`): this Outcome, the audit below, and the status flips.
+
+### kerbside-patches / Kolla review (step 8g, 2026-07-08)
+
+Reviewed `/home/tars/src/shakenfist/kerbside-patches`. **No patch change is
+required for the release deployment path**, and no patch references the
+removed Python proxy machinery:
+
+- **No Python-proxy assumptions in the patches.** Grepping the `_patches/`
+  set for `proxy.py`, `PROXY_IMPLEMENTATION`, `TRAFFIC_INSPECTION`,
+  `kerbside-util`, `multiprocessing`, and `spiceprotocol` found only
+  OpenStack SDK's unrelated `_proxy.py` (patch006). Nothing encodes the
+  Python proxy.
+- **The image model already fits the cutover.** The images split into
+  `kerbside-base` → `kerbside` (API, runs uwsgi) and `kerbside-proxy`
+  (runs `kerbside daemon run`), both `FROM kerbside-base`. `kerbside-base`
+  pip-installs kerbside from a release tarball (`kolla/common/sources.py`
+  → `https://shakenfist.com/kerbside/releases/...`). Post-phase-6 that
+  release carries the exact `kerbside-proxy==X.Y.Z` pin (stamped by
+  `tools/stamp-proxy-version.sh` in `release.yml`), so `pip3 install
+  /kerbside` transitively pulls the `kerbside-proxy` manylinux wheel; both
+  images then have the binary on `PATH`, and the proxy container's
+  `kerbside daemon run` resolves it via `find_proxy_bin()`.
+- **Prerequisites for the operator (recorded, not blocking):** the base
+  image build needs PyPI reachability to fetch the `kerbside-proxy` wheel,
+  on a glibc≥2.28 base for the target arch — satisfied by Rocky 10 /
+  Ubuntu Noble on x86_64 and arm64, which phase 6's `manylinux_2_28`
+  x86_64+aarch64 wheels cover.
+- **Dev/source builds caveat:** a `kolla_dev_repos`-style build from a
+  kerbside **git checkout of `develop`** installs a tree whose committed
+  `pyproject.toml` has no `kerbside-proxy` pin (the pin is inserted only at
+  release), so it would not pull the proxy wheel. Such builds must install
+  `kerbside-proxy` explicitly (from PyPI or a locally-built wheel) or set
+  `KERBSIDE_PROXY_BIN`. Left for the operator; no speculative Kolla patch
+  was written (it could not be built/tested in this environment).
+
+### Pre-push audit (2026-07-08)
+
+Reviewed the phase-8 diff (`git diff rust-proxy-phase-7..HEAD`): Python
+deletions, the ryll test port, the harness/CI simplification, and the doc
+rewrites — no Rust source changes. `pre-commit` (flake8 + the 66-test py3
+unit suite + actionlint) is green after every commit; all harness scripts
+pass `bash -n`. **No blocking, high, or medium findings.**
+
+- **No dangling references.** After each deletion the tree was grepped for
+  `spiceprotocol`, `SpiceClient`, `TRAFFIC_INSPECTION`, `kerbside.utilities`,
+  `kerbside-util`, `PROXY_IMPLEMENTATION`, and `kerbside_proxy` (the Python
+  module); the only remaining mentions are explanatory comments in
+  `ryll_helper.py` and benign historical "(phase 5)" attributions.
+- **Ordering was chosen for clean intermediates.** 8d (ryll port) ran
+  before 8c (stack deletion) so no committed state has functional tests
+  importing a deleted module, even though `.stestr.conf` scopes the gate to
+  `kerbside/tests/unit` and would not have caught it.
+- **Inspection-only surfaces, flagged honestly:** the ryll connectivity
+  port (8d) targets live-cloud tests not in the unit gate; the collapsed
+  direct-qemu lane (8e) runs on the CI runner; the Kolla image build (8g)
+  runs in the deployment pipeline. None could be executed here; each is
+  verified by inspection and confirmed on push / the operator's cloud /
+  the deployment, consistent with phases 5–7.
 
 ## Back brief
 

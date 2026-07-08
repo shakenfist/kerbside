@@ -343,7 +343,7 @@ implemented later.
 | 5. Daemon integration: exec/supervision, termination push | PLAN-rust-proxy-phase-05-daemon-integration.md | Complete (kerbside branch rust-proxy-phase-5, unmerged) |
 | 6. Packaging: maturin wheel, CI build matrix, version pinning | PLAN-rust-proxy-phase-06-packaging.md | Complete (kerbside branch rust-proxy-phase-6, unmerged) |
 | 7. CI: direct-qemu lane on the Rust proxy, loadtest comparison | PLAN-rust-proxy-phase-07-ci.md | Complete (kerbside branch rust-proxy-phase-7, unmerged) |
-| 8. Cutover: Rust as default, retire the Python proxy, docs | PLAN-rust-proxy-phase-08-cutover.md | Not started |
+| 8. Cutover: Rust as default, retire the Python proxy, docs | PLAN-rust-proxy-phase-08-cutover.md | Complete (kerbside branch rust-proxy-phase-8, unmerged) |
 
 Phase sketches (each to be expanded into its own plan file
 before execution):
