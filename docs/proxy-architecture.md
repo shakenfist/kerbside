@@ -4,11 +4,19 @@ This document provides a detailed technical description of Kerbside's proxy
 architecture, including the connection state machine, process model, and traffic
 handling.
 
-> **Note:** this describes the Python proxy (`kerbside/proxy.py`), which is the
-> active proxy today. A Rust reimplementation (`rust/kerbside-proxy/`) is in
-> progress and reproduces this behaviour over async tokio tasks, consulting the
-> control-plane gRPC service for authorization; see `ARCHITECTURE.md` and
-> `docs/plans/PLAN-rust-proxy.md`.
+> **Note:** the SPICE proxy is the Rust `kerbside-proxy`
+> (`rust/kerbside-proxy/`), which relays over async tokio tasks and consults
+> the control-plane gRPC service for authorization. The **connection state
+> machine, SPICE handshake, channel model, and traffic-handling concepts**
+> below still describe how the proxy works; the **implementation specifics**
+> in the earlier sections (the `multiprocessing.Process` worker pool, the
+> `SpiceSession`/`session.run` Python classes) describe the original Python
+> proxy, which was **removed at cutover**, and are retained here as protocol
+> and design background. For the current implementation see `ARCHITECTURE.md`
+> (the summary), `rust/kerbside-proxy/src/`, and
+> `docs/plans/PLAN-rust-proxy.md`. The "Process model" and "Session
+> termination" sections below are current (Rust). A full rewrite of the
+> earlier internals sections in Rust terms is tracked as follow-up work.
 
 ## Process Architecture
 
@@ -548,8 +556,7 @@ blocking new ones.
 
 ### Process model: the daemon supervises the Rust proxy as a child
 
-`PROXY_IMPLEMENTATION` (`python` default, or `rust`) selects which proxy
-`kerbside daemon run` starts:
+`kerbside daemon run` supervises the Rust proxy binary as a child:
 
 ```
 +---------------------------+
@@ -557,7 +564,7 @@ blocking new ones.
 |    (main.py)               |  - binds the gRPC UDS server FIRST
 +-------------+-------------+
               |
-              | subprocess.Popen (PROXY_IMPLEMENTATION=rust)
+              | subprocess.Popen
               v
 +---------------------------+
 |    kerbside-proxy         |  the Rust binary (rust/kerbside-proxy/)
@@ -565,15 +572,9 @@ blocking new ones.
 +---------------------------+  (ClearNodeChannels) and lazily thereafter
 ```
 
-This is a *sibling* of the existing Python-proxy fork (component 1 in
-`ARCHITECTURE.md`), not a replacement of it — the default remains the
-Python proxy, unchanged. When `rust` is configured:
-
 - The gRPC UDS server is bound **before** the child is launched, because
   the Rust proxy dials it at startup and would fail if the socket did not
-  yet exist. (For the Python-proxy path the ordering is reversed for an
-  unrelated reason — see `ARCHITECTURE.md` component 2 — because that
-  proxy is a fork, not a subprocess, and must not inherit the gRPC
+  yet exist. (A subprocess child, unlike a fork, does not inherit the gRPC
   server's fds/threads.)
 - `kerbside/proxy_supervisor.py`'s `find_proxy_bin()` resolves the binary
   (env `KERBSIDE_PROXY_BIN` → `PATH` → the in-repo `target/{release,debug}`
@@ -691,14 +692,11 @@ Concretely:
    deletes `session_terminations` rows older than 5 minutes — long past
    the point every node has polled and acted — keeping the table small.
 
-The API always records the intent (step 1 is unconditional), but step 3 —
-acting on `TerminateSession` — only happens where a proxy actually consumes
-`ProxyControl`. Today that is the Rust proxy only; the Python proxy has no
-`ProxyControl` client, so a `PROXY_IMPLEMENTATION=python` node's in-flight
-connections still survive a termination request until the client
-disconnects itself, exactly as before phase 5.
+A merely-expired (not explicitly terminated) token is never pushed as a
+`TerminateSession`, so natural token expiry does not tear a live session
+down mid-use — only an explicit API terminate does.
 
-### Graceful drain on shutdown (Rust)
+### Graceful drain on shutdown
 
 On SIGTERM, the proxy's `shutdown_signal` future resolving triggers the
 same teardown path used for termination: it stops the listeners from
