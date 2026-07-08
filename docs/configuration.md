@@ -87,16 +87,19 @@ planned extension of the delivered policy.
 
 ## Logging and Monitoring Settings
 
-The VDI proxy provides Prometheus style metrics on a configurable port (default
-13003). These metric values are also logged for later processing if desired.
+The Rust proxy provides Prometheus style metrics on a configurable port
+(default 13003), bound to a management address (see
+`PROMETHEUS_METRICS_ADDRESS`).
 
 Values tracked include:
 
-- Number of active console sessions
-- Number of active console channels
-- Bandwidth and latency information for each console channel
-- REST API request statuses as a metric with labels for each HTTP status code
-- REST API request response latency as a histogram per HTTP status code
+- Total and currently-active connections
+  (`kerbside_proxy_connections_total`, `kerbside_proxy_active_connections`)
+- Authorized and denied connection counts
+  (`kerbside_proxy_authorized_total`, `kerbside_proxy_denied_total`)
+- Bytes relayed per direction
+  (`kerbside_proxy_bytes_relayed_total{direction}`)
+- Firewall verdicts (`kerbside_proxy_firewall_verdicts_total{...}`)
 
 | Configuration Option | Type | Description |
 |---------------------|------|-------------|

@@ -144,8 +144,8 @@ Guides for deploying and configuring Kerbside:
 Internal design of the Kerbside proxy:
 
 - [Proxy Architecture](proxy-architecture.md) - Internal architecture including
-  process model, connection state machine, traffic inspection, and worker
-  management
+  the process model, the connection state machine, the relay, and the SPICE
+  firewall
 
 - [ARCHITECTURE.md](../ARCHITECTURE.md) - High-level system architecture
   overview (in project root)
@@ -215,8 +215,12 @@ Protocol for advanced guest integration features:
 | WebDAV Channel | Proxy | Passthrough |
 | VD Agent | Proxy | Clipboard/file transfer passthrough |
 
-**Full**: Protocol decoded and logged during inspection
-**Proxy**: Traffic forwarded transparently without decoding
+**Full**: the channel's message types are modelled in the L1 firewall
+allowlist (`rust/kerbside-proxy/src/allowlist.rs`); its framed traffic is
+classified per message type.
+**Proxy**: relayed and framed, but the channel is not individually modelled
+(treated as an unmodelled channel by the firewall policy). Message bodies are
+relayed opaquely in both cases; the proxy does not decode or log them.
 
 ## Quick Reference
 

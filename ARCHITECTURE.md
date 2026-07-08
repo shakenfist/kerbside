@@ -1,10 +1,12 @@
 # Kerbside Architecture
 
-Kerbside is a SPICE VDI protocol proxy written in Python that provides remote
-console access to VMs running in virtualization clusters (Shaken Fist,
-OpenStack, oVirt). It acts as a protocol-native proxy that terminates client
-SPICE connections, identifies which VM to proxy to based on authentication
-tokens, and relays traffic bidirectionally between client and server.
+Kerbside is a SPICE VDI protocol proxy that provides remote console access to
+VMs running in virtualization clusters (Shaken Fist, OpenStack, oVirt). It is
+split into a pure-Python control plane (the REST API and the daemon) and a
+Rust SPICE proxy the daemon supervises: the proxy terminates client SPICE
+connections, and the control plane identifies which VM to proxy to based on
+authentication tokens; traffic is relayed bidirectionally between client and
+server.
 
 ## High-Level Architecture
 
@@ -16,29 +18,26 @@ tokens, and relays traffic bidirectionally between client and server.
                                              |
                                              | HTTPS
                                              v
-+------------------+              +----------+---------+
-|  SPICE Client    |    TLS      |                    |
-|  (virt-viewer)   +------------>+   Kerbside Proxy   |
-+------------------+   :5900     |                    |
-                                 |  +-------------+   |
-                                 |  | API Layer   |   |
-                                 |  | (Flask)     |   |
-                                 |  +-------------+   |
-                                 |  | Proxy Layer |   |
-                                 |  | (Workers)   |   |
-                                 |  +-------------+   |
-                                 |  | Protocol    |   |
-                                 |  | Layer       |   |
-                                 |  +-------------+   |
-                                 +---------+----------+
-                                           |
-                    +----------------------+----------------------+
-                    |                      |                      |
-                    v                      v                      v
-           +-------+-------+      +-------+-------+      +-------+-------+
-           | Shaken Fist   |      |   OpenStack   |      |     oVirt     |
-           | Hypervisors   |      |   Hypervisors |      |   Hypervisors |
-           +---------------+      +---------------+      +---------------+
+                                    +--------+---------+       +--------------+
+                                    | kerbside (Python)|       |   MariaDB    |
+                                    |  REST API +      +<----->+  (shared bus)|
+                                    |  daemon          |       +------+-------+
+                                    +--------+---------+              ^
+                                             | supervises            |
+                                             | + gRPC/UDS            | DB
+                                             v                       |
++------------------+     TLS       +---------+----------+            |
+|  SPICE Client    +-------------->+  kerbside-proxy    +------------+
+|  (virt-viewer)   |    :5900      |  (Rust, tokio)     |
++------------------+               +---------+----------+
+                                             |
+                    +------------------------+------------------------+
+                    |                        |                        |
+                    v                        v                        v
+           +--------+------+        +--------+------+        +--------+------+
+           | Shaken Fist   |        |   OpenStack   |        |     oVirt     |
+           | Hypervisors   |        |   Hypervisors |        |   Hypervisors |
+           +---------------+        +---------------+        +---------------+
 ```
 
 ## Core Components
@@ -348,17 +347,21 @@ See `etc/kerbside.conf.example` for a complete configuration reference.
 1. **Client Authentication**: JWT tokens issued after Keystone validation
 2. **Console Access**: Time-limited tokens (configurable expiry)
 3. **TLS Everywhere**: Client-to-proxy and proxy-to-hypervisor connections
-4. **Certificate Validation**: Host subject verification for hypervisor certs
+4. **Certificate Validation**: the backend hypervisor certificate is
+   validated against the deployment CA. Pinning the certificate *subject*
+   (`host_subject`) is future work — see the SPICE firewall / backend notes.
 5. **Audit Logging**: All console access events recorded
 
 ## Monitoring
 
-Prometheus metrics exported on configurable port (default 13003):
+The Rust proxy exports Prometheus metrics on a configurable port (default
+13003), bound to `--metrics-address` (loopback by default). The registered
+metrics are:
 
-- Worker process counts
-- Connection statistics
-- Traffic throughput
-- Error rates
+- `kerbside_proxy_connections_total` / `kerbside_proxy_active_connections`
+- `kerbside_proxy_authorized_total` / `kerbside_proxy_denied_total`
+- `kerbside_proxy_bytes_relayed_total{direction}`
+- `kerbside_proxy_firewall_verdicts_total{...}`
 
 ## Directory Structure
 

@@ -299,10 +299,14 @@ SELECT * FROM consoletokens WHERE expires > NOW();
 
 ### Proxy Process Debugging
 
-The proxy renames worker processes with `setproctitle` for visibility:
+The daemon supervises the Rust proxy as a single child process (one tokio
+task per connection, not a worker process per connection). To see the daemon
+and its proxy child:
 ```bash
 ps aux | grep kerbside
 ```
+The proxy's `tracing` output is inherited by the daemon's stderr; per-channel
+activity is visible in the Prometheus `/metrics` endpoint.
 
 ## Common Pitfalls
 

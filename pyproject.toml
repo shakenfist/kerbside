@@ -32,7 +32,6 @@ dependencies = [
     "click==8.1.7",                     # bsd
     "cryptography",                     # apache2
     "pylogrus",                         # mit
-    "setproctitle==1.3.3",              # bsd
     "prometheus-client==0.20.0",        # apache2
     "Flask==3.1.3",                     # bsd
     "Flask-RESTful==0.3.10",            # bsd

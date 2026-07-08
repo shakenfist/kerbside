@@ -133,8 +133,9 @@ Finally, add 1 to the offset (cannot reference the current pixel).
 
 ### Implementation Reference
 
-For a working implementation, see `kerbside/utilities/lz.py` in the Kerbside
-codebase.
+For a working implementation, see the ryll `shakenfist-spice-protocol`
+crate's decode path (the `digest-decode` feature), which the Kerbside proxy
+and the test harness rely on.
 
 ## GLZ Compression
 

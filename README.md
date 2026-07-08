@@ -1,6 +1,7 @@
 # Kerbside, a SPICE VDI proxy
 
-Kerbside is a SPICE VDI protocol proxy written in python. The long term idea is
+Kerbside is a SPICE VDI protocol proxy: a pure-Python control plane (the REST
+API and the daemon) that supervises a Rust SPICE proxy. The long term idea is
 that this would sit out the front of your Shaken Fist cluster and provide VDI
 access to VMs running inside the cluster. It does this by determining what
 VM to proxy your traffic to based on the password you provide
