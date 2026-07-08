@@ -1,0 +1,46 @@
+# Packaging manifest for the kerbside-proxy binary wheel.
+#
+# kerbside-proxy is published to PyPI as a SEPARATE package from the
+# pure-Python `kerbside` package, built with maturin using
+# `bindings = "bin"` (the uv/astral pattern). The compiled `kerbside-proxy`
+# binary is laid into the wheel's `*.data/scripts/` directory, which pip
+# installs onto PATH -- so `pip install kerbside`, which exact-pins
+# `kerbside-proxy`, makes the binary discoverable via
+# `shutil.which('kerbside-proxy')`, the resolution leg used by
+# `kerbside/proxy_supervisor.py::find_proxy_bin()`.
+#
+# The wheel carries a compiled binary, so it is platform-tagged; CI builds
+# a manylinux wheel per architecture (x86_64 and aarch64). No sdist is
+# published (see PLAN-rust-proxy-phase-06-packaging.md).
+#
+# The package VERSION is read from Cargo.toml `[package] version` (via
+# `dynamic = ["version"]`), which the release stamps from the `v*` tag so
+# it matches the `kerbside` version in lockstep -- see
+# tools/stamp-proxy-version.sh.
+
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "kerbside-proxy"
+description = "Kerbside SPICE proxy: an inspection-first TLS relay between SPICE clients and hypervisors, authorised via the Kerbside gRPC control service."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+dynamic = ["version"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: System :: Networking",
+]
+
+[project.urls]
+"Homepage" = "https://shakenfist.com"
+"Bug Tracker" = "https://github.com/shakenfist/kerbside/issues"
+
+[tool.maturin]
+# Package the [[bin]] target (not a Python extension module) into the
+# wheel's scripts directory.
+bindings = "bin"
