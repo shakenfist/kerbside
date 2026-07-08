@@ -283,7 +283,7 @@ Global___AuthorizeConnectionReply: _TypeAlias = AuthorizeConnectionReply  # noqa
 @_typing.final
 class RegisterChannelRequest(_message.Message):
     """RegisterChannelRequest records the pre-authorization channel identity
-    (maps to the proxy's first two record_channel_info() calls).
+    (maps to record_channel_info_by_ref).
     """
 
     DESCRIPTOR: _descriptor.Descriptor
@@ -429,7 +429,7 @@ Global___ProxyControlRequest: _TypeAlias = ProxyControlRequest  # noqa: Y015
 @_typing.final
 class ProxyControlEvent(_message.Message):
     """ProxyControlEvent is a single event pushed to the proxy over the control
-    stream. The oneof is intentionally extensible: phase 5 adds real events.
+    stream. The oneof is intentionally extensible (e.g. future policy-push).
     """
 
     DESCRIPTOR: _descriptor.Descriptor

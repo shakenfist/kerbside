@@ -2,11 +2,10 @@ syntax = "proto3";
 
 package kerbside.rpc;
 
-// KerbsideProxy is the control-plane RPC contract between a SPICE proxy
-// process and the Kerbside daemon. Today the proxy talks to MariaDB
-// directly via kerbside/db.py; this service replaces that direct database
-// coupling so Python continues to own policy and the database while the
-// proxy (eventually the Rust proxy, phase 3) simply consults this service.
+// KerbsideProxy is the control-plane RPC contract between the Rust SPICE
+// proxy and the Kerbside daemon. Rather than the proxy touching MariaDB
+// directly, Python owns policy and the database and the proxy consults this
+// service.
 //
 // The service is hosted over a filesystem-guarded unix domain socket using
 // insecure gRPC credentials (the peer is a trusted local process). Errors
@@ -27,17 +26,17 @@ service KerbsideProxy {
   //                                  filter (expired tokens are denied).
   //   get_source(source)          -- reads the source's ca_cert.
   //   get_console(source, uuid)   -- reads the hypervisor target details.
-  //   record_channel_info(session_id)  -- records the resolved session_id
-  //                                  against the channel on success.
+  //   record_channel_info_by_ref(session_id)  -- records the resolved
+  //                                  session_id against the channel on success.
   //   add_audit_event('Channel created')  -- writes the creation audit event
   //                                  on success.
   // On success it returns a Target; on any miss it returns a Denied.
   rpc AuthorizeConnection(AuthorizeConnectionRequest) returns (AuthorizeConnectionReply) {}
 
   // RegisterChannel records the pre-authorization channel identity. It maps
-  // to the proxy's first two record_channel_info() calls today (the bare
-  // (node, connection_ref) upsert followed by the client/connection/channel
-  // identity fields), before the token has been authorized.
+  // to record_channel_info_by_ref (the (node, connection_ref) upsert with the
+  // client/connection/channel identity fields), before the token has been
+  // authorized.
   rpc RegisterChannel(RegisterChannelRequest) returns (StatusReply) {}
 
   // RecordAuditEvent writes an audit event. It maps to add_audit_event() and
@@ -56,11 +55,10 @@ service KerbsideProxy {
   rpc ClearNodeChannels(ClearNodeChannelsRequest) returns (StatusReply) {}
 
   // ProxyControl is a server-streaming control channel from the daemon to
-  // the proxy for session-termination and policy-push events. It is defined
-  // now so phase 3 can pin a stable contract, but is only stubbed this phase
-  // (the server opens the stream and may emit keepalives). Phase 5 adds the
-  // real events and may extend the ProxyControlEvent oneof; keep it
-  // extensible.
+  // the proxy. It delivers TerminateSession events (interleaved with
+  // Heartbeat keepalives) for sessions marked for termination that are live
+  // on this node. The ProxyControlEvent oneof is intentionally extensible
+  // (e.g. for future policy-push events); keep it extensible.
   rpc ProxyControl(ProxyControlRequest) returns (stream ProxyControlEvent) {}
 }
 
@@ -165,7 +163,7 @@ message AuthorizeConnectionReply {
 }
 
 // RegisterChannelRequest records the pre-authorization channel identity
-// (maps to the proxy's first two record_channel_info() calls).
+// (maps to record_channel_info_by_ref).
 message RegisterChannelRequest {
   string node = 1;
   string connection_ref = 2;
@@ -204,7 +202,7 @@ message ProxyControlRequest {
 }
 
 // ProxyControlEvent is a single event pushed to the proxy over the control
-// stream. The oneof is intentionally extensible: phase 5 adds real events.
+// stream. The oneof is intentionally extensible (e.g. future policy-push).
 message ProxyControlEvent {
   oneof event {
     Heartbeat heartbeat = 1;
