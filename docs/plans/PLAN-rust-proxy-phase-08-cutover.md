@@ -328,6 +328,55 @@ pass `bash -n`. **No blocking, high, or medium findings.**
   verified by inspection and confirmed on push / the operator's cloud /
   the deployment, consistent with phases 5–7.
 
+### Full-series pre-push audit (2026-07-09)
+
+After the master plan was marked complete, the `PUSH-TEMPLATE.md` audit was
+run across the **whole** stacked series (`git diff develop..HEAD`, phases
+2–8), not just phase 8. Wave 1 (flake8 + the 66-test py3 suite + style
+greps) and the wave-2 mechanical script were green; the four wave-2
+judgment dimensions were run as parallel sub-agents (2a/2b/2c sonnet, 2d
+security opus) and, after a first run where three hit the account session
+limit, re-run to completion once quota returned.
+
+**No blocking, critical, or high findings survived.** Fixes were appended
+as commits on this branch:
+
+- Stale references to the removed Python SPICE stack in docs and comments
+  (AGENTS, ARCHITECTURE, README, several `docs/` protocol pages,
+  PLAN-TEMPLATE, and Rust doc-comments) were purged; `docs/proxy
+  -architecture.md` was rewritten from the Python deep-dive into an
+  accurate Rust account — **this supersedes the "deferred follow-up"
+  note above**: the rewrite was done during the audit rather than left
+  banner-labelled.
+- Two more DB functions orphaned by the Python-proxy removal
+  (`remove_proxy_channel`, `get_node_channels`) were deleted, along with
+  the terminate-path duplication (new `db.terminate_session`) and the dead
+  `setproctitle` dependency.
+- Doc claims were corrected to match reality: the Prometheus metric set,
+  the removal of "traffic inspection / worker management", the L1-firewall
+  channel model, and the high-level architecture diagram.
+- The gRPC-contract (`kerbside.proto`) comments' now-false status claims
+  were corrected and the stubs regenerated (descriptor byte-identical).
+
+Accepted advisories / tracked follow-ups (none blocking):
+
+- **Backend hypervisor TLS subject pinning (wave 2d, MEDIUM).** The
+  backend leg validates the CA chain but not the certificate *subject*
+  (`host_subject`); the fix belongs in the ryll `shakenfist-spice-protocol`
+  verifier. Pre-existing parity gap, documented in `backend.rs`, not a
+  regression from this series.
+- **ProxyControl stream is not reconnected (wave 2a).** If the daemon↔proxy
+  control stream drops, the proxy does not re-establish it this phase; a
+  documented, pre-existing design tradeoff.
+- **Coverage of orchestration glue (wave 2b).** `main.py`'s daemon
+  supervision + startup firewall-validation, `find_proxy_bin`'s PATH/dev
+  -tree branches, `db.terminate_session` against a real DB, and the alembic
+  migrations have no unit coverage (migrations follow the repo's
+  pre-existing no-migration-test pattern). Advisory.
+- **Backend plaintext-first (wave 2d, LOW)** — parity with the prior proxy;
+  the SPICE ticket is RSA-encrypted regardless. Deployments on untrusted
+  networks must require hypervisor TLS.
+
 ## Back brief
 
 Before executing any step, back brief the operator. The two settled
