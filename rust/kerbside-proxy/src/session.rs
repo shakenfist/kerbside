@@ -1,6 +1,6 @@
 //! The per-connection SPICE session: the client-facing link handshake and
-//! authorization, reproducing `kerbside/proxy.py`'s `ClientPassword` over the
-//! ryll server-role handshake drivers.
+//! authorization, driving ticket decryption over the ryll server-role
+//! handshake drivers.
 //!
 //! `handle_connection` is the seam `listen::run_secure` hands each accepted
 //! (TLS-terminated) client connection to. It:

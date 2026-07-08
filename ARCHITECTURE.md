@@ -220,28 +220,17 @@ OpenStack environments).
 | `GET /session` | List active proxy sessions |
 | `GET /session/<id>/terminate` | Kill specific session |
 
-### 5. SPICE Protocol Layer (`spiceprotocol/`)
+### 5. SPICE Protocol Handling
 
-Deep protocol handling for SPICE connections.
+SPICE wire-format parsing lives in the Rust proxy, which reuses the ryll
+`shakenfist-spice-protocol` crate (a rev-pinned git dependency in
+`rust/kerbside-proxy/Cargo.toml`) for the link handshake, ticket
+decryption, mini-header framing, and per-channel message types. The
+firewall's L1 message-type grammar is derived from that crate in
+`rust/kerbside-proxy/src/allowlist.rs`. See `docs/channel-protocols.md`
+and `docs/spice-link-protocol.md` for the protocol reference.
 
-**Structure:**
-
-```
-spiceprotocol/
-  __init__.py          # SpiceClient class
-  packets/
-    constants.py       # Channel mappings, error codes, capabilities
-    linkmessages.py    # SPICE link protocol (handshake)
-    authentication.py  # Auth packet handling
-    main.py            # Main channel messages
-    display.py         # Display channel messages
-    inputs.py          # Input channel messages
-    cursor.py          # Cursor messages
-    port.py            # Port redirection
-    inspection.py      # Traffic inspection framework
-```
-
-**Supported Channels:**
+**Channels the proxy models:**
 
 - `main` - Connection control
 - `display` - Display updates
@@ -326,7 +315,7 @@ Token embedded in virt-viewer file as password
 Client connects to proxy with encrypted password
     |
     v
-SpiceTLSSession decrypts and validates token
+Proxy decrypts and validates the token (AuthorizeConnection over gRPC)
     |
     v
 db.get_console() retrieves hypervisor details
@@ -376,19 +365,21 @@ Prometheus metrics exported on configurable port (default 13003):
 ```
 kerbside/
   main.py              # Entry point, daemon management
-  proxy.py             # SPICE proxy implementation
+  proxy_supervisor.py  # Launches/supervises the Rust proxy child
   api.py               # REST API
   db.py                # Database models and queries
   config.py            # Configuration management
   consoletoken.py      # Token generation/validation
   util.py              # Shared utilities
-  spiceprotocol/       # SPICE protocol handling
   rpc/                 # KerbsideProxy gRPC service (.proto, generated
                        #   stubs, servicer, UDS server)
   sources/             # Cloud source implementations
   api/                 # Web UI assets
     templates/         # Jinja2 templates
     static/            # CSS, JS, icons
+rust/kerbside-proxy/   # The Rust SPICE proxy (binary crate)
+  src/                 # listeners, TLS, handshake, backend leg, relay,
+                       #   firewall (policy.rs/allowlist.rs), gRPC client
 alembic/               # Database migrations
   versions/            # Migration scripts
 etc/                   # Configuration examples

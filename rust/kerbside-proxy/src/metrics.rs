@@ -1,10 +1,9 @@
 //! Prometheus metrics: a global registry, typed metric handles, and a
 //! minimal hyper 1.x `/metrics` HTTP server.
 //!
-//! This replaces the Python proxy's `prometheus_client` +
-//! multiprocessing-queue exposition (`kerbside/proxy.py`'s
-//! `start_http_server` / `prometheus_updates`) with a Rust-native registry:
-//! every metric below is created once (via [`std::sync::LazyLock`]) and
+//! A Rust-native registry (rather than a `prometheus_client` +
+//! multiprocessing-queue exposition): every metric below is created once
+//! (via [`std::sync::LazyLock`]) and
 //! registered into a single process-wide [`Registry`], and [`serve`] gathers
 //! from that registry on every `/metrics` scrape. Callers never touch the
 //! registry directly -- they use the small helper functions at the bottom of

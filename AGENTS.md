@@ -290,15 +290,6 @@ Key configuration for development:
 
 ## Debugging Tips
 
-### Enable Traffic Inspection
-
-Set in config:
-```ini
-TRAFFIC_INSPECTION=true
-TRAFFIC_INSPECTION_INTIMATE=true  # Warning: logs keystrokes!
-TRAFFIC_OUTPUT_PATH=/tmp/kerbside-traffic
-```
-
 ### Check Active Sessions
 
 ```sql
