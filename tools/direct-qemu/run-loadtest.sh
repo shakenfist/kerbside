@@ -2,7 +2,7 @@
 # Phase 7: non-gating latency loadtest. Drives the EXISTING latency
 # orchestrator (loadtests/latency/orchestrator.py) against the live lane's
 # ryll control socket to sample SPICE PING/PONG round-trip time through
-# whichever proxy the lane is running (PROXY_IMPLEMENTATION), then summarises
+# the Rust proxy the lane is running, then summarises
 # p50/p95 and records the numbers so the Python-vs-Rust comparison can be read
 # off the two matrix legs' artifacts.
 #
@@ -20,7 +20,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 WORKDIR="${WORKDIR:-/tmp/kerbside-ci}"
 RYLL_SOCK="${RYLL_SOCK:-${WORKDIR}/ryll-ci.sock}"
-PROXY="${PROXY_IMPLEMENTATION:-python}"
+PROXY="${LOADTEST_PROXY_LABEL:-rust}"
 SAMPLES="${LOADTEST_SAMPLES:-20}"
 MAX_SECONDS="${LOADTEST_MAX_SECONDS:-40}"
 RESULTS_DIR="${LOADTEST_RESULTS_DIR:-/tmp/loadtest-artifacts}"

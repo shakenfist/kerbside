@@ -10,26 +10,13 @@ jobs:
     runs-on: [self-hosted, vm, debian-12, l]
     timeout-minutes: 60
 
-    # Run the identical lane against both proxy implementations. The Rust
-    # proxy passing the same run-scenario.sh oracle the Python proxy passes
-    # is the functional-parity proof (Rust SPICE proxy master plan, phase 7).
-    # fail-fast: false so one leg's failure does not cancel the other.
-    strategy:
-      fail-fast: false
-      matrix:
-        proxy: [python, rust]
-
     # The runner image exports http_proxy/https_proxy pointing at an
     # upstream squid cache for apt, github, and the cargo registry.
     # Loopback traffic to kerbside on 127.0.0.1 must bypass that proxy
     # or squid returns 503 ERR_CONNECT_FAIL when it cannot route the
     # request back through itself.
-    #
-    # PROXY_IMPLEMENTATION flows through lane-up.sh into start-kerbside.sh,
-    # selecting which proxy `kerbside daemon run` supervises.
     env:
       no_proxy: 127.0.0.1,localhost
-      PROXY_IMPLEMENTATION: ${{ matrix.proxy }}
 
     steps:
       - name: Checkout code
@@ -81,12 +68,11 @@ jobs:
           /tmp/kerbside-venv/bin/pip install --quiet .
           echo "/tmp/kerbside-venv/bin" >> "$GITHUB_PATH"
 
-      # Rust leg only: build the kerbside-proxy wheel and install it into the
-      # kerbside venv, so find_proxy_bin() resolves it via shutil.which on
-      # PATH exactly as a wheel-installed deployment would (phase 6). Runs
-      # after the venv exists and before the daemon starts.
+      # Build the kerbside-proxy wheel and install it into the kerbside venv,
+      # so find_proxy_bin() resolves it via shutil.which on PATH exactly as a
+      # wheel-installed deployment would (phase 6). Runs after the venv exists
+      # and before the daemon starts.
       - name: Build and install the Rust proxy wheel
-        if: matrix.proxy == 'rust'
         run: |
           python3 -m venv "${RUNNER_TEMP}/maturin-venv"
           "${RUNNER_TEMP}/maturin-venv/bin/pip" install --quiet maturin
@@ -95,14 +81,12 @@ jobs:
       - name: Initialize MariaDB
         run: tools/direct-qemu/setup-mariadb.sh
 
-      # Rust leg only: prove API-driven session termination drops an in-flight
-      # connection, end to end through the DB intent table + the daemon's
-      # ProxyControl poll. Runs on its own isolated lane (separate WORKDIR,
-      # torn down here) before the shared scenario lane, so it neither
-      # disturbs nor is disturbed by it. The Python proxy does not honour
-      # in-flight termination, so this is Rust-only.
+      # Prove API-driven session termination drops an in-flight connection,
+      # end to end through the DB intent table + the daemon's ProxyControl
+      # poll. Runs on its own isolated lane (separate WORKDIR, torn down
+      # here) before the scenario lane, so it neither disturbs nor is
+      # disturbed by it.
       - name: Verify API-terminate drops the in-flight connection
-        if: matrix.proxy == 'rust'
         run: tools/direct-qemu/verify-terminate-live.sh
 
       - name: Bring up the lane
@@ -118,11 +102,11 @@ jobs:
       - name: Assert Sextant boot banner
         run: tools/direct-qemu/wait-for-banner.sh /tmp/kerbside-ci/sextant-serial.log 30
 
-      # Non-gating: sample relay RTT through this leg's proxy and record the
-      # numbers. Reads off both legs' artifacts to compare Python vs Rust. It
-      # only pings the existing connection, so it does not disturb the
-      # scenario that follows; continue-on-error keeps a measurement hiccup
-      # from failing the lane.
+      # Non-gating: sample relay RTT through the proxy and record the numbers
+      # as an artifact. It only pings the existing connection, so it does not
+      # disturb the scenario that follows; continue-on-error keeps a
+      # measurement hiccup from failing the lane. (The Python baseline for the
+      # comparison lives in phase-7 history.)
       - name: Latency loadtest (non-gating)
         continue-on-error: true
         run: tools/direct-qemu/run-loadtest.sh
@@ -137,7 +121,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: direct-qemu-artifacts-${{ matrix.proxy }}-${{ github.run_id }}
+          name: direct-qemu-artifacts-${{ github.run_id }}
           retention-days: 90
           if-no-files-found: warn
           path: |

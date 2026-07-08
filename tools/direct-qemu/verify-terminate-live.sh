@@ -10,9 +10,7 @@
 # Self-contained: brings up its OWN isolated lane (a separate WORKDIR so it
 # neither clobbers nor is clobbered by the shared scenario lane, and so its
 # logs survive for artifact upload), connects ryll, terminates the console
-# via the REST API, asserts the drop, and tears the lane down on exit. Rust
-# proxy only -- the Python proxy does not honour in-flight termination by
-# design, so this is not run for it.
+# via the REST API, asserts the drop, and tears the lane down on exit.
 #
 # Ports are the lane defaults; this runs to completion (and tears down,
 # freeing the ports) before the shared scenario lane comes up, so there is no
@@ -26,7 +24,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Isolated from the scenario lane's /tmp/kerbside-ci.
 export WORKDIR="${TERMINATE_WORKDIR:-/tmp/kerbside-terminate}"
-export PROXY_IMPLEMENTATION=rust
 
 CONSOLE_SOURCE="${CONSOLE_SOURCE:-direct-qemu-lab}"
 CONSOLE_UUID="${CONSOLE_UUID:-6f4e2c1a-0000-0000-0000-000000000001}"
