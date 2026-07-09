@@ -74,6 +74,12 @@ export KERBSIDE_PUBLIC_FQDN='127.0.0.1'
 # PROXY_HOST_SUBJECT must match the CN/subject of proxy-cert.pem as generated
 # by generate-tls.sh (subj '/C=US/O=Kerbside CI/CN=kerbside-ci').
 export KERBSIDE_PROXY_HOST_SUBJECT='C=US,O=Kerbside CI,CN=kerbside-ci'
+# The daemon↔proxy gRPC control socket. The default is /run/kerbside/api.sock,
+# whose directory needs root to create; the CI runner is unprivileged, so put
+# it in the (writable) workdir instead. Both the daemon's gRPC server and the
+# proxy child (via --api-socket) read this. Kept short to stay under the
+# AF_UNIX SUN_LEN (~108 byte) path limit.
+export KERBSIDE_API_SOCKET_PATH="$(dirname "${PID_FILE}")/kerbside-api.sock"
 
 # ── Resolve the Rust proxy binary ─────────────────────────────────────────────
 #
