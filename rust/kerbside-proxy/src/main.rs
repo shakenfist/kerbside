@@ -13,6 +13,7 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -47,6 +48,10 @@ mod backend;
 /// The relay's inspection policy seam (Policy/Verdict/Direction). Phase 3
 /// ships PermissivePolicy; phase 4 fills it with L0/L1 enforcement.
 mod policy;
+
+/// The compiled-in L1 message-type grammar table (per channel + direction).
+/// Consulted by phase 4's firewall engine (`policy.rs`).
+mod allowlist;
 
 /// The inspection-first, per-message-framed SPICE relay.
 mod relay;
@@ -104,6 +109,13 @@ struct Args {
     #[arg(long, default_value_t = 13003)]
     prometheus_port: u16,
 
+    /// Address to bind the Prometheus /metrics server to. Defaults to
+    /// loopback: the endpoint is unauthenticated, so it must not be exposed on
+    /// the public VDI interface. Set to a management address (or 0.0.0.0
+    /// behind a firewall) to scrape from another host.
+    #[arg(long, default_value = "127.0.0.1")]
+    metrics_address: String,
+
     /// Unix domain socket path for the KerbsideProxy gRPC service.
     #[arg(long, default_value = "/run/kerbside/api.sock")]
     api_socket: PathBuf,
@@ -149,11 +161,12 @@ async fn main() -> Result<()> {
     let state = Arc::new(session::SharedState {
         rpc,
         node_name: args.node_name.clone(),
+        sessions: Arc::new(session::SessionRegistry::default()),
     });
 
     // Drop any stale channel rows this node left behind (e.g. from a crash or
-    // an unclean restart) before accepting new connections. Mirrors
-    // proxy.py's remove_node_channels call at startup. A failure here means
+    // an unclean restart) before accepting new connections, via the
+    // ClearNodeChannels RPC. A failure here means
     // the control service (or its socket) is not reachable yet; that is not
     // fatal to starting up -- the per-connection RPCs below will surface the
     // same problem loudly and repeatedly if it persists.
@@ -165,19 +178,28 @@ async fn main() -> Result<()> {
         );
     }
 
-    // Consume the ProxyControl event stream in the background. This phase
-    // only logs events (heartbeats, TerminateSession) -- acting on them is
-    // phase 5. A failure to even open the stream (e.g. the daemon is not up
-    // yet) is logged and the task simply ends; it is not reconnected this
-    // phase.
+    // Consume the ProxyControl event stream in the background: heartbeats are
+    // logged, TerminateSession cancels the session's in-flight channels via the
+    // shared registry. A failure to even open the stream (e.g. the daemon is
+    // not up yet) is logged and the task simply ends; it is not reconnected
+    // this phase.
     {
         let state = state.clone();
         tokio::spawn(async move {
-            if let Err(e) = state.rpc.run_proxy_control(state.node_name.clone()).await {
+            let sessions = state.sessions.clone();
+            if let Err(e) = state
+                .rpc
+                .run_proxy_control(state.node_name.clone(), sessions)
+                .await
+            {
                 warn!(error = %e, "ProxyControl consumer task ended with an error");
             }
         });
     }
+
+    // Kept for the graceful-drain step on shutdown (below); cloned before the
+    // secure handler moves `state`.
+    let drain_sessions = state.sessions.clone();
 
     let acceptor = tls::load_acceptor(&args.cert, &args.cert_key).with_context(|| {
         format!(
@@ -193,13 +215,15 @@ async fn main() -> Result<()> {
         .with_context(|| format!("parsing --vdi-address {}", args.vdi_address))?;
     let secure_addr = SocketAddr::new(vdi_ip, args.secure_port);
     let insecure_addr = SocketAddr::new(vdi_ip, args.insecure_port);
-    // The Python proxy's start_http_server exposes metrics on all interfaces;
-    // binding the same address the SPICE listeners use keeps that behaviour
-    // (0.0.0.0 by default) while still respecting an operator-narrowed
-    // --vdi-address. SECURITY: like the Python proxy, this endpoint is
-    // unauthenticated -- do not expose it to untrusted networks (see
-    // config.py's PROMETHEUS_METRICS_PORT documentation).
-    let metrics_addr = SocketAddr::new(vdi_ip, args.prometheus_port);
+    // The /metrics endpoint is unauthenticated, so it binds its OWN address
+    // (--metrics-address, loopback by default) rather than the public VDI
+    // interface -- do not expose it to untrusted networks (see config.py's
+    // PROMETHEUS_METRICS_ADDRESS / PROMETHEUS_METRICS_PORT documentation).
+    let metrics_ip: std::net::IpAddr = args
+        .metrics_address
+        .parse()
+        .with_context(|| format!("parsing --metrics-address {}", args.metrics_address))?;
+    let metrics_addr = SocketAddr::new(metrics_ip, args.prometheus_port);
 
     // Coarse cap on concurrently-handled secure connections. A permit is
     // acquired before a session runs and held for its whole lifetime; when
@@ -237,15 +261,52 @@ async fn main() -> Result<()> {
             res.context("Prometheus metrics server failed")?;
         }
         () = shutdown_signal() => {
-            info!("shutdown signal received; shutting down");
+            // The `select!` returning here stops the accept loops (no new
+            // connections). Terminate in-flight sessions so their relays tear
+            // down cleanly (close sockets, flush audit) rather than being
+            // abruptly dropped when the runtime stops, then wait for the active
+            // count to reach zero within a deadline. Pairs with the daemon
+            // supervisor's SIGTERM-then-SIGKILL (its deadline is longer).
+            let active = metrics::active_connections();
+            info!(
+                active,
+                drain_timeout_secs = DRAIN_TIMEOUT.as_secs(),
+                "shutdown signal received; draining in-flight sessions"
+            );
+            drain_sessions.terminate_all();
+            drain_in_flight(DRAIN_TIMEOUT).await;
         }
     }
 
-    // In-flight connection tasks are detached, not drained, when we return
-    // here: they keep running until they finish on their own, but nothing
-    // waits for them. A full graceful drain (stop accepting, wait for
-    // in-flight sessions with a deadline) is a phase-5 nicety.
     Ok(())
+}
+
+/// Deadline for the graceful drain on shutdown: how long to wait for in-flight
+/// sessions to tear down before returning (after which the runtime drops any
+/// stragglers). Sized below the daemon supervisor's SIGTERM-then-SIGKILL
+/// window so the proxy exits cleanly first.
+const DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Poll the active-connection gauge until it reaches zero or `deadline`
+/// elapses, so a clean shutdown waits for terminated sessions to finish
+/// tearing down instead of dropping them mid-relay.
+async fn drain_in_flight(deadline: Duration) {
+    let start = tokio::time::Instant::now();
+    loop {
+        let active = metrics::active_connections();
+        if active <= 0 {
+            info!("all in-flight sessions drained");
+            return;
+        }
+        if start.elapsed() >= deadline {
+            warn!(
+                active,
+                "drain deadline reached; exiting with sessions still in flight"
+            );
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 }
 
 /// Resolve once either Ctrl-C or SIGTERM is received.

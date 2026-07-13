@@ -74,6 +74,33 @@ export KERBSIDE_PUBLIC_FQDN='127.0.0.1'
 # PROXY_HOST_SUBJECT must match the CN/subject of proxy-cert.pem as generated
 # by generate-tls.sh (subj '/C=US/O=Kerbside CI/CN=kerbside-ci').
 export KERBSIDE_PROXY_HOST_SUBJECT='C=US,O=Kerbside CI,CN=kerbside-ci'
+# The daemon↔proxy gRPC control socket. The default is /run/kerbside/api.sock,
+# whose directory needs root to create; the CI runner is unprivileged, so put
+# it in the (writable) workdir instead. Both the daemon's gRPC server and the
+# proxy child (via --api-socket) read this. Kept short to stay under the
+# AF_UNIX SUN_LEN (~108 byte) path limit.
+export KERBSIDE_API_SOCKET_PATH="$(dirname "${PID_FILE}")/kerbside-api.sock"
+
+# ── Resolve the Rust proxy binary ─────────────────────────────────────────────
+#
+# The daemon supervises the Rust kerbside-proxy binary, which must be
+# resolvable by find_proxy_bin() -- an installed `kerbside-proxy` on PATH (the
+# phase-6 wheel) or a KERBSIDE_PROXY_BIN override. Rather than reimplement that
+# resolution here, call the real find_proxy_bin() so the pre-check matches
+# exactly what the daemon will do, and fail fast with a clear message instead
+# of letting the daemon exit at launch.
+echo "[start-kerbside] Resolving kerbside-proxy binary via find_proxy_bin()"
+# Importing kerbside configures logging on stdout, so take the last line
+# (the printed path); pipefail propagates a find_proxy_bin() failure.
+if ! RESOLVED_BIN="$(python3 -c \
+        'from kerbside.proxy_supervisor import find_proxy_bin; print(find_proxy_bin())' \
+        | tail -n1)"; then
+    echo "ERROR: find_proxy_bin() could not resolve a kerbside-proxy binary." >&2
+    echo "  Install the kerbside-proxy wheel (so it is on PATH) or set" >&2
+    echo "  KERBSIDE_PROXY_BIN to a built binary." >&2
+    exit 1
+fi
+echo "[start-kerbside] Rust proxy binary: ${RESOLVED_BIN}"
 
 # ── Locate repo root (needed for alembic.ini) ────────────────────────────────
 

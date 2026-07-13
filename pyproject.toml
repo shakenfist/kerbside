@@ -18,10 +18,20 @@ requires-python = ">=3.9"
 dependencies = [
     "shakenfist-utilities==0.8.4",      # apache2
 
+    # The Rust SPICE proxy binary is shipped as a separate maturin bin
+    # wheel (kerbside-proxy) released in lockstep from the same v* tag. Its
+    # exact-version pin is INSERTED here at release time by
+    # tools/stamp-proxy-version.sh, immediately before the marker below --
+    # deliberately absent from the committed tree so dev/CI installs do not
+    # require the sibling package to already exist on PyPI, and because a
+    # dev checkout resolves the proxy from the build tree (or
+    # KERBSIDE_PROXY_BIN) via find_proxy_bin() rather than from this pin.
+    # See docs/plans/PLAN-rust-proxy-phase-06-packaging.md.
+    # KERBSIDE_PROXY_PIN
+
     "click==8.1.7",                     # bsd
     "cryptography",                     # apache2
     "pylogrus",                         # mit
-    "setproctitle==1.3.3",              # bsd
     "prometheus-client==0.20.0",        # apache2
     "Flask==3.1.3",                     # bsd
     "Flask-RESTful==0.3.10",            # bsd
@@ -119,7 +129,6 @@ dependencies = [
 
 [project.scripts]
 kerbside = "kerbside.main:cli"
-kerbside-util = "kerbside.utilities.main:cli"
 
 [tool.setuptools]
 packages = ["kerbside", "kerbside.rpc"]

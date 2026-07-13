@@ -42,7 +42,7 @@
 # -- this is what makes the check pass/fail without a GUI or a full
 # protocol-level client.
 #
-# Usage: verify-rust-proxy.sh [up|down|assert]
+# Usage: verify-rust-proxy.sh [up|down|assert|assert-firewall]
 #   up     (default) -- bring up qemu + mock gRPC server + rust proxy,
 #          write console.vv, and print the metrics URL to poll.
 #   assert -- poll the proxy's /metrics (GET http://127.0.0.1:<prometheus
@@ -53,15 +53,32 @@
 #          assertion failure/timeout, 2 if the endpoint is unreachable.
 #          Run this after driving a client through the proxy (step "up"
 #          only brings the path up; it does not connect a client).
+#   assert-firewall -- poll /metrics, report the
+#          kerbside_proxy_firewall_verdicts_total series split into
+#          action=enforced vs action=observed, and pass/fail per
+#          FIREWALL_EXPECT (default "clean"):
+#            clean -- a legitimate warn-only capture session: require a real
+#                     session (authorized>=1, bytes both directions) and then
+#                     assert ZERO enforced AND ZERO observed verdicts. Any
+#                     observed verdict means the allowlist/caps are wrong.
+#            deny  -- a deny-mode run: require kerbside_proxy_denied_total >= 1
+#                     (the proxy exercised its PermissionDenied path). Bytes
+#                     are not required. Verdicts are still reported.
+#          Same exit codes as `assert`.
 #   down   -- tear everything down by pidfile (best-effort, never errors).
 #
 # Env overrides (all optional; see the "Lane parameters" section below for
 # defaults): WORKDIR, SPICE_PORT, SPICE_TICKET, PROXY_SECURE_PORT,
 # PROXY_INSECURE_PORT, PROXY_PROMETHEUS_PORT, PROXY_NODE_NAME,
 # PROXY_HOST_SUBJECT, CONSOLE_SOURCE, CONSOLE_UUID, SESSION_ID,
-# RUST_PROXY_BINARY.
+# RUST_PROXY_BINARY, and the firewall/denial knobs threaded into the mock:
+# FIREWALL_MODE (enforce|warn, default enforce), PERMITTED_CHANNELS (CSV of
+# channel names, empty = permit all), DENY_TOKEN (CSV of plaintext tokens to
+# deny), DENY_ALL (non-empty to deny every token), FIREWALL_EXPECT
+# (clean|deny, for assert-firewall).
 #
-# Part of docs/plans/PLAN-rust-proxy-phase-03-proxy-skeleton.md step 3h.
+# Part of docs/plans/PLAN-rust-proxy-phase-03-proxy-skeleton.md step 3h and
+# docs/plans/PLAN-rust-proxy-phase-04-firewall.md step 4f.
 
 set -euo pipefail
 
@@ -106,6 +123,22 @@ SESSION_ID="${SESSION_ID:-rust-proxy-verify-session}"
 # PYTHONPATH="${REPO_ROOT}" if grpcio/protobuf are otherwise available.
 # This script does NOT create that venv for you.
 MOCK_GRPC_PYTHON="${MOCK_GRPC_PYTHON:-python3}"
+
+# Firewall / denial behaviour, threaded into mock-grpc-server.py (phase 4,
+# step 4f). Defaults reproduce the phase-3 behaviour: enforce mode, permit
+# all channels, deny nothing.
+#   FIREWALL_MODE      -- enforce | warn. "warn" runs the safe capture session
+#                         (blocking verdicts downgraded to forward+log,
+#                         action=observed) so a full legitimate session can be
+#                         observed without breaking it.
+#   PERMITTED_CHANNELS -- CSV of channel names (main,display,...); empty means
+#                         permit all.
+#   DENY_TOKEN         -- CSV of decrypted plaintext tokens to deny.
+#   DENY_ALL           -- non-empty to deny every AuthorizeConnection.
+FIREWALL_MODE="${FIREWALL_MODE:-enforce}"
+PERMITTED_CHANNELS="${PERMITTED_CHANNELS:-}"
+DENY_TOKEN="${DENY_TOKEN:-}"
+DENY_ALL="${DENY_ALL:-}"
 
 # The Rust proxy under test.
 PROXY_SECURE_PORT="${PROXY_SECURE_PORT:-5900}"
@@ -195,6 +228,113 @@ _metric_value() {
     fi
 }
 
+# Sum the kerbside_proxy_firewall_verdicts_total children whose action label
+# matches $2 ("enforced" or "observed"). A totally-absent series sums to 0.
+_verdict_sum() {
+    local body="$1"
+    local action="$2"
+    # The grep stages `|| true` so that ZERO matching series (the clean-session
+    # case, where firewall_verdicts_total is entirely absent) yields 0 rather
+    # than a failed pipeline that would abort the caller under `set -o pipefail`.
+    printf '%s\n' "${body}" \
+        | { grep -E '^kerbside_proxy_firewall_verdicts_total\{' || true; } \
+        | { grep -F "action=\"${action}\"" || true; } \
+        | awk '{sum += $NF} END {print sum + 0}'
+}
+
+# Print every firewall_verdicts_total child (or a note if none), one per line.
+_report_verdicts() {
+    local body="$1"
+    local lines
+    lines="$(printf '%s\n' "${body}" | grep -E '^kerbside_proxy_firewall_verdicts_total\{' || true)"
+    if [ -z "${lines}" ]; then
+        echo "[verify-rust-proxy]   (no firewall_verdicts_total series present -- zero verdicts)"
+    else
+        printf '%s\n' "${lines}" | while IFS= read -r verdict_line; do
+            echo "[verify-rust-proxy]   ${verdict_line}"
+        done
+    fi
+}
+
+if [ "${ACTION}" = 'assert-firewall' ]; then
+    FIREWALL_EXPECT="${FIREWALL_EXPECT:-clean}"
+    ASSERT_TIMEOUT="${ASSERT_TIMEOUT:-30}"
+    if [ "${FIREWALL_EXPECT}" != 'clean' ] && [ "${FIREWALL_EXPECT}" != 'deny' ]; then
+        echo "ERROR: FIREWALL_EXPECT must be 'clean' or 'deny', got '${FIREWALL_EXPECT}'" >&2
+        exit 1
+    fi
+    echo "[verify-rust-proxy] asserting firewall (expect=${FIREWALL_EXPECT}) via ${METRICS_URL}" \
+         "(timeout ${ASSERT_TIMEOUT}s)"
+
+    DEADLINE=$(( $(date +%s) + ASSERT_TIMEOUT ))
+    LAST_BODY=''
+    while true; do
+        if ! LAST_BODY="$(curl --silent --fail --max-time 5 "${METRICS_URL}")"; then
+            if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
+                echo "ERROR: could not reach ${METRICS_URL} within ${ASSERT_TIMEOUT}s" >&2
+                exit 2
+            fi
+            sleep 1
+            continue
+        fi
+
+        AUTHORIZED="$(_metric_value "${LAST_BODY}" 'kerbside_proxy_authorized_total')"
+        DENIED="$(_metric_value "${LAST_BODY}" 'kerbside_proxy_denied_total')"
+        C2S="$(_metric_value "${LAST_BODY}" 'kerbside_proxy_bytes_relayed_total' 'direction="client_to_server"')"
+        S2C="$(_metric_value "${LAST_BODY}" 'kerbside_proxy_bytes_relayed_total' 'direction="server_to_client"')"
+        ENFORCED="$(_verdict_sum "${LAST_BODY}" 'enforced')"
+        OBSERVED="$(_verdict_sum "${LAST_BODY}" 'observed')"
+
+        echo "[verify-rust-proxy] authorized=${AUTHORIZED} denied=${DENIED}" \
+             "bytes{c2s}=${C2S} bytes{s2c}=${S2C} verdicts{enforced}=${ENFORCED}" \
+             "verdicts{observed}=${OBSERVED}"
+
+        if [ "${FIREWALL_EXPECT}" = 'deny' ]; then
+            if [ "${DENIED}" -ge 1 ] 2>/dev/null; then
+                echo "[verify-rust-proxy] verdict series:"
+                _report_verdicts "${LAST_BODY}"
+                echo "[verify-rust-proxy] PASS: denied_total >= 1 (proxy exercised PermissionDenied)"
+                exit 0
+            fi
+        else
+            # clean: require a real session to have happened, then demand zero
+            # enforced AND zero observed verdicts.
+            if [ "${AUTHORIZED}" -ge 1 ] 2>/dev/null && [ "${C2S}" -gt 0 ] 2>/dev/null \
+                    && [ "${S2C}" -gt 0 ] 2>/dev/null; then
+                echo "[verify-rust-proxy] verdict series:"
+                _report_verdicts "${LAST_BODY}"
+                if [ "${ENFORCED}" -eq 0 ] 2>/dev/null && [ "${OBSERVED}" -eq 0 ] 2>/dev/null; then
+                    echo "[verify-rust-proxy] PASS: full session relayed with ZERO firewall" \
+                         "verdicts (allowlist + caps cover all observed traffic)"
+                    exit 0
+                fi
+                echo "ERROR: firewall tripped on legitimate traffic --" \
+                     "enforced=${ENFORCED} observed=${OBSERVED} (expected 0/0)" >&2
+                echo "  the offending (channel,direction,rule) tell you which table/cap to fix:" >&2
+                _report_verdicts "${LAST_BODY}" >&2
+                exit 1
+            fi
+        fi
+
+        if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
+            if [ "${FIREWALL_EXPECT}" = 'deny' ]; then
+                echo "ERROR: denied_total never reached 1 within ${ASSERT_TIMEOUT}s" \
+                     "(last denied=${DENIED})" >&2
+            else
+                echo "ERROR: no complete session observed within ${ASSERT_TIMEOUT}s" \
+                     "(authorized=${AUTHORIZED} c2s=${C2S} s2c=${S2C}); cannot judge a" \
+                     "clean firewall run without traffic" >&2
+            fi
+            echo "  full firewall metrics:" >&2
+            printf '%s\n' "${LAST_BODY}" | grep '^kerbside_proxy_' >&2 || true
+            echo "  rust-proxy log (last 60 lines):" >&2
+            tail -60 "${PROXY_LOG}" >&2 || true
+            exit 1
+        fi
+        sleep 1
+    done
+fi
+
 if [ "${ACTION}" = 'assert' ]; then
     ASSERT_TIMEOUT="${ASSERT_TIMEOUT:-30}"
     echo "[verify-rust-proxy] asserting relay activity via ${METRICS_URL} (timeout ${ASSERT_TIMEOUT}s)"
@@ -237,7 +377,7 @@ if [ "${ACTION}" = 'assert' ]; then
 fi
 
 if [ "${ACTION}" != 'up' ]; then
-    echo "Usage: $0 [up|down|assert]" >&2
+    echo "Usage: $0 [up|down|assert|assert-firewall]" >&2
     exit 1
 fi
 
@@ -305,17 +445,30 @@ echo "[verify-rust-proxy] qemu SPICE server up on port ${SPICE_PORT}"
 
 # ── Step 3: start the mock KerbsideProxy gRPC server ─────────────────────────
 
-echo "[verify-rust-proxy] Starting mock-grpc-server.py"
-"${MOCK_GRPC_PYTHON}" "${SCRIPT_DIR}/mock-grpc-server.py" \
-    --socket "${GRPC_SOCKET}" \
-    --hypervisor-ip '127.0.0.1' \
-    --insecure-port "${SPICE_PORT}" \
-    --secure-port 0 \
-    --ticket "${SPICE_TICKET}" \
-    --source "${CONSOLE_SOURCE}" \
-    --uuid "${CONSOLE_UUID}" \
-    --session-id "${SESSION_ID}" \
-    --verbose \
+echo "[verify-rust-proxy] Starting mock-grpc-server.py (firewall_mode=${FIREWALL_MODE}" \
+     "permitted_channels=${PERMITTED_CHANNELS:-<all>} deny_all=${DENY_ALL:-0}" \
+     "deny_token=${DENY_TOKEN:+<set>})"
+MOCK_ARGS=(
+    --socket "${GRPC_SOCKET}"
+    --hypervisor-ip '127.0.0.1'
+    --insecure-port "${SPICE_PORT}"
+    --secure-port 0
+    --ticket "${SPICE_TICKET}"
+    --source "${CONSOLE_SOURCE}"
+    --uuid "${CONSOLE_UUID}"
+    --session-id "${SESSION_ID}"
+    --firewall-mode "${FIREWALL_MODE}"
+    --permitted-channels "${PERMITTED_CHANNELS}"
+    --verbose
+)
+if [ -n "${DENY_ALL}" ]; then
+    MOCK_ARGS+=(--deny-all)
+fi
+# DENY_TOKEN is a CSV; the mock seeds tokens from MOCK_GRPC_DENY_TOKEN too, so
+# export it rather than splitting here (keeps quoting simple for tokens that
+# may contain shell-special characters).
+MOCK_GRPC_DENY_TOKEN="${DENY_TOKEN}" \
+    "${MOCK_GRPC_PYTHON}" "${SCRIPT_DIR}/mock-grpc-server.py" "${MOCK_ARGS[@]}" \
     >> "${GRPC_LOG}" 2>&1 &
 GRPC_PID=$!
 printf '%d' "${GRPC_PID}" > "${GRPC_PID_FILE}"
@@ -413,6 +566,12 @@ echo "       curl -s '${METRICS_URL}' | grep kerbside_proxy_"
 echo "     Expect kerbside_proxy_authorized_total >= 1 and"
 echo "     kerbside_proxy_bytes_relayed_total > 0 for both the"
 echo "     client_to_server and server_to_client directions."
+echo "       $0 assert"
+echo "     For a warn-only capture run (FIREWALL_MODE=warn), also confirm"
+echo "     zero firewall verdicts fired on the legitimate session:"
+echo "       $0 assert-firewall            # FIREWALL_EXPECT=clean (default)"
+echo "     For a deny-mode run (DENY_ALL=1 or DENY_TOKEN=<token>):"
+echo "       FIREWALL_EXPECT=deny $0 assert-firewall"
 echo "  3. Tear down with: $0 down"
 echo
 echo "[verify-rust-proxy] METRICS_URL=${METRICS_URL}"

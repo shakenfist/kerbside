@@ -26,11 +26,10 @@ if _version_not_supported:
 
 
 class KerbsideProxyStub:
-    """KerbsideProxy is the control-plane RPC contract between a SPICE proxy
-    process and the Kerbside daemon. Today the proxy talks to MariaDB
-    directly via kerbside/db.py; this service replaces that direct database
-    coupling so Python continues to own policy and the database while the
-    proxy (eventually the Rust proxy, phase 3) simply consults this service.
+    """KerbsideProxy is the control-plane RPC contract between the Rust SPICE
+    proxy and the Kerbside daemon. Rather than the proxy touching MariaDB
+    directly, Python owns policy and the database and the proxy consults this
+    service.
 
     The service is hosted over a filesystem-guarded unix domain socket using
     insecure gRPC credentials (the peer is a trusted local process). Errors
@@ -83,11 +82,10 @@ class KerbsideProxyStub:
 
 
 class KerbsideProxyServicer:
-    """KerbsideProxy is the control-plane RPC contract between a SPICE proxy
-    process and the Kerbside daemon. Today the proxy talks to MariaDB
-    directly via kerbside/db.py; this service replaces that direct database
-    coupling so Python continues to own policy and the database while the
-    proxy (eventually the Rust proxy, phase 3) simply consults this service.
+    """KerbsideProxy is the control-plane RPC contract between the Rust SPICE
+    proxy and the Kerbside daemon. Rather than the proxy touching MariaDB
+    directly, Python owns policy and the database and the proxy consults this
+    service.
 
     The service is hosted over a filesystem-guarded unix domain socket using
     insecure gRPC credentials (the peer is a trusted local process). Errors
@@ -110,8 +108,8 @@ class KerbsideProxyServicer:
         filter (expired tokens are denied).
         get_source(source)          -- reads the source's ca_cert.
         get_console(source, uuid)   -- reads the hypervisor target details.
-        record_channel_info(session_id)  -- records the resolved session_id
-        against the channel on success.
+        record_channel_info_by_ref(session_id)  -- records the resolved
+        session_id against the channel on success.
         add_audit_event('Channel created')  -- writes the creation audit event
         on success.
         On success it returns a Target; on any miss it returns a Denied.
@@ -122,9 +120,9 @@ class KerbsideProxyServicer:
 
     def RegisterChannel(self, request, context):
         """RegisterChannel records the pre-authorization channel identity. It maps
-        to the proxy's first two record_channel_info() calls today (the bare
-        (node, connection_ref) upsert followed by the client/connection/channel
-        identity fields), before the token has been authorized.
+        to record_channel_info_by_ref (the (node, connection_ref) upsert with the
+        client/connection/channel identity fields), before the token has been
+        authorized.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -141,7 +139,9 @@ class KerbsideProxyServicer:
 
     def DeregisterChannel(self, request, context):
         """DeregisterChannel removes a channel record at teardown. It maps to
-        remove_proxy_channel(), keyed by (node, connection_ref).
+        remove_channel_by_ref(), keyed on connection_ref alone (which is
+        unique). The request carries node for symmetry with the other RPCs and
+        possible future scoping, but the handler does not currently read it.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -157,11 +157,10 @@ class KerbsideProxyServicer:
 
     def ProxyControl(self, request, context):
         """ProxyControl is a server-streaming control channel from the daemon to
-        the proxy for session-termination and policy-push events. It is defined
-        now so phase 3 can pin a stable contract, but is only stubbed this phase
-        (the server opens the stream and may emit keepalives). Phase 5 adds the
-        real events and may extend the ProxyControlEvent oneof; keep it
-        extensible.
+        the proxy. It delivers TerminateSession events (interleaved with
+        Heartbeat keepalives) for sessions marked for termination that are live
+        on this node. The ProxyControlEvent oneof is intentionally extensible
+        (e.g. for future policy-push events); keep it extensible.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -209,11 +208,10 @@ def add_KerbsideProxyServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class KerbsideProxy:
-    """KerbsideProxy is the control-plane RPC contract between a SPICE proxy
-    process and the Kerbside daemon. Today the proxy talks to MariaDB
-    directly via kerbside/db.py; this service replaces that direct database
-    coupling so Python continues to own policy and the database while the
-    proxy (eventually the Rust proxy, phase 3) simply consults this service.
+    """KerbsideProxy is the control-plane RPC contract between the Rust SPICE
+    proxy and the Kerbside daemon. Rather than the proxy touching MariaDB
+    directly, Python owns policy and the database and the proxy consults this
+    service.
 
     The service is hosted over a filesystem-guarded unix domain socket using
     insecure gRPC credentials (the peer is a trusted local process). Errors

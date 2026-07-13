@@ -14,24 +14,34 @@
 //! underlying channel), so each method clones the stub for its call.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
 use tonic::transport::{Channel, Endpoint, Uri};
 use tracing::{debug, info, warn};
 
 use crate::pb;
+use crate::session::SessionRegistry;
 use hyper_util::rt::TokioIo;
 use tokio::net::UnixStream;
 use tower::service_fn;
 
 /// The outcome of an `AuthorizeConnection` call: either the connection was
 /// denied (with a human-readable reason) or authorised with a `Target`
-/// describing the upstream hypervisor. `Target` is boxed because it is much
-/// larger than the `Denied` string, keeping the enum compact.
+/// describing the upstream hypervisor plus the firewall `policy` the proxy must
+/// enforce for the connection. `Target` is boxed because it is much larger than
+/// the `Denied` string, keeping the enum compact.
+///
+/// The `policy` is built from the `firewall_policy` the daemon delivers on the
+/// success path ("Python decides policy; Rust enforces it"); an older daemon
+/// that omits it falls back to the enforcing [`FirewallPolicy::default`].
 #[derive(Debug)]
 pub enum AuthzOutcome {
     Denied(String),
-    Target(Box<pb::Target>),
+    Target {
+        target: Box<pb::Target>,
+        policy: crate::policy::FirewallPolicy,
+    },
 }
 
 /// A gRPC client for the KerbsideProxy control service over the UDS.
@@ -112,9 +122,20 @@ impl KerbsideRpc {
             .context("AuthorizeConnection RPC failed")?
             .into_inner();
 
+        // Present only on the success path; an absent policy falls back to the
+        // enforcing compiled default (handles an older daemon that never sets
+        // it). Taken before matching `result` since both are fields of `reply`.
+        let policy = match reply.firewall_policy {
+            Some(fp) => crate::policy::FirewallPolicy::from_proto(fp),
+            None => crate::policy::FirewallPolicy::default(),
+        };
+
         match reply.result {
             Some(pb::authorize_connection_reply::Result::Target(target)) => {
-                Ok(AuthzOutcome::Target(Box::new(target)))
+                Ok(AuthzOutcome::Target {
+                    target: Box::new(target),
+                    policy,
+                })
             }
             Some(pb::authorize_connection_reply::Result::Denied(denied)) => {
                 Ok(AuthzOutcome::Denied(denied.reason))
@@ -222,11 +243,15 @@ impl KerbsideRpc {
 
     /// ProxyControl: open the server-streaming control channel and consume it.
     ///
-    /// This phase only logs the events it receives; session termination and
-    /// policy push are wired up in phase 5. It is intended to be run as a
-    /// spawned background task: it loops until the stream ends or errors, logs
-    /// the outcome, and returns.
-    pub async fn run_proxy_control(&self, node: String) -> Result<()> {
+    /// Acts on `TerminateSession` by cancelling the session in `sessions`
+    /// (dropping all of this node's in-flight channels for it); heartbeats are
+    /// logged. Intended to run as a spawned background task: it loops until the
+    /// stream ends or errors, logs the outcome, and returns.
+    pub async fn run_proxy_control(
+        &self,
+        node: String,
+        sessions: Arc<SessionRegistry>,
+    ) -> Result<()> {
         let request = pb::ProxyControlRequest { node: node.clone() };
 
         let mut client = self.client.clone();
@@ -245,11 +270,16 @@ impl KerbsideRpc {
                         debug!(node = %node, "ProxyControl heartbeat");
                     }
                     Some(pb::proxy_control_event::Event::TerminateSession(ts)) => {
-                        // Phase 5 acts on this; for now we only observe it.
+                        // Cancel every in-flight channel of the session on this
+                        // node. Idempotent: a session we do not host (its
+                        // channels may be on other nodes behind a load balancer)
+                        // is simply not found.
+                        let hit = sessions.terminate(&ts.session_id);
                         info!(
                             node = %node,
                             session_id = %ts.session_id,
-                            "ProxyControl TerminateSession event (no-op this phase)"
+                            terminated = hit,
+                            "ProxyControl TerminateSession event"
                         );
                     }
                     None => {
@@ -273,6 +303,7 @@ impl KerbsideRpc {
 mod tests {
     use super::*;
 
+    use shakenfist_spice_protocol::ChannelType;
     use tokio::net::UnixListener;
     use tokio_stream::wrappers::UnixListenerStream;
     use tonic::transport::Server;
@@ -293,26 +324,38 @@ mod tests {
             request: Request<pb::AuthorizeConnectionRequest>,
         ) -> std::result::Result<Response<pb::AuthorizeConnectionReply>, Status> {
             let req = request.into_inner();
-            let result = if req.token == "good-token" {
-                pb::authorize_connection_reply::Result::Target(pb::Target {
-                    hypervisor: "hv1".to_string(),
-                    hypervisor_ip: "10.0.0.1".to_string(),
-                    insecure_port: 5900,
-                    secure_port: 5901,
-                    ticket: "ticket".to_string(),
-                    ca_cert: "ca".to_string(),
-                    host_subject: "CN=hv1".to_string(),
-                    source: "src".to_string(),
-                    uuid: "uuid".to_string(),
-                    session_id: "session".to_string(),
-                })
+            // On success, deliver a WarnOnly policy permitting only main+inputs,
+            // so the client-side proto->FirewallPolicy mapping is exercised.
+            let (result, firewall_policy) = if req.token == "good-token" {
+                (
+                    pb::authorize_connection_reply::Result::Target(pb::Target {
+                        hypervisor: "hv1".to_string(),
+                        hypervisor_ip: "10.0.0.1".to_string(),
+                        insecure_port: 5900,
+                        secure_port: 5901,
+                        ticket: "ticket".to_string(),
+                        ca_cert: "ca".to_string(),
+                        host_subject: "CN=hv1".to_string(),
+                        source: "src".to_string(),
+                        uuid: "uuid".to_string(),
+                        session_id: "session".to_string(),
+                    }),
+                    Some(pb::FirewallPolicy {
+                        mode: pb::firewall_policy::Mode::WarnOnly as i32,
+                        permitted_channels: vec![1, 3],
+                    }),
+                )
             } else {
-                pb::authorize_connection_reply::Result::Denied(pb::Denied {
-                    reason: "unknown token".to_string(),
-                })
+                (
+                    pb::authorize_connection_reply::Result::Denied(pb::Denied {
+                        reason: "unknown token".to_string(),
+                    }),
+                    None,
+                )
             };
             Ok(Response::new(pb::AuthorizeConnectionReply {
                 result: Some(result),
+                firewall_policy,
             }))
         }
 
@@ -364,12 +407,21 @@ mod tests {
             &self,
             _request: Request<pb::ProxyControlRequest>,
         ) -> std::result::Result<Response<Self::ProxyControlStream>, Status> {
-            // Emit one heartbeat then close the stream.
-            let (tx, rx) = tokio::sync::mpsc::channel(1);
+            // Emit one heartbeat and one TerminateSession, then close.
+            let (tx, rx) = tokio::sync::mpsc::channel(2);
             tokio::spawn(async move {
                 let _ = tx
                     .send(Ok(pb::ProxyControlEvent {
                         event: Some(pb::proxy_control_event::Event::Heartbeat(pb::Heartbeat {})),
+                    }))
+                    .await;
+                let _ = tx
+                    .send(Ok(pb::ProxyControlEvent {
+                        event: Some(pb::proxy_control_event::Event::TerminateSession(
+                            pb::TerminateSession {
+                                session_id: "term-me".to_string(),
+                            },
+                        )),
                     }))
                     .await;
             });
@@ -410,7 +462,15 @@ mod tests {
             .await
             .expect("authorize good token");
         match outcome {
-            AuthzOutcome::Target(t) => assert_eq!(t.hypervisor, "hv1"),
+            AuthzOutcome::Target { target, policy } => {
+                assert_eq!(target.hypervisor, "hv1");
+                // The delivered policy (WarnOnly, permit main+inputs) must be
+                // mapped onto the AuthzOutcome the session then enforces.
+                assert_eq!(policy.mode, crate::policy::EnforcementMode::WarnOnly);
+                assert!(policy.channel_permitted(ChannelType::Main));
+                assert!(policy.channel_permitted(ChannelType::Inputs));
+                assert!(!policy.channel_permitted(ChannelType::Display));
+            }
             AuthzOutcome::Denied(r) => panic!("expected Target, got Denied({r})"),
         }
 
@@ -420,7 +480,7 @@ mod tests {
             .expect("authorize bad token");
         match outcome {
             AuthzOutcome::Denied(reason) => assert_eq!(reason, "unknown token"),
-            AuthzOutcome::Target(_) => panic!("expected Denied, got Target"),
+            AuthzOutcome::Target { .. } => panic!("expected Denied, got Target"),
         }
     }
 
@@ -447,13 +507,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn proxy_control_consumes_stream() {
+    async fn proxy_control_consumes_stream_and_terminates_session() {
         let (client, _dir) = spawn_mock().await;
-        // The mock emits a heartbeat then closes; the consumer should return
-        // Ok once the stream ends.
+        // A session registered here; the mock will emit TerminateSession for it.
+        let sessions = Arc::new(crate::session::SessionRegistry::default());
+        let token = sessions.register("term-me");
+        // The mock emits a heartbeat + a TerminateSession then closes; the
+        // consumer should act on the terminate and return Ok once the stream
+        // ends.
         client
-            .run_proxy_control("node".to_string())
+            .run_proxy_control("node".to_string(), sessions.clone())
             .await
             .expect("run_proxy_control");
+        assert!(
+            token.is_cancelled(),
+            "TerminateSession must cancel the registered session"
+        );
     }
 }

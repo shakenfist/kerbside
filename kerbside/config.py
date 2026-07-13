@@ -143,25 +143,37 @@ class Config(BaseSettings):
         False,
         description='Should we output debug logs?')
 
-    # Traffic inspection
-    TRAFFIC_INSPECTION: bool = Field(
-        False,
-        description='Set to true to perform deep packet inspection of traffic.')
-    TRAFFIC_INSPECTION_INTIMATE: bool = Field(
-        False,
-        description=('If TRAFFIC_INSPECTION is true, and TRAFFIC_INSPECTION_INTIMATE '
-                     'is also set to true, then details such as keystrokes and '
-                     'mouse movements will be logged.'))
-    TRAFFIC_OUTPUT_PATH: str = Field(
+    # Firewall policy delivered to the (Rust) SPICE proxy in the
+    # AuthorizeConnection reply. Python owns the policy; the proxy enforces it.
+    # Only the knobs with a real config surface are delivered; size caps and
+    # the rate ceiling keep the proxy's enforcing compiled defaults for now.
+    FIREWALL_MODE: str = Field(
+        'enforce',
+        description=('Firewall enforcement mode delivered to the proxy: '
+                     '"enforce" (default) applies blocking verdicts, "warn" '
+                     'downgrades them to forward-and-log so an operator can '
+                     'observe what enforcement would trip before enabling it. '
+                     'Case-insensitive.'))
+    FIREWALL_PERMITTED_CHANNELS: str = Field(
         '',
-        description=('The path to write traffic inspection logs to. This must be'
-                     'be set if TRAFFIC_INSPECTION is True.'))
+        description=('Comma-separated list of SPICE channel NAMES the proxy is '
+                     'permitted to relay (main, display, inputs, cursor, '
+                     'playback, record, tunnel, smartcard, usbredir, port, '
+                     'webdav). Empty (the default) means permit all channels; '
+                     'a channel not listed is denied before relay.'))
 
     # Metrics for monitoring
     PROMETHEUS_METRICS_PORT: int = Field(
         13003,
         description='Where to expose internal metrics. Do not allow '
                     'access from untrusted clients!')
+    PROMETHEUS_METRICS_ADDRESS: str = Field(
+        '127.0.0.1',
+        description='Address the Rust proxy binds its /metrics server to. '
+                    'Defaults to loopback because the endpoint is '
+                    'unauthenticated and must not be exposed on the public '
+                    'VDI interface; set a management address (or 0.0.0.0 '
+                    'behind a firewall) to scrape from another host.')
 
     # Database and cloud inspection
     SQL_URL: str = Field(

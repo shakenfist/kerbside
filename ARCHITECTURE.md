@@ -1,10 +1,12 @@
 # Kerbside Architecture
 
-Kerbside is a SPICE VDI protocol proxy written in Python that provides remote
-console access to VMs running in virtualization clusters (Shaken Fist,
-OpenStack, oVirt). It acts as a protocol-native proxy that terminates client
-SPICE connections, identifies which VM to proxy to based on authentication
-tokens, and relays traffic bidirectionally between client and server.
+Kerbside is a SPICE VDI protocol proxy that provides remote console access to
+VMs running in virtualization clusters (Shaken Fist, OpenStack, oVirt). It is
+split into a pure-Python control plane (the REST API and the daemon) and a
+Rust SPICE proxy the daemon supervises: the proxy terminates client SPICE
+connections, and the control plane identifies which VM to proxy to based on
+authentication tokens; traffic is relayed bidirectionally between client and
+server.
 
 ## High-Level Architecture
 
@@ -16,29 +18,26 @@ tokens, and relays traffic bidirectionally between client and server.
                                              |
                                              | HTTPS
                                              v
-+------------------+              +----------+---------+
-|  SPICE Client    |    TLS      |                    |
-|  (virt-viewer)   +------------>+   Kerbside Proxy   |
-+------------------+   :5900     |                    |
-                                 |  +-------------+   |
-                                 |  | API Layer   |   |
-                                 |  | (Flask)     |   |
-                                 |  +-------------+   |
-                                 |  | Proxy Layer |   |
-                                 |  | (Workers)   |   |
-                                 |  +-------------+   |
-                                 |  | Protocol    |   |
-                                 |  | Layer       |   |
-                                 |  +-------------+   |
-                                 +---------+----------+
-                                           |
-                    +----------------------+----------------------+
-                    |                      |                      |
-                    v                      v                      v
-           +-------+-------+      +-------+-------+      +-------+-------+
-           | Shaken Fist   |      |   OpenStack   |      |     oVirt     |
-           | Hypervisors   |      |   Hypervisors |      |   Hypervisors |
-           +---------------+      +---------------+      +---------------+
+                                    +--------+---------+       +--------------+
+                                    | kerbside (Python)|       |   MariaDB    |
+                                    |  REST API +      +<----->+  (shared bus)|
+                                    |  daemon          |       +------+-------+
+                                    +--------+---------+              ^
+                                             | supervises            |
+                                             | + gRPC/UDS            | DB
+                                             v                       |
++------------------+     TLS       +---------+----------+            |
+|  SPICE Client    +-------------->+  kerbside-proxy    +------------+
+|  (virt-viewer)   |    :5900      |  (Rust, tokio)     |
++------------------+               +---------+----------+
+                                             |
+                    +------------------------+------------------------+
+                    |                        |                        |
+                    v                        v                        v
+           +--------+------+        +--------+------+        +--------+------+
+           | Shaken Fist   |        |   OpenStack   |        |     oVirt     |
+           | Hypervisors   |        |   Hypervisors |        |   Hypervisors |
+           +---------------+        +---------------+        +---------------+
 ```
 
 ## Core Components
@@ -48,12 +47,14 @@ tokens, and relays traffic bidirectionally between client and server.
 The main entry point orchestrates the system lifecycle:
 
 - Parses source configuration from `sources.yaml`
-- Spawns the proxy process as a subprocess
+- Supervises the Rust `kerbside-proxy` binary as a child process
+  (`kerbside/proxy_supervisor.py`; see "Proxy Layer" below)
 - Hosts the control-plane gRPC service (see below) on a background
   thread over a unix domain socket
 - Runs a maintenance loop every 60 seconds to:
   - Refresh console listings from configured sources
   - Reap expired authentication tokens
+  - Reap expired `session_terminations` intent rows (phase 5, see below)
   - Handle source configuration changes
 
 ### 2. Control-plane gRPC service (`rpc/`)
@@ -63,8 +64,8 @@ servicer in `kerbside/rpc/servicer.py`, hosting in
 `kerbside/rpc/server.py`) fronts the database operations the SPICE
 proxy needs, so a separate proxy process can consult Python for
 authorization and channel bookkeeping instead of accessing MariaDB
-directly. This is the seam for the planned Rust proxy: Python keeps
-owning the database and policy; the proxy consults this service.
+directly. Python owns the database and policy; the proxy consults this
+service.
 
 It is exposed over a filesystem-guarded unix domain socket
 (`API_SOCKET_PATH`, default `/run/kerbside/api.sock`) with insecure
@@ -79,57 +80,128 @@ gRPC status codes.
 | `RecordAuditEvent` | `add_audit_event` | Write an audit event |
 | `DeregisterChannel` | `remove_channel_by_ref` | Remove a channel at teardown |
 | `ClearNodeChannels` | `remove_node_channels` | Clear stale channel rows at proxy startup |
-| `ProxyControl` (streaming) | — | Daemon→proxy control channel (session termination / policy push); a keepalive stub today, real events land with the Rust proxy work |
+| `ProxyControl` (streaming) | `get_terminations_for_node` | Daemon→proxy control channel: interleaves `Heartbeat`s with real `TerminateSession` events (phase 5) for sessions marked for termination that are live on this node; policy push is future work |
+
+`ProxyControl` is deliberately **local only** — one stream between a daemon
+and the single proxy it supervises on the same host, over the same UDS as
+every other RPC. It is not a mechanism for reaching a proxy on another
+machine (see "Session termination" below).
 
 The `.proto` is compiled with `tox -egenprotos` (see
 `tools/gen-protos.sh`); generated stubs are checked in under
 `kerbside/rpc/`. Channel rows are keyed by a proxy-supplied
-`connection_ref` on the `proxychannels` table (which now has a
-surrogate `id` primary key), while the Python proxy continues to key
-by `(node, pid)` until cutover.
+`connection_ref` on the `proxychannels` table (which has a surrogate `id`
+primary key).
 
-### 3. Proxy Layer (`proxy.py`)
+### 3. Proxy Layer (`rust/kerbside-proxy/`)
 
-The proxy layer handles all SPICE protocol traffic using a multiprocess worker
-pool architecture.
-
-**Key Classes:**
-
-| Class | Purpose |
-|-------|---------|
-| `SpiceListener` | Binds to secure (5900) and insecure (5901) ports, accepts connections |
-| `SpiceSession` | Handles insecure connections, redirects to TLS |
-| `SpiceTLSSession` | Main proxy logic for secure connections |
-
-**Connection Flow:**
-
-1. Client connects to port 5900 (TLS)
-2. `SpiceListener` accepts and spawns worker process
-3. `SpiceTLSSession` handles the connection state machine:
-   - `ClientSpiceLinkMess()` - Parse client capabilities
-   - `ClientPassword()` - Decrypt token, validate, lookup console
-   - `ClientProxy()` / `ServerProxy()` - Bidirectional traffic relay
-
-**Process Management:**
-
-- Main proxy process monitors worker children using `psutil`
-- Reaps terminated workers every 1 second
-- Kills stray processes older than 5 seconds without active channels
-- Updates Prometheus worker count metrics
-
-**Rust proxy (`rust/kerbside-proxy/`, in progress).** A Rust
-reimplementation of this layer is being built to replace the Python proxy:
-it terminates client TLS, performs the SPICE handshake, and relays traffic
-as async tokio tasks (one per connection) instead of forked worker
-processes. Rather than accessing the database directly, it consults the
+The SPICE proxy is a Rust binary. It terminates client TLS, performs the
+SPICE link handshake, and relays traffic as async tokio tasks (one per
+connection). Rather than accessing the database directly, it consults the
 control-plane gRPC service (component 2) over the unix socket for
 authorization and channel/audit bookkeeping, and it reuses the ryll
-`shakenfist-spice-protocol` crate for the SPICE wire format. The relay is
-inspection-first (every SPICE message is framed and passed through a policy
-hook), which is the seam a future SPICE application-firewall builds on. It
-exposes its own Prometheus `/metrics` endpoint. The Python proxy remains the
-active proxy until the Rust proxy is wired into the daemon and cut over in
-later phases; see `docs/plans/PLAN-rust-proxy.md`.
+`shakenfist-spice-protocol` crate for the SPICE wire format. It binds the
+secure (5900) and insecure (5901) VDI ports — the insecure port issues a
+`need_secured` redirect to TLS — and exposes its own Prometheus `/metrics`
+endpoint on `--metrics-address` (default loopback, config
+`PROMETHEUS_METRICS_ADDRESS`) rather than the public VDI address, since the
+endpoint is unauthenticated. It is also an L0+L1 SPICE firewall (see
+"Firewall" below).
+
+**Connection flow:** accept → TLS terminate → SPICE link handshake →
+`AuthorizeConnection` over the UDS (decrypt the token, resolve the
+hypervisor `Target`, or `Denied`) → connect the backend leg to the
+hypervisor → bidirectional framed relay, with every message checked against
+the firewall policy delivered in the authorize reply.
+
+**Supervision.** `daemon_run` (`main.py`) binds the gRPC UDS server
+*first* — the proxy dials it at startup (`ClearNodeChannels`) and lazily
+thereafter, so the socket must already exist — then launches
+`kerbside-proxy` as a `subprocess.Popen` child via
+`kerbside/proxy_supervisor.py`: `find_proxy_bin()` resolves the binary
+(`KERBSIDE_PROXY_BIN` env override → an installed `kerbside-proxy` on
+`PATH`, from the wheel → the in-repo dev build dir) and `build_proxy_argv()`
+maps config to the proxy's CLI flags (the firewall knobs are NOT among them
+— they are delivered per connection over gRPC, see below). The daemon polls
+child liveness each second; on SIGTERM it forwards SIGTERM to the child with
+a 15-second deadline (longer than the proxy's own 10-second drain, so the
+proxy can finish draining first) before SIGKILLing it, and exits non-zero
+if the child dies unexpectedly.
+
+**Session termination drops in-flight connections.** Terminating a
+session via the API drops the client's live SPICE channels, not just its
+ability to make *new* connections. Kerbside can run distributed — the REST
+API and proxy nodes may be on different machines, and a load balancer can
+spread one session's channels across several proxy nodes — so the API
+cannot signal a specific proxy directly; the shared MariaDB is the only bus
+every component can reach. Termination is therefore threaded through the
+database as an explicit intent:
+
+1. `ConsolesTerminate`/`SessionTerminate` (`api.py`) keep the existing
+   token expire/remove and additionally insert a `session_terminations`
+   row (`session_id`, `requested_at`, `reason`) via `db.py`'s
+   `request_session_termination`.
+2. Each proxy node's daemon, in its local `ProxyControl` stream handler
+   (`servicer.py`), polls `get_terminations_for_node(NODE_NAME)` — the
+   sessions that are BOTH marked for termination AND have a live
+   `proxychannels` row on this node — and pushes a `TerminateSession`
+   event for each one not already sent on this stream, interleaved with
+   heartbeats. A session only live on another node is that node's job; a
+   merely-expired (not explicitly terminated) token is never pushed.
+3. The Rust proxy's `SessionRegistry` (`session.rs`) maps `session_id ->
+   CancellationToken`, refcounted across that session's channels. On
+   `TerminateSession` (`rpc.rs::run_proxy_control`), the registry cancels
+   the token; the relay's `select!` (`relay.rs`) has a third arm on
+   `token.cancelled()` alongside the two pumps, so every channel of the
+   session tears down cleanly and the client is disconnected. Cancelling
+   an unregistered/already-gone session is a harmless no-op, so a late or
+   duplicate event (a node that pushed the same id twice, or one that
+   arrives after the session already ended) is safe.
+4. A TTL reaper in the maintenance loop (`reap_session_terminations`,
+   5-minute default) deletes aged intent rows once every node has had time
+   to poll and act.
+
+**Graceful drain on shutdown.** On SIGTERM,
+`shutdown_signal` stops the proxy's listeners from accepting new
+connections, cancels every live session via the same `SessionRegistry`
+(`terminate_all`), then waits up to a 10-second deadline for the active
+connection count to reach zero before the process exits — sized below the
+daemon's 15-second SIGTERM-to-SIGKILL window so a supervised restart drains
+in-flight sessions rather than abruptly cutting them.
+
+The relay is inspection-first: every framed SPICE message is passed through
+a `Policy` (the `Policy`/`Verdict` seam) before being forwarded, and as of
+phase 4 that seam is a real, **enforcing** application-level SPICE
+firewall, on by default. `EnforcingPolicy` (`policy.rs`) consults:
+
+- **L1 (message grammar)**: a compiled-in per-channel, per-direction
+  message-type allowlist (`allowlist.rs`), derived from the ryll
+  `shakenfist-spice-protocol` name tables unioned with the SPICE
+  common-base opcodes. A disallowed type on a modeled channel (main,
+  display, inputs, cursor, playback, and usbredir/port/webdav via the
+  spicevmc tables) terminates the session; record/smartcard/tunnel have no
+  modeled grammar and get observe-only handling instead of a type-based
+  terminate.
+- **L0 (resource limits)**: per-(channel, direction) message-size caps
+  (tight on the inputs/cursor client directions, generous elsewhere, both
+  below the relay's unconditional 16 MiB absolute frame guard), a
+  rate/throughput ceiling (disabled by default), a 15-minute idle-read
+  timeout, and client-side TCP keepalive — closing the phase-3 deferred
+  permit-pinning findings.
+
+Policy is delivered per-connection over gRPC in the `AuthorizeConnection`
+reply (`FirewallPolicy`, in `kerbside.proto`): Python continues to own and
+tune policy (enforcement mode, permitted channels); the Rust proxy only
+enforces it. A channel type the deployment forbids is denied before relay.
+An `EnforcementMode::WarnOnly` mode downgrades every blocking verdict to
+forward-and-log (`action=observed` in both the metric and the audit
+summary) instead of terminating, so an operator can validate a
+deployment's real traffic against the firewall before switching it to the
+default `Enforce` mode. Verdicts are exported as the Prometheus metric
+`kerbside_proxy_firewall_verdicts_total{channel,direction,rule,action}` and
+coalesced into a single audit event per connection (never one per
+message). L2 body validation, session recording, and L3 rewriting remain
+future work; see `docs/plans/PLAN-rust-proxy-phase-04-firewall.md`.
 
 ### 4. API Layer (`api.py`)
 
@@ -147,28 +219,17 @@ OpenStack environments).
 | `GET /session` | List active proxy sessions |
 | `GET /session/<id>/terminate` | Kill specific session |
 
-### 5. SPICE Protocol Layer (`spiceprotocol/`)
+### 5. SPICE Protocol Handling
 
-Deep protocol handling for SPICE connections.
+SPICE wire-format parsing lives in the Rust proxy, which reuses the ryll
+`shakenfist-spice-protocol` crate (a rev-pinned git dependency in
+`rust/kerbside-proxy/Cargo.toml`) for the link handshake, ticket
+decryption, mini-header framing, and per-channel message types. The
+firewall's L1 message-type grammar is derived from that crate in
+`rust/kerbside-proxy/src/allowlist.rs`. See `docs/channel-protocols.md`
+and `docs/spice-link-protocol.md` for the protocol reference.
 
-**Structure:**
-
-```
-spiceprotocol/
-  __init__.py          # SpiceClient class
-  packets/
-    constants.py       # Channel mappings, error codes, capabilities
-    linkmessages.py    # SPICE link protocol (handshake)
-    authentication.py  # Auth packet handling
-    main.py            # Main channel messages
-    display.py         # Display channel messages
-    inputs.py          # Input channel messages
-    cursor.py          # Cursor messages
-    port.py            # Port redirection
-    inspection.py      # Traffic inspection framework
-```
-
-**Supported Channels:**
+**Channels the proxy models:**
 
 - `main` - Connection control
 - `display` - Display updates
@@ -253,7 +314,7 @@ Token embedded in virt-viewer file as password
 Client connects to proxy with encrypted password
     |
     v
-SpiceTLSSession decrypts and validates token
+Proxy decrypts and validates the token (AuthorizeConnection over gRPC)
     |
     v
 db.get_console() retrieves hypervisor details
@@ -286,36 +347,42 @@ See `etc/kerbside.conf.example` for a complete configuration reference.
 1. **Client Authentication**: JWT tokens issued after Keystone validation
 2. **Console Access**: Time-limited tokens (configurable expiry)
 3. **TLS Everywhere**: Client-to-proxy and proxy-to-hypervisor connections
-4. **Certificate Validation**: Host subject verification for hypervisor certs
+4. **Certificate Validation**: the backend hypervisor certificate is
+   validated against the deployment CA. Pinning the certificate *subject*
+   (`host_subject`) is future work — see the SPICE firewall / backend notes.
 5. **Audit Logging**: All console access events recorded
 
 ## Monitoring
 
-Prometheus metrics exported on configurable port (default 13003):
+The Rust proxy exports Prometheus metrics on a configurable port (default
+13003), bound to `--metrics-address` (loopback by default). The registered
+metrics are:
 
-- Worker process counts
-- Connection statistics
-- Traffic throughput
-- Error rates
+- `kerbside_proxy_connections_total` / `kerbside_proxy_active_connections`
+- `kerbside_proxy_authorized_total` / `kerbside_proxy_denied_total`
+- `kerbside_proxy_bytes_relayed_total{direction}`
+- `kerbside_proxy_firewall_verdicts_total{...}`
 
 ## Directory Structure
 
 ```
 kerbside/
   main.py              # Entry point, daemon management
-  proxy.py             # SPICE proxy implementation
+  proxy_supervisor.py  # Launches/supervises the Rust proxy child
   api.py               # REST API
   db.py                # Database models and queries
   config.py            # Configuration management
   consoletoken.py      # Token generation/validation
   util.py              # Shared utilities
-  spiceprotocol/       # SPICE protocol handling
   rpc/                 # KerbsideProxy gRPC service (.proto, generated
                        #   stubs, servicer, UDS server)
   sources/             # Cloud source implementations
   api/                 # Web UI assets
     templates/         # Jinja2 templates
     static/            # CSS, JS, icons
+rust/kerbside-proxy/   # The Rust SPICE proxy (binary crate)
+  src/                 # listeners, TLS, handshake, backend leg, relay,
+                       #   firewall (policy.rs/allowlist.rs), gRPC client
 alembic/               # Database migrations
   versions/            # Migration scripts
 etc/                   # Configuration examples

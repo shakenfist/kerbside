@@ -81,6 +81,14 @@ class KerbsideProxyRpcTestCase(testtools.TestCase):
         self.assertEqual('u', target.uuid)
         self.assertEqual('s', target.session_id)
 
+        # A success reply carries the firewall policy the proxy enforces. With
+        # the default config that is enforce mode and an empty permitted list
+        # (which the proxy reads as "permit all").
+        self.assertTrue(reply.HasField('firewall_policy'))
+        self.assertEqual(
+            kerbside_pb2.FirewallPolicy.ENFORCE, reply.firewall_policy.mode)
+        self.assertEqual([], list(reply.firewall_policy.permitted_channels))
+
         mock_record.assert_called_once_with(
             'test-node', 'cr', session_id='s')
         mock_audit.assert_called_once_with(
@@ -99,6 +107,8 @@ class KerbsideProxyRpcTestCase(testtools.TestCase):
 
         self.assertEqual('denied', reply.WhichOneof('result'))
         self.assertEqual('client token invalid', reply.denied.reason)
+        # A denied reply carries no firewall policy.
+        self.assertFalse(reply.HasField('firewall_policy'))
         mock_get_source.assert_not_called()
 
     @mock.patch('kerbside.db.get_source')
@@ -251,3 +261,94 @@ class KerbsideProxyRpcTestCase(testtools.TestCase):
         self.assertEqual('heartbeat', event.WhichOneof('event'))
         # Cancel so we do not block on the loop's sleep.
         call.cancel()
+
+    @mock.patch('kerbside.db.get_terminations_for_node')
+    def test_proxy_control_terminate_session(self, mock_get):
+        # A session that is terminated AND live on this node yields a
+        # TerminateSession, exactly once, interleaved with heartbeats.
+        mock_get.return_value = ['sess-1']
+
+        with mock.patch.object(servicer_module, 'PROXY_CONTROL_POLL_SECONDS',
+                               0.05), \
+             mock.patch.object(servicer_module,
+                               'PROXY_CONTROL_HEARTBEAT_SECONDS', 0.05):
+            call = self.stub.ProxyControl(
+                kerbside_pb2.ProxyControlRequest(node='n'))
+            events = [next(call) for _ in range(6)]
+            call.cancel()
+
+        # The stream polled this node's terminations.
+        mock_get.assert_called_with('test-node')
+
+        terminates = [
+            e for e in events if e.WhichOneof('event') == 'terminate_session']
+        # Sent once, not repeated every poll despite the intent persisting.
+        self.assertEqual(1, len(terminates))
+        self.assertEqual('sess-1', terminates[0].terminate_session.session_id)
+        # Heartbeats still flow.
+        self.assertTrue(
+            any(e.WhichOneof('event') == 'heartbeat' for e in events))
+
+    @mock.patch('kerbside.db.get_terminations_for_node')
+    def test_proxy_control_db_error_does_not_kill_stream(self, mock_get):
+        # A transient DB error is logged and swallowed; the stream keeps
+        # heartbeating rather than tearing down.
+        mock_get.side_effect = RuntimeError('boom')
+
+        with mock.patch.object(servicer_module, 'PROXY_CONTROL_POLL_SECONDS',
+                               0.05), \
+             mock.patch.object(servicer_module,
+                               'PROXY_CONTROL_HEARTBEAT_SECONDS', 0.05):
+            call = self.stub.ProxyControl(
+                kerbside_pb2.ProxyControlRequest(node='n'))
+            events = [next(call) for _ in range(3)]
+            call.cancel()
+
+        self.assertTrue(
+            all(e.WhichOneof('event') == 'heartbeat' for e in events))
+
+
+class BuildFirewallPolicyTestCase(testtools.TestCase):
+    """Unit-test the config -> FirewallPolicy mapping in isolation.
+
+    No gRPC server is needed: build_firewall_policy reads the config
+    singleton and returns a proto message.
+    """
+
+    def test_defaults_to_enforce_and_permit_all(self):
+        with mock.patch.object(servicer_module.config, 'FIREWALL_MODE',
+                               'enforce'), \
+             mock.patch.object(servicer_module.config,
+                               'FIREWALL_PERMITTED_CHANNELS', ''):
+            fp = servicer_module.build_firewall_policy()
+        self.assertEqual(kerbside_pb2.FirewallPolicy.ENFORCE, fp.mode)
+        # Empty config -> empty list, which the proxy reads as "permit all".
+        self.assertEqual([], list(fp.permitted_channels))
+
+    def test_warn_mode_and_named_channels_map_to_discriminants(self):
+        with mock.patch.object(servicer_module.config, 'FIREWALL_MODE',
+                               'WARN'), \
+             mock.patch.object(servicer_module.config,
+                               'FIREWALL_PERMITTED_CHANNELS', 'main, inputs'):
+            fp = servicer_module.build_firewall_policy()
+        self.assertEqual(kerbside_pb2.FirewallPolicy.WARN_ONLY, fp.mode)
+        self.assertEqual([1, 3], list(fp.permitted_channels))
+
+    def test_unknown_mode_falls_back_to_enforce(self):
+        with mock.patch.object(servicer_module.config, 'FIREWALL_MODE',
+                               'bogus'), \
+             mock.patch.object(servicer_module.config,
+                               'FIREWALL_PERMITTED_CHANNELS', ''):
+            fp = servicer_module.build_firewall_policy()
+        self.assertEqual(kerbside_pb2.FirewallPolicy.ENFORCE, fp.mode)
+
+    def test_unknown_channel_name_is_rejected(self):
+        # A typo'd channel name must fail closed and loud, not be silently
+        # dropped (which would weaken a restrictive policy, or -- if every
+        # name is invalid -- leave permitted empty == permit-all).
+        with mock.patch.object(servicer_module.config, 'FIREWALL_MODE',
+                               'enforce'), \
+             mock.patch.object(servicer_module.config,
+                               'FIREWALL_PERMITTED_CHANNELS',
+                               'main, bogus, display'):
+            self.assertRaises(ValueError, servicer_module.build_firewall_policy)

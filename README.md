@@ -1,6 +1,7 @@
 # Kerbside, a SPICE VDI proxy
 
-Kerbside is a SPICE VDI protocol proxy written in python. The long term idea is
+Kerbside is a SPICE VDI protocol proxy: a pure-Python control plane (the REST
+API and the daemon) that supervises a Rust SPICE proxy. The long term idea is
 that this would sit out the front of your Shaken Fist cluster and provide VDI
 access to VMs running inside the cluster. It does this by determining what
 VM to proxy your traffic to based on the password you provide
@@ -12,12 +13,42 @@ those at the moment because there are patches to add deployment support for
 Kerbside to Kolla-Ansible, whereas there is no deployment support for Shaken
 Fist just yet.
 
-The SPICE proxy is being reimplemented in Rust (`rust/kerbside-proxy/`) for
-performance and safety, and to give room for deeper SPICE traffic inspection
-over time. The Rust proxy consults the Python side over a gRPC control
-socket for authorization and bookkeeping; the Python proxy remains active
-until the rewrite is cut over. See `docs/plans/PLAN-rust-proxy.md`,
-`ARCHITECTURE.md`, and `tools/direct-qemu/VERIFY-RUST-PROXY.md`.
+Kerbside is split into two packages: the pure-Python `kerbside` (the REST
+API, the console-source drivers, the SQLAlchemy data model, and the daemon
+that supervises the proxy) and the Rust `kerbside-proxy` (the SPICE proxy
+itself, `rust/kerbside-proxy/`). The proxy terminates TLS, drives the SPICE
+link handshake, and relays traffic between clients and hypervisors,
+consulting the Python side over a gRPC control socket for authorization and
+bookkeeping. It is also an enforcing SPICE application firewall (L0 resource
+limits + L1 message-type grammar), on by default, with a warn-only mode for
+validating a deployment's traffic before enabling enforcement; see
+`docs/configuration.md` for the `FIREWALL_MODE` /
+`FIREWALL_PERMITTED_CHANNELS` knobs. L2 body validation and session
+recording are future work.
+
+The `kerbside daemon` runs the Rust proxy as a supervised child process.
+Terminating a session via the REST API drops that session's in-flight
+connections, not just new ones — see `ARCHITECTURE.md` for how termination
+is bridged through the database to work across distributed/load-balanced
+proxy nodes.
+
+`kerbside-proxy` is published to PyPI as a separate maturin
+`bindings = "bin"` wheel that carries the compiled binary and lands it on
+`PATH`. `kerbside` exact-pins `kerbside-proxy` at the same version, so
+`pip install kerbside` installs a matching proxy automatically (the daemon
+finds it via `shutil.which('kerbside-proxy')`); you do not build or install
+it separately. Both packages are released in lockstep from a single `v*`
+tag, and prebuilt manylinux wheels are published for x86_64 and aarch64 (no
+source distribution — an unsupported platform gets a clean pip error). For
+development you can instead point `KERBSIDE_PROXY_BIN` at a locally built
+binary, or let the daemon pick up the in-repo `cargo build` output.
+
+The proxy is exercised end to end in CI: the direct-qemu functional lane
+boots a real qemu/SPICE guest, drives it with the ryll headless client
+through the proxy, and asserts the full Sextant scenario, plus API-driven
+in-flight session termination and a non-gating relay-latency loadtest. See
+`docs/plans/PLAN-rust-proxy.md`, `ARCHITECTURE.md`, and
+`tools/direct-qemu/VERIFY-RUST-PROXY.md`.
 
 ## Documentation
 

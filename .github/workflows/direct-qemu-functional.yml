@@ -68,8 +68,26 @@ jobs:
           /tmp/kerbside-venv/bin/pip install --quiet .
           echo "/tmp/kerbside-venv/bin" >> "$GITHUB_PATH"
 
+      # Build the kerbside-proxy wheel and install it into the kerbside venv,
+      # so find_proxy_bin() resolves it via shutil.which on PATH exactly as a
+      # wheel-installed deployment would (phase 6). Runs after the venv exists
+      # and before the daemon starts.
+      - name: Build and install the Rust proxy wheel
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/maturin-venv"
+          "${RUNNER_TEMP}/maturin-venv/bin/pip" install --quiet maturin
+          PATH="${RUNNER_TEMP}/maturin-venv/bin:$PATH" tools/direct-qemu/install-proxy-wheel.sh --venv /tmp/kerbside-venv
+
       - name: Initialize MariaDB
         run: tools/direct-qemu/setup-mariadb.sh
+
+      # Prove API-driven session termination drops an in-flight connection,
+      # end to end through the DB intent table + the daemon's ProxyControl
+      # poll. Runs on its own isolated lane (separate WORKDIR, torn down
+      # here) before the scenario lane, so it neither disturbs nor is
+      # disturbed by it.
+      - name: Verify API-terminate drops the in-flight connection
+        run: tools/direct-qemu/verify-terminate-live.sh
 
       - name: Bring up the lane
         run: tools/direct-qemu/lane-up.sh
@@ -83,6 +101,15 @@ jobs:
 
       - name: Assert Sextant boot banner
         run: tools/direct-qemu/wait-for-banner.sh /tmp/kerbside-ci/sextant-serial.log 30
+
+      # Non-gating: sample relay RTT through the proxy and record the numbers
+      # as an artifact. It only pings the existing connection, so it does not
+      # disturb the scenario that follows; continue-on-error keeps a
+      # measurement hiccup from failing the lane. (The Python baseline for the
+      # comparison lives in phase-7 history.)
+      - name: Latency loadtest (non-gating)
+        continue-on-error: true
+        run: tools/direct-qemu/run-loadtest.sh
 
       - name: Run Sextant scenario test
         run: |
@@ -110,6 +137,8 @@ jobs:
             /tmp/kerbside-ci/sources.yaml
             /tmp/kerbside-ci/scenario/
             /tmp/kerbside-ci/tempest.log
+            /tmp/terminate-artifacts/
+            /tmp/loadtest-artifacts/
 
       - name: Tear down the lane
         if: always()

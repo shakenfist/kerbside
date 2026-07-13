@@ -12,10 +12,73 @@ from kerbside.rpc import kerbside_pb2, kerbside_pb2_grpc
 
 LOG, _ = logs.setup(__name__, **util.configure_logging())
 
-# Interval between keepalive heartbeats on the ProxyControl stream. The
-# stream is only stubbed this phase; phase 5 replaces the heartbeat loop
-# with real session-termination and policy-push events.
+# Interval between keepalive heartbeats on the ProxyControl stream.
 PROXY_CONTROL_HEARTBEAT_SECONDS = 30
+
+# How often the ProxyControl stream polls the database for terminations that
+# apply to this node. Short so API-driven termination reaches the proxy
+# promptly; the trade-off is termination latency vs DB load.
+PROXY_CONTROL_POLL_SECONDS = 2
+
+# SPICE ChannelType name -> discriminant (matches ryll's ChannelType and the
+# FirewallPolicy.permitted_channels contract in kerbside.proto). Used to map the
+# FIREWALL_PERMITTED_CHANNELS config names to the wire discriminants.
+CHANNEL_NAME_TO_DISCRIMINANT = {
+    'main': 1,
+    'display': 2,
+    'inputs': 3,
+    'cursor': 4,
+    'playback': 5,
+    'record': 6,
+    'tunnel': 7,
+    'smartcard': 8,
+    'usbredir': 9,
+    'port': 10,
+    'webdav': 11,
+}
+
+
+def build_firewall_policy():
+    """Build the FirewallPolicy delivered in an AuthorizeConnection success.
+
+    Python owns policy; the proxy enforces it. For v1 the value is
+    deployment-wide (built from config, identical on every reply); the
+    per-connection delivery mechanism lets per-console policy become a
+    Python-only change later. Only the knobs with a config surface are set --
+    size caps and the rate ceiling keep the proxy's compiled defaults.
+    """
+    mode = (config.FIREWALL_MODE or '').strip().lower()
+    if mode == 'warn':
+        proto_mode = kerbside_pb2.FirewallPolicy.WARN_ONLY
+    elif mode in ('', 'enforce'):
+        proto_mode = kerbside_pb2.FirewallPolicy.ENFORCE
+    else:
+        LOG.warning(
+            'Unknown FIREWALL_MODE %r, defaulting to enforce' % config.FIREWALL_MODE)
+        proto_mode = kerbside_pb2.FirewallPolicy.ENFORCE
+
+    # Empty config -> empty permitted_channels, which the proxy reads as
+    # "permit all". A named channel maps to its ChannelType discriminant. An
+    # UNKNOWN name is a hard error, not a skip: silently dropping a typo'd name
+    # would narrow the permitted set (or, if every name is invalid, leave it
+    # empty == permit-all) -- turning a policy meant to RESTRICT channels into
+    # a weaker or wide-open one. Fail closed and loud instead so the
+    # misconfiguration is caught rather than silently disabling the gate.
+    permitted = []
+    for name in (config.FIREWALL_PERMITTED_CHANNELS or '').split(','):
+        name = name.strip().lower()
+        if not name:
+            continue
+        discriminant = CHANNEL_NAME_TO_DISCRIMINANT.get(name)
+        if discriminant is None:
+            raise ValueError(
+                'FIREWALL_PERMITTED_CHANNELS contains unknown channel name %r; '
+                'valid names: %s' % (
+                    name, ', '.join(sorted(CHANNEL_NAME_TO_DISCRIMINANT))))
+        permitted.append(discriminant)
+
+    return kerbside_pb2.FirewallPolicy(
+        mode=proto_mode, permitted_channels=permitted)
 
 
 class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
@@ -70,7 +133,8 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
                     host_subject=console['host_subject'] or '',
                     source=console['source'],
                     uuid=console['uuid'],
-                    session_id=token['session_id']))
+                    session_id=token['session_id']),
+                firewall_policy=build_firewall_policy())
 
         except Exception as e:
             LOG.error('AuthorizeConnection failed: %s' % e)
@@ -134,21 +198,55 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
     def ProxyControl(self, request, context):
         """Server-streaming control channel from the daemon to the proxy.
 
-        Stubbed this phase: it opens the stream and emits periodic
-        Heartbeat keepalives while the proxy stays connected. Phase 5
-        replaces this with real session-termination and policy-push
-        events (extending the ProxyControlEvent oneof).
+        Each poll it emits a TerminateSession for every session that is BOTH
+        marked for termination AND live on this node (scoped to NODE_NAME),
+        skipping ids already sent on this stream, and interleaves Heartbeat
+        keepalives. Natural token expiry is NOT a termination (matching the
+        Python proxy); only an explicit session_terminations row is. The
+        stream is local (this daemon and the single proxy it supervises); the
+        database is the only bus that reaches proxies on other machines.
         """
         LOG.info('ProxyControl stream opened for node %s' % request.node)
+        # session_ids already pushed on THIS stream, so a still-present intent
+        # row is not re-sent every poll. The Rust side is idempotent anyway.
+        sent = set()
         try:
             # Emit an immediate heartbeat so the client knows the stream is
-            # live, then keep it alive until the peer goes away.
+            # live, then poll+heartbeat until the peer goes away.
             yield kerbside_pb2.ProxyControlEvent(
                 heartbeat=kerbside_pb2.Heartbeat())
+            last_heartbeat = time.time()
+
             while context.is_active():
-                time.sleep(PROXY_CONTROL_HEARTBEAT_SECONDS)
-                yield kerbside_pb2.ProxyControlEvent(
-                    heartbeat=kerbside_pb2.Heartbeat())
+                try:
+                    current = set(db.get_terminations_for_node(config.NODE_NAME))
+                    for session_id in current:
+                        if session_id in sent:
+                            continue
+                        sent.add(session_id)
+                        LOG.info(
+                            'ProxyControl terminating session %s on node %s'
+                            % (session_id, config.NODE_NAME))
+                        yield kerbside_pb2.ProxyControlEvent(
+                            terminate_session=kerbside_pb2.TerminateSession(
+                                session_id=session_id))
+                    # Bound `sent` to what is still an active intent so it does
+                    # not grow for the life of a long-lived stream: once a row
+                    # is reaped it drops out here. Re-sending an id that later
+                    # reappears is a harmless idempotent no-op on the proxy.
+                    sent &= current
+                except Exception as e:
+                    # A transient DB error must not kill the stream: log and
+                    # keep polling/heartbeating so the proxy stays connected.
+                    LOG.error('ProxyControl termination poll failed: %s' % e)
+
+                if time.time() - last_heartbeat >= PROXY_CONTROL_HEARTBEAT_SECONDS:
+                    yield kerbside_pb2.ProxyControlEvent(
+                        heartbeat=kerbside_pb2.Heartbeat())
+                    last_heartbeat = time.time()
+
+                # Sleep the poll interval each iteration so we do not spin.
+                time.sleep(PROXY_CONTROL_POLL_SECONDS)
         except Exception as e:
             LOG.error('ProxyControl stream failed: %s' % e)
             context.set_code(grpc.StatusCode.INTERNAL)

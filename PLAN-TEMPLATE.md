@@ -5,11 +5,11 @@
 Before responding to questions or discussion points in this
 document, explore the kerbside codebase thoroughly. Read
 relevant source files, understand existing patterns (the
-SPICE protocol implementation in `kerbside/spiceprotocol/`,
-the proxy connection model in `kerbside/proxy.py`, the
-source driver abstraction in `kerbside/sources/`, the REST
-API in `kerbside/api.py`, the SQLAlchemy/alembic data model
-in `kerbside/db.py` and `alembic/`, Pydantic-based config in
+Rust SPICE proxy in `rust/kerbside-proxy/` and the gRPC
+control contract in `kerbside/rpc/`, the source driver
+abstraction in `kerbside/sources/`, the REST API in
+`kerbside/api.py`, the SQLAlchemy/alembic data model in
+`kerbside/db.py` and `alembic/`, Pydantic-based config in
 `kerbside/config.py`, audit logging, and the .vv file
 generation path). Ground your answers in what the code
 actually does today. Do not speculate about the codebase
@@ -257,8 +257,8 @@ implemented because the following statements will be true:
 * New code follows existing patterns: pydantic config,
   SQLAlchemy session usage, the audit logging convention,
   the existing `kerbside/sources/base.py::BaseSource`
-  interface for new source backends, the SPICE protocol packet
-  helpers in `kerbside/spiceprotocol/`.
+  interface for new source backends, and the Rust proxy's
+  SPICE handling in `rust/kerbside-proxy/`.
 * There are unit tests for new logic, and the existing
   tests still pass. Integration coverage in the tempest
   plugin has been extended where the change is

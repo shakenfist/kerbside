@@ -455,6 +455,50 @@ jobs:
               ${GITHUB_WORKSPACE}/kerbside \
               ${{ matrix.test.baseuser }}@10.0.2.2:/srv/shakenfist/kerbside-patches/src/kerbside
 
+      # The kerbside-proxy Kolla container runs "kerbside daemon run", which
+      # supervises the compiled kerbside-proxy binary. That binary ships in the
+      # phase-6 wheel (bindings="bin", binary on PATH); production images
+      # install it from PyPI. To exercise THIS PR's proxy instead, build the
+      # wheel from the PR source and stage it into the image's build tree, so
+      # the kerbside-base Dockerfile installs it in preference to the released
+      # one (see the proxy-wheels conditional in kerbside-patches). The runner
+      # carries no Rust toolchain by default; the next four steps provision one
+      # and build the wheel, mirroring the release lane that builds the PyPI
+      # artifact (.github/workflows/release.yml build-proxy-wheels).
+      - name: Install proxy-wheel build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install maturin and ziglang
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/wheelvenv"
+          "${RUNNER_TEMP}/wheelvenv/bin/pip" install --quiet --upgrade pip maturin ziglang
+          echo "${RUNNER_TEMP}/wheelvenv/bin" >> "$GITHUB_PATH"
+
+      - name: Build the PR's proxy wheel (manylinux, matches the PyPI artifact)
+        # Reuse the release lane's build-proxy-wheel.sh so the CI wheel is the
+        # same portable manylinux_2_28 artifact production pulls from PyPI --
+        # correct across the runner (bookworm) -> trixie image glibc boundary,
+        # unlike a host-native build.
+        run: |
+          WHEEL_OUT="${GITHUB_WORKSPACE}/kerbside/dist/proxy-wheels" \
+              "${GITHUB_WORKSPACE}/kerbside/tools/build-proxy-wheel.sh" "$(uname -m)"
+
+      - name: Stage the proxy wheel onto the Kolla build node
+        run: |
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              'mkdir -p /srv/shakenfist/kerbside-patches/src/kerbside/proxy-wheels'
+
+          scp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${GITHUB_WORKSPACE}/kerbside/dist/proxy-wheels/*.whl \
+              ${{ matrix.test.baseuser }}@10.0.2.2:/srv/shakenfist/kerbside-patches/src/kerbside/proxy-wheels/
+
       - name: Bootstrap Kolla-Ansible
         run: |
           . $GITHUB_ENV

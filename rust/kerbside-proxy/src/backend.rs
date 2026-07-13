@@ -18,14 +18,17 @@
 //! emits the hypervisor connect success/failure audit events, and then hands
 //! the two streams to the relay seam (`crate::relay::run`, a stub until 3f).
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Error, Result};
 use shakenfist_spice_protocol::link::SpiceStream;
 use shakenfist_spice_protocol::{ChannelType, ConnectionConfig, SpiceClient};
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::pb;
+use crate::policy::FirewallPolicy;
 use crate::session::SharedState;
 
 /// Upper bound on a single backend connect attempt (TCP connect + SPICE link +
@@ -64,20 +67,22 @@ fn is_need_secured(err: &Error) -> bool {
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     state: &SharedState,
+    policy: Arc<FirewallPolicy>,
     connection_ref: &str,
     client_stream: SpiceStream,
     connection_id: u32,
     channel_type: ChannelType,
     channel_id: u8,
     target: &pb::Target,
+    cancel: CancellationToken,
 ) -> Result<()> {
     // Build the base connection config from the authorized target. The ports
     // are set per attempt below (insecure first, TLS on retry).
     let base_config = build_config(target);
 
-    // Connect, mirroring proxy.py's insecure-first + RetrySecured fallback:
-    // attempt the insecure leg and, only on a NeedSecured signal, retry over
-    // TLS. Any other failure on the first attempt is returned as-is (no retry).
+    // Connect with an insecure-first + RetrySecured fallback: attempt the
+    // insecure leg and, only on a NeedSecured signal, retry over TLS. Any
+    // other failure on the first attempt is returned as-is (no retry).
     let backend_stream = match connect_once(&base_config, connection_id, channel_type, channel_id)
         .await
     {
@@ -117,9 +122,9 @@ pub async fn run(
         }
     };
 
-    // Successful hypervisor connection: record the audit event (mirrors
-    // proxy.py:426-429). The ticket is never logged. Audit RPC failures are
-    // non-fatal -- log and continue rather than tearing down a live connection.
+    // Successful hypervisor connection: record the audit event. The ticket is
+    // never logged. Audit RPC failures are non-fatal -- log and continue
+    // rather than tearing down a live connection.
     if let Err(e) = state
         .rpc
         .record_audit_event(
@@ -147,8 +152,20 @@ pub async fn run(
         "hypervisor connection successful; handing off to relay"
     );
 
-    // Hand both owned streams to the relay seam (phase 3f fills the body).
-    crate::relay::run(client_stream, backend_stream, channel_type, connection_ref).await
+    // Hand both owned streams to the relay seam, along with the connection's
+    // firewall policy and the state/target the relay needs to flush a single
+    // coalesced firewall-verdict audit event on teardown.
+    crate::relay::run(
+        state,
+        policy,
+        client_stream,
+        backend_stream,
+        channel_type,
+        connection_ref,
+        target,
+        cancel,
+    )
+    .await
 }
 
 /// Build the base `ConnectionConfig` from an authorized `Target`.
@@ -159,7 +176,7 @@ pub async fn run(
 /// ticket, empty-string -> `None`) are unit-testable in isolation.
 fn build_config(target: &pb::Target) -> ConnectionConfig {
     // `host`: prefer the numeric hypervisor_ip when the control plane provided
-    // one, else the hypervisor name (mirrors proxy.py's server selection).
+    // one, else the hypervisor name.
     let host = if target.hypervisor_ip.is_empty() {
         target.hypervisor.clone()
     } else {
@@ -222,10 +239,9 @@ async fn connect_once(
     }
 }
 
-/// Record the hypervisor-connect-failure audit event (mirrors
-/// proxy.py:442-446). Best-effort: audit RPC errors are logged, not propagated,
-/// so the original connect error still reaches the caller. The ticket is never
-/// logged.
+/// Record the hypervisor-connect-failure audit event. Best-effort: audit RPC
+/// errors are logged, not propagated, so the original connect error still
+/// reaches the caller. The ticket is never logged.
 async fn record_connect_failure(
     state: &SharedState,
     connection_ref: &str,

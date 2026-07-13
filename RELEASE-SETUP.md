@@ -39,6 +39,39 @@ The workflow will now be able to publish without any stored credentials.
 "pending" trusted publisher before the first release. Go to your PyPI account
 settings and look for "Add a new pending publisher".
 
+#### 1a. Second trusted publisher for `kerbside-proxy`
+
+Kerbside ships two PyPI packages, released in lockstep from the same `v*`
+tag by the same `release.yml` workflow (see "Two-package lockstep release"
+below):
+
+- **`kerbside`** — the pure-Python daemon/API/CLI (setuptools + setuptools_scm).
+- **`kerbside-proxy`** — the Rust SPICE proxy, a maturin `bindings = "bin"`
+  binary wheel (manylinux x86_64 and aarch64).
+
+Repeat the trusted-publisher setup above for a **second** PyPI project named
+`kerbside-proxy`, with the identical configuration (Owner `shakenfist`,
+Repository `kerbside`, Workflow `release.yml`, Environment `release`). Because
+it is the same workflow and environment, no new secrets are involved. Add it
+as a **pending** publisher before the first release if the project does not
+exist on PyPI yet.
+
+#### Two-package lockstep release
+
+Both packages are built and published from one `v*` tag:
+
+- `setuptools_scm` derives the `kerbside` version from the tag.
+- `tools/stamp-proxy-version.sh` stamps that same version into the crate's
+  `Cargo.toml` (which maturin reads for the wheel) and inserts an exact
+  `kerbside-proxy==<version>` pin into `kerbside`'s dependency list, so
+  `pip install kerbside==X.Y.Z` transitively installs
+  `kerbside-proxy==X.Y.Z`.
+- `kerbside-proxy` is published **before** `kerbside` (the `publish-pypi`
+  job depends on `publish-proxy-pypi`), so `kerbside` is never published
+  referencing a proxy version that failed to publish.
+- No sdist is published for `kerbside-proxy` (wheels only); an unsupported
+  platform gets a clean "no matching distribution" from pip.
+
 ### 2. Create GitHub Environment with Required Reviewers
 
 This ensures releases only happen after explicit approval.

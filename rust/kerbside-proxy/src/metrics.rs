@@ -1,10 +1,9 @@
 //! Prometheus metrics: a global registry, typed metric handles, and a
 //! minimal hyper 1.x `/metrics` HTTP server.
 //!
-//! This replaces the Python proxy's `prometheus_client` +
-//! multiprocessing-queue exposition (`kerbside/proxy.py`'s
-//! `start_http_server` / `prometheus_updates`) with a Rust-native registry:
-//! every metric below is created once (via [`std::sync::LazyLock`]) and
+//! A Rust-native registry (rather than a `prometheus_client` +
+//! multiprocessing-queue exposition): every metric below is created once
+//! (via [`std::sync::LazyLock`]) and
 //! registered into a single process-wide [`Registry`], and [`serve`] gathers
 //! from that registry on every `/metrics` scrape. Callers never touch the
 //! registry directly -- they use the small helper functions at the bottom of
@@ -105,6 +104,27 @@ static BYTES_RELAYED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     vec
 });
 
+/// Total firewall verdicts, labelled by `channel`, `direction`, `rule`
+/// (`disallowed_type` / `unmodeled_type`, extended by later L0 rules), and
+/// `action` (`enforced` — the blocking verdict was applied — vs `observed` —
+/// `WarnOnly` let it through, or the rule is intrinsically observe-only). The
+/// enforced/observed split directly answers "what would `Enforce` have tripped?"
+/// during a `WarnOnly` run (phase-4 plan, Design decision 3).
+static FIREWALL_VERDICTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    let vec = IntCounterVec::new(
+        Opts::new(
+            "kerbside_proxy_firewall_verdicts_total",
+            "Total firewall verdicts by channel, direction, rule, and action",
+        ),
+        &["channel", "direction", "rule", "action"],
+    )
+    .expect("static metric options are valid");
+    REGISTRY
+        .register(Box::new(vec.clone()))
+        .expect("firewall_verdicts_total registers exactly once");
+    vec
+});
+
 /// Map a relay [`Direction`] to its Prometheus label value.
 fn direction_label(dir: Direction) -> &'static str {
     match dir {
@@ -138,6 +158,14 @@ pub fn add_relayed_bytes(dir: Direction, n: u64) {
         .inc_by(n);
 }
 
+/// Record one firewall verdict. `rule` and `action` are the stable low-
+/// cardinality labels the policy engine supplies (see [`FIREWALL_VERDICTS_TOTAL`]).
+pub fn record_firewall_verdict(channel: &str, dir: Direction, rule: &str, action: &str) {
+    FIREWALL_VERDICTS_TOTAL
+        .with_label_values(&[channel, direction_label(dir), rule, action])
+        .inc();
+}
+
 /// An RAII guard that increments `active_connections` on creation and
 /// decrements it on drop.
 ///
@@ -161,6 +189,12 @@ impl Drop for ConnectionGuard {
 pub fn connection_guard() -> ConnectionGuard {
     ACTIVE_CONNECTIONS.inc();
     ConnectionGuard { _private: () }
+}
+
+/// The current number of active (in-flight) connections. Used by the shutdown
+/// drain to wait for sessions to finish tearing down.
+pub fn active_connections() -> i64 {
+    ACTIVE_CONNECTIONS.get()
 }
 
 /// Render the current registry in Prometheus text exposition format.
@@ -242,5 +276,30 @@ pub async fn serve(addr: SocketAddr) -> Result<()> {
                 debug!(%peer, error = %e, "metrics connection ended with an error");
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn record_firewall_verdict_increments_labelled_series() {
+        // Use a distinctive channel label so this series is not perturbed by
+        // any other test sharing the process-wide registry.
+        let series = FIREWALL_VERDICTS_TOTAL.with_label_values(&[
+            "test_metric_channel",
+            direction_label(Direction::ClientToServer),
+            "disallowed_type",
+            "enforced",
+        ]);
+        let before = series.get();
+        record_firewall_verdict(
+            "test_metric_channel",
+            Direction::ClientToServer,
+            "disallowed_type",
+            "enforced",
+        );
+        assert_eq!(series.get(), before + 1);
     }
 }

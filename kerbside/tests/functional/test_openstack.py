@@ -8,7 +8,7 @@ import time
 import yaml
 
 
-from .. import spiceprotocol
+from . import ryll_helper
 
 
 class OpenStackTestCase(testtools.TestCase):
@@ -73,12 +73,10 @@ class OpenStackDirectTests(OpenStackTestCase):
         if 'port' not in console_data or not console_data['port']:
             self.fail('Console lookup failed')
 
-        # Construct a SPICE client from that config
-        sc = spiceprotocol.SpiceClient()
-        sc.from_static_configuration(
-            console_data['host'], console_data['port'], console_data.get('tls_port'),
-            '', None, None)
-        sc.connect()
+        # Assert SPICE connectivity by driving ryll against a synthesized .vv
+        vv = ryll_helper.vv_from_static(
+            console_data['host'], console_data['port'], console_data.get('tls_port'))
+        ryll_helper.assert_spice_connects(vv)
 
 
 class OpenStackProxyVirtViewerTests(OpenStackTestCase):
@@ -100,7 +98,5 @@ class OpenStackProxyVirtViewerTests(OpenStackTestCase):
             self.fail('Console for %s never appeared in the proxy'
                       % self.instance.id)
 
-        # Construct a SPICE client from that config
-        sc = spiceprotocol.SpiceClient()
-        sc.from_vv_file(vvconfig=vv)
-        sc.connect()
+        # Assert SPICE connectivity through the proxy by driving ryll
+        ryll_helper.assert_spice_connects(vv)

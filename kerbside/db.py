@@ -3,9 +3,10 @@ import datetime
 import time
 
 from sqlalchemy import create_engine, text
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text
 from sqlalchemy import desc
 from sqlalchemy.dialects.mysql import DATETIME
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import exc, Session
 
@@ -407,19 +408,6 @@ def get_token_by_session_id(session_id):
             return None
 
 
-def expire_token(token):
-    with Session(ENGINE) as session:
-        try:
-            for c in session.query(ConsoleToken).\
-                    filter(ConsoleToken.token == token).\
-                    all():
-                c.expires = time.time()
-        except exc.NoResultFound:
-            return None
-        finally:
-            session.commit()
-
-
 def remove_session(session_id):
     with Session(ENGINE) as session:
         try:
@@ -502,27 +490,6 @@ class ProxyChannel(Base):
         }
 
 
-def record_channel_info(node, pid, client_ip=None, client_port=None,
-                        connection_id=None, channel_type=None, channel_id=None,
-                        session_id=None):
-    with Session(ENGINE) as session:
-        try:
-            channel = session.query(ProxyChannel).\
-                filter(ProxyChannel.node == node).\
-                filter(ProxyChannel.pid == pid).\
-                one()
-
-        except exc.NoResultFound:
-            channel = ProxyChannel(node, pid, datetime.datetime.now())
-            session.add(channel)
-
-        for arg in ['client_ip', 'client_port', 'connection_id',
-                    'channel_type', 'channel_id', 'session_id']:
-            if locals()[arg]:
-                setattr(channel, arg, locals()[arg])
-        session.commit()
-
-
 def record_channel_info_by_ref(node, connection_ref, client_ip=None, client_port=None,
                                connection_id=None, channel_type=None, channel_id=None,
                                session_id=None):
@@ -554,32 +521,6 @@ def remove_channel_by_ref(connection_ref):
             session.commit()
         except exc.NoResultFound:
             return None
-
-
-def remove_proxy_channel(node, pid):
-    with Session(ENGINE) as session:
-        try:
-            for c in list(session.query(ProxyChannel).
-                          filter(ProxyChannel.node == node).
-                          filter(ProxyChannel.pid == pid).
-                          all()):
-                session.delete(c)
-            session.commit()
-        except exc.NoResultFound:
-            return None
-
-
-def get_node_channels(node):
-    out = []
-    with Session(ENGINE) as session:
-        try:
-            for c in session.query(ProxyChannel).\
-                filter(ProxyChannel.node == node).\
-                    all():
-                out.append(c.export())
-        except exc.NoResultFound:
-            ...
-    return out
 
 
 def remove_node_channels(node):
@@ -628,6 +569,113 @@ def get_sessions():
             ...
 
     return out
+
+
+class SessionTermination(Base):
+    __tablename__ = 'session_terminations'
+
+    # A session is terminated at most once; re-requesting is idempotent, so the
+    # session_id is the primary key. requested_at is a time.time() float and
+    # reason is a human-readable note for audit/debugging.
+    session_id = Column(String, primary_key=True)
+    requested_at = Column(Float)
+    reason = Column(String, nullable=True)
+
+    def __init__(self, session_id, requested_at, reason=None):
+        self.session_id = session_id
+        self.requested_at = requested_at
+        self.reason = reason
+
+    def export(self):
+        return {
+            'session_id': self.session_id,
+            'requested_at': self.requested_at,
+            'reason': self.reason
+        }
+
+
+def request_session_termination(session_id, reason=None):
+    # Record the intent to terminate a session. The API (possibly on a
+    # different machine from any proxy) writes this row; each proxy node's
+    # daemon polls it for the sessions it holds live channels for and pushes a
+    # TerminateSession event to its local proxy. Idempotent: a session is
+    # terminated at most once, so re-requesting refreshes the existing row
+    # rather than erroring.
+    with Session(ENGINE) as session:
+        try:
+            existing = session.query(SessionTermination).\
+                filter(SessionTermination.session_id == session_id).\
+                one()
+            existing.requested_at = time.time()
+            if reason is not None:
+                existing.reason = reason
+            session.commit()
+            return
+        except exc.NoResultFound:
+            ...
+
+        termination = SessionTermination(session_id, time.time(), reason)
+        session.add(termination)
+        try:
+            session.commit()
+        except IntegrityError:
+            # Race: another API call inserted the same session_id between our
+            # lookup and insert. The row now exists, which is exactly what we
+            # wanted, so roll back and treat it as already recorded.
+            session.rollback()
+
+
+def terminate_session(session_id, source, uuid, reason=None):
+    # Terminate a proxy session. Deleting the token blocks NEW connections;
+    # recording a termination intent is what drops the IN-FLIGHT ones (each
+    # proxy node polls session_terminations for the sessions it holds live
+    # channels for and pushes a TerminateSession event to its local proxy).
+    # Then audit it. Shared by the ConsolesTerminate and SessionTerminate API
+    # endpoints so the sequence stays identical.
+    remove_session(session_id)
+    request_session_termination(session_id, reason=reason)
+    add_audit_event(
+        source, uuid, session_id, None, None, None,
+        'Session terminated by request')
+
+
+def get_terminations_for_node(node):
+    # Return the session_ids that are BOTH marked for termination AND live on
+    # this node (i.e. the sessions this node must drop). Scoped to node: a
+    # session terminated but only live on another node is that node's job.
+    # Implemented as a two-query intersection -- gather this node's live
+    # session_ids, then filter session_terminations to that set.
+    out = []
+    with Session(ENGINE) as session:
+        try:
+            live = {
+                c.session_id for c in session.query(ProxyChannel).
+                filter(ProxyChannel.node == node).
+                filter(ProxyChannel.session_id.isnot(None)).
+                all()}
+            if not live:
+                return out
+
+            for t in session.query(SessionTermination).\
+                    filter(SessionTermination.session_id.in_(live)).\
+                    all():
+                out.append(t.session_id)
+        except exc.NoResultFound:
+            ...
+    return out
+
+
+def reap_session_terminations(max_age_seconds):
+    # Delete termination-intent rows older than max_age_seconds. By then every
+    # node has had time to poll and push; the Rust side is idempotent so a
+    # late or duplicate event is a no-op. Returns the number of rows deleted.
+    cutoff = time.time() - max_age_seconds
+    with Session(ENGINE) as session:
+        count = session.query(SessionTermination).\
+            filter(SessionTermination.requested_at < cutoff).\
+            delete(synchronize_session=False)
+        session.commit()
+        return count
 
 
 class AuditEvent(Base):
