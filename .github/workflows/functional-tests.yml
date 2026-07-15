@@ -1,4 +1,4 @@
-name: Test cloud compatibility
+name: Functional tests
 
 permissions:
   contents: read
@@ -90,8 +90,9 @@ jobs:
           tox -efailing || true > /srv/ci/failed
           echo
 
-          failed=$(cat /srv/ci/failed | egrep "^FAIL: " | \
-              sed -z 's/FAIL: shakenfist_ci\.//g;s/\n/, /g;s/, $/\n/')
+          failed=$(egrep "^FAIL: " /srv/ci/failed | \
+              sed -z 's/FAIL: shakenfist_ci\.//g;s/\n/, /g;s/, $/\n/') \
+              || true
 
           echo "Failed tests:"
           cat /srv/ci/failed

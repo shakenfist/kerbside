@@ -351,6 +351,17 @@ after the `# END_OF_INDIRECT_DEPS` marker.
 - `ovirtsdk4` - For oVirt integration
 - `keystoneauth1`, `novaclient` - For OpenStack integration
 
+## Claude Code Skills
+
+Claude skills for common tasks are in `.claude/skills/`:
+
+- `add-database-migration.md` - Step-by-step guide for creating Alembic
+  database migrations, including model updates and documentation.
+- `add-source-type.md` - Guide for adding new cloud source implementations,
+  covering the full workflow from source class to tests and docs.
+
+Project-specific instructions are in `.claude/CLAUDE.md`.
+
 ## Related Repositories
 
 - **kerbside-patches**: Upstream patches for OpenStack/Kolla integration

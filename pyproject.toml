@@ -14,7 +14,7 @@ dynamic = ["version"]
 
 description = "A protocol native SPICE VDI proxy"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
     "shakenfist-utilities==0.8.4",      # apache2
 

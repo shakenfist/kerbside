@@ -54,6 +54,8 @@ in-flight session termination and a non-gating relay-latency loadtest. See
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - High-level system architecture
 - [AGENTS.md](AGENTS.md) - AI agent guidelines for working on this codebase
+- [.claude/](.claude/) - Claude Code project instructions and skills
+  (database migrations, adding source types)
 - [docs/](docs/) - Full documentation:
   - [Documentation Index](docs/index.md) - Full documentation index with
     overview and introduction
