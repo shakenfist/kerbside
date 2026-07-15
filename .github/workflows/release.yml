@@ -44,6 +44,16 @@ jobs:
 
       - name: Build package
         run: |
+          # The stamp step above edits pyproject.toml to insert the proxy
+          # pin, which dirties the git tree. setuptools_scm would then derive
+          # a PEP 440 local version (e.g. 0.3.1.dev0+d<date>) that PyPI
+          # rejects with a 400. For tag builds, pin the wheel version to the
+          # tag so it is exactly the released version regardless of the
+          # dirty tree. (workflow_dispatch has no tag; its derived dev
+          # version is fine there since that build is never published.)
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            export SETUPTOOLS_SCM_PRETEND_VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
           release-venv/bin/python3 -m build
 
       - name: Check package with twine
