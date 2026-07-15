@@ -155,16 +155,16 @@ Internal design of the Kerbside proxy:
 Core protocol specifications covering connection handshake, authentication, and
 channel message formats:
 
-- [Protocol Overview](protocol-overview.md) - Introduction to SPICE protocol
-  fundamentals including channel types, message structure, capabilities, and
-  security model
+- [Protocol Overview](spice/protocol-overview.md) - Introduction to SPICE
+  protocol fundamentals including channel types, message structure,
+  capabilities, and security model
 
-- [Link Protocol](spice-link-protocol.md) - Connection handshake details
+- [Link Protocol](spice/spice-link-protocol.md) - Connection handshake details
   including SpiceLinkMess/SpiceLinkReply formats, RSA key exchange, and
   authentication flow
 
-- [Channel Protocols](channel-protocols.md) - Detailed message formats for each
-  SPICE channel:
+- [Channel Protocols](spice/channel-protocols.md) - Detailed message formats
+  for each SPICE channel:
   - Main channel - Session control, channel negotiation
   - Display channel - Screen updates, drawing operations, video streaming
   - Inputs channel - Keyboard and mouse input
@@ -172,31 +172,42 @@ channel message formats:
   - Playback/Record channels - Audio streaming
   - Smartcard channel - Smart card redirection
 
-- [Keyboard Scancodes](scancodes.md) - Complete reference for IBM PC XT
+- [Keyboard Scancodes](spice/scancodes.md) - Complete reference for IBM PC XT
   scancodes used by the inputs channel, including standard keys, extended keys
   (E0 prefix), and media/browser keys
 
-- [Compression Protocols](compression-protocols.md) - LZ and GLZ image
+- [Compression Protocols](spice/compression-protocols.md) - LZ and GLZ image
   compression formats used by the display channel, including header formats,
   command encoding, and dictionary-based decompression
 
-- [Capabilities](capabilities.md) - Channel capability negotiation including
-  common, display, audio, and input capabilities with recommended settings
+- [Capabilities](spice/capabilities.md) - Channel capability negotiation
+  including common, display, audio, and input capabilities with recommended
+  settings
 
 ### Device Redirection Protocols
 
 Protocols for redirecting client devices to the virtual machine:
 
-- [USB Redirection](usb-redirection.md) - USB device redirection protocol
-  (usbredir) including all control and data message formats, capability
-  negotiation, and device filter rules
+- [USB Redirection](spice/usb-redirection.md) - USB device redirection
+  protocol (usbredir) including all control and data message formats,
+  capability negotiation, and device filter rules
 
 ### Guest Agent Protocol
 
 Protocol for advanced guest integration features:
 
-- [VD Agent Protocol](vd-agent-protocol.md) - Guest agent protocol for
+- [VD Agent Protocol](spice/vd-agent-protocol.md) - Guest agent protocol for
   clipboard sharing, file transfer, display configuration, and volume sync
+
+### Connection File Extensions
+
+Extensions and interpretations layered on the standard
+virt-viewer console.vv format:
+
+- [console.vv Extensions](spice/console-vv-extensions.md) - ryll-specific
+  console.vv keys (`ticket-valid-until`) and standard-key interpretations
+  (`delete-this-file=1` as a one-shot ticket signal). Producers (Kerbside,
+  oVirt, custom gateways) populate these to drive client-side behaviour.
 
 ## Protocol Implementation Status
 
@@ -242,7 +253,7 @@ relayed opaquely in both cases; the proxy does not decode or log them.
 
 ### Error Codes
 
-See [Protocol Overview - Error Codes](protocol-overview.md#error-codes) for the
+See [Protocol Overview - Error Codes](spice/protocol-overview.md#error-codes) for the
 complete list of SPICE link error codes.
 
 ### Common Capabilities

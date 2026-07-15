@@ -22,6 +22,47 @@ Offset  Size  Type    Field
 6+      var   bytes   payload
 ```
 
+## Channel Liveness and Disconnection
+
+The SPICE protocol does not include an application-layer keepalive
+beyond server-initiated PING / client PONG. The server
+(qemu/spice-server) runs a per-channel "rcc" liveness timer; if a
+channel goes more than 30 s without receiving any client message
+the rcc is torn down. This produces a log entry on the host:
+
+```
+kvm: warning: Spice: <channel>:<n> (...): rcc <addr> has been
+unresponsive for more than 30000 ms, disconnecting
+```
+
+The check counts any received client message, including PONG.
+Clients therefore only need to remain responsive to server PINGs —
+there is no requirement to send proactive client-initiated PINGs,
+and no client-side message type for that purpose exists.
+
+Reference clients (spice-gtk, virt-viewer, ryll) defend against
+network-stack-level liveness failures with TCP keepalives at the OS
+level:
+
+| Setting          | Value |
+|------------------|-------|
+| `SO_KEEPALIVE`   | enabled |
+| `TCP_KEEPIDLE`   | 30 s |
+| `TCP_KEEPINTVL`  | 15 s |
+| `TCP_KEEPCNT`    | 3 |
+
+Reference: `spice-gtk/src/spice-session.c:2300`,
+`spice-gtk/src/spice-channel.c:2606`. These are kernel-level
+probes; they do not generate SPICE messages and therefore do not
+satisfy the server's rcc check on their own. They only detect a
+half-open connection promptly when the client cannot reach the
+server.
+
+When a channel disconnects (whether via the rcc timeout, a TCP
+RST/FIN, or the client sending a `DISCONNECTING` message), the
+session implications depend on the authentication model — see
+[Channel Lifecycle Under Ticket Auth](spice-link-protocol.md#channel-lifecycle-under-ticket-auth).
+
 ## Main Channel (Type 1)
 
 The main channel handles session control and channel negotiation.

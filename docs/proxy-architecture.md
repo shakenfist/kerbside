@@ -423,6 +423,6 @@ channels (main, display, inputs, cursor) torn down by a single
 
 ## Related Documentation
 
-- [Protocol Overview](protocol-overview.md) - SPICE protocol introduction
-- [Link Protocol](spice-link-protocol.md) - Connection handshake details
-- [Channel Protocols](channel-protocols.md) - Per-channel message formats
+- [Protocol Overview](spice/protocol-overview.md) - SPICE protocol introduction
+- [Link Protocol](spice/spice-link-protocol.md) - Connection handshake details
+- [Channel Protocols](spice/channel-protocols.md) - Per-channel message formats
