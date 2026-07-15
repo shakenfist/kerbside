@@ -21,7 +21,10 @@ on:
 
 jobs:
   sanity_checks:
-    runs-on: [self-hosted, vm, debian-12]
+    # The bindep step below needs passwordless sudo for apt, which the
+    # shared static pool does not grant, so this stays on an ephemeral vm
+    # runner. m: light lint + unit tests + coverage.
+    runs-on: [self-hosted, vm, debian-12, m]
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-lint
       cancel-in-progress: true
@@ -134,7 +137,7 @@ jobs:
             'ovirt_username': 'admin@ovirt@internalsso'
           },
         ]
-    runs-on: [self-hosted, vm]
+    runs-on: [self-hosted, vm, debian-12, m]
     needs: sanity_checks
     timeout-minutes: 120
     concurrency:
@@ -404,7 +407,7 @@ jobs:
             'baseuser': 'debian'
           },
         ]
-    runs-on: [self-hosted, vm]
+    runs-on: [self-hosted, vm, debian-12, m]
     needs: sanity_checks
     timeout-minutes: 120
     concurrency:
