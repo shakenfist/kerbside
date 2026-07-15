@@ -110,7 +110,14 @@ jobs:
     # proxy wheels are still building or have failed -- otherwise a dead
     # wheel build leaves the release wedged with signing queued.
     needs: [build, build-proxy-wheels]
-    runs-on: [self-hosted, debian-12, static]
+    # This job mutates the runner -- it installs gitsign (sudo mv into
+    # /usr/local/bin) and writes global git config -- so it belongs on an
+    # ephemeral vm runner, not the shared static pool. Static grants no
+    # passwordless sudo (the mv would fail) and carries no OS label, so
+    # `[self-hosted, debian-12, static]` matched no runner and queued
+    # forever. vm has sudo, is throwaway, and takes an OS + size label. s:
+    # tiny job (download a binary, sign, push).
+    runs-on: [self-hosted, vm, debian-12, s]
     environment: release
 
     permissions:
