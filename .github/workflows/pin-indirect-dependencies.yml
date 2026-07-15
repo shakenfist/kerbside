@@ -23,6 +23,9 @@ jobs:
     # on an ephemeral vm runner. m: light dependency resolution + PR.
     runs-on: [self-hosted, vm, debian-12, m]
     timeout-minutes: 60
+    env:
+      PIP_INDEX_URL: http://192.168.1.4:3141/root/pypi/+simple/
+      PIP_TRUSTED_HOST: 192.168.1.4
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: true

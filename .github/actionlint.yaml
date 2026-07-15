@@ -18,3 +18,15 @@ self-hosted-runner:
     - l
     - xl
     - xl-bigdisk
+    - claude-code
+
+# Ignore certain shellcheck rules from run: blocks in workflow files.
+# These are overly pedantic for CI workflow scripts where the inputs are
+# controlled by GitHub Actions expressions.
+paths:
+  .github/workflows/*.yml:
+    ignore:
+      - 'SC1090:'  # Can't follow non-constant source
+      - 'SC2046:'  # Quote command substitution to prevent word splitting
+      - 'SC2086:'  # Double quote to prevent globbing and word splitting
+      - 'SC2143:'  # Use grep -q instead of comparing output with [ -n .. ]
