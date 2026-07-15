@@ -29,11 +29,11 @@ jobs:
     # runner. m: light lint + unit tests + coverage.
     runs-on: [self-hosted, vm, debian-12, m]
     env:
-      PIP_INDEX_URL: http://192.168.1.4:3141/root/pypi/+simple/
+      PIP_INDEX_URL: http://192.168.1.15:3141/root/pypi/+simple/
       # Fall back to pypi so a devpi cold-cache miss (empty index on a
       # first-touch package) cannot hard-fail the job.
       PIP_EXTRA_INDEX_URL: https://pypi.org/simple/
-      PIP_TRUSTED_HOST: 192.168.1.4
+      PIP_TRUSTED_HOST: 192.168.1.15
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-lint
       cancel-in-progress: true
