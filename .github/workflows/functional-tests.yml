@@ -1,5 +1,8 @@
 name: Test cloud compatibility
 
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
     inputs:
@@ -31,7 +34,7 @@ jobs:
 
     steps:
       - name: Checkout code with two commits
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -104,7 +107,7 @@ jobs:
           tox -ecover
           zip -r cover.zip cover
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: coverage
           retention-days: 90
@@ -156,14 +159,14 @@ jobs:
           echo "SHAKENFIST_NAMESPACE=$(hostname)" >> $GITHUB_ENV
 
       - name: Checkout the actions repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: shakenfist/actions
           path: actions
           fetch-depth: 0
 
       - name: Checkout kerbside
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: kerbside
           fetch-depth: 0
@@ -369,7 +372,7 @@ jobs:
           cd ..
           zip -r bundle.zip bundle
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: bundle-${{ matrix.test.name }}
@@ -595,7 +598,7 @@ jobs:
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2:/tmp/bundle.zip /tmp/bundle.zip
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: bundle-${{ matrix.test.name }}
@@ -608,3 +611,52 @@ jobs:
         run: sleep $(( $MINUTES * 60 ))
         env:
           MINUTES: ${{ inputs.retention }}
+
+  check-bot-commit:
+    name: "Check bot commit"
+    if: github.event_name == 'pull_request'
+    runs-on: [self-hosted, static]
+    outputs:
+      is_bot: ${{ steps.check.outputs.is_bot }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Check if last commit was from bot
+        id: check
+        run: |
+          LAST_AUTHOR_EMAIL=$(git log -1 --format='%ae')
+          echo "Last commit author: $LAST_AUTHOR_EMAIL"
+          if [ "$LAST_AUTHOR_EMAIL" = "bot@shakenfist.com" ]; then
+            echo "is_bot=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_bot=false" >> $GITHUB_OUTPUT
+          fi
+
+  automated_reviewer:
+    name: "Automated reviewer"
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    runs-on: [self-hosted, claude-code]
+    needs: [sanity_checks, ovirt_matrix, openstack_matrix, check-bot-commit]
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.check-bot-commit.outputs.is_bot != 'true'
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-reviewer
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Run automated reviewer
+        uses: shakenfist/actions/review-pr-with-claude@main
+        with:
+          pr-number: ${{ github.event.pull_request.number }}
