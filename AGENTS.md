@@ -190,8 +190,9 @@ stack with a headless ryll client through the Rust proxy. `start-kerbside.sh`
 pre-checks the proxy binary via `find_proxy_bin()`, and the lane builds and
 installs the `kerbside-proxy` wheel so it resolves on `PATH` as in a real
 deployment. The lane also runs the live API-terminate test
-(`verify-terminate-live.sh`) and a non-gating relay-latency loadtest
-(`run-loadtest.sh`).
+(`verify-terminate-live.sh`) and a non-gating keypress-to-screen latency
+loadtest (`run-loadtest.sh`), each on its own isolated lane before the
+shared scenario lane.
 
 The Rust leg additionally:
 
@@ -205,11 +206,15 @@ The Rust leg additionally:
   phase-5 DB→`ProxyControl` bridge end to end (not the mock).
 
 Both legs run `run-loadtest.sh` (non-gating, `continue-on-error`): it
-drives `loadtests/latency/orchestrator.py` to sample relay PING/PONG RTT
-through the leg's proxy and records p50/p95 as an artifact; the
-Python-vs-Rust comparison is read off the two legs. This is distinct from
-the local mock harness (`VERIFY-RUST-PROXY.md`), which needs no daemon or
-database.
+drives `loadtests/latency/orchestrator.py` to sample keypress-to-screen
+latency (real `send_key` events timed against the `surface_drawn` they
+produce) through the leg's proxy and records p50/p95 as an artifact; the
+Python-vs-Rust comparison is read off the two legs. Because injecting
+keypresses drives the Sextant guest off its Awaiting screen, the loadtest
+brings up its OWN isolated lane (separate WORKDIR) and tears it down before
+the scenario lane starts, exactly as `verify-terminate-live.sh` does. This
+is distinct from the local mock harness (`VERIFY-RUST-PROXY.md`), which
+needs no daemon or database.
 
 ### Modifying SPICE Protocol Handling
 

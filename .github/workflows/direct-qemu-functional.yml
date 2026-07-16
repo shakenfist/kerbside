@@ -95,6 +95,18 @@ jobs:
       - name: Verify API-terminate drops the in-flight connection
         run: tools/direct-qemu/verify-terminate-live.sh
 
+      # Non-gating: measure keypress-to-screen latency through the proxy and
+      # record p50/p95 as an artifact. The orchestrator injects real keypresses
+      # (send_key), which drives the Sextant guest off its Awaiting screen, so
+      # -- like the terminate test above -- it runs on its OWN isolated lane
+      # (separate WORKDIR, torn down inside the script) BEFORE the scenario
+      # lane, and therefore neither disturbs nor is disturbed by it.
+      # continue-on-error keeps a measurement hiccup from failing the lane.
+      # (The Python baseline for the comparison lives in phase-7 history.)
+      - name: Latency loadtest (non-gating)
+        continue-on-error: true
+        run: tools/direct-qemu/run-loadtest.sh
+
       - name: Bring up the lane
         run: tools/direct-qemu/lane-up.sh
 
@@ -107,15 +119,6 @@ jobs:
 
       - name: Assert Sextant boot banner
         run: tools/direct-qemu/wait-for-banner.sh /tmp/kerbside-ci/sextant-serial.log 30
-
-      # Non-gating: sample relay RTT through the proxy and record the numbers
-      # as an artifact. It only pings the existing connection, so it does not
-      # disturb the scenario that follows; continue-on-error keeps a
-      # measurement hiccup from failing the lane. (The Python baseline for the
-      # comparison lives in phase-7 history.)
-      - name: Latency loadtest (non-gating)
-        continue-on-error: true
-        run: tools/direct-qemu/run-loadtest.sh
 
       - name: Run Sextant scenario test
         run: |
