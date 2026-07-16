@@ -93,7 +93,7 @@ jobs:
           tox -efailing || true > /srv/ci/failed
           echo
 
-          failed=$(egrep "^FAIL: " /srv/ci/failed | \
+          failed=$(grep -E "^FAIL: " /srv/ci/failed | \
               sed -z 's/FAIL: shakenfist_ci\.//g;s/\n/, /g;s/, $/\n/') \
               || true
 

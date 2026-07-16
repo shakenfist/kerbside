@@ -4,7 +4,7 @@ When creating a new Alembic database migration for Kerbside:
 
 1. Create the migration file:
    ```bash
-   cd /home/mikal/src/shakenfist/kerbside
+   cd /path/to/kerbside
    alembic revision -m "description_of_changes"
    ```
 

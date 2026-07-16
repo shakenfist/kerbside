@@ -369,6 +369,11 @@ skipped_count=0
 for i in $(seq 1 "${item_count}"); do
     item_file="${output_dir}/item-${i}.json"
 
+    # Start each item from a clean index and working tree so a previous
+    # item's staged-but-uncommitted changes (e.g. Claude staged files but
+    # then disagreed or errored) cannot leak into this item's commit.
+    git reset --hard HEAD >/dev/null 2>&1 || true
+
     # Extract and sanitize values from review JSON
     # These values come from the automated review which is derived from PR data
     item_id=$(jq -r '.id' "${item_file}")
