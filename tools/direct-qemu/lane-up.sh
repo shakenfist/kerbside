@@ -37,7 +37,10 @@ RYLL_STDERR="${RYLL_STDERR:-${WORKDIR}/ryll-ci.stderr}"
 RYLL_STDOUT="${RYLL_STDOUT:-${WORKDIR}/ryll-ci.stdout}"
 API_PORT="${API_PORT:-13002}"
 
-QCOW2="${REPO_ROOT}/tests/fixtures/uncalibrated-sextant.qcow2"
+# The guest image the lane boots. Defaults to the Sextant scenario fixture;
+# the loadtest lane overrides it (via QCOW2 in the environment) with the
+# purpose-built uefi-latency-guest fixture, which repaints on every keypress.
+QCOW2="${QCOW2:-${REPO_ROOT}/tests/fixtures/uncalibrated-sextant.qcow2}"
 
 # ── Step 1: Create workdir and write sources.yaml ─────────────────────────────
 

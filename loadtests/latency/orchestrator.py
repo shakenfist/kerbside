@@ -2,18 +2,23 @@
 
 This script is the latency loadtest's SUT-side driver. See the kerbside
 phase 4 plan at docs/plans/PLAN-test-harness-phase-04-port-latency.md
-for context and motivation.
+for context and the phase 6 plan at
+docs/plans/PLAN-test-harness-phase-06-digest-decoding.md for the
+metric switch-back recorded here.
 
 Wire protocol: https://github.com/shakenfist/ryll/blob/main/docs/control-socket-protocol.md
 
-Note: the latency CSV column changed semantics in phase 4. Legacy
-runs measured keypress-to-screen end-to-end; this script measures
-SPICE PING/PONG round-trip time (the v1 control-socket `latency`
-event). Phase 6 will restore the keypress-to-screen metric once the
-control socket grows a `surface_drawn` event.
+The CSV column is **keypress-to-screen latency in seconds**: time
+between the cadence thread sending a `send_key down` and the first
+`surface_drawn` event received afterwards.  Phase 4 had to fall back
+to SPICE PING/PONG round-trip latency because the v1.0 control socket
+had no "a draw just happened" event; the v1.1 protocol added
+`surface_drawn` for exactly this use case, and this orchestrator
+hard-fails at startup against a v1.0 server that does not advertise it.
 """
 
 import argparse
+import collections
 import json
 import signal
 import socket
@@ -74,26 +79,40 @@ class _CadenceThread(threading.Thread):
     Sends key-down, waits 0.1 s, sends key-up, waits cadence_seconds - 0.1 s.
     Uses a separate send lock so cadence sends don't race with the main
     thread's hello/subscribe sends (which happen before this thread starts).
+
+    Pushes the wallclock timestamp (in microseconds since the Unix
+    epoch) of every `send_key down` onto `pending_keypress` so the
+    main reader can FIFO-pair it with the next `surface_drawn` event.
     """
 
     def __init__(self, sock: socket.socket, scancode: int, cadence_seconds: float,
-                 send_lock: threading.Lock):
+                 send_lock: threading.Lock,
+                 pending_keypress: 'collections.deque[int]'):
         super().__init__(daemon=True, name='cadence')
         self._sock = sock
         self._scancode = scancode
         self._cadence = cadence_seconds
         self._send_lock = send_lock
+        self._pending = pending_keypress
 
     def run(self) -> None:
         while not _shutdown.is_set():
             try:
+                # Capture wallclock as close as possible to the down
+                # event going out; the corresponding `surface_drawn`
+                # carries its own wallclock_us captured at the server
+                # side of the same socket.
+                keypress_us = int(time.time() * 1_000_000)
                 with self._send_lock:
-                    _send(self._sock, 'send_key', {'scancode': self._scancode, 'state': 'down'})
+                    _send(self._sock, 'send_key',
+                          {'scancode': self._scancode, 'state': 'down'})
+                self._pending.append(keypress_us)
                 _shutdown.wait(timeout=0.1)
                 if _shutdown.is_set():
                     break
                 with self._send_lock:
-                    _send(self._sock, 'send_key', {'scancode': self._scancode, 'state': 'up'})
+                    _send(self._sock, 'send_key',
+                          {'scancode': self._scancode, 'state': 'up'})
                 _shutdown.wait(timeout=max(0.0, self._cadence - 0.1))
             except OSError:
                 # Socket closed; main thread will handle the resulting EOF.
@@ -123,7 +142,8 @@ def _request(sock: socket.socket, buf: bytearray, method: str, params: dict,
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description='Latency loadtest orchestrator for the Ryll control socket (protocol v1.0).',
+        description='Latency loadtest orchestrator for the Ryll control socket '
+                    '(protocol v1.1 or newer; surface_drawn required).',
     )
     parser.add_argument(
         '--socket',
@@ -194,36 +214,60 @@ def main() -> None:
 
     try:
         # ── Hello ─────────────────────────────────────────────────────────────
+        # Hello at v1.1: the protocol-version negotiation is at the
+        # major level (1.x); the server replies with whatever minor
+        # it speaks, and we hard-fail downstream if `surface_drawn`
+        # is missing from `supported_events`.
         resp = _request(sock, buf, 'hello', {
             'client_name': 'kerbside-latency-loadtest',
-            'protocol_version': '1.0',
+            'protocol_version': '1.1',
         })
         if not resp.get('ok'):
             print(f'ERROR: hello failed: {resp.get("error", resp)}', file=sys.stderr)
             sys.exit(1)
-        server_proto = resp.get('result', {}).get('protocol_version', '')
-        if server_proto != '1.0':
+        result = resp.get('result', {})
+        server_proto = result.get('protocol_version', '')
+        if not server_proto.startswith('1.'):
             print(
-                f'ERROR: server returned unexpected protocol_version {server_proto!r}; expected "1.0"',
+                f'ERROR: server returned non-v1 protocol_version {server_proto!r}; '
+                'orchestrator only speaks v1.x',
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        supported_events = result.get('supported_events', [])
+        if 'surface_drawn' not in supported_events:
+            print(
+                'ERROR: server does not advertise `surface_drawn` in '
+                'supported_events; this orchestrator requires ryll v1.1+ '
+                'because the CSV column is keypress-to-screen latency, '
+                'not PING/PONG round-trip. Got: '
+                f'{supported_events!r}',
                 file=sys.stderr,
             )
             sys.exit(1)
 
         # ── Subscribe ─────────────────────────────────────────────────────────
-        resp = _request(sock, buf, 'subscribe', {'events': ['latency', 'dropped']})
+        resp = _request(sock, buf, 'subscribe',
+                        {'events': ['surface_drawn', 'dropped']})
         if not resp.get('ok'):
             print(f'ERROR: subscribe failed: {resp.get("error", resp)}', file=sys.stderr)
             sys.exit(1)
         subscribed = resp.get('result', {}).get('subscribed', [])
-        if 'latency' not in subscribed:
+        if 'surface_drawn' not in subscribed:
             print(
-                f'ERROR: server did not accept "latency" subscription; got {subscribed!r}',
+                'ERROR: server did not accept `surface_drawn` subscription; '
+                f'got {subscribed!r}',
                 file=sys.stderr,
             )
             sys.exit(1)
 
         # ── Start cadence thread ──────────────────────────────────────────────
-        cadence = _CadenceThread(sock, args.scancode, args.cadence_seconds, send_lock)
+        # `pending_keypress` is the cross-thread FIFO of keypress
+        # wallclock_us values waiting for their matching surface_drawn.
+        # Use a `deque` -- thread-safe for append/popleft.
+        pending_keypress: 'collections.deque[int]' = collections.deque()
+        cadence = _CadenceThread(sock, args.scancode, args.cadence_seconds,
+                                 send_lock, pending_keypress)
         cadence.start()
 
         # ── Collect latency samples ───────────────────────────────────────────
@@ -256,14 +300,25 @@ def main() -> None:
 
                 event_name = msg.get('event')
 
-                if event_name == 'latency':
-                    data = msg.get('data', {})
-                    sample_ms = data.get('sample_ms')
-                    if sample_ms is None:
-                        print(f'ERROR: latency event missing sample_ms field: {msg}',
+                if event_name == 'surface_drawn':
+                    # Pair the surface_drawn with the oldest pending
+                    # keypress.  If the deque is empty, the server
+                    # produced a draw that did not follow any keypress
+                    # we sent (boot screen activity, vdagent ping, etc.)
+                    # -- skip it rather than counting it as a sample.
+                    try:
+                        keypress_us = pending_keypress.popleft()
+                    except IndexError:
+                        continue
+                    server_wallclock_us = msg.get('data', {}).get('wallclock_us')
+                    if server_wallclock_us is None:
+                        print('ERROR: surface_drawn event missing wallclock_us field: '
+                              f'{msg}',
                               file=sys.stderr)
                         sys.exit(1)
-                    csv_file.write(f'{float(sample_ms) / 1000.0}\n')
+                    latency_seconds = (
+                        int(server_wallclock_us) - keypress_us) / 1_000_000.0
+                    csv_file.write(f'{latency_seconds}\n')
                     sample_count += 1
 
                 elif event_name == 'dropped':
