@@ -68,7 +68,9 @@ if [ "${native}" = 1 ]; then
     echo "Building kerbside-proxy wheel for the host (native, no zig/manylinux)..."
     maturin build --release --out "${wheel_out}"
     # Accept whatever platform tag maturin produces for the host; a native
-    # host wheel is not required to be manylinux-tagged.
+    # host wheel is not required to be manylinux-tagged. Wheel filenames
+    # cannot contain whitespace, so ls -t is a safe way to pick the newest.
+    # shellcheck disable=SC2012
     wheel="$(ls -1t "${wheel_out}"/*.whl 2>/dev/null | head -1 || true)"
     if [ -z "${wheel}" ]; then
         echo "ERROR: no wheel produced in ${wheel_out}" >&2
@@ -92,6 +94,8 @@ maturin build \
     --out "${wheel_out}"
 
 # Verify a manylinux wheel for the expected architecture was produced.
+# Wheel filenames cannot contain whitespace, so ls -t safely picks the newest.
+# shellcheck disable=SC2012
 wheel="$(ls -1t "${wheel_out}"/*"${arch}".whl 2>/dev/null | head -1 || true)"
 if [ -z "${wheel}" ]; then
     echo "ERROR: no *${arch}.whl produced in ${wheel_out}" >&2

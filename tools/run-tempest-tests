@@ -97,6 +97,7 @@ mkdir -p "${workspace}" "${log_dir}"
 
 heading "Create Tempest venv at ${venv_dir}"
 python3 -m venv "${venv_dir}"
+# shellcheck disable=SC1091  # the venv is created two lines above
 . "${venv_dir}/bin/activate"
 pip install --upgrade pip wheel
 pip install python-tempestconf tempest
