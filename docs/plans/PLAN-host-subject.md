@@ -267,7 +267,7 @@ protection for free.
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 1. Subject pinning in shakenfist-spice-protocol (ryll repo) | PLAN-host-subject-phase-01-ryll-verifier.md | Not started |
+| 1. Subject pinning in shakenfist-spice-protocol (ryll repo) | PLAN-host-subject-phase-01-ryll-verifier.md | Planned, not started |
 | 2. Kerbside adoption: pin bump, CI proof, docs | PLAN-host-subject-phase-02-kerbside-adoption.md | Not started |
 
 Phase sketches (each to be expanded into its own plan file
