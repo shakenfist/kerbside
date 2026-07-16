@@ -300,7 +300,50 @@ dependency.
 
 ## Outcome
 
-To be completed as the phase executes.
+Implemented 2026-07-17 on ryll branch `host-subject-verifier`
+(five commits, one per step):
+
+- `aeca24a` (1a) — `src/host_subject.rs`: parser + matcher +
+  23 unit tests; x509-parser/rcgen added with zero new
+  lockfile packages. Reviewed line-by-line against
+  `ssl_verify.c`; every accept/reject agrees, with the one
+  documented fail-closed divergence (multi-valued RDN order
+  preserved rather than sorted).
+- `5402dac` (1b) — enforcement in `SpiceCaVerifier`, both
+  accept paths; custom verifier now also installed for
+  pin-without-custom-CA. One deviation from the brief,
+  adopted after review: the pin parses in
+  `SpiceClient::new` unconditionally (not in the connector
+  builder) so a malformed pin fails construction even when
+  `tls_port` is None — the connector is only built for TLS
+  configs, and the proxy's first leg is plaintext.
+- `a5d07b0` (1c) — five verifier-level integration tests
+  with rcgen CA/leaf certs (no SANs, like real SPICE
+  certs), including the pin-substitutes-for-hostname case
+  and the unpinned-relaxed regression guard.
+- `c7e2c15` (1d) — `fuzz_parse_host_subject` target + CI
+  matrix entry; validated locally via the devcontainer
+  harness (build + 100,000-run smoke, no crashes).
+- `b6cff33` (1e) — docs: `configuration.md` table row and
+  example note, README parenthetical; crate README needed
+  no change.
+
+Open questions resolved during execution: x509-parser's
+`as_str()` covers IA5String, so `emailAddress` needs no
+special handling (BmpString correctly fails closed,
+tested); spice-common's entry-count gate counts flattened
+AVAs and the matcher flattens identically; the module is
+exported as `pub mod host_subject` matching the crate's
+existing style.
+
+Gates: `make lint` and `make test` green across the
+workspace (protocol crate at 133 tests); fuzz smoke green;
+cargo-deny could not run on the bare host but the
+dependency graph adds no new packages, and CI's
+supply-chain job gates the PR.
+
+Status: implementation complete; ryll push + PR pending
+operator. Phase complete when merged to ryll develop.
 
 ## Back brief
 
