@@ -12,9 +12,9 @@
 
 FLAKE_COMMAND="flake8 --max-line-length=120"
 
-if test "x$1" = "x-HEAD" ; then
+if test "$1" = "-HEAD" ; then
     shift
-    files=$(git diff --name-only HEAD~1 | grep -v _pb2 | egrep ".py$")
+    files=$(git diff --name-only HEAD~1 | grep -v _pb2 | grep -E ".py$")
     if [ -z "${files}" ]; then
         echo "No python files in change."
         exit 0
@@ -30,6 +30,7 @@ if test "x$1" = "x-HEAD" ; then
     done
 
     echo "Running flake8 on ${filtered_files}"
+    # shellcheck disable=SC2086
     diff -u --from-file /dev/null ${filtered_files} | $FLAKE_COMMAND ${filtered_files}
 else
     echo "Running flake8 on all files"

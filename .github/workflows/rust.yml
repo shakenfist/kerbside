@@ -4,6 +4,9 @@ name: Rust proxy
 # crate and the gRPC proto it generates from, so Python-only changes don't
 # trigger it. The full ryll-driven direct-qemu integration of the proxy is a
 # separate lane (phase 7).
+permissions:
+  contents: read
+
 on:
   push:
     branches: [develop]

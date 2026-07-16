@@ -1,0 +1,40 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "gitAuthor": "shakenfist-bot <bot@shakenfist.com>",
+  "dependencyDashboard": true,
+  "assignees": [
+    "mikalstill"
+  ],
+  "schedule": [
+    "after 9pm"
+  ],
+  "packageRules": [
+    {
+      "description": "Flag minor, patch, and digest updates for review (not auto-merged)",
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
+      ],
+      "automerge": false
+    },
+    {
+      "description": "Group pydantic updates together",
+      "groupName": "pydantic",
+      "matchPackageNames": [
+        "/pydantic/"
+      ]
+    },
+    {
+      "description": "Group SQLAlchemy ecosystem updates together",
+      "groupName": "sqlalchemy",
+      "matchPackageNames": [
+        "alembic",
+        "sqlalchemy",
+        "mysqlclient"
+      ]
+    }
+  ],
+  "minimumReleaseAge": "3 days",
+  "rollbackPrs": true
+}

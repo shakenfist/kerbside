@@ -1,0 +1,75 @@
+# Triggers a re-review of a PR when an authorized user comments
+# "@shakenfist-bot please re-review"
+#
+# Template source: shakenfist/development/templates/ci-review-automation/
+
+name: PR Re-review
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  check_and_review:
+    # Only run on PR comments (not issue comments)
+    if: |
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '@shakenfist-bot please re-review')
+    runs-on: [self-hosted, claude-code]
+    name: "Re-review PR"
+
+    steps:
+      - name: Check commenter permissions
+        id: check_permission
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          permission=$(gh api \
+            repos/${{ github.repository }}/collaborators/${{ github.event.comment.user.login }}/permission \
+            --jq '.permission' 2>/dev/null || echo "none")
+
+          echo "User ${{ github.event.comment.user.login }} has permission: ${permission}"
+
+          if [[ "${permission}" == "admin" || "${permission}" == "write" ]]; then
+            echo "authorized=true" >> $GITHUB_OUTPUT
+            echo "User is authorized to request re-review"
+          else
+            echo "authorized=false" >> $GITHUB_OUTPUT
+            echo "User is not authorized to request re-review"
+          fi
+
+      - name: React to comment
+        if: steps.check_permission.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content='+1' \
+            --silent || true
+
+      - name: Post unauthorized message
+        if: steps.check_permission.outputs.authorized == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ github.event.issue.number }} \
+            --body "Sorry @${{ github.event.comment.user.login }}, only repository collaborators with write access can request a re-review."
+
+      - name: Checkout code
+        if: steps.check_permission.outputs.authorized == 'true'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Run automated reviewer
+        if: steps.check_permission.outputs.authorized == 'true'
+        uses: shakenfist/actions/review-pr-with-claude@main
+        with:
+          pr-number: ${{ github.event.issue.number }}
+          force: 'true'

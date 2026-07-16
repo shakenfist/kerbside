@@ -268,7 +268,7 @@ tox -e bindep
     `scenario_artifact_dir`, `scenario_step_timeout`.
     Run last on the direct-qemu lane because the final keypress
     shuts the guest down.
-- The "Test cloud compatibility" lane (`functional-tests.yml`,
+- The "Functional tests" lane (`functional-tests.yml`,
   `ovirt_matrix` + `openstack_matrix`) runs per-PR, both legs blocking.
   On a `workflow_dispatch` run, an unselected target skips cleanly via a
   job-level `if:` (it does not report red). Instance readiness in the
@@ -357,6 +357,17 @@ after the `# END_OF_INDIRECT_DEPS` marker.
 - `shakenfist_client` - For Shaken Fist integration
 - `ovirtsdk4` - For oVirt integration
 - `keystoneauth1`, `novaclient` - For OpenStack integration
+
+## Claude Code Skills
+
+Claude skills for common tasks are in `.claude/skills/`:
+
+- `add-database-migration.md` - Step-by-step guide for creating Alembic
+  database migrations, including model updates and documentation.
+- `add-source-type.md` - Guide for adding new cloud source implementations,
+  covering the full workflow from source class to tests and docs.
+
+Project-specific instructions are in `.claude/CLAUDE.md`.
 
 ## Related Repositories
 

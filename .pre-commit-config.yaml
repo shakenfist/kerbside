@@ -15,6 +15,16 @@ repos:
       - id: actionlint
         name: Lint GitHub Actions workflows
         description: Static checker for GitHub Actions workflow files
+        args: ['-config-file', '.github/actionlint.yaml']
+
+  # Shell script linter for our tools/ scripts
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        files: ^tools/
+        types_or: [sh, bash, shell]
+        args: ['-x']
 
   # Trailing whitespace, end-of-file, basic hygiene.
   # Vendored Bootstrap assets under kerbside/api/static/{css,js}/ are
