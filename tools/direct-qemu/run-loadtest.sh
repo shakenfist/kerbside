@@ -36,6 +36,14 @@ export WORKDIR="${LOADTEST_WORKDIR:-/tmp/kerbside-loadtest}"
 RYLL_SOCK="${WORKDIR}/ryll-ci.sock"
 SERIAL_LOG="${WORKDIR}/sextant-serial.log"
 
+# Boot the purpose-built latency guest, not the Sextant scenario fixture. The
+# uefi-latency-guest image repaints on every keypress and never advances
+# through irreversible scene states, so the cadence keypresses produce a
+# `surface_drawn` each and the run collects a full sample set -- whereas
+# Sextant leaves its Awaiting screen on the first key and freezes at the
+# bootloader prompt.
+export QCOW2="${LOADTEST_QCOW2:-${REPO_ROOT}/tests/fixtures/uefi-latency-guest.qcow2}"
+
 PROXY="${LOADTEST_PROXY_LABEL:-rust}"
 SAMPLES="${LOADTEST_SAMPLES:-20}"
 MAX_SECONDS="${LOADTEST_MAX_SECONDS:-40}"

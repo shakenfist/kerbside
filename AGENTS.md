@@ -209,12 +209,14 @@ Both legs run `run-loadtest.sh` (non-gating, `continue-on-error`): it
 drives `loadtests/latency/orchestrator.py` to sample keypress-to-screen
 latency (real `send_key` events timed against the `surface_drawn` they
 produce) through the leg's proxy and records p50/p95 as an artifact; the
-Python-vs-Rust comparison is read off the two legs. Because injecting
-keypresses drives the Sextant guest off its Awaiting screen, the loadtest
-brings up its OWN isolated lane (separate WORKDIR) and tears it down before
-the scenario lane starts, exactly as `verify-terminate-live.sh` does. This
-is distinct from the local mock harness (`VERIFY-RUST-PROXY.md`), which
-needs no daemon or database.
+Python-vs-Rust comparison is read off the two legs. The loadtest boots the
+purpose-built `tests/fixtures/uefi-latency-guest.qcow2` (which repaints on
+every keypress) rather than the Sextant scenario fixture (which leaves its
+Awaiting screen on the first key and freezes at the bootloader prompt). It
+brings up its OWN isolated lane (separate WORKDIR, `QCOW2` overridden) and
+tears it down before the scenario lane starts, exactly as
+`verify-terminate-live.sh` does. This is distinct from the local mock
+harness (`VERIFY-RUST-PROXY.md`), which needs no daemon or database.
 
 ### Modifying SPICE Protocol Handling
 
