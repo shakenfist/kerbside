@@ -5,6 +5,9 @@
 Kerbside is a SPICE VDI protocol proxy that provides remote console access
 to VMs across Shaken Fist, OpenStack, and oVirt clouds. It handles SPICE
 protocol negotiation, authentication, and bidirectional traffic relay.
+The data plane is a Rust binary (`rust/kerbside-proxy/`); the Python
+package provides the REST API, database, console-source discovery, and
+the daemon that supervises the Rust proxy.
 
 ## Build and Test
 
@@ -24,8 +27,12 @@ tox -e bindep
 
 ## Architecture Quick Reference
 
-- **Multiprocess model**: main process spawns proxy workers per connection
-- **State machine**: SpiceTLSSession progresses through handshake, auth, relay
+- **Split data/control plane**: the Python daemon launches and supervises
+  the Rust `kerbside-proxy` binary, which terminates TLS, drives the SPICE
+  handshake, and relays traffic through an inspection-first SPICE firewall
+- **Daemon-to-proxy contract**: gRPC over a Unix socket
+  (`kerbside/rpc/kerbside.proto`); cross-node coordination is via the
+  shared database, never direct RPC
 - **Database**: MySQL/MariaDB via SQLAlchemy + Alembic migrations
 - **API**: Flask REST with JWT auth and Prometheus metrics
 - **Sources**: pluggable console discovery (Shaken Fist, oVirt, OpenStack)
@@ -34,12 +41,13 @@ tox -e bindep
 
 | File | Purpose |
 |------|---------|
-| `kerbside/proxy.py` | Core proxy, start here for connection handling |
+| `rust/kerbside-proxy/` | The SPICE proxy, start here for connection handling; builds in Docker via its Makefile |
+| `kerbside/proxy_supervisor.py` | Finds, launches, and supervises the Rust proxy binary |
 | `kerbside/api.py` | REST API endpoints and web UI |
 | `kerbside/db.py` | Database models and queries |
 | `kerbside/main.py` | Daemon entry point and maintenance loop |
 | `kerbside/config.py` | Pydantic-based configuration |
-| `kerbside/spiceprotocol/` | SPICE protocol packet handling |
+| `kerbside/rpc/kerbside.proto` | gRPC contract between the daemon and the Rust proxy |
 | `kerbside/sources/` | Cloud source implementations |
 
 ## Code Style
@@ -68,6 +76,8 @@ documentation index.
 ## CI Workflows
 
 - `functional-tests.yml` - Lint, unit tests, oVirt/OpenStack integration
+- `rust.yml` - Rust proxy lint, tests, and wheel build
+- `direct-qemu-functional.yml` - End-to-end proxy checks against a local qemu
 - `pr-address-comments.yml` - Bot-triggered comment addressing
 - `pr-re-review.yml` - Bot-triggered re-review
 - `pr-retest.yml` - Bot-triggered functional test re-run
