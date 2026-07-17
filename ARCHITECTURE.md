@@ -347,9 +347,12 @@ See `etc/kerbside.conf.example` for a complete configuration reference.
 1. **Client Authentication**: JWT tokens issued after Keystone validation
 2. **Console Access**: Time-limited tokens (configurable expiry)
 3. **TLS Everywhere**: Client-to-proxy and proxy-to-hypervisor connections
-4. **Certificate Validation**: the backend hypervisor certificate is
-   validated against the deployment CA. Pinning the certificate *subject*
-   (`host_subject`) is future work — see the SPICE firewall / backend notes.
+4. **Certificate Validation**: the backend hypervisor certificate chain is
+   validated against the source CA. When the console carries a
+   `host_subject`, it is also enforced: the certificate's subject must match
+   under spice-common semantics (same attribute count, types, and order;
+   values compared case-insensitively with whitespace folded), substituting
+   for hostname verification. See `docs/plans/PLAN-host-subject.md`.
 5. **Audit Logging**: All console access events recorded
 
 ## Monitoring
