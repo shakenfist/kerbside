@@ -88,7 +88,7 @@ dependencies = [
     "attrs==25.4.0",
     "certifi==2026.2.25",
     "cffi==2.0.0",
-    "charset-normalizer==3.4.4",
+    "charset-normalizer==3.4.9",
     "cryptography==48.0.1",
     "debtcollector==3.0.0",
     "fasteners==0.20",
