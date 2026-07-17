@@ -80,11 +80,12 @@ style questions need a sub-agent to read code:
 Check `git diff develop...HEAD` for adherence to project
 conventions in `AGENTS.md`:
 
-- SPICE packet handling: new packet types live in
-  `kerbside/spiceprotocol/packets/` following the
-  existing class shape; constants live in
-  `packets/constants.py`; parsing uses the existing
-  `struct`-based helpers, not ad-hoc byte slicing.
+- SPICE protocol handling: lives in the Rust proxy
+  (`rust/kerbside-proxy/`), with packet grammar from
+  the ryll `shakenfist-spice-protocol` crate; Python
+  code must not reimplement SPICE parsing — the daemon
+  talks to the proxy only through the gRPC contract in
+  `kerbside/rpc/kerbside.proto`.
 - Source backends: new sources subclass
   `kerbside.sources.base.BaseSource` and respect the
   documented method contract; capability flags are
