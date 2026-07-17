@@ -155,3 +155,36 @@ jobs:
       - name: Tear down the lane
         if: always()
         run: tools/direct-qemu/lane-down.sh
+
+      # Phase 2 of PLAN-host-subject: prove backend host_subject enforcement
+      # end to end (accept a matching pin, refuse a mismatched one) against a
+      # real TLS-enabled qemu backend. Runs on the standalone Rust-proxy
+      # harness (tools/direct-qemu/verify-rust-proxy.sh), AFTER the main
+      # lane's teardown above, because both lanes bind the same default
+      # ports (proxy 5900/5901, qemu SPICE 5910) -- running concurrently
+      # would collide.
+      - name: Host subject enforcement checks
+        run: tools/direct-qemu/run-host-subject-checks.sh
+
+      - name: Upload host-subject-checks artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: direct-qemu-host-subject-artifacts-${{ github.run_id }}
+          retention-days: 90
+          if-no-files-found: warn
+          path: |
+            /tmp/kerbside-host-subject-checks-match/rust-proxy.log
+            /tmp/kerbside-host-subject-checks-match/mock-grpc.log
+            /tmp/kerbside-host-subject-checks-match/sextant-serial.log
+            /tmp/kerbside-host-subject-checks-match/console.vv
+            /tmp/kerbside-host-subject-checks-match/ryll-ci.stdout
+            /tmp/kerbside-host-subject-checks-match/ryll-ci.stderr
+            /tmp/kerbside-host-subject-checks-match/tls/
+            /tmp/kerbside-host-subject-checks-mismatch/rust-proxy.log
+            /tmp/kerbside-host-subject-checks-mismatch/mock-grpc.log
+            /tmp/kerbside-host-subject-checks-mismatch/sextant-serial.log
+            /tmp/kerbside-host-subject-checks-mismatch/console.vv
+            /tmp/kerbside-host-subject-checks-mismatch/ryll-ci.stdout
+            /tmp/kerbside-host-subject-checks-mismatch/ryll-ci.stderr
+            /tmp/kerbside-host-subject-checks-mismatch/tls/

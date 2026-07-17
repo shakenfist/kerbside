@@ -194,12 +194,11 @@ fn build_config(target: &pb::Target) -> ConnectionConfig {
         } else {
             Some(target.ca_cert.clone())
         },
-        // TODO(host_subject): the ryll crate does NOT enforce host_subject --
-        // its CA verifier accepts a hostname/subject mismatch (see
-        // client.rs::create_tls_connector). We pass it through for parity, but
-        // real hypervisor-cert subject pinning is future work tracked as the
-        // "Backend host_subject enforcement" item in docs/plans/PLAN-rust-proxy.md
-        // (likely a ryll-crate change). Do NOT rely on this for security here.
+        // Enforcement lives in the ryll crate's verifier: when set, the TLS
+        // handshake fails unless the backend cert's subject matches (subject
+        // pinning per spice-common semantics, substituting for hostname
+        // verification). An empty Target.host_subject still maps to None,
+        // i.e. unpinned.
         host_subject: if target.host_subject.is_empty() {
             None
         } else {
@@ -304,6 +303,17 @@ mod tests {
     }
 
     #[test]
+    fn is_need_secured_rejects_host_subject_mismatch() {
+        // A pinned host_subject that doesn't match the presented certificate
+        // is a hard TLS failure, not a "requires TLS" signal -- it must NOT
+        // trigger the insecure-then-secure retry.
+        assert!(!is_need_secured(&anyhow!(
+            "TLS: rejecting certificate: pinned host_subject C=US,CN=hv: \
+             certificate subject does not match"
+        )));
+    }
+
+    #[test]
     fn connect_timeout_message_is_not_mistaken_for_need_secured() {
         // A stalled insecure attempt must surface as a hard failure, not be
         // retried over TLS -- so the timeout message must not match.
@@ -366,5 +376,19 @@ mod tests {
         });
         assert_eq!(set.ca_cert.as_deref(), Some("-----BEGIN CERT-----"));
         assert_eq!(set.host_subject.as_deref(), Some("C=US,CN=hv"));
+    }
+
+    #[test]
+    fn build_config_preserves_escaped_comma_in_host_subject() {
+        // The crate parses the subject's spice-common escaping; the proxy
+        // must pass it through byte-for-byte rather than mangling it.
+        let target = pb::Target {
+            host_subject: "O=Acme\\, Inc,CN=hv".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(
+            build_config(&target).host_subject.as_deref(),
+            Some("O=Acme\\, Inc,CN=hv")
+        );
     }
 }

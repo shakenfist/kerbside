@@ -51,6 +51,8 @@ export WHEEL_OUT
 echo "[install-proxy-wheel] Building native kerbside-proxy wheel into ${WHEEL_OUT}"
 "${REPO_ROOT}/tools/build-proxy-wheel.sh" --native
 
+# Wheel filenames cannot contain whitespace, so ls -t safely picks the newest.
+# shellcheck disable=SC2012
 WHEEL="$(ls -1t "${WHEEL_OUT}"/kerbside_proxy-*.whl 2>/dev/null | head -1 || true)"
 if [ -z "${WHEEL}" ]; then
     echo "ERROR: no kerbside_proxy wheel produced in ${WHEEL_OUT}" >&2

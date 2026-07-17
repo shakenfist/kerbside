@@ -79,7 +79,8 @@ export KERBSIDE_PROXY_HOST_SUBJECT='C=US,O=Kerbside CI,CN=kerbside-ci'
 # it in the (writable) workdir instead. Both the daemon's gRPC server and the
 # proxy child (via --api-socket) read this. Kept short to stay under the
 # AF_UNIX SUN_LEN (~108 byte) path limit.
-export KERBSIDE_API_SOCKET_PATH="$(dirname "${PID_FILE}")/kerbside-api.sock"
+KERBSIDE_API_SOCKET_PATH="$(dirname "${PID_FILE}")/kerbside-api.sock"
+export KERBSIDE_API_SOCKET_PATH
 
 # ── Resolve the Rust proxy binary ─────────────────────────────────────────────
 #

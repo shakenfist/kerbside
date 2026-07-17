@@ -57,6 +57,7 @@ SUMMARY="${RESULTS_DIR}/latency-${PROXY}.summary.txt"
 # Always tear the lane down, and stash the ryll/serial logs first -- they live
 # inside WORKDIR (which lane-down removes) so copying them into RESULTS_DIR is
 # what keeps a measurement hiccup debuggable from the uploaded artifacts.
+# shellcheck disable=SC2317  # invoked indirectly via the EXIT trap below
 cleanup() {
     for name in ryll-ci.stdout ryll-ci.stderr sextant-serial.log; do
         if [ -f "${WORKDIR}/${name}" ]; then

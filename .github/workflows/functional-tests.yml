@@ -226,6 +226,7 @@ jobs:
               ${GITHUB_WORKSPACE}/actions/tools/ovirt-*.sh \
               ${GITHUB_WORKSPACE}/actions/tools/start-test-target.py \
               ${GITHUB_WORKSPACE}/kerbside/tools/test-ovirt-console.py \
+              ${GITHUB_WORKSPACE}/kerbside/tools/dump-ovirt-host-subject.py \
               /tmp/${{ matrix.test.name }}-answers.conf \
               ${GITHUB_WORKSPACE}/actions/etc/${{ matrix.test.name }}-repos.patch \
               ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
@@ -352,6 +353,20 @@ jobs:
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
               "python3 /srv/test-ovirt-console.py \
+                  --url https://${{ matrix.test.hostname }}.local/ovirt-engine/api \
+                  --username ${{ matrix.test.ovirt_username }} \
+                  --password foobar \
+                  --ca-file /etc/pki/ovirt-engine/ca.pem"
+
+      - name: Dump oVirt host certificate subjects (diagnostic)
+        continue-on-error: true
+        run: |
+          . $GITHUB_ENV
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "python3 /srv/dump-ovirt-host-subject.py \
                   --url https://${{ matrix.test.hostname }}.local/ovirt-engine/api \
                   --username ${{ matrix.test.ovirt_username }} \
                   --password foobar \
