@@ -8,9 +8,17 @@
 #   ca-cert.pem     Self-signed CA certificate (CN=kerbside-ci-ca, 30 days)
 #   proxy-key.pem   Kerbside proxy private key
 #   proxy-cert.pem  Proxy certificate signed by the CA (CN=kerbside-ci, 30 days)
+#   qemu-x509/      SPICE server material for a TLS-enabled qemu backend, laid
+#                   out with the fixed filenames qemu's -spice x509-dir=
+#                   expects: ca-cert.pem (copy of the CA above),
+#                   server-cert.pem (subject C=US,O=Kerbside CI,CN=qemu-hv,
+#                   deliberately NO SAN entries -- real SPICE server certs
+#                   typically lack them, and host_subject pinning is what
+#                   identifies the server), server-key.pem.
 #
 # Always regenerates; never reuses existing material.
-# Part of docs/plans/PLAN-test-harness-phase-05-direct-qemu-ci.md step 5b.
+# Part of docs/plans/PLAN-test-harness-phase-05-direct-qemu-ci.md step 5b and
+# docs/plans/PLAN-host-subject-phase-02-kerbside-adoption.md step 2b.
 
 set -euo pipefail
 
@@ -83,7 +91,51 @@ rm -f "${TLSDIR}/proxy.csr" "${TLSDIR}/ca-cert.srl" "${TLSDIR}/proxy-ext.cnf"
 
 echo "[generate-tls] Proxy cert: ${TLSDIR}/proxy-cert.pem"
 
+# --- QEMU SPICE server key and cert (the backend the proxy connects to) ---
+#
+# Signed by the same CA, subject C=US,O=Kerbside CI,CN=qemu-hv, and
+# deliberately NO subjectAltName: real SPICE server certificates typically
+# lack SANs (which is why the proxy's backend verifier relaxes hostname
+# checking), and the console's host_subject pin is what identifies the
+# server. Extensions are still required so the cert is X.509 v3 -- webpki
+# rejects v1 with UnsupportedCertVersion (same reason as the proxy cert).
+# Laid out in qemu-x509/ with the fixed filenames -spice x509-dir= expects.
+QEMU_X509_DIR="${TLSDIR}/qemu-x509"
+mkdir -p "${QEMU_X509_DIR}"
+
+openssl genrsa -out "${QEMU_X509_DIR}/server-key.pem" 2048 2>/dev/null
+
+openssl req \
+    -new \
+    -key "${QEMU_X509_DIR}/server-key.pem" \
+    -out "${QEMU_X509_DIR}/server.csr" \
+    -subj '/C=US/O=Kerbside CI/CN=qemu-hv'
+
+cat > "${QEMU_X509_DIR}/server-ext.cnf" << 'EOF'
+basicConstraints = CA:FALSE
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+EOF
+
+openssl x509 \
+    -req \
+    -days 30 \
+    -in "${QEMU_X509_DIR}/server.csr" \
+    -CA "${TLSDIR}/ca-cert.pem" \
+    -CAkey "${TLSDIR}/ca-key.pem" \
+    -CAcreateserial \
+    -extfile "${QEMU_X509_DIR}/server-ext.cnf" \
+    -out "${QEMU_X509_DIR}/server-cert.pem" \
+    2>/dev/null
+
+cp "${TLSDIR}/ca-cert.pem" "${QEMU_X509_DIR}/ca-cert.pem"
+rm -f "${QEMU_X509_DIR}/server.csr" "${QEMU_X509_DIR}/server-ext.cnf" \
+      "${TLSDIR}/ca-cert.srl"
+
+echo "[generate-tls] QEMU SPICE server cert: ${QEMU_X509_DIR}/server-cert.pem"
+
 # --- Lock down key files ---
-chmod 600 "${TLSDIR}/ca-key.pem" "${TLSDIR}/proxy-key.pem"
+chmod 600 "${TLSDIR}/ca-key.pem" "${TLSDIR}/proxy-key.pem" \
+          "${QEMU_X509_DIR}/server-key.pem"
 
 echo "[generate-tls] TLS material generated successfully"

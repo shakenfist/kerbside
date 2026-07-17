@@ -8,11 +8,21 @@
 #   --spice-port N \
 #   --ticket STR \
 #   --serial-log PATH \
-#   --pid-file PATH
+#   --pid-file PATH \
+#   [--tls-port N --x509-dir PATH]
 #
 # Backgrounds qemu and writes the PID to --pid-file.
 # Falls back to accel=tcg if /dev/kvm is not writable, with a warning.
-# Part of docs/plans/PLAN-test-harness-phase-05-direct-qemu-ci.md step 5b.
+#
+# --tls-port/--x509-dir (must be given together) additionally open a SPICE
+# TLS listener with tls-channel=default, so every channel REQUIRES TLS: a
+# plaintext connect on --spice-port receives the SPICE need_secured reply
+# and must retry on the TLS port -- exactly how a production hypervisor
+# with SPICE TLS behaves, and the path the kerbside proxy's backend leg
+# implements. --x509-dir must contain qemu's fixed filenames ca-cert.pem,
+# server-cert.pem, and server-key.pem (see generate-tls.sh's qemu-x509/).
+# Part of docs/plans/PLAN-test-harness-phase-05-direct-qemu-ci.md step 5b and
+# docs/plans/PLAN-host-subject-phase-02-kerbside-adoption.md step 2b.
 
 set -euo pipefail
 
@@ -23,6 +33,8 @@ SPICE_PORT=''
 TICKET=''
 SERIAL_LOG=''
 PID_FILE=''
+TLS_PORT=''
+X509_DIR=''
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -33,6 +45,8 @@ while [ $# -gt 0 ]; do
         --ticket)     TICKET="$2";     shift 2 ;;
         --serial-log) SERIAL_LOG="$2"; shift 2 ;;
         --pid-file)   PID_FILE="$2";   shift 2 ;;
+        --tls-port)   TLS_PORT="$2";   shift 2 ;;
+        --x509-dir)   X509_DIR="$2";   shift 2 ;;
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
@@ -60,6 +74,20 @@ if [ ! -f "${OVMF_VARS}" ]; then
     exit 1
 fi
 
+# --tls-port and --x509-dir come as a pair.
+if [ -n "${TLS_PORT}" ] || [ -n "${X509_DIR}" ]; then
+    if [ -z "${TLS_PORT}" ] || [ -z "${X509_DIR}" ]; then
+        echo "ERROR: --tls-port and --x509-dir must be given together" >&2
+        exit 1
+    fi
+    for f in ca-cert.pem server-cert.pem server-key.pem; do
+        if [ ! -f "${X509_DIR}/${f}" ]; then
+            echo "ERROR: ${X509_DIR}/${f} not found (see generate-tls.sh)" >&2
+            exit 1
+        fi
+    done
+fi
+
 # Copy OVMF_VARS to a writable location (qemu writes to it at runtime)
 VARS_DIR="$(dirname "${PID_FILE}")"
 VARS_COPY="${VARS_DIR}/ovmf-vars-copy.fd"
@@ -74,6 +102,16 @@ else
     echo "[start-qemu] WARNING: /dev/kvm not writable; falling back to accel=tcg (slow)" >&2
 fi
 
+SPICE_OPTS="port=${SPICE_PORT},password-secret=spice-ticket,disable-ticketing=off"
+if [ -n "${TLS_PORT}" ]; then
+    # tls-channel=default makes TLS the required policy for every channel:
+    # a plaintext connect on ${SPICE_PORT} gets the SPICE need_secured
+    # reply instead of a session, forcing clients (and the kerbside
+    # proxy's backend leg) onto the TLS port.
+    SPICE_OPTS+=",tls-port=${TLS_PORT},x509-dir=${X509_DIR},tls-channel=default"
+    echo "[start-qemu] SPICE TLS enabled on port ${TLS_PORT} (x509-dir=${X509_DIR})"
+fi
+
 echo "[start-qemu] Launching QEMU with SPICE on port ${SPICE_PORT}"
 
 qemu-system-x86_64 \
@@ -84,7 +122,7 @@ qemu-system-x86_64 \
     -drive "file=${QCOW2},format=qcow2" \
     -vga qxl \
     -object "secret,id=spice-ticket,data=${TICKET}" \
-    -spice "port=${SPICE_PORT},password-secret=spice-ticket,disable-ticketing=off" \
+    -spice "${SPICE_OPTS}" \
     -serial "file:${SERIAL_LOG}" \
     -display none \
     -no-reboot \

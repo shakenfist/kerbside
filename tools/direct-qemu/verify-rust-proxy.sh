@@ -42,9 +42,16 @@
 # -- this is what makes the check pass/fail without a GUI or a full
 # protocol-level client.
 #
-# Usage: verify-rust-proxy.sh [up|down|assert|assert-firewall]
+# Usage: verify-rust-proxy.sh [up|down|assert|assert-firewall|assert-host-subject]
 #   up     (default) -- bring up qemu + mock gRPC server + rust proxy,
-#          write console.vv, and print the metrics URL to poll.
+#          write console.vv, and print the metrics URL to poll. With
+#          BACKEND_TLS=1, qemu additionally opens a SPICE TLS listener
+#          (tls-channel=default, so the plaintext port answers
+#          need_secured and the proxy's backend leg must retry on the
+#          TLS port), and the mock's Target carries the CA plus a
+#          host_subject pin: the qemu server cert's real subject when
+#          HOST_SUBJECT_EXPECT=match (default), or a deliberately wrong
+#          subject when HOST_SUBJECT_EXPECT=mismatch.
 #   assert -- poll the proxy's /metrics (GET http://127.0.0.1:<prometheus
 #          port>/metrics) and assert kerbside_proxy_authorized_total >= 1
 #          and kerbside_proxy_bytes_relayed_total > 0 for BOTH the
@@ -65,6 +72,25 @@
 #                     (the proxy exercised its PermissionDenied path). Bytes
 #                     are not required. Verdicts are still reported.
 #          Same exit codes as `assert`.
+#   assert-host-subject -- judge a BACKEND_TLS=1 lane per HOST_SUBJECT_EXPECT:
+#            match    -- same bar as `assert` (authorized >= 1, bytes both
+#                        directions -- through the TLS backend), PLUS the mock
+#                        gRPC log must NOT contain a "Hypervisor connection
+#                        failed" audit event.
+#            mismatch -- require authorized >= 1 (authorization precedes the
+#                        backend connect), ZERO bytes relayed in either
+#                        direction, a mock-logged audit event matching
+#                        "Hypervisor connection failed" +
+#                        "NotValidForName" (what the rustls error renders
+#                        as in the audit message), AND the proxy log
+#                        naming "pinned host_subject" -- together proving
+#                        the backend was refused specifically because its
+#                        certificate subject did not match the pin. Run
+#                        after driving a client (the client's connection
+#                        is what triggers the backend attempt; the client
+#                        itself fails to get a session, which is the
+#                        point).
+#          Same exit codes as `assert`.
 #   down   -- tear everything down by pidfile (best-effort, never errors).
 #
 # Env overrides (all optional; see the "Lane parameters" section below for
@@ -75,7 +101,11 @@
 # FIREWALL_MODE (enforce|warn, default enforce), PERMITTED_CHANNELS (CSV of
 # channel names, empty = permit all), DENY_TOKEN (CSV of plaintext tokens to
 # deny), DENY_ALL (non-empty to deny every token), FIREWALL_EXPECT
-# (clean|deny, for assert-firewall).
+# (clean|deny, for assert-firewall), plus the backend-TLS knobs: BACKEND_TLS
+# (1 to enable the qemu TLS listener + host_subject pinning), QEMU_TLS_PORT,
+# BACKEND_HOST_SUBJECT (the pin sent when HOST_SUBJECT_EXPECT=match),
+# MISMATCH_HOST_SUBJECT (the pin sent when HOST_SUBJECT_EXPECT=mismatch),
+# HOST_SUBJECT_EXPECT (match|mismatch, for up and assert-host-subject).
 #
 # Part of docs/plans/PLAN-rust-proxy-phase-03-proxy-skeleton.md step 3h and
 # docs/plans/PLAN-rust-proxy-phase-04-firewall.md step 4f.
@@ -97,6 +127,23 @@ SPICE_PORT="${SPICE_PORT:-5910}"
 SPICE_TICKET="${SPICE_TICKET:-rust-proxy-verify-ticket}"
 QEMU_PID_FILE="${QEMU_PID_FILE:-${WORKDIR}/qemu.pid}"
 QEMU_SERIAL_LOG="${QEMU_SERIAL_LOG:-${WORKDIR}/sextant-serial.log}"
+
+# Backend TLS + host_subject pinning (phase-2 of PLAN-host-subject).
+# BACKEND_TLS=1 opens a SPICE TLS listener on qemu (tls-channel=default, so
+# the plaintext port answers need_secured) using generate-tls.sh's qemu-x509/
+# material, and the mock's Target carries the CA plus a host_subject pin.
+# BACKEND_HOST_SUBJECT must equal the subject minted for qemu-x509/
+# server-cert.pem by generate-tls.sh; MISMATCH_HOST_SUBJECT is any
+# well-formed subject that does NOT match it.
+BACKEND_TLS="${BACKEND_TLS:-0}"
+QEMU_TLS_PORT="${QEMU_TLS_PORT:-5911}"
+BACKEND_HOST_SUBJECT="${BACKEND_HOST_SUBJECT:-C=US,O=Kerbside CI,CN=qemu-hv}"
+MISMATCH_HOST_SUBJECT="${MISMATCH_HOST_SUBJECT:-CN=not-the-hypervisor}"
+HOST_SUBJECT_EXPECT="${HOST_SUBJECT_EXPECT:-match}"
+if [ "${HOST_SUBJECT_EXPECT}" != 'match' ] && [ "${HOST_SUBJECT_EXPECT}" != 'mismatch' ]; then
+    echo "ERROR: HOST_SUBJECT_EXPECT must be 'match' or 'mismatch', got '${HOST_SUBJECT_EXPECT}'" >&2
+    exit 1
+fi
 
 # The mock KerbsideProxy gRPC control-plane service.
 #
@@ -376,8 +423,99 @@ if [ "${ACTION}" = 'assert' ]; then
     done
 fi
 
+if [ "${ACTION}" = 'assert-host-subject' ]; then
+    ASSERT_TIMEOUT="${ASSERT_TIMEOUT:-30}"
+    echo "[verify-rust-proxy] asserting host_subject outcome (expect=${HOST_SUBJECT_EXPECT})" \
+         "via ${METRICS_URL} + ${GRPC_LOG} (timeout ${ASSERT_TIMEOUT}s)"
+
+    # Two logs together prove WHY the backend was refused. The audit event
+    # ("Hypervisor connection failed: invalid peer certificate:
+    # NotValidForName", via the mock's RecordAuditEvent) proves the refusal
+    # surfaced to the control plane -- but rustls's error rendering does not
+    # name host_subject. The proxy's own log carries the ryll verifier's
+    # descriptive line ("pinned host_subject <subject>: ... does not match"),
+    # pinning the cause to subject verification specifically. Metrics alone
+    # cannot distinguish a subject refusal from a dead backend.
+    _mock_failed_audit() {
+        grep -F 'Hypervisor connection failed' "${GRPC_LOG}" 2>/dev/null || true
+    }
+    _proxy_subject_refusal() {
+        grep -F 'pinned host_subject' "${PROXY_LOG}" 2>/dev/null || true
+    }
+
+    DEADLINE=$(( $(date +%s) + ASSERT_TIMEOUT ))
+    LAST_BODY=''
+    while true; do
+        if ! LAST_BODY="$(curl --silent --fail --max-time 5 "${METRICS_URL}")"; then
+            if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
+                echo "ERROR: could not reach ${METRICS_URL} within ${ASSERT_TIMEOUT}s" >&2
+                exit 2
+            fi
+            sleep 1
+            continue
+        fi
+
+        AUTHORIZED="$(_metric_value "${LAST_BODY}" 'kerbside_proxy_authorized_total')"
+        C2S="$(_metric_value "${LAST_BODY}" 'kerbside_proxy_bytes_relayed_total' 'direction="client_to_server"')"
+        S2C="$(_metric_value "${LAST_BODY}" 'kerbside_proxy_bytes_relayed_total' 'direction="server_to_client"')"
+        FAILED_AUDIT="$(_mock_failed_audit)"
+
+        echo "[verify-rust-proxy] authorized=${AUTHORIZED} bytes{c2s}=${C2S} bytes{s2c}=${S2C}" \
+             "hypervisor_failure_audit=$([ -n "${FAILED_AUDIT}" ] && echo present || echo absent)"
+
+        if [ "${HOST_SUBJECT_EXPECT}" = 'match' ]; then
+            if [ -n "${FAILED_AUDIT}" ]; then
+                echo "ERROR: backend connect failed under a MATCHING host_subject pin:" >&2
+                printf '%s\n' "${FAILED_AUDIT}" | tail -5 >&2
+                echo "  rust-proxy log (last 60 lines):" >&2
+                tail -60 "${PROXY_LOG}" >&2 || true
+                exit 1
+            fi
+            if [ "${AUTHORIZED}" -ge 1 ] 2>/dev/null && [ "${C2S}" -gt 0 ] 2>/dev/null \
+                    && [ "${S2C}" -gt 0 ] 2>/dev/null; then
+                echo "[verify-rust-proxy] PASS: session relayed through the TLS backend with a" \
+                     "matching host_subject pin and no hypervisor connection failures"
+                exit 0
+            fi
+        else
+            # mismatch: authorization succeeds (it precedes the backend
+            # connect), the refusal reaches the audit trail as a certificate
+            # name error, the proxy log attributes it to the subject pin,
+            # and nothing is ever relayed.
+            SUBJECT_REFUSAL="$(_proxy_subject_refusal)"
+            if [ "${AUTHORIZED}" -ge 1 ] 2>/dev/null && [ -n "${SUBJECT_REFUSAL}" ] \
+                    && printf '%s' "${FAILED_AUDIT}" | grep -q 'NotValidForName'; then
+                if [ "${C2S}" -eq 0 ] 2>/dev/null && [ "${S2C}" -eq 0 ] 2>/dev/null; then
+                    echo "[verify-rust-proxy] refusal audit event:"
+                    printf '%s\n' "${FAILED_AUDIT}" | tail -1 | sed 's/^/[verify-rust-proxy]   /'
+                    echo "[verify-rust-proxy] proxy subject-verification refusal:"
+                    printf '%s\n' "${SUBJECT_REFUSAL}" | tail -1 | sed 's/^/[verify-rust-proxy]   /'
+                    echo "[verify-rust-proxy] PASS: mismatched host_subject pin refused the" \
+                         "backend (audit event + proxy refusal log, zero bytes relayed)"
+                    exit 0
+                fi
+                echo "ERROR: bytes were relayed despite a host_subject refusal --" \
+                     "c2s=${C2S} s2c=${S2C} (expected 0/0)" >&2
+                exit 1
+            fi
+        fi
+
+        if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
+            echo "ERROR: host_subject assertion (expect=${HOST_SUBJECT_EXPECT}) not satisfied" \
+                 "within ${ASSERT_TIMEOUT}s" >&2
+            echo "  last authorized=${AUTHORIZED} c2s=${C2S} s2c=${S2C}" >&2
+            echo "  mock gRPC audit lines mentioning hypervisor failure:" >&2
+            _mock_failed_audit | tail -5 >&2
+            echo "  rust-proxy log (last 60 lines):" >&2
+            tail -60 "${PROXY_LOG}" >&2 || true
+            exit 1
+        fi
+        sleep 1
+    done
+fi
+
 if [ "${ACTION}" != 'up' ]; then
-    echo "Usage: $0 [up|down|assert|assert-firewall]" >&2
+    echo "Usage: $0 [up|down|assert|assert-firewall|assert-host-subject]" >&2
     exit 1
 fi
 
@@ -413,14 +551,20 @@ if [ ! -f "${QCOW2}" ]; then
     exit 1
 fi
 
-"${SCRIPT_DIR}/start-qemu.sh" \
-    --qcow2 "${QCOW2}" \
-    --ovmf-code "${OVMF_CODE}" \
-    --ovmf-vars "${OVMF_VARS}" \
-    --spice-port "${SPICE_PORT}" \
-    --ticket "${SPICE_TICKET}" \
-    --serial-log "${QEMU_SERIAL_LOG}" \
+QEMU_ARGS=(
+    --qcow2 "${QCOW2}"
+    --ovmf-code "${OVMF_CODE}"
+    --ovmf-vars "${OVMF_VARS}"
+    --spice-port "${SPICE_PORT}"
+    --ticket "${SPICE_TICKET}"
+    --serial-log "${QEMU_SERIAL_LOG}"
     --pid-file "${QEMU_PID_FILE}"
+)
+if [ "${BACKEND_TLS}" = '1' ]; then
+    QEMU_ARGS+=(--tls-port "${QEMU_TLS_PORT}" --x509-dir "${TLS_DIR}/qemu-x509")
+fi
+
+"${SCRIPT_DIR}/start-qemu.sh" "${QEMU_ARGS[@]}"
 
 # start-qemu.sh's -daemonize only waits for qemu to fork, not for its SPICE
 # server to accept connections; poll it directly so the mock gRPC server's
@@ -452,7 +596,6 @@ MOCK_ARGS=(
     --socket "${GRPC_SOCKET}"
     --hypervisor-ip '127.0.0.1'
     --insecure-port "${SPICE_PORT}"
-    --secure-port 0
     --ticket "${SPICE_TICKET}"
     --source "${CONSOLE_SOURCE}"
     --uuid "${CONSOLE_UUID}"
@@ -461,6 +604,29 @@ MOCK_ARGS=(
     --permitted-channels "${PERMITTED_CHANNELS}"
     --verbose
 )
+if [ "${BACKEND_TLS}" = '1' ]; then
+    # The Target carries the TLS pieces the production servicer would send:
+    # the qemu TLS port as secure_port (the proxy's plaintext attempt on
+    # insecure_port gets need_secured and retries here), the CA as inline
+    # PEM (matching kerbside/rpc/servicer.py, which sends the source's
+    # ca_cert column contents), and the host_subject pin -- the server
+    # cert's real subject, or a deliberately wrong one under
+    # HOST_SUBJECT_EXPECT=mismatch.
+    if [ "${HOST_SUBJECT_EXPECT}" = 'mismatch' ]; then
+        TARGET_HOST_SUBJECT="${MISMATCH_HOST_SUBJECT}"
+    else
+        TARGET_HOST_SUBJECT="${BACKEND_HOST_SUBJECT}"
+    fi
+    echo "[verify-rust-proxy] backend TLS on: secure_port=${QEMU_TLS_PORT}" \
+         "host_subject='${TARGET_HOST_SUBJECT}' (expect=${HOST_SUBJECT_EXPECT})"
+    MOCK_ARGS+=(
+        --secure-port "${QEMU_TLS_PORT}"
+        --ca-cert "$(cat "${TLS_DIR}/ca-cert.pem")"
+        --host-subject "${TARGET_HOST_SUBJECT}"
+    )
+else
+    MOCK_ARGS+=(--secure-port 0)
+fi
 if [ -n "${DENY_ALL}" ]; then
     MOCK_ARGS+=(--deny-all)
 fi
@@ -572,6 +738,8 @@ echo "     zero firewall verdicts fired on the legitimate session:"
 echo "       $0 assert-firewall            # FIREWALL_EXPECT=clean (default)"
 echo "     For a deny-mode run (DENY_ALL=1 or DENY_TOKEN=<token>):"
 echo "       FIREWALL_EXPECT=deny $0 assert-firewall"
+echo "     For a backend-TLS run (BACKEND_TLS=1), judge the host_subject pin:"
+echo "       HOST_SUBJECT_EXPECT=${HOST_SUBJECT_EXPECT} $0 assert-host-subject"
 echo "  3. Tear down with: $0 down"
 echo
 echo "[verify-rust-proxy] METRICS_URL=${METRICS_URL}"
