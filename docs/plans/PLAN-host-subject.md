@@ -267,8 +267,8 @@ protection for free.
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 1. Subject pinning in shakenfist-spice-protocol (ryll repo) | PLAN-host-subject-phase-01-ryll-verifier.md | Implementation complete on ryll branch host-subject-verifier; PR pending operator |
-| 2. Kerbside adoption: pin bump, CI proof, docs | PLAN-host-subject-phase-02-kerbside-adoption.md | Planned; step 2a blocked on the ryll merge |
+| 1. Subject pinning in shakenfist-spice-protocol (ryll repo) | PLAN-host-subject-phase-01-ryll-verifier.md | Complete (merged to ryll develop, ryll PR #166) |
+| 2. Kerbside adoption: pin bump, CI proof, docs | PLAN-host-subject-phase-02-kerbside-adoption.md | Implementation complete on host-subject-enforcement; CI proof pending on the PR |
 
 Phase sketches (each to be expanded into its own plan file
 before execution):

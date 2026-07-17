@@ -258,7 +258,52 @@ lane goes green on the PR.
 
 ## Outcome
 
-To be completed as the phase executes.
+Implemented 2026-07-17 on kerbside branch
+`host-subject-enforcement` (five commits, one per step):
+
+- `c31791e` (2a) — pin bumped to ryll develop `5f986e9`
+  (ryll PR #166); stale TODO replaced; two new backend
+  tests (subject-mismatch error is not `need_secured`;
+  escaped commas pass through unmangled). The new
+  dependency subtree raises the crate's rustc floor to
+  1.88; gates ran green in `rust:trixie`.
+- `82d2290` (2b) — the harness TLS fixture: qemu server
+  cert (no SANs, subject `C=US,O=Kerbside CI,CN=qemu-hv`),
+  `tls-channel=default` so the plaintext port answers
+  `need_secured`, mock Target threading, and the
+  `assert-host-subject` action. Validated end to end
+  locally in both modes: the match run relayed through
+  the TLS backend after per-channel `need_secured`
+  retries; the mismatch run refused with zero bytes, the
+  audit event, and the proxy's subject-refusal line.
+- `c126dec` (2c) — gating workflow step running both
+  modes via `run-host-subject-checks.sh` after the main
+  lane's teardown (same default ports), with a dedicated
+  artifact bundle.
+- `6210b58` (2d) — docs sweep; PLAN-rust-proxy's
+  future-work entry closed.
+- `1b41869` (2e) — `dump-ovirt-host-subject.py` plus the
+  non-gating oVirt-lane step; the answer to the format
+  question arrives in the next oVirt lane run's logs.
+
+Findings during execution:
+
+- The audit message for a subject refusal renders
+  rustls's error: `Hypervisor connection failed: invalid
+  peer certificate: NotValidForName` — it does not name
+  host_subject. The CI assertion therefore combines the
+  audit event with the proxy log's
+  `pinned host_subject ... does not match` line.
+  Recorded as future work: a more self-explanatory
+  audit message (annotate in the proxy, or a
+  descriptive error variant in the ryll crate).
+- `tls-channel=default` (not `all`) is the QEMU
+  spelling for "TLS required on every channel".
+
+Status: implementation complete; CI proof pending the
+next direct-qemu lane run on the PR. Phase complete when
+that lane is green and the oVirt-lane diagnostic has
+reported the live subject format.
 
 ## Back brief
 
