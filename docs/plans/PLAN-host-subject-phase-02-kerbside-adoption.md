@@ -300,10 +300,17 @@ Findings during execution:
 - `tls-channel=default` (not `all`) is the QEMU
   spelling for "TLS required on every channel".
 
-Status: implementation complete; CI proof pending the
-next direct-qemu lane run on the PR. Phase complete when
-that lane is green and the oVirt-lane diagnostic has
-reported the live subject format.
+CI proof (PR #114, run 29558338498 and siblings,
+2026-07-17): every check green, including the direct-qemu
+lane with the new gating host-subject steps. The oVirt
+diagnostic reported the live engine's value:
+`O=local,CN=ovirt.local` — verdict PARSES under the
+spice-common grammar (comma-separated, no spaces, short
+names). oVirt values need no scrape-time normalisation;
+the master plan's format question is closed with data.
+
+Status: phase complete on the branch; merged when PR #114
+merges.
 
 ## Back brief
 

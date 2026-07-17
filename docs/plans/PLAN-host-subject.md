@@ -255,9 +255,9 @@ protection for free.
 - Whether the oVirt-supplied `host.certificate.subject`
   string format (separator, spacing) matches the
   spice-common parse rules exactly, or needs
-  normalisation at scrape time. Needs a live oVirt
-  check during phase 2 (the CI oVirt lane can answer
-  this).
+  normalisation at scrape time. ANSWERED in phase 2:
+  the live value is `O=local,CN=ovirt.local`, which
+  parses cleanly — no normalisation needed.
 - Whether ryll should surface subject-verification
   failures to its GUI users with a friendlier error than
   a TLS handshake failure. Ryll-side polish, not
@@ -268,7 +268,7 @@ protection for free.
 | Phase | Plan | Status |
 |-------|------|--------|
 | 1. Subject pinning in shakenfist-spice-protocol (ryll repo) | PLAN-host-subject-phase-01-ryll-verifier.md | Complete (merged to ryll develop, ryll PR #166) |
-| 2. Kerbside adoption: pin bump, CI proof, docs | PLAN-host-subject-phase-02-kerbside-adoption.md | Implementation complete on host-subject-enforcement; CI proof pending on the PR |
+| 2. Kerbside adoption: pin bump, CI proof, docs | PLAN-host-subject-phase-02-kerbside-adoption.md | Complete (kerbside PR #114; CI proof green, oVirt format verified) |
 
 Phase sketches (each to be expanded into its own plan file
 before execution):
