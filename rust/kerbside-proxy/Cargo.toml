@@ -12,11 +12,12 @@ path = "src/main.rs"
 # The ryll SPICE protocol crate provides the server-role handshake drivers,
 # the SpiceClient connector, SpiceStream, constants, and the mini-header
 # framing this proxy reuses. Pinned to ryll develop (contains the phase-1
-# server primitives and the phase-4 completed main/display message-type
-# tables the L1 allowlist derives from). Cargo resolves the workspace member
-# by package name and builds only it plus its dependency subtree, not the
-# ryll GUI binary.
-shakenfist-spice-protocol = { git = "https://github.com/shakenfist/ryll", rev = "1c6f19f3658ab087cc61e6c7a2c5a31909baa0d7" }
+# server primitives, the phase-4 completed main/display message-type tables
+# the L1 allowlist derives from, and the host-subject verifier that enforces
+# ConnectionConfig.host_subject during the TLS handshake). Cargo resolves the
+# workspace member by package name and builds only it plus its dependency
+# subtree, not the ryll GUI binary.
+shakenfist-spice-protocol = { git = "https://github.com/shakenfist/ryll", rev = "5f986e9a0f42bbf4a5b70b5328ec1012b70b37d3" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "macros", "signal", "sync"] }
 tokio-rustls = "0.26"
