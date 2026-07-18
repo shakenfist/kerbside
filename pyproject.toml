@@ -40,7 +40,7 @@ dependencies = [
     "bcrypt==4.1.2",                    # apache2
     "gunicorn==22.0.0",                 # mit
     "flask-request-id-middleware==1.1", # mit
-    "pyyaml==6.0.1",                    # mit
+    "pyyaml==6.0.3",                    # mit
     "psutil==7.0.0",                    # bsd
     "PyMySQL==1.1.1",                   # mit
     "webargs==8.3.0",                   # mit
