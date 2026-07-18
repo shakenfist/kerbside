@@ -16,7 +16,7 @@ description = "A protocol native SPICE VDI proxy"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "shakenfist-utilities==0.8.4",      # apache2
+    "shakenfist-utilities==0.8.6",      # apache2
 
     # The Rust SPICE proxy binary is shipped as a separate maturin bin
     # wheel (kerbside-proxy) released in lockstep from the same v* tag. Its
