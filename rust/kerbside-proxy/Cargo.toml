@@ -63,8 +63,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
 # Process metrics: a global registry + counters/gauges exposed over the
 # /metrics endpoint (metrics.rs). The exposition format matches what the
-# Python proxy's prometheus_client emits.
-prometheus = "0.13"
+# Python proxy's prometheus_client emits. Default features are off to keep
+# the vulnerable `protobuf` transitive dependency (GHSA-2gh3-rmm4-6rq5) out
+# of the tree: metrics.rs only uses the text exposition format via
+# TextEncoder, never the ProtobufEncoder the default feature gates.
+prometheus = { version = "0.13", default-features = false }
 
 [dev-dependencies]
 # `test-util` enables `#[tokio::test(start_paused = true)]`, used by the relay
