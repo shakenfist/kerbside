@@ -89,9 +89,17 @@ class ShakenFistSource(base.BaseSource):
         for node in system_client.get_nodes():
             nodes[node['name']] = node
 
-        # And then just lookup instances in the right namespace
-        namespaced_client = self._make_client(self.args['username'])
-        for inst in namespaced_client.get_instances():
+        # Discover instances. Under the system credential we scrape the
+        # whole cluster so every namespace's consoles are reachable;
+        # otherwise the credential's own namespace is scraped, which is
+        # the natural behaviour of a non-system client.
+        if self.args['username'] == 'system':
+            instances = system_client.get_instances(all=True)
+        else:
+            namespaced_client = self._make_client(self.args['username'])
+            instances = namespaced_client.get_instances()
+
+        for inst in instances:
             log = LOG.with_fields({
                     'uuid': inst['uuid'],
                     'state': inst['state'],
@@ -105,15 +113,35 @@ class ShakenFistSource(base.BaseSource):
                 log.debug('Ignoring instance with incorrect VDI type')
                 continue
 
+            node = nodes.get(inst['node'])
+            if not node:
+                log.with_fields({'node': inst['node']}).debug(
+                    'Ignoring instance whose node is not in the node map')
+                continue
+
+            # Pin the backend TLS leg to the hypervisor's SPICE server
+            # certificate subject, which Shaken Fist publishes per node.
+            # Absent (an older cluster, or a node with no cert) leaves
+            # host_subject None, so the proxy skips host-subject
+            # enforcement for that backend rather than failing. The
+            # optional synthesize_host_subject flag lets an operator on
+            # the stock cn=hostname PKI enable enforcement before the
+            # node-side change is deployed; it is off by default because
+            # synthesis only matches that PKI and a miss would wrongly
+            # reject the backend.
+            host_subject = node.get('spice_server_cert_subject') or None
+            if not host_subject and self.args.get('synthesize_host_subject'):
+                host_subject = 'CN=%s' % inst['node']
+
             yield {
                 'uuid': inst['uuid'],
                 'source': self.args['source'],
                 'hypervisor': inst['node'],
-                'hypervisor_ip': nodes[inst['node']]['ip'],
+                'hypervisor_ip': node['ip'],
                 'insecure_port': inst['vdi_port'],
                 'secure_port': inst['vdi_tls_port'],
                 'name': '%s.%s' % (inst['name'], inst['namespace']),
-                'host_subject': None
+                'host_subject': host_subject
             }
 
 
