@@ -93,6 +93,15 @@ class Config(BaseSettings):
         'kerbside.home.stillhq.com',
         description=('The public fully qualified domain name for kerbside. This '
                      'could be a load balancer with backend affinity.'))
+    SF_CONSOLE_TOKEN_AUDIENCE: str = Field(
+        '',
+        description=(
+            'The expected "aud" claim for Shaken Fist VDI console tokens '
+            'exchanged at /sf-console.vv. Empty means derive it as '
+            'https://<PUBLIC_FQDN>. This value must equal Shaken Fist\'s '
+            'KERBSIDE_URL exactly -- it is both the token audience and the '
+            'base of the exchange URL, so set it explicitly when the public '
+            'URL differs in scheme, port, or path.'))
     PUBLIC_SECURE_PORT: int = Field(
         5900,
         description=(

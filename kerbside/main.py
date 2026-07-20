@@ -189,6 +189,15 @@ def _reap_expired_console_tokens():
             None, None, None, 'Reaped expired and unused token')
 
 
+def _reap_expired_sf_token_jtis():
+    # A jti has no session or live channel to protect -- it is a random,
+    # purely time-bounded single-use marker -- so there is no audit event to
+    # emit, just a count. The jti value is not logged.
+    reaped = kerbside_db.reap_expired_sf_token_jtis()
+    if reaped:
+        LOG.info('Reaped %d expired Shaken Fist token jtis' % len(reaped))
+
+
 # How long a session_terminations intent row lives before the reaper deletes
 # it. By then every proxy node has had ample time to poll and push the
 # TerminateSession (the ProxyControl poll interval is a couple of seconds), and
@@ -242,6 +251,7 @@ def _run_rust_proxy(last_maintenance):
         if time.time() - last_maintenance > 60:
             _parse_sources()
             _reap_expired_console_tokens()
+            _reap_expired_sf_token_jtis()
             _reap_session_terminations()
             last_maintenance = time.time()
 
@@ -251,6 +261,7 @@ def _run_rust_proxy(last_maintenance):
 def daemon_run(ctx):
     _parse_sources()
     _reap_expired_console_tokens()
+    _reap_expired_sf_token_jtis()
     last_maintenance = time.time()
 
     kerbside_db.reset_engine()

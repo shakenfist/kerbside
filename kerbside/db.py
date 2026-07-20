@@ -45,6 +45,10 @@ class UnknownChannel(Exception):
     ...
 
 
+class ReusedJti(Exception):
+    ...
+
+
 class Source(Base):
     __tablename__ = 'sources'
 
@@ -752,3 +756,120 @@ def get_audit_events(source, uuid, limit=20):
 
     out.reverse()
     return out
+
+
+class SfTokenJti(Base):
+    __tablename__ = 'sf_token_jtis'
+
+    # Records a Shaken Fist VDI console JWT's jti (a uuid4 hex) once its
+    # signature has verified, so the /sf-console.vv exchange can reject a
+    # replayed token. expiry mirrors the token's own exp claim (a
+    # time.time()-style float): once that has passed the token could not be
+    # replayed successfully anyway, so the reaper is free to drop the row.
+    jti = Column(String(32), primary_key=True)
+    expiry = Column(Float)
+
+    def __init__(self, jti, expiry):
+        self.jti = jti
+        self.expiry = expiry
+
+    def export(self):
+        return {
+            'jti': self.jti,
+            'expiry': self.expiry
+        }
+
+
+def add_sf_token_jti(jti, expiry):
+    with Session(ENGINE) as session:
+        try:
+            session.query(SfTokenJti).filter(SfTokenJti.jti == jti).one()
+            raise ReusedJti('We already have jti %s' % jti)
+        except exc.NoResultFound:
+            row = SfTokenJti(jti, expiry)
+            session.add(row)
+            session.commit()
+            return row.export()
+
+
+def sf_token_jti_exists(jti):
+    with Session(ENGINE) as session:
+        try:
+            session.query(SfTokenJti).filter(SfTokenJti.jti == jti).one()
+            return True
+        except exc.NoResultFound:
+            return False
+
+
+def reap_expired_sf_token_jtis():
+    # Unlike consoletokens, a jti has no session or live-channel concept to
+    # protect -- it is purely time-bounded (PyJWT already refused the token
+    # once its exp passed), so this is a straight TTL delete, no liveness
+    # check needed.
+    with Session(ENGINE) as session:
+        reaped = []
+
+        try:
+            for j in session.query(SfTokenJti).\
+                    filter(SfTokenJti.expiry < int(time.time())).\
+                    all():
+                reaped.append(j.export())
+                session.delete(j)
+        except exc.NoResultFound:
+            ...
+        finally:
+            session.commit()
+
+        return reaped
+
+
+class SfTokenKeys(Base):
+    __tablename__ = 'sf_token_keys'
+
+    # Caches one shakenfist source's signing public keys (Shaken Fist's
+    # public_view payload, verbatim JSON) so offline JWT verification never
+    # calls Shaken Fist on the hot path -- only a cache miss on an unknown
+    # kid triggers a refetch. source matches sources.name (no FK: sources
+    # are ephemeral YAML-loaded objects reloaded by the maintenance loop,
+    # not a stable referenced row). fetched_at is a time.time() float.
+    source = Column(String(255), primary_key=True)
+    keys_json = Column(Text)
+    fetched_at = Column(Float)
+
+    def __init__(self, source, keys_json, fetched_at):
+        self.source = source
+        self.keys_json = keys_json
+        self.fetched_at = fetched_at
+
+    def export(self):
+        return {
+            'source': self.source,
+            'keys_json': self.keys_json,
+            'fetched_at': self.fetched_at
+        }
+
+
+def upsert_sf_token_keys(source, keys_json, fetched_at):
+    with Session(ENGINE) as session:
+        try:
+            row = session.query(SfTokenKeys).\
+                filter(SfTokenKeys.source == source).\
+                one()
+            row.keys_json = keys_json
+            row.fetched_at = fetched_at
+        except exc.NoResultFound:
+            row = SfTokenKeys(source, keys_json, fetched_at)
+            session.add(row)
+        session.commit()
+        return row.export()
+
+
+def get_sf_token_keys(source):
+    with Session(ENGINE) as session:
+        try:
+            row = session.query(SfTokenKeys).\
+                filter(SfTokenKeys.source == source).\
+                one()
+            return row.keys_json
+        except exc.NoResultFound:
+            return None

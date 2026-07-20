@@ -1,3 +1,6 @@
+import os
+import tempfile
+import time
 from unittest import mock
 import testtools
 
@@ -59,3 +62,101 @@ class TerminateApiTestCase(testtools.TestCase):
         self.assertEqual(200, resp.status_code)
         mock_remove.assert_called_once_with('sess-2')
         mock_request.assert_called_once_with('sess-2', reason=mock.ANY)
+
+
+class SfTokenApiTestCase(testtools.TestCase):
+    """Endpoint-level tests for /sf-console.vv (matrix cells 8-10: replay,
+    unscraped console, and a genuine end-to-end valid exchange).
+
+    sf_token.verify_sf_token's own adversarial matrix (valid/expired/wrong
+    aud/forged signature/unknown kid) is covered in isolation by
+    test_sf_token.py; here it is mocked to a fixed claims dict so these
+    tests are only about the endpoint's replay/lookup/issuance logic, driven
+    through the Flask test client as TerminateApiTestCase above does.
+    """
+
+    def setUp(self):
+        super().setUp()
+        api.app.config['TESTING'] = True
+        self.client = api.app.test_client()
+
+        # SfToken.get() unconditionally reads config.CACERT_PATH to embed in
+        # the .vv; point it at a temp file so that read succeeds.
+        cacert_file = tempfile.NamedTemporaryFile(
+            mode='w', suffix='.pem', delete=False)
+        cacert_file.write(
+            '-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n')
+        cacert_file.close()
+        self.addCleanup(os.unlink, cacert_file.name)
+        cacert_patch = mock.patch.object(
+            api.config, 'CACERT_PATH', cacert_file.name)
+        cacert_patch.start()
+        self.addCleanup(cacert_patch.stop)
+
+        self.claims = {
+            'source': 'sf1', 'sub': 'console-uuid', 'jti': 'jti-1',
+            'exp': int(time.time()) + 300,
+        }
+        verify_patch = mock.patch(
+            'kerbside.api.sf_token.verify_sf_token', return_value=self.claims)
+        self.mock_verify = verify_patch.start()
+        self.addCleanup(verify_patch.stop)
+
+    # --- 8. replay -----------------------------------------------------
+
+    @mock.patch('kerbside.api.db.add_audit_event')
+    @mock.patch('kerbside.api.db.sf_token_jti_exists', return_value=True)
+    def test_replayed_jti_rejected(self, mock_exists, mock_audit):
+        resp = self.client.get('/sf-console.vv?token=some.jwt.value')
+
+        self.assertEqual(401, resp.status_code)
+        self.assertEqual(
+            'token already used', resp.get_json()['error'])
+        mock_exists.assert_called_once_with('jti-1')
+
+    # --- 9. unscraped console --------------------------------------------
+
+    @mock.patch('kerbside.api.db.add_audit_event')
+    @mock.patch('kerbside.api.db.get_console', return_value=None)
+    @mock.patch('kerbside.api.db.add_sf_token_jti')
+    @mock.patch('kerbside.api.db.sf_token_jti_exists', return_value=False)
+    def test_unscraped_console_returns_404(
+            self, mock_exists, mock_add_jti, mock_get_console, mock_audit):
+        resp = self.client.get('/sf-console.vv?token=some.jwt.value')
+
+        self.assertEqual(404, resp.status_code)
+        self.assertEqual('console not found', resp.get_json()['error'])
+        mock_get_console.assert_called_once_with('sf1', 'console-uuid')
+
+    # --- 10. valid end-to-end exchange -----------------------------------
+
+    @mock.patch('kerbside.api.db.add_audit_event')
+    @mock.patch('kerbside.api.consoletoken.create_token')
+    @mock.patch('kerbside.api.db.get_console')
+    @mock.patch('kerbside.api.db.add_sf_token_jti')
+    @mock.patch('kerbside.api.db.sf_token_jti_exists', return_value=False)
+    def test_valid_exchange_returns_vv_with_consoletoken(
+            self, mock_exists, mock_add_jti, mock_get_console,
+            mock_create_token, mock_audit):
+        mock_get_console.return_value = {
+            'source': 'sf1', 'uuid': 'console-uuid'}
+        mock_create_token.return_value = {
+            'token': 'minted-consoletoken-not-the-jwt',
+            'session_id': 'sess-1'}
+
+        resp = self.client.get('/sf-console.vv?token=some.jwt.value')
+
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual(
+            'application/x-virt-viewer;charset=UTF-8', resp.content_type)
+
+        body = resp.get_data(as_text=True)
+        self.assertTrue(body.startswith('[virt-viewer]'))
+        # The password is the freshly minted kerbside consoletoken, NOT the
+        # JWT that was exchanged for it.
+        self.assertIn('password=minted-consoletoken-not-the-jwt', body)
+        self.assertNotIn('some.jwt.value', body)
+
+        # The jti is now recorded as used.
+        mock_add_jti.assert_called_once_with('jti-1', self.claims['exp'])
+        mock_create_token.assert_called_once_with('sf1', 'console-uuid')
