@@ -29,7 +29,7 @@ when each phase starts:
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 5. Exchange endpoint (`/sf-console.vv`, jti replay table, reaper) | PLAN-kerbside-vdi-tokens-phase-05-exchange.md | Not started |
+| 5. Exchange endpoint (`/sf-console.vv`, jti replay table, reaper) | [PLAN-kerbside-vdi-tokens-phase-05-exchange.md](PLAN-kerbside-vdi-tokens-phase-05-exchange.md) | In progress |
 | 6. Cluster-wide scrape + host_subject for SF consoles | PLAN-kerbside-vdi-tokens-phase-06-scrape.md | Not started |
 | 7. SF functional lane in kerbside CI (shared phase) | PLAN-kerbside-vdi-tokens-phase-07-ci.md | Not started |
 | 8. Documentation (shared phase; here: console-sources.md rewrite) | PLAN-kerbside-vdi-tokens-phase-08-docs.md | Not started |
