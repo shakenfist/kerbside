@@ -29,7 +29,7 @@ dependencies = [
     # See docs/plans/PLAN-rust-proxy-phase-06-packaging.md.
     # KERBSIDE_PROXY_PIN
 
-    "click==8.1.7",                     # bsd
+    "click==8.4.2",                     # bsd
     "cryptography",                     # apache2
     "pylogrus",                         # mit
     "prometheus-client==0.20.0",        # apache2
