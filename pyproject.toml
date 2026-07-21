@@ -146,7 +146,7 @@ test = [
 
     # protobuf / gRPC code generation (tox -egenprotos). Pinned to
     # match the runtime grpcio/protobuf so regeneration is deterministic.
-    "grpcio-tools==1.81.1",            # apache2
+    "grpcio-tools==1.82.1",            # apache2
     "mypy-protobuf==5.1.0",           # apache2
 
     "shakenfist-client>=0.7.0.0rc6",   # apache2
