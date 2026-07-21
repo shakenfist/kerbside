@@ -59,7 +59,7 @@ dependencies = [
     # gRPC service (KerbsideProxy) fronting the database for the proxy.
     # protobuf is pinned to the version the checked-in stubs were
     # generated against; regenerate via `tox -egenprotos` if bumped.
-    "grpcio==1.81.1",                   # apache2
+    "grpcio==1.82.1",                   # apache2
     "protobuf==6.33.6",                 # bsd
 
     # Optional dependancies, depending on what clouds you want to provide access to
