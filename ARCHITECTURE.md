@@ -216,6 +216,7 @@ OpenStack environments).
 | `GET /source` | List configured sources |
 | `GET /console` | List all discovered consoles |
 | `GET /console/<source>/<uuid>/console.vv` | Generate virt-viewer config |
+| `GET /sf-console.vv?token=<jwt>` | Exchange a Shaken Fist Ed25519 JWT (verified offline) for a console token and virt-viewer config |
 | `GET /session` | List active proxy sessions |
 | `GET /session/<id>/terminate` | Kill specific session |
 
@@ -252,6 +253,8 @@ SQLAlchemy ORM with Alembic migrations. Uses MySQL/MariaDB.
 | `consoletokens` | Authentication tokens with expiry |
 | `proxychannels` | Active proxy connections |
 | `auditevents` | Activity logging |
+| `sf_token_jtis` | Spent Shaken Fist token `jti`s, enforcing single-use exchange |
+| `sf_token_keys` | Cached per-source Shaken Fist signing public keys for offline JWT verification |
 
 ### 7. Source Abstraction (`sources/`)
 
@@ -261,7 +264,7 @@ Pluggable console discovery from different cloud platforms.
 
 | Source | File | Description |
 |--------|------|-------------|
-| Shaken Fist | `shakenfist.py` | Uses `shakenfist_client` library |
+| Shaken Fist | `shakenfist.py` | Uses `shakenfist_client` library; a `system` credential scrapes the whole cluster, caches the cluster's VDI token signing keys, and pins each console's `host_subject` from the node's SPICE cert subject |
 | oVirt | `ovirt.py` | Uses `ovirtsdk4` library |
 | OpenStack | `api.py` | On-demand via Nova token validation |
 | Static | `static.py` | Reads VM mapping from an inline `consoles:` list in sources.yaml; no external API calls; designed for CI and ad-hoc debugging |
@@ -353,7 +356,15 @@ See `etc/kerbside.conf.example` for a complete configuration reference.
    under spice-common semantics (same attribute count, types, and order;
    values compared case-insensitively with whitespace folded), substituting
    for hostname verification. See `docs/plans/PLAN-host-subject.md`.
-5. **Audit Logging**: All console access events recorded
+5. **Offline Shaken Fist token verification**: Shaken Fist consoles are
+   accessed by exchanging a short-lived Ed25519-signed JWT at
+   `/sf-console.vv`. Kerbside verifies the signature, `aud`, and `exp`
+   entirely offline against per-source signing keys cached in
+   `sf_token_keys` — it never calls the cloud on the exchange path (only a
+   single refetch on an unknown key id, to tolerate rotation). Single use is
+   enforced by recording each token's `jti` in `sf_token_jtis`, so a replayed
+   token is rejected.
+6. **Audit Logging**: All console access events recorded
 
 ## Monitoring
 
