@@ -31,9 +31,9 @@ when each phase starts:
 |-------|------|--------|
 | 5. Exchange endpoint (`/sf-console.vv`, jti replay table, reaper) | [PLAN-kerbside-vdi-tokens-phase-05-exchange.md](PLAN-kerbside-vdi-tokens-phase-05-exchange.md) | Done |
 | 6. Cluster-wide scrape + host_subject for SF consoles | [PLAN-kerbside-vdi-tokens-phase-06-scrape.md](PLAN-kerbside-vdi-tokens-phase-06-scrape.md) | Done |
-| 7. Functional tests + CI: SF mint path, kerbside offline exchange/proxy e2e (shared phase) | [PLAN-kerbside-vdi-tokens-phase-07-ci.md](PLAN-kerbside-vdi-tokens-phase-07-ci.md) | In progress |
+| 7. Functional test: Shaken Fist mint path (SF-side only; kerbside exchange lane moved to phase 9) | [PLAN-kerbside-vdi-tokens-phase-07-ci.md](PLAN-kerbside-vdi-tokens-phase-07-ci.md) | Done |
 | 8. Documentation (shared phase; here: console-sources.md rewrite) | PLAN-kerbside-vdi-tokens-phase-08-docs.md | Not started |
-| 9. Full cross-repo end-to-end lane (real SF, post-merge) | PLAN-kerbside-vdi-tokens-phase-09-e2e.md | Not started |
+| 9. Full cross-repo end-to-end lane + kerbside exchange/proxy lane + KERBSIDE_URL provisioning (real SF, post-merge) | PLAN-kerbside-vdi-tokens-phase-09-e2e.md | Not started |
 
 Phases 0-4 (token format decisions, cluster signing key,
 vdiconsoleproxy endpoint, pip-installable ryll, and
