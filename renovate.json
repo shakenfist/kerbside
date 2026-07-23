@@ -33,6 +33,16 @@
         "sqlalchemy",
         "mysqlclient"
       ]
+    },
+    {
+      "description": "Group the protobuf / gRPC ecosystem together. grpcio-tools pins protobuf to a compatible major, and the checked-in stubs in kerbside/rpc/ must be regenerated (tox -egenprotos) whenever protobuf moves, so these must bump as a coordinated set.",
+      "groupName": "protobuf-grpc",
+      "matchPackageNames": [
+        "grpcio",
+        "grpcio-tools",
+        "protobuf",
+        "mypy-protobuf"
+      ]
     }
   ],
   "minimumReleaseAge": "3 days",
