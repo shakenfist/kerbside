@@ -50,6 +50,18 @@ in-flight session termination and a non-gating relay-latency loadtest. See
 `docs/plans/PLAN-rust-proxy.md`, `ARCHITECTURE.md`, and
 `tools/direct-qemu/VERIFY-RUST-PROXY.md`.
 
+The Shaken Fist console source is additionally covered end to end by the
+`sf-e2e` lane (`.github/workflows/sf-e2e-functional.yml`, dispatch- and
+nightly-scheduled). It stands up a real single-node Shaken Fist (via
+`shakenfist/actions/build-smoke-cluster`), provisions `KERBSIDE_URL` + a
+signing key, deploys a co-located kerbside with a `type: shakenfist`
+source (`shakenfist/actions/deploy-kerbside-on-shakenfist`), and drives an
+SF-minted token through offline verification, exchange, and a proxied
+SPICE session against the Sextant guest booted inside the SF instance,
+plus an adversarial matrix (replay, expired, wrong audience, unknown kid,
+cross-namespace mint). Driver scripts live in `tools/sf-e2e/` (see
+`tools/sf-e2e/README.md`).
+
 ## Documentation
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - High-level system architecture
