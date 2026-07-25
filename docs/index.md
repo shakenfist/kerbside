@@ -135,7 +135,8 @@ Guides for deploying and configuring Kerbside:
   settings including TLS, Keystone, API, and monitoring options
 
 - [Console Sources](console-sources.md) - Configuring console sources
-  (sources.yaml) for Shaken Fist, oVirt, and OpenStack
+  (sources.yaml) for Shaken Fist, oVirt, OpenStack, and the static driver,
+  including the Shaken Fist offline token exchange
 
 - [Database Schema](schema.md) - Database tables, columns, and relationships
 

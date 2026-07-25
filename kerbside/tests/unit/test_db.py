@@ -83,3 +83,80 @@ class SessionTerminationDbTestCase(testtools.TestCase):
 
         remaining = [r.session_id for r in self._terminations()]
         self.assertEqual(['fresh'], remaining)
+
+
+class SfTokenJtiDbTestCase(testtools.TestCase):
+    """Exercise the sf_token_jtis helpers (single-use JWT tracking) against a
+    real (sqlite) DB, matching SessionTerminationDbTestCase's approach.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.engine = create_engine('sqlite://')
+        db.Base.metadata.create_all(
+            self.engine, tables=[db.SfTokenJti.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+    def _jtis(self):
+        with Session(self.engine) as session:
+            return session.query(db.SfTokenJti).all()
+
+    def test_add_then_exists(self):
+        self.assertFalse(db.sf_token_jti_exists('some-jti'))
+        db.add_sf_token_jti('some-jti', time.time() + 300)
+        self.assertTrue(db.sf_token_jti_exists('some-jti'))
+
+    def test_add_duplicate_raises_reused_jti(self):
+        db.add_sf_token_jti('dupe-jti', time.time() + 300)
+        self.assertRaises(
+            db.ReusedJti, db.add_sf_token_jti, 'dupe-jti', time.time() + 300)
+
+    def test_reap_expired_sf_token_jtis_removes_expired_keeps_live(self):
+        db.add_sf_token_jti('expired-jti', time.time() - 100)
+        db.add_sf_token_jti('live-jti', time.time() + 300)
+
+        reaped = db.reap_expired_sf_token_jtis()
+        self.assertEqual(['expired-jti'], [r['jti'] for r in reaped])
+
+        remaining = [r.jti for r in self._jtis()]
+        self.assertEqual(['live-jti'], remaining)
+        self.assertTrue(db.sf_token_jti_exists('live-jti'))
+        self.assertFalse(db.sf_token_jti_exists('expired-jti'))
+
+
+class SfTokenKeysDbTestCase(testtools.TestCase):
+    """Exercise the sf_token_keys helpers (cached Shaken Fist signing keys)
+    against a real (sqlite) DB, matching SessionTerminationDbTestCase's
+    approach.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.engine = create_engine('sqlite://')
+        db.Base.metadata.create_all(
+            self.engine, tables=[db.SfTokenKeys.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+    def test_get_sf_token_keys_returns_none_when_absent(self):
+        self.assertIsNone(db.get_sf_token_keys('sf1'))
+
+    def test_upsert_sf_token_keys_inserts_then_updates(self):
+        first_fetch = time.time()
+        db.upsert_sf_token_keys('sf1', '{"active_kid": "a"}', first_fetch)
+        self.assertEqual(
+            '{"active_kid": "a"}', db.get_sf_token_keys('sf1'))
+
+        second_fetch = first_fetch + 60
+        db.upsert_sf_token_keys('sf1', '{"active_kid": "b"}', second_fetch)
+        self.assertEqual(
+            '{"active_kid": "b"}', db.get_sf_token_keys('sf1'))
+
+        # The upsert replaced the row rather than adding a second one.
+        with Session(self.engine) as session:
+            rows = session.query(db.SfTokenKeys).all()
+        self.assertEqual(1, len(rows))
+        self.assertEqual(second_fetch, rows[0].fetched_at)

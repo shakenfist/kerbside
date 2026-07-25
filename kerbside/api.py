@@ -26,6 +26,7 @@ from shakenfist_utilities import api as sf_api, logs
 from .config import config
 from . import consoletoken
 from . import db
+from . import sf_token
 from .sources import ovirt as ovirt_source
 from . import util
 
@@ -644,6 +645,120 @@ class NovaToken(sf_api.Resource):
         return sf_api.error(404, 'nova token not found')
 
 
+class SfToken(sf_api.Resource):
+    get_args = {
+        'token': fields.String()
+    }
+
+    # No token verification because this route uses an external token minted
+    # and signed by Shaken Fist. Verification is an offline Ed25519 signature
+    # check (kerbside/sf_token.py), never a kerbside/Keystone callback -- so
+    # this route deliberately carries no @verify_token decorator.
+    @use_kwargs(get_args, location='query')
+    def get(self, token=None):
+        if not token:
+            return sf_api.error(401, 'token absent')
+
+        # Verify the token entirely offline. On any typed failure record a
+        # best-effort rejected audit event and return a distinct 401. Before
+        # verification succeeds we have no trustworthy source/uuid, so use a
+        # fixed label. The token string is never placed in the message, the
+        # audit event, or a log line.
+        def _reject_pre_verify(reason):
+            db.add_audit_event(
+                'sf-console', '-', None, None, None, None,
+                'Rejected Shaken Fist console token: %s' % reason)
+
+        try:
+            claims = sf_token.verify_sf_token(token)
+        except sf_token.Malformed:
+            _reject_pre_verify('malformed token')
+            return sf_api.error(401, 'malformed token')
+        except sf_token.UnknownKid:
+            _reject_pre_verify('unknown signing key')
+            return sf_api.error(401, 'unknown signing key')
+        except sf_token.BadSignature:
+            _reject_pre_verify('invalid token signature')
+            return sf_api.error(401, 'invalid token signature')
+        except sf_token.Expired:
+            _reject_pre_verify('token expired')
+            return sf_api.error(401, 'token expired')
+        except sf_token.WrongAudience:
+            _reject_pre_verify('token audience rejected')
+            return sf_api.error(401, 'token audience rejected')
+        except sf_token.SfTokenError:
+            # Safety net for any future SfTokenError subclass.
+            _reject_pre_verify('token rejected')
+            return sf_api.error(401, 'token rejected')
+
+        # Single-use replay fast-path: reject a jti we have already recorded.
+        # This is a read and does not consume the token, so it is safe to run
+        # before the console lookup.
+        if db.sf_token_jti_exists(claims['jti']):
+            db.add_audit_event(
+                claims['source'], claims['sub'], None, None, None, None,
+                'Rejected Shaken Fist console token: token already used')
+            return sf_api.error(401, 'token already used')
+
+        # Look the console up BEFORE consuming the jti. Shaken Fist consoles
+        # are scraped (every 60s), never created here, and a token outlives a
+        # scrape gap -- so a valid token for a not-yet-scraped console must
+        # 404 WITHOUT burning its single-use jti, leaving a later retry able
+        # to succeed once the console appears. get_console keys on uuid alone,
+        # so assert the row's source matches the source whose key verified the
+        # token (defence against uuid reuse across sources).
+        c = db.get_console(claims['source'], claims['sub'])
+        if c is None or c.get('source') != claims['source']:
+            db.add_audit_event(
+                claims['source'], claims['sub'], None, None, None, None,
+                'Rejected Shaken Fist console token: console not found')
+            return sf_api.error(404, 'console not found')
+
+        # Now that there is a console to issue for, consume the jti. The
+        # insert's ReusedJti (primary-key collision) is the authoritative
+        # guard for the concurrent double-exchange race.
+        try:
+            db.add_sf_token_jti(claims['jti'], claims['exp'])
+        except db.ReusedJti:
+            db.add_audit_event(
+                claims['source'], claims['sub'], None, None, None, None,
+                'Rejected Shaken Fist console token: token already used')
+            return sf_api.error(401, 'token already used')
+
+        # Issue exactly as the Nova path does: mint a kerbside consoletoken and
+        # build the proxy .vv from kerbside config, never from the token.
+        token_row = consoletoken.create_token(claims['source'], claims['sub'])
+
+        cacert = ''
+        with open(config.CACERT_PATH) as f:
+            cacert = f.read()
+        cacert = cacert.replace('\n', '\\n')
+
+        if config.PROXY_HOST_SUBJECT:
+            host_subject = '\nhost-subject=%s' % config.PROXY_HOST_SUBJECT
+        else:
+            host_subject = ''
+
+        vv = VIRTVIEWER_TEMPLATE % {
+            'node': config.PUBLIC_FQDN,
+            'port': config.PUBLIC_INSECURE_PORT,
+            'tls_port': '\ntls-port=%s' % config.PUBLIC_SECURE_PORT,
+            'token': token_row['token'],
+            'ca_cert': '\nca=%s' % cacert,
+            'name': '%s via proxy session ID %s' % (
+                claims['sub'], token_row['session_id']),
+            'host_subject': host_subject
+        }
+
+        db.add_audit_event(
+            claims['source'], claims['sub'], token_row['session_id'],
+            None, None, None, 'Shaken Fist console token exchanged')
+
+        resp = flask.Response(vv, mimetype='application/x-virt-viewer;charset=UTF-8')
+        resp.status_code = 200
+        return resp
+
+
 class Sessions(sf_api.Resource):
     @verify_token
     def get(self):
@@ -734,6 +849,7 @@ api.add_resource(ConsolesDirectVirtViewer, '/console/direct/<source>/<uuid>/cons
 api.add_resource(ConsolesProxyVirtViewer, '/console/proxy/<source>/<uuid>/console.vv')
 api.add_resource(ConsolesTerminate, '/console/<source>/<uuid>/terminate')
 api.add_resource(NovaToken, '/nova-console.vv')
+api.add_resource(SfToken, '/sf-console.vv')
 api.add_resource(Sessions, '/session')
 api.add_resource(SessionTerminate, '/session/<session>/terminate')
 api.add_resource(Sources, '/source')

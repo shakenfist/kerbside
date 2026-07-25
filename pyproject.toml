@@ -149,7 +149,12 @@ test = [
     "grpcio-tools==1.82.1",            # apache2
     "mypy-protobuf==5.1.0",           # apache2
 
-    "shakenfist-client>=0.7.0.0rc6",   # apache2
+    # The Shaken Fist source calls
+    # shakenfist_client.get_vdi_token_public_keys() (sources/shakenfist.py),
+    # added in shakenfist-client 0.8.3. Pin that floor so both dev and the
+    # PyPI-installing CI resolve a client that ships the method. See the
+    # VDI console tokens plan.
+    "shakenfist-client>=0.8.3",        # apache2
     #"ovirt-engine-sdk-python>=4.6.1",  # apache2
     "keystoneauth1",                   # apache2
     "openstacksdk>=4.5.0",             # apache2

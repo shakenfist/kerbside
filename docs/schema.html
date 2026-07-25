@@ -70,6 +70,18 @@
           string pid
           text message
       }
+
+      sf_token_jtis {
+          string jti PK "uuid4 hex, from the token's jti claim"
+          float expiry "epoch seconds, matches the exp claim"
+      }
+
+      sources ||--o{ sf_token_keys: "No FK; sources reloaded from YAML"
+      sf_token_keys {
+          string source PK "No FK; sources reloaded from YAML"
+          text keys_json "Shaken Fist's public_view payload, verbatim JSON"
+          float fetched_at "epoch seconds"
+      }
     </pre>
 
   <script type="module">
