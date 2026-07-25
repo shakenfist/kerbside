@@ -127,6 +127,9 @@ class SfTokenApiTestCase(testtools.TestCase):
         self.assertEqual(404, resp.status_code)
         self.assertEqual('console not found', resp.get_json()['error'])
         mock_get_console.assert_called_once_with('sf1', 'console-uuid')
+        # The single-use jti must NOT be consumed on the 404 path, so a retry
+        # after the console is scraped can still succeed.
+        mock_add_jti.assert_not_called()
 
     # --- 10. valid end-to-end exchange -----------------------------------
 
@@ -160,3 +163,30 @@ class SfTokenApiTestCase(testtools.TestCase):
         # The jti is now recorded as used.
         mock_add_jti.assert_called_once_with('jti-1', self.claims['exp'])
         mock_create_token.assert_called_once_with('sf1', 'console-uuid')
+
+    # --- 11. 404 does not burn the jti; a later retry succeeds -----------
+
+    @mock.patch('kerbside.api.db.add_audit_event')
+    @mock.patch('kerbside.api.consoletoken.create_token')
+    @mock.patch('kerbside.api.db.get_console')
+    @mock.patch('kerbside.api.db.add_sf_token_jti')
+    @mock.patch('kerbside.api.db.sf_token_jti_exists', return_value=False)
+    def test_404_does_not_burn_jti_retry_succeeds(
+            self, mock_exists, mock_add_jti, mock_get_console,
+            mock_create_token, mock_audit):
+        mock_create_token.return_value = {
+            'token': 'minted-consoletoken', 'session_id': 'sess-1'}
+
+        # First attempt: console not yet scraped -> 404, jti NOT consumed.
+        mock_get_console.return_value = None
+        resp = self.client.get('/sf-console.vv?token=some.jwt.value')
+        self.assertEqual(404, resp.status_code)
+        mock_add_jti.assert_not_called()
+
+        # Second attempt after the next scrape lands the console: the same
+        # token now exchanges successfully because its jti was never burned.
+        mock_get_console.return_value = {
+            'source': 'sf1', 'uuid': 'console-uuid'}
+        resp = self.client.get('/sf-console.vv?token=some.jwt.value')
+        self.assertEqual(200, resp.status_code)
+        mock_add_jti.assert_called_once_with('jti-1', self.claims['exp'])

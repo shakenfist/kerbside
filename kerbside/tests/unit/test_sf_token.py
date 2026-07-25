@@ -102,6 +102,10 @@ class VerifySfTokenTestCase(testtools.TestCase):
 
         self.audience = sf_token.expected_audience()
 
+        # Reset the module-level refetch debounce so each test starts able to
+        # refetch (see sf_token._REFETCH_COOLDOWN_SECONDS).
+        sf_token._last_refetch_attempt = 0.0
+
     def _make_token(
             self, private_pem=None, kid=None, aud=None, exp=None,
             sub='console-uuid', jti='jti-1', alg=SIGNING_ALG):
@@ -182,6 +186,36 @@ class VerifySfTokenTestCase(testtools.TestCase):
         mock_refresh.assert_called_once_with()
         self.assertEqual(self.SOURCE_NAME, result['source'])
         self.assertEqual('console-uuid', result['sub'])
+
+    # --- 6b. unknown kid, refetch debounced within cooldown ----------------
+
+    def test_unknown_kid_refetch_throttled_within_cooldown(self):
+        # A refetch just happened; a second unknown-kid token within the
+        # cooldown window must NOT trigger another outbound refetch. This is
+        # the debounce that removes the unauthenticated amplification vector.
+        token = self._make_token(kid='never-cached')
+        sf_token._last_refetch_attempt = time.time()
+        with mock.patch.object(
+                sf_token, 'refresh_all_signing_keys') as mock_refresh:
+            self.assertRaises(
+                sf_token.UnknownKid, sf_token.verify_sf_token, token)
+        mock_refresh.assert_not_called()
+
+    # --- 6c. signed by a trusted key but missing a required claim ----------
+
+    def test_missing_required_claim_raises_malformed(self):
+        # Correctly signed by the trusted key but with no 'sub' claim: reject
+        # cleanly as Malformed rather than KeyError-ing into a 500.
+        claims = {
+            'jti': 'jti-1',
+            'aud': self.audience,
+            'exp': int(time.time()) + 300,
+        }
+        token = jwt.encode(
+            claims, self.private_pem, algorithm=SIGNING_ALG,
+            headers={'kid': self.kid})
+        self.assertRaises(
+            sf_token.Malformed, sf_token.verify_sf_token, token)
 
     # --- 7. malformed ------------------------------------------------------
 

@@ -13,6 +13,7 @@
 # in a log line or an exception message. Public keys are fine to log.
 
 import json
+import time
 
 import jwt
 import yaml
@@ -54,6 +55,14 @@ class WrongAudience(SfTokenError):
 # present in any cached key set" -- distinct from a verification failure, so
 # verify_sf_token can decide whether to refetch and retry.
 _KID_UNKNOWN = None
+
+# Debounce window (seconds) for the unknown-kid key refetch. See
+# verify_sf_token for why this bounds an unauthenticated amplification vector.
+_REFETCH_COOLDOWN_SECONDS = 60
+
+# Wall-clock time of the last refetch attempt, per worker process. Reset by
+# tests via sf_token._last_refetch_attempt = 0.0.
+_last_refetch_attempt = 0.0
 
 
 def expected_audience():
@@ -110,13 +119,19 @@ def _verify_with_cached(token, kid):
     for source_name, public_pem in candidates:
         try:
             payload = jwt.decode(
-                token, public_pem, algorithms=['EdDSA'], audience=audience)
+                token, public_pem, algorithms=['EdDSA'], audience=audience,
+                options={'require': ['sub', 'jti', 'exp', 'aud']})
         except jwt.ExpiredSignatureError:
             # Definitive: the signature was valid but the token has expired.
             raise Expired('token has expired')
         except jwt.InvalidAudienceError:
             # Definitive: the signature was valid but the audience is wrong.
             raise WrongAudience('token audience is not accepted here')
+        except jwt.MissingRequiredClaimError:
+            # Definitive: signed by a trusted key but missing a mandatory
+            # claim. Reject cleanly rather than KeyError-ing into a 500 when
+            # the claims are read below.
+            raise Malformed('token is missing a required claim')
         except jwt.InvalidSignatureError:
             # This key did not sign the token; try the next candidate.
             continue
@@ -156,6 +171,20 @@ def verify_sf_token(token):
         # Unknown kid: the signing key may have rotated. Refetch every
         # shakenfist source's keys once, then retry. This is the only path
         # in verification that touches Shaken Fist.
+        #
+        # SECURITY: /sf-console.vv is unauthenticated and the kid comes from
+        # the unverified token header, so an attacker can stream tokens with
+        # random kids. Debounce the refetch to at most one per cooldown per
+        # worker so a crafted request cannot be amplified into an outbound
+        # call to every shakenfist source on every request. Legitimate key
+        # rotation is rare and tokens live minutes, so a short cooldown keeps
+        # rotation tolerance.
+        global _last_refetch_attempt
+        now = time.time()
+        if now - _last_refetch_attempt < _REFETCH_COOLDOWN_SECONDS:
+            raise UnknownKid('no signing key matches the token kid')
+        _last_refetch_attempt = now
+
         LOG.with_fields({'kid': kid}).info(
             'Unknown signing kid; refetching keys once')
         refresh_all_signing_keys()

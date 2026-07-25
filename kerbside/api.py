@@ -691,14 +691,32 @@ class SfToken(sf_api.Resource):
             _reject_pre_verify('token rejected')
             return sf_api.error(401, 'token rejected')
 
-        # Single-use: reject a replayed jti. The existence check covers the
-        # common case; the insert's ReusedJti guards the concurrent
-        # double-exchange race (the primary key is the real guard).
+        # Single-use replay fast-path: reject a jti we have already recorded.
+        # This is a read and does not consume the token, so it is safe to run
+        # before the console lookup.
         if db.sf_token_jti_exists(claims['jti']):
             db.add_audit_event(
                 claims['source'], claims['sub'], None, None, None, None,
                 'Rejected Shaken Fist console token: token already used')
             return sf_api.error(401, 'token already used')
+
+        # Look the console up BEFORE consuming the jti. Shaken Fist consoles
+        # are scraped (every 60s), never created here, and a token outlives a
+        # scrape gap -- so a valid token for a not-yet-scraped console must
+        # 404 WITHOUT burning its single-use jti, leaving a later retry able
+        # to succeed once the console appears. get_console keys on uuid alone,
+        # so assert the row's source matches the source whose key verified the
+        # token (defence against uuid reuse across sources).
+        c = db.get_console(claims['source'], claims['sub'])
+        if c is None or c.get('source') != claims['source']:
+            db.add_audit_event(
+                claims['source'], claims['sub'], None, None, None, None,
+                'Rejected Shaken Fist console token: console not found')
+            return sf_api.error(404, 'console not found')
+
+        # Now that there is a console to issue for, consume the jti. The
+        # insert's ReusedJti (primary-key collision) is the authoritative
+        # guard for the concurrent double-exchange race.
         try:
             db.add_sf_token_jti(claims['jti'], claims['exp'])
         except db.ReusedJti:
@@ -706,17 +724,6 @@ class SfToken(sf_api.Resource):
                 claims['source'], claims['sub'], None, None, None, None,
                 'Rejected Shaken Fist console token: token already used')
             return sf_api.error(401, 'token already used')
-
-        # Look the console up -- Shaken Fist consoles are scraped, never
-        # created here. get_console keys on uuid alone, so assert the row's
-        # source matches the source whose key verified the token (defence
-        # against uuid reuse across sources).
-        c = db.get_console(claims['source'], claims['sub'])
-        if c is None or c.get('source') != claims['source']:
-            db.add_audit_event(
-                claims['source'], claims['sub'], None, None, None, None,
-                'Rejected Shaken Fist console token: console not found')
-            return sf_api.error(404, 'console not found')
 
         # Issue exactly as the Nova path does: mint a kerbside consoletoken and
         # build the proxy .vv from kerbside config, never from the token.
