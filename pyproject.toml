@@ -42,7 +42,7 @@ dependencies = [
     "flask-request-id-middleware==1.1", # mit
     "pyyaml==6.0.3",                    # mit
     "psutil==7.0.0",                    # bsd
-    "PyMySQL==1.1.1",                   # mit
+    "PyMySQL==1.2.0",                   # mit
     "webargs==8.3.0",                   # mit
 
     # These must move as a set
