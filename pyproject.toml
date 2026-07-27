@@ -100,7 +100,7 @@ dependencies = [
     "oslo.config==10.3.0",
     "oslo.i18n==6.7.2",
     "oslo.utils==10.1.1",
-    "packaging==26.0",
+    "packaging==26.2",
     "pbr==7.0.3",
     "pycparser==3.0",
     "pylogrus==0.4.0",
