@@ -41,7 +41,7 @@ dependencies = [
     "gunicorn==22.0.0",                 # mit
     "flask-request-id-middleware==1.1", # mit
     "pyyaml==6.0.3",                    # mit
-    "psutil==7.0.0",                    # bsd
+    "psutil==7.2.2",                    # bsd
     "PyMySQL==1.2.0",                   # mit
     "webargs==8.3.0",                   # mit
 
