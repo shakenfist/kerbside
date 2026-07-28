@@ -1505,7 +1505,7 @@ dependencies = [
 [[package]]
 name = "shakenfist-spice-protocol"
 version = "0.1.7"
-source = "git+https://github.com/shakenfist/ryll?rev=f4cf52fff11c119479abce89dad31c624b7b935e#f4cf52fff11c119479abce89dad31c624b7b935e"
+source = "git+https://github.com/shakenfist/ryll?rev=24e26d0d4a70a250169b1e24fd21092417668b0b#24e26d0d4a70a250169b1e24fd21092417668b0b"
 dependencies = [
  "anyhow",
  "byteorder",
