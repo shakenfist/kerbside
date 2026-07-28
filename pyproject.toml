@@ -98,7 +98,7 @@ dependencies = [
     "netaddr==1.3.0",
     "oslo.concurrency==7.6.1",
     "oslo.config==10.3.0",
-    "oslo.i18n==6.7.2",
+    "oslo.i18n==6.9.0",
     "oslo.utils==10.1.1",
     "packaging==26.2",
     "pbr==7.0.3",
