@@ -49,7 +49,7 @@ dependencies = [
     "pydantic==2.12.4",                 # mit
     "pydantic-settings==2.14.2",        # mit
     "pydantic-core==2.41.5",            # (indirect dependency)
-    "typing-extensions==4.14.1",        # (indirect dependency)
+    "typing-extensions==4.16.0",        # (indirect dependency)
 
     # These also move as a set
     "alembic==1.17.2",                  # mit
