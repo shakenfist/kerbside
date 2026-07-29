@@ -106,7 +106,7 @@ dependencies = [
     "pylogrus==0.4.0",
     "pyparsing==3.3.2",
     "referencing==0.37.0",
-    "requests==2.33.0",
+    "requests==2.34.2",
     "rfc3986==2.0.0",
     "rpds-py==0.30.0",
     "six==1.17.0",
