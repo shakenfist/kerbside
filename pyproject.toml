@@ -59,7 +59,7 @@ dependencies = [
     # gRPC service (KerbsideProxy) fronting the database for the proxy.
     # protobuf is pinned to the version the checked-in stubs were
     # generated against; regenerate via `tox -egenprotos` if bumped.
-    "grpcio==1.82.1",                   # apache2
+    "grpcio==1.83.0",                   # apache2
     "protobuf==7.35.1",                 # bsd
 
     # Optional dependancies, depending on what clouds you want to provide access to
@@ -146,7 +146,7 @@ test = [
 
     # protobuf / gRPC code generation (tox -egenprotos). Pinned to
     # match the runtime grpcio/protobuf so regeneration is deterministic.
-    "grpcio-tools==1.82.1",            # apache2
+    "grpcio-tools==1.83.0",            # apache2
     "mypy-protobuf==5.1.0",           # apache2
 
     # The Shaken Fist source calls
