@@ -412,6 +412,16 @@ tools/                 # Utility scripts (incl. run-tempest-tests)
                        #   tempest.conf, run test_sextant_scenario —
                        #   last step in the direct-qemu workflow
     rebuild-sextant-qcow2.sh  # Developer tool: refresh Sextant qcow2
+  sf-e2e/              # Shaken Fist end-to-end CI lane (phase 9): drive a
+                       #   real SF cluster + co-located kerbside
+    provision-sf.sh    # Set KERBSIDE_URL + signing key, restart sf-api
+    gen-sources.py     # Write the type: shakenfist sources.yaml
+    deploy-kerbside.sh # Build ryll, venv-install kerbside, reuse
+                       #   direct-qemu/start-kerbside.sh on the primary
+    import-instance.sh # Upload Sextant, boot a UEFI+SPICE SF instance
+    drive-happy-path.py    # Mint → verify → exchange → proxied session
+    drive-adversarial.py   # replay/expired/aud/kid/cross-namespace
+    gather-artifacts.sh    # Collect logs from the primary (no token)
 tests/
   fixtures/            # Committed test fixtures
     uncalibrated-sextant.qcow2  # Sextant UEFI guest image for CI

@@ -218,6 +218,27 @@ tears it down before the scenario lane starts, exactly as
 `verify-terminate-live.sh` does. This is distinct from the local mock
 harness (`VERIFY-RUST-PROXY.md`), which needs no daemon or database.
 
+### Shaken Fist end-to-end lane (`sf-e2e`)
+
+`.github/workflows/sf-e2e-functional.yml` (dispatch- and nightly-scheduled,
+NOT a PR gate — phase 9 decision 4) is the only lane that exercises the
+`type: shakenfist` console source against a real cluster. It stands up a
+single-node Shaken Fist at develop HEAD (`build-smoke-cluster`, topology
+`localhost`), then `shakenfist/actions/deploy-kerbside-on-shakenfist`
+provisions `KERBSIDE_URL` + a signing key in SF and deploys a co-located
+kerbside (reusing `tools/direct-qemu/start-kerbside.sh`, with the SF token
+audience exported). The primary-side drivers live in `tools/sf-e2e/`:
+`provision-sf.sh`, `gen-sources.py`, `deploy-kerbside.sh`,
+`import-instance.sh` (uploads the Sextant fixture, boots a UEFI+SPICE
+instance), `drive-happy-path.py` (mint → offline verify → exchange →
+proxied SPICE session, reusing `smoke-client.py` + `wait-for-banner.sh`,
+then asserts a session audit row and clean teardown), and
+`drive-adversarial.py` (replay, expired, wrong audience, unknown kid,
+cross-namespace mint). `KERBSIDE_URL` and `SF_CONSOLE_TOKEN_AUDIENCE` must
+match byte-for-byte (`http://127.0.0.1:13002`). No script logs the token or
+key material. See `tools/sf-e2e/README.md` and
+`docs/plans/PLAN-kerbside-vdi-tokens-phase-09-e2e.md`.
+
 ### Modifying SPICE Protocol Handling
 
 SPICE wire-format parsing lives in the Rust proxy, which reuses the ryll

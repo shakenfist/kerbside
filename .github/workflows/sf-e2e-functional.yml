@@ -1,0 +1,119 @@
+name: Shaken Fist end-to-end functional test
+
+permissions:
+  contents: read
+
+# Dispatch- and schedule-gated only (phase 9 decision 4): the deploy is
+# heavy, so this is NOT a pull_request gate until it is shown stable.
+on:
+  workflow_dispatch:
+    inputs:
+      retention:
+        description: 'Minutes to retain the environment after the run'
+        required: false
+        default: '0'
+  schedule:
+    # Nightly at 02:30 UTC.
+    - cron: '30 2 * * *'
+
+jobs:
+  sf-e2e:
+    runs-on: [self-hosted, vm, debian-12, l]
+    timeout-minutes: 120
+
+    # The single-node SF API and kerbside both live on the primary and are
+    # reached over the primary's localhost; the well-known CI system key is
+    # what build-smoke-cluster provisions by default.
+    env:
+      SYSTEM_KEY: ci-system-key-do-not-use-in-production-ci-system-key
+      KERBSIDE_URL: http://127.0.0.1:13002
+      TOKEN_DURATION: '300'
+
+    steps:
+      - name: Setup test environment
+        uses: shakenfist/actions/setup-test-environment@main
+
+      - name: Build the smoke cluster
+        id: cluster
+        timeout-minutes: 90
+        uses: shakenfist/actions/build-smoke-cluster@main
+        with:
+          topology: localhost
+          system_key: ${{ env.SYSTEM_KEY }}
+
+      - name: Checkout kerbside
+        uses: actions/checkout@v4
+        with:
+          path: kerbside
+          fetch-depth: 0
+
+      - name: Install proxy-wheel build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install maturin and ziglang
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/wheelvenv"
+          "${RUNNER_TEMP}/wheelvenv/bin/pip" install --quiet --upgrade pip maturin ziglang
+          echo "${RUNNER_TEMP}/wheelvenv/bin" >> "$GITHUB_PATH"
+
+      - name: Build the PR's proxy wheel (manylinux, matches the PyPI artifact)
+        run: |
+          WHEEL_OUT="${GITHUB_WORKSPACE}/kerbside/dist/proxy-wheels" \
+              "${GITHUB_WORKSPACE}/kerbside/tools/build-proxy-wheel.sh" "$(uname -m)"
+
+      - name: Deploy kerbside on the Shaken Fist primary
+        uses: shakenfist/actions/deploy-kerbside-on-shakenfist@main
+        with:
+          base_user: debian
+          primary: ${{ steps.cluster.outputs.primary }}
+          system_key: ${{ env.SYSTEM_KEY }}
+          kerbside_public_fqdn: ${{ env.KERBSIDE_URL }}
+          token_duration: ${{ env.TOKEN_DURATION }}
+          kerbside_src: ${{ github.workspace }}/kerbside
+          proxy_wheel: ${{ github.workspace }}/kerbside/dist/proxy-wheels/*.whl
+
+      - name: Import and boot the Sextant instance
+        run: |
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              debian@${{ steps.cluster.outputs.primary }} \
+              'bash /tmp/sf-e2e/kerbside/tools/sf-e2e/import-instance.sh'
+
+      - name: Drive the happy path
+        run: |
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              debian@${{ steps.cluster.outputs.primary }} \
+              '/tmp/sf-e2e/venv/bin/python3 /tmp/sf-e2e/kerbside/tools/sf-e2e/drive-happy-path.py'
+
+      - name: Drive the adversarial matrix
+        run: |
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              debian@${{ steps.cluster.outputs.primary }} \
+              '/tmp/sf-e2e/venv/bin/python3 /tmp/sf-e2e/kerbside/tools/sf-e2e/drive-adversarial.py'
+
+      - name: Gather artifacts
+        if: always()
+        run: |
+          "${GITHUB_WORKSPACE}/kerbside/tools/sf-e2e/gather-artifacts.sh" \
+              debian ${{ steps.cluster.outputs.primary }} /tmp/sf-e2e-artifacts
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sf-e2e-artifacts-${{ github.run_id }}
+          retention-days: 90
+          if-no-files-found: warn
+          path: /tmp/sf-e2e-artifacts/
+
+      - name: Retain the environment if requested
+        if: github.event_name == 'workflow_dispatch'
+        run: sleep $(( $MINUTES * 60 ))
+        env:
+          MINUTES: ${{ inputs.retention }}

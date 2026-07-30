@@ -32,6 +32,18 @@ This installs the Python control plane and a matching prebuilt
 [docs/installation.md](https://github.com/shakenfist/kerbside/blob/develop/docs/installation.md)
 for the packaging details, OS-level dependencies, and deployment pointers.
 
+The Shaken Fist console source is additionally covered end to end by the
+`sf-e2e` lane (`.github/workflows/sf-e2e-functional.yml`, dispatch- and
+nightly-scheduled). It stands up a real single-node Shaken Fist (via
+`shakenfist/actions/build-smoke-cluster`), provisions `KERBSIDE_URL` + a
+signing key, deploys a co-located kerbside with a `type: shakenfist`
+source (`shakenfist/actions/deploy-kerbside-on-shakenfist`), and drives an
+SF-minted token through offline verification, exchange, and a proxied
+SPICE session against the Sextant guest booted inside the SF instance,
+plus an adversarial matrix (replay, expired, wrong audience, unknown kid,
+cross-namespace mint). Driver scripts live in `tools/sf-e2e/` (see
+`tools/sf-e2e/README.md`).
+
 ## Documentation
 
 In the [docs/](https://github.com/shakenfist/kerbside/blob/develop/docs/index.md)

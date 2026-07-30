@@ -33,7 +33,7 @@ when each phase starts:
 | 6. Cluster-wide scrape + host_subject for SF consoles | [PLAN-kerbside-vdi-tokens-phase-06-scrape.md](PLAN-kerbside-vdi-tokens-phase-06-scrape.md) | Done |
 | 7. Functional test: Shaken Fist mint path (SF-side only; kerbside exchange lane moved to phase 9) | [PLAN-kerbside-vdi-tokens-phase-07-ci.md](PLAN-kerbside-vdi-tokens-phase-07-ci.md) | Done |
 | 8. Documentation (shared phase; here: console-sources.md rewrite) | [PLAN-kerbside-vdi-tokens-phase-08-docs.md](PLAN-kerbside-vdi-tokens-phase-08-docs.md) | Done |
-| 9. Full cross-repo end-to-end lane + kerbside exchange/proxy lane + KERBSIDE_URL provisioning (real SF, post-merge) | PLAN-kerbside-vdi-tokens-phase-09-e2e.md | Not started |
+| 9. Full cross-repo end-to-end lane + kerbside exchange/proxy lane + KERBSIDE_URL provisioning (real SF, post-merge) | [PLAN-kerbside-vdi-tokens-phase-09-e2e.md](PLAN-kerbside-vdi-tokens-phase-09-e2e.md) | In progress |
 
 Phases 0-4 (token format decisions, cluster signing key,
 vdiconsoleproxy endpoint, pip-installable ryll, and
