@@ -45,10 +45,13 @@ dependencies = [
     "PyMySQL==1.2.0",                   # mit
     "webargs==8.7.1",                   # mit
 
-    # These must move as a set
+    # These must move as a set. pydantic-core is deliberately NOT pinned
+    # here: each pydantic release exact-pins its matching pydantic-core, so
+    # a pin of our own is either redundant or conflicting (see PR #198).
+    # The pin-indirect-dependencies workflow and renovate.json both know to
+    # leave pydantic-core alone.
     "pydantic==2.13.4",                 # mit
     "pydantic-settings==2.14.2",        # mit
-    "pydantic-core==2.47.0",            # (indirect dependency)
     "typing-extensions==4.16.0",        # (indirect dependency)
 
     # These also move as a set

@@ -101,6 +101,14 @@ jobs:
             dep=$(echo ${depver} | sed 's/==.*//')
             depre=$(echo ${dep} | sed -E 's/[-_.]+/[-_.]/g')
 
+            # NOTE(mikal): pydantic exact-pins its matching pydantic-core
+            # release, so a pin of our own is either redundant or
+            # conflicting -- Renovate bumping the two out of lockstep broke
+            # resolution entirely (see PR #198). Never re-add this pin.
+            if [ "${dep}" = "pydantic_core" -o "${dep}" = "pydantic-core" ]; then
+              continue
+            fi
+
             if [ $(egrep -ic "\"${depre}==" pyproject.toml) -lt 1 ]; then
               sed -i "s/    # END_OF_INDIRECT_DEPS/    \"${depver}\",\n    # END_OF_INDIRECT_DEPS/" pyproject.toml
             fi

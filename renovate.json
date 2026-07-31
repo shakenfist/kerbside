@@ -26,6 +26,14 @@
       ]
     },
     {
+      "description": "pydantic exact-pins its matching pydantic-core release, so it must never be updated independently -- doing so always breaks dependency resolution (see PR #198). pyproject.toml deliberately carries no pydantic-core pin; this rule stops Renovate proposing one or bumping a stray pin if one ever reappears.",
+      "matchPackageNames": [
+        "pydantic-core",
+        "pydantic_core"
+      ],
+      "enabled": false
+    },
+    {
       "description": "Group SQLAlchemy ecosystem updates together",
       "groupName": "sqlalchemy",
       "matchPackageNames": [
