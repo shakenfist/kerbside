@@ -361,6 +361,13 @@ When adding a new direct dependency to `pyproject.toml`, place it in the main
 dependencies list above the "Indirect dependencies" comment. Do not place it
 after the `# END_OF_INDIRECT_DEPS` marker.
 
+**Exception: pydantic-core is deliberately never pinned.** Each pydantic
+release exact-pins (`==`) its matching pydantic-core, so a pin of our own is
+either redundant or conflicting — Renovate bumping the two out of lockstep
+broke all CI installs (PR #198). The pin-indirect-dependencies workflow skips
+pydantic-core, and renovate.json disables updates for it. Do not re-add a
+pydantic-core pin to `pyproject.toml`.
+
 ## External Dependencies
 
 ### Required Python Packages
