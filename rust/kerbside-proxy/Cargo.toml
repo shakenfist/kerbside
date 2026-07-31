@@ -67,7 +67,7 @@ uuid = { version = "1", features = ["v4"] }
 # the vulnerable `protobuf` transitive dependency (GHSA-2gh3-rmm4-6rq5) out
 # of the tree: metrics.rs only uses the text exposition format via
 # TextEncoder, never the ProtobufEncoder the default feature gates.
-prometheus = { version = "0.13", default-features = false }
+prometheus = { version = "0.14", default-features = false }
 
 [dev-dependencies]
 # `test-util` enables `#[tokio::test(start_paused = true)]`, used by the relay
