@@ -85,9 +85,15 @@ class ShakenFistSource(base.BaseSource):
 
         # We need to be an admin user to lookup the hypervisors
         system_client = self._make_client('system')
+
+        # Shaken Fist identifies nodes by UUID: an instance's ``node`` field
+        # is a node UUID (taken from its placement), whereas a node's ``name``
+        # is its fqdn. Key the map by UUID so ``inst['node']`` resolves; keying
+        # by name never matches and every console is dropped as "node not in
+        # the node map".
         nodes = {}
         for node in system_client.get_nodes():
-            nodes[node['name']] = node
+            nodes[node['uuid']] = node
 
         # Discover instances. Under the system credential we scrape the
         # whole cluster so every namespace's consoles are reachable;
@@ -131,12 +137,12 @@ class ShakenFistSource(base.BaseSource):
             # reject the backend.
             host_subject = node.get('spice_server_cert_subject') or None
             if not host_subject and self.args.get('synthesize_host_subject'):
-                host_subject = 'CN=%s' % inst['node']
+                host_subject = 'CN=%s' % node['fqdn']
 
             yield {
                 'uuid': inst['uuid'],
                 'source': self.args['source'],
-                'hypervisor': inst['node'],
+                'hypervisor': node['fqdn'],
                 'hypervisor_ip': node['ip'],
                 'insecure_port': inst['vdi_port'],
                 'secure_port': inst['vdi_tls_port'],

@@ -71,7 +71,8 @@ class FetchSigningKeysTestCase(testtools.TestCase):
         self.assertEqual('sf-other', call_args[0])
 
 
-def _instance(node='n1', namespace='proj', uuid='u1', name='vm1'):
+def _instance(node='node-uuid-1', namespace='proj', uuid='u1', name='vm1'):
+    # Shaken Fist reports the placement node as a UUID, not a hostname.
     return {
         'uuid': uuid,
         'state': 'created',
@@ -82,6 +83,15 @@ def _instance(node='n1', namespace='proj', uuid='u1', name='vm1'):
         'name': name,
         'namespace': namespace,
     }
+
+
+def _node(fqdn='n1', uuid='node-uuid-1', ip='10.0.0.1', cert_subject=None):
+    # Mirror Shaken Fist's node external_view: a UUID plus an fqdn exposed as
+    # both 'name' and 'fqdn'. Instances reference the node by its UUID.
+    node = {'uuid': uuid, 'name': fqdn, 'fqdn': fqdn, 'ip': ip}
+    if cert_subject is not None:
+        node['spice_server_cert_subject'] = cert_subject
+    return node
 
 
 class ScrapeTestCase(testtools.TestCase):
@@ -110,8 +120,7 @@ class ScrapeTestCase(testtools.TestCase):
     def test_scrape_uses_all_true_under_system_credential(self):
         src = self._make_bare_source(username='system')
         system_client = self._system_client(
-            {'name': 'n1', 'ip': '10.0.0.1',
-             'spice_server_cert_subject': 'CN=n1'})
+            _node(cert_subject='CN=n1'))
         system_client.get_instances.return_value = [_instance()]
 
         with mock.patch.object(
@@ -120,14 +129,16 @@ class ScrapeTestCase(testtools.TestCase):
 
         system_client.get_instances.assert_called_once_with(all=True)
         self.assertEqual(1, len(consoles))
+        # The hypervisor is the node fqdn (a connectable host), resolved from
+        # the instance's node UUID -- never the UUID itself.
         self.assertEqual('n1', consoles[0]['hypervisor'])
+        self.assertNotEqual('node-uuid-1', consoles[0]['hypervisor'])
         self.assertEqual('10.0.0.1', consoles[0]['hypervisor_ip'])
         self.assertEqual('CN=n1', consoles[0]['host_subject'])
 
     def test_scrape_namespaced_under_non_system_credential(self):
         src = self._make_bare_source(username='proj')
-        system_client = self._system_client(
-            {'name': 'n1', 'ip': '10.0.0.1'})
+        system_client = self._system_client(_node())
         ns_client = mock.Mock()
         ns_client.get_instances.return_value = [_instance()]
 
@@ -144,7 +155,7 @@ class ScrapeTestCase(testtools.TestCase):
 
     def test_host_subject_none_when_node_lacks_field(self):
         src = self._make_bare_source(username='system')
-        system_client = self._system_client({'name': 'n1', 'ip': '10.0.0.1'})
+        system_client = self._system_client(_node())
         system_client.get_instances.return_value = [_instance()]
 
         with mock.patch.object(
@@ -156,7 +167,7 @@ class ScrapeTestCase(testtools.TestCase):
     def test_host_subject_synthesized_when_flag_set(self):
         src = self._make_bare_source(
             username='system', synthesize_host_subject=True)
-        system_client = self._system_client({'name': 'n1', 'ip': '10.0.0.1'})
+        system_client = self._system_client(_node())
         system_client.get_instances.return_value = [_instance()]
 
         with mock.patch.object(
@@ -169,8 +180,7 @@ class ScrapeTestCase(testtools.TestCase):
         src = self._make_bare_source(
             username='system', synthesize_host_subject=True)
         system_client = self._system_client(
-            {'name': 'n1', 'ip': '10.0.0.1',
-             'spice_server_cert_subject': 'C=US,CN=n1'})
+            _node(cert_subject='C=US,CN=n1'))
         system_client.get_instances.return_value = [_instance()]
 
         with mock.patch.object(
@@ -181,8 +191,9 @@ class ScrapeTestCase(testtools.TestCase):
 
     def test_instance_on_unknown_node_skipped(self):
         src = self._make_bare_source(username='system')
-        system_client = self._system_client({'name': 'n1', 'ip': '10.0.0.1'})
-        system_client.get_instances.return_value = [_instance(node='ghost')]
+        system_client = self._system_client(_node())
+        system_client.get_instances.return_value = [
+            _instance(node='node-uuid-ghost')]
 
         with mock.patch.object(
                 src, '_make_client', return_value=system_client):
