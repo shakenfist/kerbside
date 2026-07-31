@@ -17,7 +17,7 @@ path = "src/main.rs"
 # ConnectionConfig.host_subject during the TLS handshake). Cargo resolves the
 # workspace member by package name and builds only it plus its dependency
 # subtree, not the ryll GUI binary.
-shakenfist-spice-protocol = { git = "https://github.com/shakenfist/ryll", rev = "3800d2b3d8c451319d50a97e9acca498013328f0" }
+shakenfist-spice-protocol = { git = "https://github.com/shakenfist/ryll", rev = "0f297a68d73115fac15e07f8c751ad6754a88810" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "macros", "signal", "sync"] }
 tokio-rustls = "0.26"
