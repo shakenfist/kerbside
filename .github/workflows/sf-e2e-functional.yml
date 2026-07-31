@@ -113,7 +113,9 @@ jobs:
           path: /tmp/sf-e2e-artifacts/
 
       - name: Retain the environment if requested
-        if: github.event_name == 'workflow_dispatch'
+        # always() so a failed run still lingers for debugging -- that is
+        # exactly when a live environment is most useful.
+        if: always() && github.event_name == 'workflow_dispatch'
         run: sleep $(( $MINUTES * 60 ))
         env:
           MINUTES: ${{ inputs.retention }}
