@@ -81,7 +81,7 @@ tokio-stream = { version = "0.1", features = ["net", "sync"] }
 tempfile = "3"
 # The tls.rs unit test generates a self-signed cert/key pair to exercise
 # load_acceptor end to end without a checked-in fixture.
-rcgen = "0.13"
+rcgen = "0.14"
 
 [build-dependencies]
 # tonic-build 0.12 matches tonic 0.12. protoc-bin-vendored ships a protoc
