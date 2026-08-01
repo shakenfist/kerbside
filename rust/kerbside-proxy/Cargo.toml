@@ -34,7 +34,7 @@ rustls-pemfile = "2"
 # gRPC client for the KerbsideProxy control service over the UDS. tonic 0.12
 # pairs with prost 0.13 (and tonic-build 0.12 below); this is the standard
 # mutually-compatible trio.
-tonic = "0.12"
+tonic = "0.14"
 prost = "0.13"
 # tonic has no `unix:` transport, so the UDS channel is built from a custom
 # tower connector that dials a tokio UnixStream; hyper-util's TokioIo adapts
