@@ -42,7 +42,7 @@ jobs:
           system_key: ${{ env.SYSTEM_KEY }}
 
       - name: Checkout kerbside
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: kerbside
           fetch-depth: 0

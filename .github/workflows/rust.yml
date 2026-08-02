@@ -38,7 +38,7 @@ jobs:
         # the rustls `ring` provider needs no OpenSSL.
         working-directory: rust/kerbside-proxy
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install build prerequisites
         run: |

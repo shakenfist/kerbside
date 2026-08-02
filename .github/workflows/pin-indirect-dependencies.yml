@@ -43,7 +43,7 @@ jobs:
           echo "SHAKENFIST_NAMESPACE=$(hostname)" >> $GITHUB_ENV
 
       - name: Checkout kerbside
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: kerbside
           fetch-depth: 0
