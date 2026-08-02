@@ -302,8 +302,46 @@ bring-up fixes 1e produces, each self-contained.
 ## Status
 
 Steps 1a-1d implemented 2026-08-02 on branch
-`ovirt-lane-kerbside`. Step 1e (bring-up) has not started:
-the lane has never run, so nothing here is proven yet.
+`ovirt-lane-kerbside`. Step 1e (bring-up) is in progress.
+
+### Bring-up iterations
+
+**Run 1 — [30763222820][r1], dispatch, failed at "Build ryll
+from source" (step 29 of 35).**
+
+Everything up to and including the new pre-flight steps
+passed, which settles three of the plan's assumptions
+against a live environment rather than against last week's
+log: the host certificate subject is still
+`O=local,CN=ovirt.local` and still parses, the
+`10.0.2.2 ovirt.local` line lands in `/etc/hosts`, and both
+`10.0.2.2:5900` and `:5901` accept a connection from the
+runner. The proxy wheel also built.
+
+ryll then failed to compile: its `audiopus_sys` dependency
+survives `--no-default-features`, `pkg-config` finds no
+system Opus on the runner, so the build script falls back
+to compiling Opus itself and panics with ``is `cmake` not
+installed?``. The prerequisite step had been copied from
+`openstack_matrix`, which builds only the wheel and so
+needs nothing beyond `build-essential` and `pkg-config`.
+
+Fix: install the same prerequisite set
+`direct-qemu-functional.yml` uses, since that workflow has
+been building ryll on this runner image successfully.
+Adopting the whole list rather than adding `cmake` alone is
+deliberate — a full cycle is ~50 minutes, so discovering
+the next missing header one run at a time is the expensive
+way to do this. Batched with it: the venv `pip install` in
+`deploy-kerbside.sh` now retries up to three times, because
+`ovirt-engine-sdk-python` is first-touch for this project's
+CI and a caching index mirror can report a spurious "no
+matching distribution" on a first fetch.
+
+Nothing downstream of the ryll build has executed yet, so
+the deploy and drive scripts remain entirely unproven.
+
+[r1]: https://github.com/shakenfist/kerbside/actions/runs/30763222820
 
 Deviations from the plan as written, decided during
 implementation review:

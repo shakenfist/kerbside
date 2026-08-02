@@ -116,9 +116,25 @@ python3 -m venv "${VENV}"
 echo "[ovirt-e2e] Installing kerbside, proxy wheel, gunicorn, oVirt SDK"
 # The proxy wheel puts kerbside-proxy on the venv PATH, so the daemon's
 # find_proxy_bin() resolves it exactly as a wheel-installed deployment would.
-# shellcheck disable=SC2086
-"${VENV}/bin/pip" install --quiet \
-    "${KERBSIDE_SRC}" ${PROXY_WHEEL} gunicorn ovirt-engine-sdk-python
+#
+# Retried because ovirt-engine-sdk-python has never been installed by this
+# project's CI before -- it is deliberately not a kerbside dependency -- and a
+# first-touch package on a caching index mirror can miss the cache and report
+# a bogus "no matching distribution" on the first attempt, then succeed on the
+# next. A genuine failure still fails, just three attempts later.
+for attempt in 1 2 3; do
+    # shellcheck disable=SC2086
+    if "${VENV}/bin/pip" install --quiet \
+            "${KERBSIDE_SRC}" ${PROXY_WHEEL} gunicorn ovirt-engine-sdk-python; then
+        break
+    fi
+    if [ "${attempt}" = 3 ]; then
+        echo "ERROR: pip install failed after 3 attempts" >&2
+        exit 1
+    fi
+    echo "[ovirt-e2e] pip install failed, retrying (attempt ${attempt}/3)" >&2
+    sleep 10
+done
 
 # start-kerbside.sh invokes gunicorn, alembic, kerbside and python3 bare, so
 # they must resolve from the venv.

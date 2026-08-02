@@ -410,10 +410,25 @@ jobs:
             fi
           done
 
-      - name: Install proxy-wheel build prerequisites
+      - name: Install Rust build prerequisites
+        # build-essential and pkg-config are all the proxy wheel needs, but
+        # this lane also builds ryll, and ryll needs more. Its audiopus_sys
+        # dependency survives --no-default-features; pkg-config does not find
+        # a system Opus on the runner, so the build script falls back to
+        # compiling Opus itself via CMake and hard-fails without cmake on
+        # PATH. The -dev packages come from direct-qemu-functional.yml, which
+        # has been building ryll on this same runner image for a while:
+        # --no-default-features drops the eframe/cpal runtime libraries, but
+        # transitive build scripts still probe for the headers at compile
+        # time. Keep this list in step with that workflow.
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential pkg-config
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config \
+            libasound2-dev libxcb1-dev libxkbcommon-dev libwayland-dev \
+            libegl1-mesa-dev libgl1-mesa-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libx11-dev libssl-dev
 
       - uses: dtolnay/rust-toolchain@stable
 
