@@ -304,6 +304,25 @@ tox -e bindep
 - Use `LOG.with_fields({...}).info()` for structured logging
 - Add audit events for security-sensitive operations
 
+## Review tracking
+
+Kerbside carries whole-file human review state (`REVIEWS.md`,
+`.vscode/*.weaudit*`, `.vscode/*.weaudit-shas.json`), maintained with
+`tools/review-tracking.sh` (subcommands `stamp`, `prune`, `regen`,
+`next`, `status`), which wraps `scripts/review-tracking.py` from a
+local clone of the shakenfist/development repository. These are
+deliberately *not* wired into git hooks — in a clone they run only
+when invoked explicitly. On develop itself, the `prune-reviews`
+workflow (`.github/workflows/prune-reviews.yml`, via
+`tools/ci-prune-reviews.sh`) runs `prune` after every push and commits
+the result back as shakenfist-bot, so stale marks are dropped as PRs
+merge; the daily consistency audit in shakenfist/development files a
+`Consistency: Human review coverage` issue when five or more in-scope
+files need review. `REVIEWS.md` is generated; never edit it by hand.
+See [docs/development.md](docs/development.md) for the scope
+definition and https://github.com/shakenfist/development/blob/main/docs/code-review-tracking.md
+for the session workflow.
+
 ## Configuration
 
 Configuration is loaded from:

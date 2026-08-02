@@ -1,0 +1,43 @@
+name: Prune stale review marks
+
+# Review marks attest to exact file content, so any push to develop
+# can make some of them stale. Prune those marks and commit the
+# regenerated review state straight back as the bot: prune only ever
+# removes marks, so the commit does not need to be signed -- the
+# attestations live in the signed commits that introduced the stamps.
+# The push uses the workflow's own GITHUB_TOKEN, which does not
+# trigger workflows, so this cannot loop (and a second run would find
+# nothing to prune anyway). See the steady state section of
+# https://github.com/shakenfist/development/blob/main/docs/code-review-tracking.md
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions: {}
+
+# Serialise runs so overlapping merges cannot race the push.
+concurrency:
+  group: prune-reviews
+
+jobs:
+  prune:
+    name: Prune stale review marks
+    runs-on: [self-hosted, static]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout kerbside
+        uses: actions/checkout@v6
+
+      - name: Clone the development repository
+        run: |
+          rm -rf "${RUNNER_TEMP}/development"
+          git clone --depth 1 https://github.com/shakenfist/development \
+              "${RUNNER_TEMP}/development"
+
+      - name: Prune stale review marks
+        run: tools/ci-prune-reviews.sh
+        env:
+          SHAKENFIST_DEVELOPMENT: ${{ runner.temp }}/development

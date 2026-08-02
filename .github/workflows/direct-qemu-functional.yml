@@ -3,10 +3,18 @@ name: Direct-qemu functional test
 permissions:
   contents: read
 
+# Review-only changes touch no code the lane exercises, and this lane is
+# an hour of VM time; skip them. Keep the path list in sync with
+# codeql-analysis.yml and the .vscode whitelist in .gitignore.
 on:
   pull_request:
     branches:
       - develop
+    paths-ignore:
+      - 'REVIEWS.md'
+      - '.vscode/*.weaudit'
+      - '.vscode/*.weaudit-shas.json'
+      - '.vscode/review-scope.toml'
 
 jobs:
   direct-qemu-lane:
