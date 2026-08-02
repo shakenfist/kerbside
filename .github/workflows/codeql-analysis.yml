@@ -2,11 +2,24 @@ name: CodeQL
 
 permissions: {}
 
+# Review-only changes cannot affect code analysis; skip them. Keep the
+# path list in sync with direct-qemu-functional.yml and the .vscode
+# whitelist in .gitignore.
 on:
   push:
     branches: [develop]
+    paths-ignore:
+      - 'REVIEWS.md'
+      - '.vscode/*.weaudit'
+      - '.vscode/*.weaudit-shas.json'
+      - '.vscode/review-scope.toml'
   pull_request:
     branches: [develop]
+    paths-ignore:
+      - 'REVIEWS.md'
+      - '.vscode/*.weaudit'
+      - '.vscode/*.weaudit-shas.json'
+      - '.vscode/review-scope.toml'
   schedule:
     - cron: '0 17 * * 2'
 

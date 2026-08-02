@@ -140,10 +140,15 @@ dmypy.json
 # Deployer git repos
 deploy/gitrepos/
 
-# VS Code - ignore user-specific files but keep workspace settings
+# VS Code - ignore user-specific files but keep workspace settings and
+# the review tracking state (see shakenfist/development
+# docs/code-review-tracking.md).
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+!.vscode/*.weaudit
+!.vscode/*.weaudit-shas.json
+!.vscode/review-scope.toml
 
 # Generated version file
 kerbside/_version.py
