@@ -86,5 +86,5 @@ rcgen = "0.14"
 [build-dependencies]
 # tonic-build 0.12 matches tonic 0.12. protoc-bin-vendored ships a protoc
 # binary so the build needs no system protoc package.
-tonic-build = "0.12"
+tonic-build = "0.14"
 protoc-bin-vendored = "3"
