@@ -55,9 +55,9 @@ dependencies = [
     "typing-extensions==4.16.0",        # (indirect dependency)
 
     # These also move as a set
-    "alembic==1.17.2",                  # mit
-    "sqlalchemy==2.0.36",               # mit
-    "mysqlclient==2.1.1",               # gpl
+    "alembic==1.18.5",                  # mit
+    "sqlalchemy==2.0.51",               # mit
+    "mysqlclient==2.2.8",               # gpl
 
     # gRPC service (KerbsideProxy) fronting the database for the proxy.
     # protobuf is pinned to the version the checked-in stubs were
