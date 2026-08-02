@@ -35,7 +35,7 @@ rustls-pemfile = "2"
 # pairs with prost 0.13 (and tonic-build 0.12 below); this is the standard
 # mutually-compatible trio.
 tonic = "0.14"
-prost = "0.13"
+prost = "0.14"
 # tonic has no `unix:` transport, so the UDS channel is built from a custom
 # tower connector that dials a tokio UnixStream; hyper-util's TokioIo adapts
 # the stream to hyper's IO traits. The Uri type the connector closure is
