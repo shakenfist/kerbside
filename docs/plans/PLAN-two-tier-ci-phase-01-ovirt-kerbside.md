@@ -301,8 +301,18 @@ bring-up fixes 1e produces, each self-contained.
 
 ## Status
 
-Steps 1a-1d implemented 2026-08-02 on branch
-`ovirt-lane-kerbside`. Step 1e (bring-up) is in progress.
+**Complete.** Steps 1a-1d implemented 2026-08-02 on branch
+`ovirt-lane-kerbside`; step 1e (bring-up) finished
+2026-08-03 with runs [30776147437][r3] and
+[30785102365][r4] green back to back, which is the success
+criterion this plan set.
+
+The defect phase 1 targeted is fixed. The oVirt lane no
+longer builds an oVirt environment and then tests only that
+environment: it deploys kerbside from the PR's own source
+and proxy wheel, and relays a real SPICE session from the
+oVirt hypervisor through it, over TLS, with the hypervisor
+certificate subject pinned.
 
 ### Bring-up iterations
 
@@ -416,10 +426,10 @@ WARN, so a genuine relay error during teardown would blend
 straight into it. Worth quietening later; not phase 1's
 problem.
 
-This does not finish step 1e. The success criterion is two
-consecutive green dispatch runs, and one green could still
-be luck given the roughly 120 second oVirt ticket window
-`drive-console.py` races against.
+This does not finish step 1e on its own. The success
+criterion is two consecutive green dispatch runs, and one
+green could still be luck given the roughly 120 second
+oVirt ticket window `drive-console.py` races against.
 
 Alongside this, both `Retain the environment if requested`
 steps changed from `github.event_name == 'workflow_dispatch'`
@@ -433,9 +443,36 @@ deliberately cancelled still releases its environment.
 `openstack_matrix` had the byte-identical defect and got the
 same fix.
 
+**Run 4 — [30785102365][r4], green. Step 1e complete.**
+
+The second consecutive green, on a freshly built
+environment and a different console
+(`smoke-test-3881`, uuid `f6c265fe...`), with the same
+evidence at every stage as run 3. Two independently built
+environments producing the same result is what makes this a
+lane rather than a lucky run.
+
+Dispatched with `retention=60` to exercise the
+`!cancelled()` fix in anger. It behaved: the job ran 1h43m
+against roughly 43 minutes of actual work, the balance
+being the retention sleep, and the step reports success
+where the old condition would have skipped it on any
+failure.
+
+### Follow-up, deliberately not done here
+
+Every channel teardown logs `relay ended with error ...
+peer closed connection without sending TLS close_notify` at
+WARN. It is ryll disconnecting abruptly rather than a relay
+fault, but at WARN a genuine relay error during teardown
+would be camouflaged by it. That is a proxy logging
+question rather than a CI one, so it belongs in its own
+change against `rust/kerbside-proxy/src/relay.rs`.
+
 [r1]: https://github.com/shakenfist/kerbside/actions/runs/30763222820
 [r2]: https://github.com/shakenfist/kerbside/actions/runs/30765419311
 [r3]: https://github.com/shakenfist/kerbside/actions/runs/30776147437
+[r4]: https://github.com/shakenfist/kerbside/actions/runs/30785102365
 
 Deviations from the plan as written, decided during
 implementation review:

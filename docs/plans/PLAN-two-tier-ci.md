@@ -238,7 +238,7 @@ Phases will get detailed plan files as each is started.
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 1. oVirt lane deploys kerbside | [PLAN-two-tier-ci-phase-01-ovirt-kerbside.md](PLAN-two-tier-ci-phase-01-ovirt-kerbside.md) | Implemented, awaiting CI proof |
+| 1. oVirt lane deploys kerbside | [PLAN-two-tier-ci-phase-01-ovirt-kerbside.md](PLAN-two-tier-ci-phase-01-ovirt-kerbside.md) | Complete |
 | 2. Promote sf-e2e to PR smoke gate | PLAN-two-tier-ci-phase-02-sf-e2e-promotion.md | Blocked on precondition |
 | 3. Merge queue adoption and tier split | PLAN-two-tier-ci-phase-03-merge-queue.md | Not started |
 | 4. Documentation | PLAN-two-tier-ci-phase-04-docs.md | Not started |
