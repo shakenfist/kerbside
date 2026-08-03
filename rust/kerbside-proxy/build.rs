@@ -23,7 +23,10 @@ fn main() {
          and sets the workdir to rust/kerbside-proxy)"
     );
 
-    tonic_build::configure()
+    // From tonic 0.14 the prost-flavoured generator lives in
+    // tonic-prost-build; the emitted stubs name `tonic_prost::ProstCodec`,
+    // which is why the crate also depends on tonic-prost at runtime.
+    tonic_prost_build::configure()
         // We are a client of the KerbsideProxy service in production, but the
         // rpc.rs unit test stands up an in-process server with canned
         // responses, so we generate the server stubs too. The generated
@@ -31,7 +34,6 @@ fn main() {
         // module-level allow(dead_code) suppresses the resulting warnings.
         .build_server(true)
         .build_client(true)
-        // tonic-build 0.12 renamed compile() to compile_protos().
         .compile_protos(&[proto], &[proto_dir])
         .expect("compile kerbside.proto");
 

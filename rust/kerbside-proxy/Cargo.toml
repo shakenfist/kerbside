@@ -31,10 +31,15 @@ tokio-util = "0.7"
 rustls = { version = "0.23", features = ["ring"] }
 rustls-pemfile = "2"
 
-# gRPC client for the KerbsideProxy control service over the UDS. tonic 0.12
-# pairs with prost 0.13 (and tonic-build 0.12 below); this is the standard
-# mutually-compatible trio.
+# gRPC client for the KerbsideProxy control service over the UDS. tonic 0.14
+# pairs with prost 0.14, and 0.14 split the prost codec out of the tonic crate
+# itself: the generated stubs now name `tonic_prost::ProstCodec`, so
+# tonic-prost is a runtime dependency and tonic-prost-build (below) is the
+# code generator. All five crates -- tonic, tonic-prost, tonic-prost-build,
+# prost and prost-build -- must move together across a major bump; see the
+# tonic-prost-rust Renovate group in renovate.json.
 tonic = "0.14"
+tonic-prost = "0.14"
 prost = "0.14"
 # tonic has no `unix:` transport, so the UDS channel is built from a custom
 # tower connector that dials a tokio UnixStream; hyper-util's TokioIo adapts
@@ -84,7 +89,9 @@ tempfile = "3"
 rcgen = "0.14"
 
 [build-dependencies]
-# tonic-build 0.12 matches tonic 0.12. protoc-bin-vendored ships a protoc
-# binary so the build needs no system protoc package.
-tonic-build = "0.12"
+# tonic-prost-build 0.14 matches tonic 0.14: from 0.14 the prost-flavoured
+# code generator lives in its own crate (tonic-build itself now only carries
+# the codec-agnostic machinery). protoc-bin-vendored ships a protoc binary so
+# the build needs no system protoc package.
+tonic-prost-build = "0.14"
 protoc-bin-vendored = "3"

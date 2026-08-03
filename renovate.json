@@ -51,6 +51,22 @@
         "protobuf",
         "mypy-protobuf"
       ]
+    },
+    {
+      "description": "Group the Rust tonic / prost ecosystem together. The generated gRPC stubs in rust/kerbside-proxy/ are produced at build time by tonic-prost-build and consumed by tonic + tonic-prost, so a runtime crate that moves without its code generator produces stubs that will not compile (see the tonic 0.14 breakage: tonic and prost went to 0.14 while tonic-build stayed on 0.12, and the emitted code still named the removed tonic::codec::ProstCodec). These must bump as a coordinated set.",
+      "groupName": "tonic-prost-rust",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "tonic",
+        "tonic-build",
+        "tonic-prost",
+        "tonic-prost-build",
+        "prost",
+        "prost-build",
+        "prost-types"
+      ]
     }
   ],
   "minimumReleaseAge": "3 days",
