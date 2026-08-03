@@ -383,8 +383,59 @@ Still unproven: everything from `generate-tls.sh` onward —
 source generation, the source health poll, and the whole of
 `drive-console.py`.
 
+**Run 3 — [30776147437][r3], green.** The first time
+kerbside has ever been deployed and exercised in this lane.
+
+The gate did not pass vacuously; the evidence for each
+stage, from the job log and the `kerbside-ovirt-*`
+artifact:
+
+| Stage | Evidence |
+|-------|----------|
+| oVirt scrape | discovered `smoke-test-5863`, `insecure_port=5900 secure_port=5901 host_subject=O=local,CN=ovirt.local` |
+| Proxy launch | `kerbside-proxy` from the PR's own wheel, subject-pinned |
+| TLS escalation | all four channels (main, display, cursor, inputs) logged `hypervisor requires TLS; retrying backend connection over the secure port` |
+| Real session | `agent_connected=True`, surface 1024x768, screenshot 36446 bytes with PNG magic |
+| Audit and teardown | 10 audit rows, session active, terminated via the REST API, termination event recorded |
+
+Subject pinning really was exercised, which is worth
+stating because it fails silently in the passing direction.
+The scrape supplied a non-empty `host_subject`, which
+`build_config` maps to `Some(...)` rather than the `None`
+that would disable verification (`backend.rs:200-206`), and
+the only certificate log line concerns the *hostname* check
+being bypassed. A pinning failure logs `TLS: rejecting
+certificate: pinned host_subject ...` instead, per the test
+at `backend.rs:306`.
+
+One piece of grit, not a failure: every channel ends with
+`relay ended with error ... peer closed connection without
+sending TLS close_notify`. That is ryll disconnecting
+abruptly rather than a relay fault, but it is logged at
+WARN, so a genuine relay error during teardown would blend
+straight into it. Worth quietening later; not phase 1's
+problem.
+
+This does not finish step 1e. The success criterion is two
+consecutive green dispatch runs, and one green could still
+be luck given the roughly 120 second oVirt ticket window
+`drive-console.py` races against.
+
+Alongside this, both `Retain the environment if requested`
+steps changed from `github.event_name == 'workflow_dispatch'`
+to `!cancelled() && github.event_name == 'workflow_dispatch'`.
+Without it a failing step skipped the retention step and the
+environment was torn down regardless, so the `retention`
+input only ever held open environments belonging to runs
+that had already passed — the runs nobody needs to log into.
+`!cancelled()` rather than `always()` so that a run someone
+deliberately cancelled still releases its environment.
+`openstack_matrix` had the byte-identical defect and got the
+same fix.
+
 [r1]: https://github.com/shakenfist/kerbside/actions/runs/30763222820
 [r2]: https://github.com/shakenfist/kerbside/actions/runs/30765419311
+[r3]: https://github.com/shakenfist/kerbside/actions/runs/30776147437
 
 Deviations from the plan as written, decided during
 implementation review:

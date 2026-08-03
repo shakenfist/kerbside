@@ -541,7 +541,13 @@ jobs:
             /tmp/kerbside-ovirt-ci/smoke-client.log
 
       - name: Retain the environment if requested
-        if: github.event_name == 'workflow_dispatch'
+        # !cancelled(), not the bare event check: without it a failing step
+        # skips this one and the environment is torn down anyway, so the
+        # retention input only ever worked on runs that had already
+        # succeeded -- exactly the runs nobody needs to log into. Not
+        # always(), because a run someone deliberately cancelled should
+        # release its environment rather than sit here sleeping.
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' }}
         run: sleep $(( $MINUTES * 60 ))
         env:
           MINUTES: ${{ inputs.retention }}
@@ -767,7 +773,10 @@ jobs:
           path: /tmp/bundle.zip
 
       - name: Retain the environment if requested
-        if: github.event_name == 'workflow_dispatch'
+        # See the matching step in ovirt_matrix: without !cancelled() a
+        # failing step skips this one, so retention only held environments
+        # open for runs that had already passed.
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' }}
         run: sleep $(( $MINUTES * 60 ))
         env:
           MINUTES: ${{ inputs.retention }}
