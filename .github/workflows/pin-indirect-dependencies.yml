@@ -1,7 +1,27 @@
-# NOTE(mikal): we need to pin indirect dependencies because some of our
-# dependencies don't pin things how we like to. If they're not pinned then when
-# something multiple layers away does a release and breaks us it can be super
-# confusing.
+# Reconciles the pinned indirect (transitive) dependency block in
+# pyproject.toml against what the direct dependencies actually require,
+# and creates a PR when it changed -- adding pins for new transitive
+# dependencies and removing pins nothing requires any more. This
+# complements Renovate, which bumps the versions of existing pins.
+#
+# The heavy lifting lives in tools/pin-indirect-dependencies.sh (copied
+# from this template directory), which demotes the existing pins to pip
+# constraints for a fresh resolve. See that script's header comment for
+# details, including the "# never-pin: <name>" escape hatch.
+#
+# Requirements:
+#   - pyproject.toml must contain "# START_OF_INDIRECT_DEPS" and
+#     "# END_OF_INDIRECT_DEPS" marker comments delimiting the pinned
+#     block inside the [project] dependencies list.
+#   - pin-indirect-dependencies.sh from this template directory copied
+#     to tools/pin-indirect-dependencies.sh (keep it executable).
+#   - A repository secret called DEPENDENCIES_TOKEN with push and PR
+#     permissions.
+#
+# Placeholders to replace:
+#   kerbside  -- repository / checkout directory name
+#
+# Template source: shakenfist/development/templates/pin-indirect-dependencies/
 
 name: Pin indirect dependencies
 
@@ -12,6 +32,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/pin-indirect-dependencies.yml
+      - tools/pin-indirect-dependencies.sh
   workflow_dispatch:
   schedule:
     - cron: '00 00 * * *'        # utc
@@ -20,8 +41,8 @@ jobs:
   indirect-dependencies:
     # The apt steps below need passwordless sudo (build deps + the gh
     # install), which the shared static pool does not grant, so this stays
-    # on an ephemeral vm runner. m: light dependency resolution + PR.
-    runs-on: [self-hosted, vm, debian-12, m]
+    # on an ephemeral vm runner.
+    runs-on: [self-hosted, vm, debian-12]
     timeout-minutes: 60
     env:
       PIP_INDEX_URL: http://192.168.1.15:3141/root/pypi/+simple/
@@ -33,21 +54,20 @@ jobs:
       group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: true
 
-    # NOTE(mikal): git repos are checked out to /srv/github/_work/{org}/{repo}
-    # which is available as GITHUB_WORKSPACE. You can find other environment
-    # variables at https://docs.github.com/en/actions/learn-github-actions/environment-variables
-
     steps:
       - name: Set environment variables
         run: |
           echo "SHAKENFIST_NAMESPACE=$(hostname)" >> $GITHUB_ENV
 
       - name: Checkout kerbside
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: kerbside
           fetch-depth: 0
 
+      # The resolve runs in an isolated venv, so anything which compiles
+      # at install time needs its build dependencies present here.
+      # mysqlclient ships no wheel and builds against libmysqlclient.
       - name: Install CI dependencies
         run: |
           sudo apt update
@@ -66,76 +86,14 @@ jobs:
           sudo apt update
           sudo apt install -y gh
 
-      - name: Install all our dependencies in a venv
+      - name: Install system build dependencies
         run: |
           sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=-1 -o Dpkg::Options::="--force-confold" -y \
-            install git python3-cffi python3-dev python3-grpcio python3-pip python3-venv python3-wheel
+            install git python3-dev python3-pip python3-venv python3-wheel
 
-          cd ${GITHUB_WORKSPACE}/kerbside
-          python3 -m venv  --system-site-packages ${RUNNER_TEMP}/venv
-          . ${RUNNER_TEMP}/venv/bin/activate
-          pip3 install uv
-          uv pip install -r pyproject.toml
-
-      - name: List all our dependencies
-        run: |
-          ${RUNNER_TEMP}/venv/bin/pip freeze --local
-
-      - name: Ensure all dependencies are pinned
+      - name: Reconcile pinned indirect dependencies
         env:
           GITHUB_TOKEN: ${{ secrets.DEPENDENCIES_TOKEN }}
         run: |
           cd ${GITHUB_WORKSPACE}/kerbside
-
-          datestamp=$(date "+%Y%m%d")
-          git checkout -b pin-dependencies-${datestamp}
-
-          # NOTE(mikal): compare dependency names in their PEP 503 canonical
-          # form so a dep already pinned with one spelling (e.g.
-          # "typing-extensions") is not re-added under pip freeze's canonical
-          # spelling ("typing_extensions"). Treating "-" and "_" as distinct
-          # here silently created duplicate pins that only diverged -- and
-          # broke resolution -- once one spelling was bumped (see the
-          # equivalent fix in shakenfist).
-          for depver in $(${RUNNER_TEMP}/venv/bin/pip freeze --local); do
-            dep=$(echo ${depver} | sed 's/==.*//')
-            depre=$(echo ${dep} | sed -E 's/[-_.]+/[-_.]/g')
-
-            # NOTE(mikal): pydantic exact-pins its matching pydantic-core
-            # release, so a pin of our own is either redundant or
-            # conflicting -- Renovate bumping the two out of lockstep broke
-            # resolution entirely (see PR #198). Never re-add this pin.
-            if [ "${dep}" = "pydantic_core" -o "${dep}" = "pydantic-core" ]; then
-              continue
-            fi
-
-            if [ $(egrep -ic "\"${depre}==" pyproject.toml) -lt 1 ]; then
-              sed -i "s/    # END_OF_INDIRECT_DEPS/    \"${depver}\",\n    # END_OF_INDIRECT_DEPS/" pyproject.toml
-            fi
-          done
-
-          # Did we find something new?
-          if [ $(git diff | wc -l) -gt 0 ]; then
-            echo "New dependencies detected..."
-            echo
-            git diff
-
-            git config --global user.name "shakenfist-bot"
-            git config --global user.email "bot@shakenfist.com"
-            git commit -a -m "Update pinned dependencies."
-            git push -f origin pin-dependencies-${datestamp}
-            echo
-            # Ensure the label exists before creating the PR
-            gh label create dependencies --color 0075ca \
-                --description "Pull requests that update a dependency file" \
-                2>/dev/null || true
-
-            gh pr create \
-                --assignee mikalstill \
-                --reviewer mikalstill \
-                --title "Update pinned dependencies." \
-                --body "New indirect dependencies were detected." \
-                --label dependencies
-            echo
-            echo "Pull request created."
-          fi
+          tools/pin-indirect-dependencies.sh
