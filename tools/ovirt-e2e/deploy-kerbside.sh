@@ -31,7 +31,9 @@
 #     --username     USER (e.g. admin@internal) \
 #     --password     PASS \
 #     --kerbside-src DIR  (the kerbside checkout to install) \
-#     --proxy-wheel  GLOB (the built kerbside-proxy wheel) \
+#     --proxy-wheel  GLOB (the built kerbside-proxy wheel; expanded here, so
+#                          quote it at the call site, and it must match
+#                          exactly one file) \
 #     [--source-name ovirt] \
 #     [--api-port 13002]
 #
@@ -67,6 +69,21 @@ for name in ENGINE_URL USERNAME PASSWORD KERBSIDE_SRC PROXY_WHEEL; do
         exit 1
     fi
 done
+
+# --proxy-wheel is a glob, expanded here rather than by the caller. Resolve it
+# up front so a path that matches nothing fails in one obvious line, instead of
+# reaching pip as an unexpanded pattern and being reported as the far more
+# confusing "Invalid wheel filename (wrong number of parts): '*'".
+# shellcheck disable=SC2206
+PROXY_WHEEL_MATCHES=(${PROXY_WHEEL})
+if [ "${#PROXY_WHEEL_MATCHES[@]}" -ne 1 ] || [ ! -f "${PROXY_WHEEL_MATCHES[0]}" ]; then
+    echo "ERROR: --proxy-wheel must match exactly one existing wheel" >&2
+    echo "  pattern: ${PROXY_WHEEL}" >&2
+    echo "  matched: ${PROXY_WHEEL_MATCHES[*]}" >&2
+    exit 1
+fi
+PROXY_WHEEL="${PROXY_WHEEL_MATCHES[0]}"
+echo "[ovirt-e2e] Using proxy wheel ${PROXY_WHEEL}"
 
 # Loopback traffic to kerbside on 127.0.0.1 must bypass the runner's squid,
 # which 503s it otherwise.
@@ -123,9 +140,8 @@ echo "[ovirt-e2e] Installing kerbside, proxy wheel, gunicorn, oVirt SDK"
 # a bogus "no matching distribution" on the first attempt, then succeed on the
 # next. A genuine failure still fails, just three attempts later.
 for attempt in 1 2 3; do
-    # shellcheck disable=SC2086
     if "${VENV}/bin/pip" install --quiet \
-            "${KERBSIDE_SRC}" ${PROXY_WHEEL} gunicorn ovirt-engine-sdk-python; then
+            "${KERBSIDE_SRC}" "${PROXY_WHEEL}" gunicorn ovirt-engine-sdk-python; then
         break
     fi
     if [ "${attempt}" = 3 ]; then

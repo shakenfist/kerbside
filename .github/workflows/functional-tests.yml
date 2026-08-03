@@ -466,12 +466,17 @@ jobs:
           # NOTE: no /api suffix here, unlike the target-side test-script
           # steps above -- kerbside's oVirt source appends /api itself, so
           # passing .../ovirt-engine/api would be wrong for sources.yaml.
+          #
+          # --proxy-wheel is double quoted, not single quoted: the glob has to
+          # survive this call so the script expands it at the point of use,
+          # but ${GITHUB_WORKSPACE} still has to expand here. Single quotes
+          # suppress both and hand pip a literal dollar sign.
           ${GITHUB_WORKSPACE}/kerbside/tools/ovirt-e2e/deploy-kerbside.sh \
               --engine-url https://${{ matrix.test.hostname }}.local/ovirt-engine \
               --username ${{ matrix.test.ovirt_username }} \
               --password foobar \
               --kerbside-src ${GITHUB_WORKSPACE}/kerbside \
-              --proxy-wheel '${GITHUB_WORKSPACE}/kerbside/dist/proxy-wheels/*.whl'
+              --proxy-wheel "${GITHUB_WORKSPACE}/kerbside/dist/proxy-wheels/*.whl"
 
       - name: Drive a proxied SPICE console
         # This is the actual gate -- it relays a real SPICE session from

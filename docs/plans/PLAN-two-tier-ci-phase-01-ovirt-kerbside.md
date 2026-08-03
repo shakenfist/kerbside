@@ -341,7 +341,50 @@ matching distribution" on a first fetch.
 Nothing downstream of the ryll build has executed yet, so
 the deploy and drive scripts remain entirely unproven.
 
+**Run 2 — [30765419311][r2], failed at "Deploy kerbside on
+the runner" (step 30 of 35).**
+
+The prerequisite fix worked: ryll 0.1.7 compiled in 2m10s
+and installed, so the direct-qemu package list is the right
+one for this lane.
+
+`deploy-kerbside.sh` then got as far as the venv install
+before failing. The workflow passed `--proxy-wheel` in
+single quotes, which suppresses `${GITHUB_WORKSPACE}` as
+well as the glob, so pip received a literal dollar sign and
+reported `Invalid wheel filename (wrong number of parts):
+'*'`. The wheel itself was built correctly and was sitting
+where it was meant to be. Double quotes are what this call
+wants: the glob has to survive the call so the script
+expands it at the point of use, but the variable has to
+expand at the call site.
+
+Two things this exposed, both fixed alongside it. The
+script now resolves the glob during argument validation and
+fails in one line if it does not match exactly one existing
+file, rather than passing an unexpanded pattern down to pip
+and surfacing as that much more confusing message. And the
+new pip retry, which exists for transient index misses,
+had dutifully retried a completely deterministic failure
+three times; resolving the wheel up front means a bad path
+fails immediately and only genuinely transient failures
+reach the loop.
+
+Verified before re-dispatching, since a wrong guess costs a
+full cycle: `start-kerbside.sh` accepts exactly the five
+arguments `deploy-kerbside.sh` passes, derives its seed
+file to the same path the driver reads
+(`$(dirname PID_FILE)/kerbside-auth-seed.txt`), and finds
+`alembic.ini` by walking up from the checkout. The glob
+validation was exercised locally against both a matching
+and an unexpanded pattern.
+
+Still unproven: everything from `generate-tls.sh` onward —
+source generation, the source health poll, and the whole of
+`drive-console.py`.
+
 [r1]: https://github.com/shakenfist/kerbside/actions/runs/30763222820
+[r2]: https://github.com/shakenfist/kerbside/actions/runs/30765419311
 
 Deviations from the plan as written, decided during
 implementation review:
