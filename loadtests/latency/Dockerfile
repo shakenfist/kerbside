@@ -44,7 +44,7 @@ WORKDIR /src
 RUN cargo build --release --no-default-features -p ryll
 
 # ── Stage 2: Runtime image ────────────────────────────────────────────────────
-FROM debian:bookworm AS runtime
+FROM debian:trixie AS runtime
 
 # Python 3 + pip, OpenStack client tools, jq/wget for the
 # makeconsole.sh provisioning logic, and the system shared
