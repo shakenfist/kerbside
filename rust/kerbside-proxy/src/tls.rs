@@ -94,7 +94,8 @@ mod tests {
         let cert_path = dir.path().join("cert.pem");
         let key_path = dir.path().join("key.pem");
         std::fs::write(&cert_path, cert.cert.pem()).expect("write cert");
-        std::fs::write(&key_path, cert.key_pair.serialize_pem()).expect("write key");
+        // rcgen 0.14 renamed CertifiedKey::key_pair to signing_key.
+        std::fs::write(&key_path, cert.signing_key.serialize_pem()).expect("write key");
 
         let result = load_acceptor(&cert_path, &key_path);
         assert!(result.is_ok(), "load_acceptor failed: {:?}", result.err());

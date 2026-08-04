@@ -98,7 +98,12 @@ make -C rust/kerbside-proxy lint    # cargo fmt --check + clippy -D warnings
 
 `build.rs` generates the tonic gRPC client from the same
 `kerbside/rpc/kerbside.proto` the Python side uses (vendored protoc, no
-system protobuf needed). The crate depends on the ryll
+system protobuf needed). The generator is `tonic-prost-build` and the
+generated stubs name types from `tonic` and `tonic-prost`, so those three
+crates (plus `prost`) must be bumped together — a runtime crate that
+moves without its code generator emits stubs that will not compile. The
+`tonic-prost-rust` group in `renovate.json` keeps Renovate proposing them
+as one PR. The crate depends on the ryll
 `shakenfist-spice-protocol` crate as a git dependency pinned to a specific
 rev in `Cargo.toml`; bump the `rev` (and commit the updated `Cargo.lock`)
 when picking up ryll changes. CI runs fmt/clippy/test/build via
