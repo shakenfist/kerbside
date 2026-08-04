@@ -29,16 +29,25 @@
 # just "==". A direct dependency declared as a range (e.g. "psutil>=5.9.4")
 # is still a declaration of intent about that package, so re-emitting it
 # into the block as an exact pin would both duplicate it and override the
-# deliberately loose bound. All of these mismatches have historically
-# created duplicate pins which broke dependency resolution once Renovate
-# bumped only one of the duplicates (see shakenfist#3398, shakenfist#3399
-# and shakenfist#3462).
+# deliberately loose bound. The same applies with more force to a wholly
+# unversioned declaration (e.g. "cryptography"), which is the loosest bound
+# there is: the closing quote counts as a terminator so those are matched
+# too. All of these mismatches have historically created duplicate pins
+# which broke dependency resolution once Renovate bumped only one of the
+# duplicates (see shakenfist#3398, shakenfist#3399 and shakenfist#3462).
 #
 # The resolve runs once, in whatever environment invoked it -- in CI that
 # is the lowest supported Python on Linux. Dependencies guarded by
 # environment markers are therefore resolved for that environment only, so
 # the block is complete for it but may omit packages needed only on a newer
 # Python or another platform.
+#
+# Only [project] dependencies are resolved. Optional-dependency extras are
+# not installed, so their transitive requirements are neither pinned nor
+# reaped -- an upstream release reachable only through an extra can still
+# move under CI. Adding "--extra <name>" to the resolve below would extend
+# the closure, at the cost of pulling that extra's own tooling into the
+# runtime pin block unless it is added to the never-pin list.
 #
 # Some packages must never be pinned even though they are installed. The
 # canonical example is pydantic-core: pydantic pins it exactly (==), so an
@@ -83,6 +92,18 @@ for marker in START_OF_INDIRECT_DEPS END_OF_INDIRECT_DEPS; do
         exit 1
     fi
 done
+
+# Both sed range expressions and the awk state machine below assume START
+# comes first. Transposed markers are not a syntax error to any of them:
+# "/START/,/END/" then matches from START to end of file, so the stripped
+# copy loses everything after the marker and the rewrite discards the tail
+# of pyproject.toml. Cheap to assert, expensive to discover.
+start_line=$(grep -n '# START_OF_INDIRECT_DEPS' pyproject.toml | cut -d: -f1)
+end_line=$(grep -n '# END_OF_INDIRECT_DEPS' pyproject.toml | cut -d: -f1)
+if [ "${start_line}" -ge "${end_line}" ]; then
+    echo '# START_OF_INDIRECT_DEPS must appear before # END_OF_INDIRECT_DEPS.' >&2
+    exit 1
+fi
 
 workdir=$(mktemp -d)
 trap 'rm -rf "${workdir}"' EXIT
@@ -156,7 +177,7 @@ touch "${workdir}/pins.txt"
     esac
 
     depre=$(echo "${dep}" | sed -E 's/[-_.]+/[-_.]/g')
-    if [ "$(grep -Eic "\"${depre}(\[[a-z0-9,_.-]+\])?(==|>=|<=|~=|!=|===|>|<)" "${workdir}/pyproject.toml")" -lt 1 ]; then
+    if [ "$(grep -Eic "\"${depre}(\[[a-z0-9,_.-]+\])?(==|>=|<=|~=|!=|===|>|<|\")" "${workdir}/pyproject.toml")" -lt 1 ]; then
         echo "${depver}" >> "${workdir}/pins.txt"
     fi
 done
@@ -202,6 +223,8 @@ git diff
 if [ -z "${GITHUB_TOKEN}" ]; then
     echo
     echo 'GITHUB_TOKEN is not set, so not creating a pull request.'
+    echo 'Note that pyproject.toml has been rewritten in place; run'
+    echo '"git checkout -- pyproject.toml" to discard the reconcile.'
     exit 0
 fi
 
@@ -225,7 +248,10 @@ git checkout -b "pin-dependencies-${datestamp}"
 
 git config --global user.name 'shakenfist-bot'
 git config --global user.email 'bot@shakenfist.com'
-git commit -a -m 'Update pinned dependencies.'
+# Naming the file rather than using "git commit -a" keeps an unrelated
+# dirty tree out of the bot commit. CI checkouts are clean, but the header
+# advertises running this locally, where they are frequently not.
+git commit pyproject.toml -m 'Update pinned dependencies.'
 git push -f origin "pin-dependencies-${datestamp}"
 echo
 
@@ -238,7 +264,14 @@ gh label create dependencies --color 0075ca \
 # which correctly updates the open pull request. gh pr create would then
 # exit non-zero because one already exists, failing a job which had in
 # fact done its work.
-if gh pr view "pin-dependencies-${datestamp}" >/dev/null 2>&1; then
+#
+# Restricted to OPEN pull requests deliberately. "gh pr view <branch>" also
+# resolves a closed or merged one, so if the day's pin PR is merged and a
+# later run the same day produces a further change, this would report
+# success while leaving the new pins on an orphaned branch with nothing
+# open and nobody notified.
+if [ -n "$(gh pr list --head "pin-dependencies-${datestamp}" --state open \
+        --json number --jq '.[0].number')" ]; then
     echo 'Existing pull request updated.'
     exit 0
 fi

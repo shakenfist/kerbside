@@ -43,11 +43,23 @@ jobs:
     # The pull_request trigger above fires precisely when someone edits the
     # script this job then executes, on a self-hosted runner. Defence in
     # depth: never run that self-test for a branch pushed from a fork.
+    #
+    # Note that this guard, persist-credentials and the withheld token
+    # below all live in the file a pull request can edit -- for a
+    # pull_request event the workflow is evaluated from the PR's own copy.
+    # They protect against accident and against forks, and they are not a
+    # trust boundary against an author who already has write access (who
+    # could equally just push). If a real boundary is wanted, put
+    # DEPENDENCIES_TOKEN behind a GitHub Environment with required
+    # reviewers, which is enforced server-side.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     # The apt steps below need passwordless sudo (build deps + the gh
     # install), which the shared static pool does not grant, so this stays
-    # on an ephemeral vm runner.
-    runs-on: [self-hosted, vm, debian-12]
+    # on an ephemeral vm runner. m: one venv resolve plus a PR, so the
+    # workload is light -- but the size must stay explicit, because label
+    # matching is a subset test and an unsized job is eligible for any vm
+    # in the pool, including an xl a Rust build is queued for.
+    runs-on: [self-hosted, vm, debian-12, m]
     timeout-minutes: 60
     env:
       http_proxy: http://192.168.1.15:3128
@@ -60,8 +72,17 @@ jobs:
       # named again for it. Without these the bootstrap pip3 install would
       # use devpi but the resolve that actually produces the pins would go
       # straight to pypi.
-      UV_INDEX_URL: https://devpi.home.stillhq.com/root/pypi/+simple/
-      UV_EXTRA_INDEX_URL: https://pypi.org/simple/
+      UV_DEFAULT_INDEX: https://devpi.home.stillhq.com/root/pypi/+simple/
+      UV_INDEX: https://pypi.org/simple/
+      # uv defaults to first-index, which stops at the first index serving
+      # any version of a package -- so a devpi entry that is present but
+      # missing the constrained version fails the resolve without ever
+      # consulting pypi, and reports it as a constraint conflict that does
+      # not exist. unsafe-best-match restores pip's merge-across-indexes
+      # behaviour. The usual dependency-confusion objection does not apply
+      # here: devpi is a transparent pypi mirror, not a private package
+      # source, so both indexes serve the same namespace.
+      UV_INDEX_STRATEGY: unsafe-best-match
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: true
@@ -71,35 +92,37 @@ jobs:
         run: |
           echo "SHAKENFIST_NAMESPACE=$(hostname)" >> $GITHUB_ENV
 
-      # This runs before the checkout because actions/checkout needs git.
-      # Without git it silently falls back to a REST API tarball, which
-      # leaves no .git directory and no persisted credentials, so every
-      # git operation in the script below fails for a non-obvious reason.
-
+      # This step must run before the checkout, because actions/checkout
+      # needs git. Without git it silently falls back to a REST API
+      # tarball, which leaves no .git directory and no persisted
+      # credentials, so every git operation in the script below fails for
+      # a non-obvious reason.
+      #
+      # The resolve runs in an isolated venv, so anything which compiles
+      # at install time needs its build dependencies present here too:
+      # mysqlclient ships no wheel and builds against libmysqlclient.
+      #
+      # One invocation rather than three, all of them carrying the
+      # lock-timeout and confold options the rest of this repository's
+      # workflows use. A bare "apt install" on an ephemeral vm that boots
+      # into an unattended-upgrades window either fails on the dpkg lock
+      # or hangs on a conffile prompt.
       - name: Install system build dependencies
         run: |
           sudo apt update
           sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=-1 -o Dpkg::Options::="--force-confold" -y \
-            install git python3-dev python3-pip python3-venv python3-wheel
-
-      # The resolve runs in an isolated venv, so anything which compiles
-      # at install time needs its build dependencies present here.
-      # mysqlclient ships no wheel and builds against libmysqlclient.
-      - name: Install CI dependencies
-        run: |
-          sudo apt install -y pkg-config build-essential python3-dev \
-              default-libmysqlclient-dev
+            install git python3-dev python3-pip python3-venv python3-wheel \
+            pkg-config build-essential default-libmysqlclient-dev curl
 
       - name: Install the github command line
         run: |
-          sudo apt install -y curl
-
           curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
           sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
           echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
 
           sudo apt update
-          sudo apt install -y gh
+          sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=-1 -o Dpkg::Options::="--force-confold" -y \
+            install gh
 
       # The token has to be on the checkout, not just on the step below.
       # A plain "git push" authenticates with the credential checkout

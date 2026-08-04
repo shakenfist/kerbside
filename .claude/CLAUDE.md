@@ -49,6 +49,7 @@ tox -e bindep
 | `kerbside/config.py` | Pydantic-based configuration |
 | `kerbside/rpc/kerbside.proto` | gRPC contract between the daemon and the Rust proxy |
 | `kerbside/sources/` | Cloud source implementations |
+| `tools/pin-indirect-dependencies.sh` | Regenerates the pinned indirect dependency block in `pyproject.toml`; never hand-edit between its markers |
 
 ## Code Style
 
