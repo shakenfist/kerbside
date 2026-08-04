@@ -1,0 +1,106 @@
+{
+  "clientRemote": "",
+  "gitRemote": "",
+  "gitSha": "",
+  "treeEntries": [],
+  "auditedFiles": [
+    {
+      "path": "alembic/versions/5c8101ff14d7_sources_can_be_deleted.py",
+      "author": "mikal"
+    },
+    {
+      "path": "alembic/versions/7d1c2f36a7b3_connection_id_as_bigint.py",
+      "author": "mikal"
+    },
+    {
+      "path": "alembic/versions/9a3f1c7b2e40_proxychannels_surrogate_id.py",
+      "author": "mikal"
+    },
+    {
+      "path": "alembic/versions/ad47e96baff6_initial_schema.py",
+      "author": "mikal"
+    },
+    {
+      "path": "alembic/versions/bb26023f0c98_remove_flavor_column.py",
+      "author": "mikal"
+    },
+    {
+      "path": "alembic/versions/c4e7a1b9d2f3_session_terminations.py",
+      "author": "mikal"
+    },
+    {
+      "path": "alembic/versions/cdb5c3529858_sf_token_tables.py",
+      "author": "mikal"
+    },
+    {
+      "path": "alembic/versions/e1a4c7d2f9b6_auditevents_pid_as_string.py",
+      "author": "mikal"
+    },
+    {
+      "path": "alembic/versions/f7b2e9c4a1d8_drop_proxychannels_session_id_fk.py",
+      "author": "mikal"
+    },
+    {
+      "path": "alembic/versions",
+      "author": "mikal"
+    },
+    {
+      "path": "alembic/env.py",
+      "author": "mikal"
+    },
+    {
+      "path": "alembic/script.py.mako",
+      "author": "mikal"
+    },
+    {
+      "path": "alembic",
+      "author": "mikal"
+    },
+    {
+      "path": "etc/example-static-sources.yaml",
+      "author": "mikal"
+    },
+    {
+      "path": "etc/kolla-ci-globals-overlay.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "etc",
+      "author": "mikal"
+    },
+    {
+      "path": ".pre-commit-config.yaml",
+      "author": "mikal"
+    },
+    {
+      "path": "alembic.ini",
+      "author": "mikal"
+    },
+    {
+      "path": "AUTHORS",
+      "author": "mikal"
+    },
+    {
+      "path": "bindep.txt",
+      "author": "mikal"
+    },
+    {
+      "path": "PLAN-TEMPLATE.md",
+      "author": "mikal"
+    },
+    {
+      "path": "README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "RELEASE-SETUP.md",
+      "author": "mikal"
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "author": "mikal"
+    }
+  ],
+  "partiallyAuditedFiles": [],
+  "resolvedEntries": []
+}
