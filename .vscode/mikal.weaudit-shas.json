@@ -5,10 +5,6 @@
       "sha": "cdf780e4f0810effa239a4368d9600fe9ac695c9",
       "date": "2026-08-04"
     },
-    "AGENTS.md": {
-      "sha": "1c5676d070b651a8e9834670f415ec00aee835f6",
-      "date": "2026-08-04"
-    },
     "ARCHITECTURE.md": {
       "sha": "2352f1458900f59e3586525a345359b0dfe967bf",
       "date": "2026-08-04"
@@ -19,10 +15,6 @@
     },
     "PLAN-TEMPLATE.md": {
       "sha": "0c72bdd0fd5912d3667662d0cdc3e546746a36f9",
-      "date": "2026-08-04"
-    },
-    "PUSH-AUDIT.md": {
-      "sha": "b8ce0f7ae38adbe087a9cd535204d764fc265687",
       "date": "2026-08-04"
     },
     "README.md": {
