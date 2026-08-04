@@ -1,0 +1,24 @@
+{
+    "bypass_actors": [],
+    "conditions": {
+        "ref_name": {
+            "exclude": [],
+            "include": [
+                "~DEFAULT_BRANCH"
+            ]
+        }
+    },
+    "enforcement": "active",
+    "name": "Protect default branch history",
+    "rules": [
+        {
+            "parameters": null,
+            "type": "deletion"
+        },
+        {
+            "parameters": null,
+            "type": "non_fast_forward"
+        }
+    ],
+    "target": "branch"
+}
