@@ -324,8 +324,17 @@ the result back as shakenfist-bot, so stale marks are dropped as PRs
 merge; the daily consistency audit in shakenfist/development files a
 `Consistency: Human review coverage` issue when five or more in-scope
 files need review. `REVIEWS.md` is generated; never edit it by hand.
-See [docs/development.md](docs/development.md) for the scope
-definition and https://github.com/shakenfist/development/blob/main/docs/code-review-tracking.md
+
+Commits that add review marks must be signed -- the signature is the
+attestation binding the reviewer to the reviewed content, and signing
+is per-clone configuration that a fresh clone will not have. Confirm
+`git config commit.gpgsign` is `true` (with `gpg.format` `x509` and
+`gpg.x509.program` `gitsign`) before stamping, and check the result
+with `git log --format='%h %G? %s'` -- `N` means the mark landed
+unsigned. The bot's `prune` commits are exempt because pruning only
+removes marks. See [docs/development.md](docs/development.md) for the
+scope definition and the signing setup, and
+https://github.com/shakenfist/development/blob/main/docs/code-review-tracking.md
 for the session workflow.
 
 ## Configuration

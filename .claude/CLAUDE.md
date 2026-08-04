@@ -67,6 +67,24 @@ alembic revision -m "description_of_changes"
 alembic upgrade head
 ```
 
+## Review Tracking
+
+Review marks (`REVIEWS.md`, `.vscode/*.weaudit*`) are maintained with
+`tools/review-tracking.sh` (`stamp`, `prune`, `regen`, `next`, `status`).
+The commit that adds a mark must be signed -- the signature is the
+attestation. Signing is per-clone config, so a fresh clone needs:
+
+```bash
+git config gpg.format x509
+git config gpg.x509.program gitsign
+git config commit.gpgsign true
+git config tag.gpgsign true
+```
+
+Check with `git log --format='%h %G? %s'` before pushing review marks;
+`N` means unsigned. Never edit `REVIEWS.md` by hand. See
+`docs/development.md` for details.
+
 ## Documentation
 
 Protocol documentation lives in `docs/`. When making user-visible changes,
