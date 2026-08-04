@@ -7,8 +7,13 @@ mysql-devel [platform:rpm !platform:redhat test]
 mysql-server [!platform:redhat !platform:debian]
 mariadb-devel [platform:rpm platform:redhat test]
 mariadb-server [platform:rpm platform:redhat platform:debian]
-pkg-config [platform:dpkg test]
-pkgconfig [platform:rpm test]
+# Not in the test profile: mysqlclient is a runtime dependency, and from
+# 2.2.0 it locates libmysqlclient with pkg-config rather than the
+# mysql_config binary it used before. It ships no wheel, so every install
+# builds it from source and needs pkg-config present. The .pc files
+# themselves come from libmariadb-dev above.
+pkg-config [platform:dpkg]
+pkgconfig [platform:rpm]
 libxml2-dev [platform:dpkg]
 libxslt1-dev [platform:dpkg]
 build-essential [platform:dpkg]
