@@ -147,9 +147,24 @@ jobs:
             'ovirt_username': 'admin@ovirt@internalsso'
           },
         ]
-    runs-on: [self-hosted, vm, debian-12, m]
+    # l: this job now also builds the Rust proxy wheel, builds ryll from
+    # source, and runs MariaDB plus kerbside on the runner itself, which
+    # is heavier than the environment-provisioning work the m runner was
+    # sized for.
+    runs-on: [self-hosted, vm, debian-12, l]
     needs: sanity_checks
     timeout-minutes: 120
+    # The runner image exports http_proxy/https_proxy pointing at an
+    # upstream squid cache for apt, github, and the cargo registry.
+    # Loopback traffic to kerbside on 127.0.0.1 must bypass that proxy
+    # or squid returns 503 ERR_CONNECT_FAIL when it cannot route the
+    # request back through itself. The oVirt engine must bypass it too:
+    # kerbside's oVirt source reaches the engine with python requests
+    # (unlike the ssh/scp steps, which ignore http_proxy entirely), and
+    # the engine lives on the private test network the squid cannot
+    # route to.
+    env:
+      no_proxy: 127.0.0.1,localhost,ovirt.local,10.0.2.2
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.test.name }}
       cancel-in-progress: true
@@ -372,6 +387,106 @@ jobs:
                   --password foobar \
                   --ca-file /etc/pki/ovirt-engine/ca.pem"
 
+      - name: Resolve ovirt.local on the runner
+        # kerbside's oVirt source talks to https://ovirt.local/ovirt-engine
+        # and the engine's certificate is CN=ovirt.local, so an IP URL
+        # fails verification. The backend SPICE leg needs no DNS -- the
+        # engine reports the console address as an IP.
+        run: echo '10.0.2.2 ovirt.local' | sudo tee -a /etc/hosts
+
+      - name: Probe hypervisor SPICE ports from the runner
+        # The existing console handshake check above runs ON the target,
+        # so it proves nothing about the runner's own network path to the
+        # hypervisor. This probe localises a firewall problem to one line
+        # instead of it surfacing as an opaque TLS failure much later,
+        # once kerbside is deployed and driving a real session.
+        run: |
+          for port in 5900 5901; do
+            if ! timeout 5 bash -c "</dev/tcp/10.0.2.2/${port}" 2>/dev/null; then
+              echo "The hypervisor SPICE ports are not reachable from" \
+                  "the runner; check firewalld on the oVirt host" \
+                  "(10.0.2.2:${port})." >&2
+              exit 1
+            fi
+          done
+
+      - name: Install Rust build prerequisites
+        # build-essential and pkg-config are all the proxy wheel needs, but
+        # this lane also builds ryll, and ryll needs more. Its audiopus_sys
+        # dependency survives --no-default-features; pkg-config does not find
+        # a system Opus on the runner, so the build script falls back to
+        # compiling Opus itself via CMake and hard-fails without cmake on
+        # PATH. The -dev packages come from direct-qemu-functional.yml, which
+        # has been building ryll on this same runner image for a while:
+        # --no-default-features drops the eframe/cpal runtime libraries, but
+        # transitive build scripts still probe for the headers at compile
+        # time. Keep this list in step with that workflow.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config \
+            libasound2-dev libxcb1-dev libxkbcommon-dev libwayland-dev \
+            libegl1-mesa-dev libgl1-mesa-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libx11-dev libssl-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install maturin and ziglang
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/wheelvenv"
+          "${RUNNER_TEMP}/wheelvenv/bin/pip" install --quiet --upgrade pip maturin ziglang
+          echo "${RUNNER_TEMP}/wheelvenv/bin" >> "$GITHUB_PATH"
+
+      - name: Build the PR's proxy wheel (manylinux, matches the PyPI artifact)
+        # Reuse the release lane's build-proxy-wheel.sh so the CI wheel is the
+        # same portable manylinux_2_28 artifact production pulls from PyPI --
+        # correct across the runner (bookworm) -> trixie image glibc boundary,
+        # unlike a host-native build.
+        run: |
+          WHEEL_OUT="${GITHUB_WORKSPACE}/kerbside/dist/proxy-wheels" \
+              "${GITHUB_WORKSPACE}/kerbside/tools/build-proxy-wheel.sh" "$(uname -m)"
+
+      - name: Build ryll from source
+        # The visual-digest feature is only needed for the Uncalibrated
+        # Sextant fixture; this lane drives a Debian GNOME guest, so the
+        # plain headless client is enough and the build is cheaper. Uses
+        # the Rust toolchain installed above.
+        run: |
+          git clone --depth 1 \
+            https://github.com/shakenfist/ryll.git /tmp/ryll-src
+          cd /tmp/ryll-src
+          cargo build --release --no-default-features -p ryll
+          sudo install -m 755 target/release/ryll /usr/local/bin/ryll
+          ryll --version || true
+
+      - name: Deploy kerbside on the runner
+        timeout-minutes: 15
+        run: |
+          # NOTE: no /api suffix here, unlike the target-side test-script
+          # steps above -- kerbside's oVirt source appends /api itself, so
+          # passing .../ovirt-engine/api would be wrong for sources.yaml.
+          #
+          # --proxy-wheel is double quoted, not single quoted: the glob has to
+          # survive this call so the script expands it at the point of use,
+          # but ${GITHUB_WORKSPACE} still has to expand here. Single quotes
+          # suppress both and hand pip a literal dollar sign.
+          ${GITHUB_WORKSPACE}/kerbside/tools/ovirt-e2e/deploy-kerbside.sh \
+              --engine-url https://${{ matrix.test.hostname }}.local/ovirt-engine \
+              --username ${{ matrix.test.ovirt_username }} \
+              --password foobar \
+              --kerbside-src ${GITHUB_WORKSPACE}/kerbside \
+              --proxy-wheel "${GITHUB_WORKSPACE}/kerbside/dist/proxy-wheels/*.whl"
+
+      - name: Drive a proxied SPICE console
+        # This is the actual gate -- it relays a real SPICE session from
+        # the oVirt hypervisor through kerbside's Rust proxy over TLS,
+        # with the host certificate subject pinned.
+        timeout-minutes: 10
+        run: |
+          /tmp/kerbside-ovirt-ci/venv/bin/python3 \
+              ${GITHUB_WORKSPACE}/kerbside/tools/ovirt-e2e/drive-console.py
+
       - name: Gather artifacts
         if: always()
         run: |
@@ -402,8 +517,37 @@ jobs:
           if-no-files-found: error
           path: /srv/github/artifacts/bundle.zip
 
+      # The kerbside-side artifacts, distinct from the target-side bundle
+      # above: the daemon and gunicorn logs, ryll's stdio, and the
+      # smoke-client log. if-no-files-found is warn
+      # rather than error -- a failure before the deploy step legitimately
+      # leaves these absent. Deliberately excludes console.vv (carries a
+      # live proxy token), the auth seed file (key material), and
+      # sources.yaml (holds the oVirt source password, which is why
+      # gen-sources.py writes it 0600); do not add them here. The daemon
+      # log already reports which source it loaded and why it errored.
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: kerbside-ovirt-${{ github.run_id }}
+          retention-days: 90
+          if-no-files-found: warn
+          path: |
+            /tmp/kerbside-ovirt-ci/kerbside.log
+            /tmp/kerbside-ovirt-ci/kerbside.log.gunicorn-access
+            /tmp/kerbside-ovirt-ci/kerbside.log.gunicorn-error
+            /tmp/kerbside-ovirt-ci/ryll-ovirt.stdout
+            /tmp/kerbside-ovirt-ci/ryll-ovirt.stderr
+            /tmp/kerbside-ovirt-ci/smoke-client.log
+
       - name: Retain the environment if requested
-        if: github.event_name == 'workflow_dispatch'
+        # !cancelled(), not the bare event check: without it a failing step
+        # skips this one and the environment is torn down anyway, so the
+        # retention input only ever worked on runs that had already
+        # succeeded -- exactly the runs nobody needs to log into. Not
+        # always(), because a run someone deliberately cancelled should
+        # release its environment rather than sit here sleeping.
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' }}
         run: sleep $(( $MINUTES * 60 ))
         env:
           MINUTES: ${{ inputs.retention }}
@@ -629,7 +773,10 @@ jobs:
           path: /tmp/bundle.zip
 
       - name: Retain the environment if requested
-        if: github.event_name == 'workflow_dispatch'
+        # See the matching step in ovirt_matrix: without !cancelled() a
+        # failing step skips this one, so retention only held environments
+        # open for runs that had already passed.
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' }}
         run: sleep $(( $MINUTES * 60 ))
         env:
           MINUTES: ${{ inputs.retention }}

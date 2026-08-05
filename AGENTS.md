@@ -244,6 +244,30 @@ match byte-for-byte (`http://127.0.0.1:13002`). No script logs the token or
 key material. See `tools/sf-e2e/README.md` and
 `docs/plans/PLAN-kerbside-vdi-tokens-phase-09-e2e.md`.
 
+### oVirt end-to-end lane (`ovirt-e2e`)
+
+`.github/workflows/functional-tests.yml`'s `ovirt_matrix` job is the only
+lane that exercises the `type: ovirt` console source against a real oVirt
+4.5 engine. Unlike `sf-e2e`, kerbside is NOT co-located with its source: the
+oVirt target is Rocky 8 with a Python 3.6 system interpreter, below
+`pyproject.toml`'s `requires-python = ">=3.11"` floor, so kerbside runs
+off-box on the CI runner instead, reaching the engine at
+`https://ovirt.local/ovirt-engine` and the hypervisor's SPICE ports at
+`10.0.2.2:5900`/`5901` over the test network `kerbside-single-node.yml`
+attaches the runner to. The runner-side drivers live in `tools/ovirt-e2e/`:
+`gen-sources.py` (writes a `type: ovirt` `sources.yaml`, fetching the
+engine's CA from its `pki-resource` endpoint so kerbside's re-fetch-and-
+compare CA-equality check passes by construction), `deploy-kerbside.sh`
+(installs and starts kerbside locally, reusing
+`tools/direct-qemu/start-kerbside.sh`, and waits for the source to reach a
+non-errored state), and `drive-console.py` (waits for the oVirt scrape to
+discover the lane's test VM, mints an API JWT, fetches the proxied `.vv`
+and launches `ryll --headless` against it immediately — oVirt
+graphics-console tickets expire in ~120s — then asserts a real relayed
+SPICE session via `smoke-client.py`, a session and audit row, and clean
+teardown on terminate). See `tools/ovirt-e2e/README.md` and
+`docs/plans/PLAN-two-tier-ci-phase-01-ovirt-kerbside.md`.
+
 ### Modifying SPICE Protocol Handling
 
 SPICE wire-format parsing lives in the Rust proxy, which reuses the ryll
