@@ -526,7 +526,7 @@ jobs:
       # sources.yaml (holds the oVirt source password, which is why
       # gen-sources.py writes it 0600); do not add them here. The daemon
       # log already reports which source it loaded and why it errored.
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: kerbside-ovirt-${{ github.run_id }}
