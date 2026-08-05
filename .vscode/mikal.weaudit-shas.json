@@ -73,10 +73,6 @@
       "sha": "be35c384ab3ce8217a894c1a5861810b95b8cf3d",
       "date": "2026-08-03"
     },
-    "bindep.txt": {
-      "sha": "7a7582babcfa0cbda679e4c1841891d18a547d32",
-      "date": "2026-08-04"
-    },
     "etc/example-static-sources.yaml": {
       "sha": "99cef6e4ea546d9daad7e5d14d633704223195ab",
       "date": "2026-08-04"

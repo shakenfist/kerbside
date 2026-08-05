@@ -35,7 +35,6 @@ for how this works, including how to verify the attestations.
 | alembic/versions/cdb5c3529858_sf_token_tables.py | mikal | 2026-08-03 | 7440adaee159 |
 | alembic/versions/e1a4c7d2f9b6_auditevents_pid_as_string.py | mikal | 2026-08-03 | d5b53b8aede6 |
 | alembic/versions/f7b2e9c4a1d8_drop_proxychannels_session_id_fk.py | mikal | 2026-08-03 | be35c384ab3c |
-| bindep.txt | mikal | 2026-08-04 | 7a7582babcfa |
 | etc/example-static-sources.yaml | mikal | 2026-08-04 | 99cef6e4ea54 |
 | etc/kolla-ci-globals-overlay.yml | mikal | 2026-08-04 | e11f4d65bca4 |
 | rust/kerbside-proxy/README.md | mikal | 2026-08-05 | 7c828f68a286 |
