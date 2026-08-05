@@ -384,22 +384,43 @@ activity is visible in the Prometheus `/metrics` endpoint.
 
 ### Indirect Dependency Pinning
 
-Dependencies are declared in `pyproject.toml`. Indirect (transitive) dependencies
-are pinned in the same file, in a section ending with a `# END_OF_INDIRECT_DEPS`
-marker comment. A daily CI job (`pin-indirect-dependencies.yml`) detects new
-unpinned indirect dependencies and creates PRs to pin them. The marker comment
-must not be removed, as the CI job uses `sed` to insert new entries before it.
+Dependencies are declared in `pyproject.toml`. Indirect (transitive)
+dependencies are pinned in the same file, in a block delimited by
+`# START_OF_INDIRECT_DEPS` and `# END_OF_INDIRECT_DEPS` marker comments.
+Both markers are load-bearing: `tools/pin-indirect-dependencies.sh` hard-fails
+unless each appears exactly once, and in that order.
 
-When adding a new direct dependency to `pyproject.toml`, place it in the main
-dependencies list above the "Indirect dependencies" comment. Do not place it
-after the `# END_OF_INDIRECT_DEPS` marker.
+A daily CI job (`pin-indirect-dependencies.yml`) runs that script, which
+**regenerates the block wholesale** rather than appending to it. It demotes the
+existing pins to pip constraints and re-resolves the direct dependencies
+against them, so surviving pins keep exactly their current versions (Renovate
+remains the only thing that moves a version) while pins nothing requires any
+more are removed. Renovate bumps versions; this job adds and reaps entries.
 
-**Exception: pydantic-core is deliberately never pinned.** Each pydantic
-release exact-pins (`==`) its matching pydantic-core, so a pin of our own is
-either redundant or conflicting — Renovate bumping the two out of lockstep
-broke all CI installs (PR #198). The pin-indirect-dependencies workflow skips
-pydantic-core, and renovate.json disables updates for it. Do not re-add a
-pydantic-core pin to `pyproject.toml`.
+**Never hand-edit anything between the two markers** — the next nightly run
+deletes whatever it finds there. Add new direct dependencies to the main
+dependencies list *above* `# START_OF_INDIRECT_DEPS`. Prefer an exact version:
+a direct dependency is excluded from the generated block only if it is already
+declared elsewhere in the file, which now includes unversioned declarations.
+
+The script can be run locally for a dry run. Without `GITHUB_TOKEN` it prints
+the diff instead of pushing a branch, but note that it rewrites `pyproject.toml`
+in place either way — `git checkout -- pyproject.toml` to discard.
+
+Only `[project] dependencies` are resolved. Optional-dependency extras (the
+`test` extra, which carries openstacksdk, keystoneauth1 and the grpc tooling)
+are not installed, so their transitive requirements are neither pinned nor
+reaped.
+
+**Packages that must never be pinned** are marked with a `# never-pin: <name>`
+comment anywhere in `pyproject.toml`, one package per line. This is a generic
+escape hatch, not a special case in the workflow.
+
+The canonical example is **pydantic-core**. Each pydantic release exact-pins
+(`==`) its matching pydantic-core, so a pin of our own is either redundant or
+conflicting — Renovate bumping the two out of lockstep broke all CI installs
+(PR #198). It carries a `# never-pin: pydantic-core` marker, and renovate.json
+disables updates for it. Do not re-add a pydantic-core pin to `pyproject.toml`.
 
 ## External Dependencies
 
