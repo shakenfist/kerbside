@@ -114,7 +114,7 @@ jobs:
           tox -ecover
           zip -r cover.zip cover
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: coverage
           retention-days: 90
@@ -394,7 +394,7 @@ jobs:
           cd ..
           zip -r bundle.zip bundle
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: bundle-${{ matrix.test.name }}
@@ -620,7 +620,7 @@ jobs:
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2:/tmp/bundle.zip /tmp/bundle.zip
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: bundle-${{ matrix.test.name }}

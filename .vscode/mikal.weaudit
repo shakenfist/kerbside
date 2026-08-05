@@ -81,10 +81,6 @@
       "author": "mikal"
     },
     {
-      "path": "bindep.txt",
-      "author": "mikal"
-    },
-    {
       "path": "PLAN-TEMPLATE.md",
       "author": "mikal"
     },
@@ -98,6 +94,54 @@
     },
     {
       "path": "ARCHITECTURE.md",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/allowlist.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/backend.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/listen.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/main.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/metrics.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/policy.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/relay.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/rpc.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/session.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/tls.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src",
       "author": "mikal"
     }
   ],

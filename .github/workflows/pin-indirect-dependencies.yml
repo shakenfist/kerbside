@@ -1,7 +1,28 @@
-# NOTE(mikal): we need to pin indirect dependencies because some of our
-# dependencies don't pin things how we like to. If they're not pinned then when
-# something multiple layers away does a release and breaks us it can be super
-# confusing.
+# Reconciles the pinned indirect (transitive) dependency block in
+# pyproject.toml against what the direct dependencies actually require,
+# and creates a PR when it changed -- adding pins for new transitive
+# dependencies and removing pins nothing requires any more. This
+# complements Renovate, which bumps the versions of existing pins.
+#
+# The heavy lifting lives in tools/pin-indirect-dependencies.sh, which
+# demotes the existing pins to pip constraints for a fresh resolve. See
+# that script's header comment for details, including the
+# "# never-pin: <name>" escape hatch.
+#
+# Requirements:
+#   - pyproject.toml must contain "# START_OF_INDIRECT_DEPS" and
+#     "# END_OF_INDIRECT_DEPS" marker comments delimiting the pinned
+#     block inside the [project] dependencies list.
+#   - pin-indirect-dependencies.sh from the template directory copied
+#     to tools/pin-indirect-dependencies.sh (keep it executable).
+#   - A repository secret called DEPENDENCIES_TOKEN with push and PR
+#     permissions.
+#
+# Placeholders to replace:
+#   kerbside  -- repository / checkout directory name
+#
+# Template source:
+#   https://github.com/shakenfist/development/tree/main/templates/pin-indirect-dependencies/
 
 name: Pin indirect dependencies
 
@@ -12,130 +33,129 @@ on:
   pull_request:
     paths:
       - .github/workflows/pin-indirect-dependencies.yml
+      - tools/pin-indirect-dependencies.sh
   workflow_dispatch:
   schedule:
     - cron: '00 00 * * *'        # utc
 
 jobs:
   indirect-dependencies:
+    # The pull_request trigger above fires precisely when someone edits the
+    # script this job then executes, on a self-hosted runner. Defence in
+    # depth: never run that self-test for a branch pushed from a fork.
+    #
+    # Note that this guard, persist-credentials and the withheld token
+    # below all live in the file a pull request can edit -- for a
+    # pull_request event the workflow is evaluated from the PR's own copy.
+    # They protect against accident and against forks, and they are not a
+    # trust boundary against an author who already has write access (who
+    # could equally just push). If a real boundary is wanted, put
+    # DEPENDENCIES_TOKEN behind a GitHub Environment with required
+    # reviewers, which is enforced server-side.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     # The apt steps below need passwordless sudo (build deps + the gh
     # install), which the shared static pool does not grant, so this stays
-    # on an ephemeral vm runner. m: light dependency resolution + PR.
+    # on an ephemeral vm runner. m: one venv resolve plus a PR, so the
+    # workload is light -- but the size must stay explicit, because label
+    # matching is a subset test and an unsized job is eligible for any vm
+    # in the pool, including an xl a Rust build is queued for.
     runs-on: [self-hosted, vm, debian-12, m]
     timeout-minutes: 60
     env:
-      PIP_INDEX_URL: http://192.168.1.15:3141/root/pypi/+simple/
+      http_proxy: http://192.168.1.15:3128
+      https_proxy: http://192.168.1.15:3128
+      PIP_INDEX_URL: https://devpi.home.stillhq.com/root/pypi/+simple/
       # Fall back to pypi so a devpi cold-cache miss (empty index on a
       # first-touch package) cannot hard-fail the job.
       PIP_EXTRA_INDEX_URL: https://pypi.org/simple/
-      PIP_TRUSTED_HOST: 192.168.1.15
+      # uv does not read pip's PIP_* variables, so the mirror has to be
+      # named again for it. Without these the bootstrap pip3 install would
+      # use devpi but the resolve that actually produces the pins would go
+      # straight to pypi.
+      UV_DEFAULT_INDEX: https://devpi.home.stillhq.com/root/pypi/+simple/
+      UV_INDEX: https://pypi.org/simple/
+      # uv defaults to first-index, which stops at the first index serving
+      # any version of a package -- so a devpi entry that is present but
+      # missing the constrained version fails the resolve without ever
+      # consulting pypi, and reports it as a constraint conflict that does
+      # not exist. unsafe-best-match restores pip's merge-across-indexes
+      # behaviour. The usual dependency-confusion objection does not apply
+      # here: devpi is a transparent pypi mirror, not a private package
+      # source, so both indexes serve the same namespace.
+      UV_INDEX_STRATEGY: unsafe-best-match
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: true
-
-    # NOTE(mikal): git repos are checked out to /srv/github/_work/{org}/{repo}
-    # which is available as GITHUB_WORKSPACE. You can find other environment
-    # variables at https://docs.github.com/en/actions/learn-github-actions/environment-variables
 
     steps:
       - name: Set environment variables
         run: |
           echo "SHAKENFIST_NAMESPACE=$(hostname)" >> $GITHUB_ENV
 
-      - name: Checkout kerbside
-        uses: actions/checkout@v7
-        with:
-          path: kerbside
-          fetch-depth: 0
-
-      - name: Install CI dependencies
+      # This step must run before the checkout, because actions/checkout
+      # needs git. Without git it silently falls back to a REST API
+      # tarball, which leaves no .git directory and no persisted
+      # credentials, so every git operation in the script below fails for
+      # a non-obvious reason.
+      #
+      # The resolve runs in an isolated venv, so anything which compiles
+      # at install time needs its build dependencies present here too:
+      # mysqlclient ships no wheel and builds against libmysqlclient.
+      #
+      # One invocation rather than three, all of them carrying the
+      # lock-timeout and confold options the rest of this repository's
+      # workflows use. A bare "apt install" on an ephemeral vm that boots
+      # into an unattended-upgrades window either fails on the dpkg lock
+      # or hangs on a conffile prompt.
+      - name: Install system build dependencies
         run: |
           sudo apt update
-          sudo apt install -y pkg-config build-essential python3-dev \
-              default-libmysqlclient-dev
+          sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=-1 -o Dpkg::Options::="--force-confold" -y \
+            install git python3-dev python3-pip python3-venv python3-wheel \
+            pkg-config build-essential default-libmysqlclient-dev curl
 
       - name: Install the github command line
         run: |
-          sudo apt update
-          sudo apt install -y curl
-
           curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
           sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
           echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
 
           sudo apt update
-          sudo apt install -y gh
-
-      - name: Install all our dependencies in a venv
-        run: |
           sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=-1 -o Dpkg::Options::="--force-confold" -y \
-            install git python3-cffi python3-dev python3-grpcio python3-pip python3-venv python3-wheel
+            install gh
 
-          cd ${GITHUB_WORKSPACE}/kerbside
-          python3 -m venv  --system-site-packages ${RUNNER_TEMP}/venv
-          . ${RUNNER_TEMP}/venv/bin/activate
-          pip3 install uv
-          uv pip install -r pyproject.toml
+      # The token has to be on the checkout, not just on the step below.
+      # A plain "git push" authenticates with the credential checkout
+      # persists into http.https://github.com/.extraheader, not with
+      # GITHUB_TOKEN from the environment, and the job's default token is
+      # restricted to contents: read.
+      #
+      # On pull_request it drops back to the job's own token and persists
+      # nothing, because this event runs the PR's own copy of the script:
+      # a persisted DEPENDENCIES_TOKEN would be readable by whatever that
+      # copy chooses to do.
+      #
+      # Both conditions below are written as "!= 'pull_request' && <secret>
+      # || <fallback>" rather than the more natural "== 'pull_request' &&
+      # <fallback> || <secret>". Actions has no real ternary: && / || yield
+      # values, and an empty string is falsy, so a falsy true-branch is
+      # discarded and the || arm fires regardless of the condition. The
+      # true-branch therefore has to be the truthy value.
+      - name: Checkout kerbside
+        uses: actions/checkout@v7
+        with:
+          path: kerbside
+          fetch-depth: 0
+          token: ${{ github.event_name != 'pull_request' && secrets.DEPENDENCIES_TOKEN || github.token }}
+          persist-credentials: ${{ github.event_name != 'pull_request' }}
 
-      - name: List all our dependencies
-        run: |
-          ${RUNNER_TEMP}/venv/bin/pip freeze --local
-
-      - name: Ensure all dependencies are pinned
+      - name: Reconcile pinned indirect dependencies
         env:
-          GITHUB_TOKEN: ${{ secrets.DEPENDENCIES_TOKEN }}
+          # Withheld on pull_request so the self-test takes the script's
+          # print-the-diff-only path. A pull_request checkout is a detached
+          # HEAD at the merge commit, so pushing a branch from one would
+          # carry the whole pull request into an automated pin update.
+          GITHUB_TOKEN: ${{ github.event_name != 'pull_request' && secrets.DEPENDENCIES_TOKEN || '' }}
         run: |
           cd ${GITHUB_WORKSPACE}/kerbside
-
-          datestamp=$(date "+%Y%m%d")
-          git checkout -b pin-dependencies-${datestamp}
-
-          # NOTE(mikal): compare dependency names in their PEP 503 canonical
-          # form so a dep already pinned with one spelling (e.g.
-          # "typing-extensions") is not re-added under pip freeze's canonical
-          # spelling ("typing_extensions"). Treating "-" and "_" as distinct
-          # here silently created duplicate pins that only diverged -- and
-          # broke resolution -- once one spelling was bumped (see the
-          # equivalent fix in shakenfist).
-          for depver in $(${RUNNER_TEMP}/venv/bin/pip freeze --local); do
-            dep=$(echo ${depver} | sed 's/==.*//')
-            depre=$(echo ${dep} | sed -E 's/[-_.]+/[-_.]/g')
-
-            # NOTE(mikal): pydantic exact-pins its matching pydantic-core
-            # release, so a pin of our own is either redundant or
-            # conflicting -- Renovate bumping the two out of lockstep broke
-            # resolution entirely (see PR #198). Never re-add this pin.
-            if [ "${dep}" = "pydantic_core" -o "${dep}" = "pydantic-core" ]; then
-              continue
-            fi
-
-            if [ $(egrep -ic "\"${depre}==" pyproject.toml) -lt 1 ]; then
-              sed -i "s/    # END_OF_INDIRECT_DEPS/    \"${depver}\",\n    # END_OF_INDIRECT_DEPS/" pyproject.toml
-            fi
-          done
-
-          # Did we find something new?
-          if [ $(git diff | wc -l) -gt 0 ]; then
-            echo "New dependencies detected..."
-            echo
-            git diff
-
-            git config --global user.name "shakenfist-bot"
-            git config --global user.email "bot@shakenfist.com"
-            git commit -a -m "Update pinned dependencies."
-            git push -f origin pin-dependencies-${datestamp}
-            echo
-            # Ensure the label exists before creating the PR
-            gh label create dependencies --color 0075ca \
-                --description "Pull requests that update a dependency file" \
-                2>/dev/null || true
-
-            gh pr create \
-                --assignee mikalstill \
-                --reviewer mikalstill \
-                --title "Update pinned dependencies." \
-                --body "New indirect dependencies were detected." \
-                --label dependencies
-            echo
-            echo "Pull request created."
-          fi
+          tools/pin-indirect-dependencies.sh

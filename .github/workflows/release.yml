@@ -63,7 +63,7 @@ jobs:
           release-venv/bin/twine check dist/*
 
       - name: Upload distribution artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -109,7 +109,7 @@ jobs:
         run: tools/build-proxy-wheel.sh ${{ matrix.target }}
 
       - name: Upload proxy wheel
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: proxy-wheel-${{ matrix.target }}
           path: dist/proxy-wheels/*.whl
@@ -181,14 +181,14 @@ jobs:
 
     steps:
       - name: Download proxy wheel artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: proxy-wheel-*
           merge-multiple: true
           path: dist/
 
       - name: Generate attestations for artifacts
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: 'dist/*'
 
@@ -215,13 +215,13 @@ jobs:
 
     steps:
       - name: Download distribution artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
 
       - name: Generate attestations for artifacts
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: 'dist/*'
 
@@ -243,7 +243,7 @@ jobs:
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

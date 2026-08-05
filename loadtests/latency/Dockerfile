@@ -3,7 +3,7 @@
 # the phase-4 plan.  Clone from main HEAD — no pinned ref, by design.
 # See docs/plans/PLAN-test-harness-phase-04-port-latency.md (decisions
 # section: "The ryll source is not pinned in this phase").
-FROM rust:1.83-bookworm AS builder
+FROM rust:1.97-bookworm AS builder
 
 # System build dependencies required by the ryll workspace:
 #   pkg-config    — locates system libs for build scripts
@@ -44,7 +44,7 @@ WORKDIR /src
 RUN cargo build --release --no-default-features -p ryll
 
 # ── Stage 2: Runtime image ────────────────────────────────────────────────────
-FROM debian:bookworm AS runtime
+FROM debian:trixie AS runtime
 
 # Python 3 + pip, OpenStack client tools, jq/wget for the
 # makeconsole.sh provisioning logic, and the system shared

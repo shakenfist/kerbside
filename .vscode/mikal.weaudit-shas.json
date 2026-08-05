@@ -73,10 +73,6 @@
       "sha": "be35c384ab3ce8217a894c1a5861810b95b8cf3d",
       "date": "2026-08-03"
     },
-    "bindep.txt": {
-      "sha": "7a7582babcfa0cbda679e4c1841891d18a547d32",
-      "date": "2026-08-04"
-    },
     "etc/example-static-sources.yaml": {
       "sha": "99cef6e4ea546d9daad7e5d14d633704223195ab",
       "date": "2026-08-04"
@@ -84,6 +80,50 @@
     "etc/kolla-ci-globals-overlay.yml": {
       "sha": "e11f4d65bca446150d6e2ed32a49a8fccfa0ebbc",
       "date": "2026-08-04"
+    },
+    "rust/kerbside-proxy/README.md": {
+      "sha": "7c828f68a2863e42702474ba2b81617a52131dd5",
+      "date": "2026-08-05"
+    },
+    "rust/kerbside-proxy/src/allowlist.rs": {
+      "sha": "1b3b0819d21b6026b22ab22bf7b3ab3e05fba703",
+      "date": "2026-08-05"
+    },
+    "rust/kerbside-proxy/src/backend.rs": {
+      "sha": "22b7a5d6578e67beeb58c67880b80a933a774b2c",
+      "date": "2026-08-05"
+    },
+    "rust/kerbside-proxy/src/listen.rs": {
+      "sha": "3962d7ee3569d3d193f927541ed817d812267a44",
+      "date": "2026-08-05"
+    },
+    "rust/kerbside-proxy/src/main.rs": {
+      "sha": "f739e38650c8b8118187c49a223af87259608686",
+      "date": "2026-08-05"
+    },
+    "rust/kerbside-proxy/src/metrics.rs": {
+      "sha": "8e24d840c061d280a4f68b943c3df3d4b8a370df",
+      "date": "2026-08-05"
+    },
+    "rust/kerbside-proxy/src/policy.rs": {
+      "sha": "123ef48f8014983af93de89561a884ab2b31eadb",
+      "date": "2026-08-05"
+    },
+    "rust/kerbside-proxy/src/relay.rs": {
+      "sha": "b0054122dbeb5f38fc0f68eb62d603a0b1161339",
+      "date": "2026-08-05"
+    },
+    "rust/kerbside-proxy/src/rpc.rs": {
+      "sha": "a50c7c209641787f1aa0bfdeea558820c812537f",
+      "date": "2026-08-05"
+    },
+    "rust/kerbside-proxy/src/session.rs": {
+      "sha": "312782eb098f4ff45b6e8ec146c361432f03b292",
+      "date": "2026-08-05"
+    },
+    "rust/kerbside-proxy/src/tls.rs": {
+      "sha": "e2be3c864a08747f987880b5205d719f33a15f78",
+      "date": "2026-08-05"
     }
   }
 }
