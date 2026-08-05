@@ -181,7 +181,7 @@ jobs:
 
     steps:
       - name: Download proxy wheel artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: proxy-wheel-*
           merge-multiple: true
@@ -215,7 +215,7 @@ jobs:
 
     steps:
       - name: Download distribution artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
@@ -243,7 +243,7 @@ jobs:
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
