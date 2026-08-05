@@ -63,7 +63,7 @@ jobs:
           release-venv/bin/twine check dist/*
 
       - name: Upload distribution artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -109,7 +109,7 @@ jobs:
         run: tools/build-proxy-wheel.sh ${{ matrix.target }}
 
       - name: Upload proxy wheel
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: proxy-wheel-${{ matrix.target }}
           path: dist/proxy-wheels/*.whl
