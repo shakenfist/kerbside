@@ -134,6 +134,10 @@ pub async fn run(
         // drops both pump futures, closing the stream halves and disconnecting
         // the client -- the same teardown as a finishing pump.
         () = cancel.cancelled() => {
+            // CI-ORACLE: this message text is load-bearing for
+            // tools/direct-qemu/verify-terminate-live.sh and
+            // tools/ovirt-e2e/drive-console.py; update both if it is
+            // reworded.
             info!(
                 %connection_ref,
                 channel_type = channel_type.name(),

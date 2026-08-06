@@ -166,11 +166,15 @@ jobs:
     env:
       no_proxy: 127.0.0.1,localhost,ovirt.local,10.0.2.2
       # The single source of truth for the runner-side kerbside deploy
-      # location: deploy-kerbside.sh and drive-console.py both honour
-      # this variable (it is their documented default), and the drive
-      # and artifact steps below reference it, so changing it here
-      # changes all of them together.
-      WORKDIR: /tmp/kerbside-ovirt-ci
+      # location. deploy-kerbside.sh and drive-console.py honour the
+      # WORKDIR environment variable (it is their documented default),
+      # but WORKDIR is too generic a name to export into every step of
+      # this job -- several steps run scripts from the shakenfist/actions
+      # checkout, which could grow a WORKDIR consumer of its own -- so
+      # the lane-specific name is set here and mapped to WORKDIR only on
+      # the deploy and drive steps. The artifact step references it
+      # directly, so changing it here changes all of them together.
+      OVIRT_LANE_WORKDIR: /tmp/kerbside-ovirt-ci
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.test.name }}
       cancel-in-progress: true
@@ -475,6 +479,8 @@ jobs:
 
       - name: Deploy kerbside on the runner
         timeout-minutes: 15
+        env:
+          WORKDIR: ${{ env.OVIRT_LANE_WORKDIR }}
         run: |
           # NOTE: no /api suffix here, unlike the target-side test-script
           # steps above -- kerbside's oVirt source appends /api itself, so
@@ -496,6 +502,8 @@ jobs:
         # the oVirt hypervisor through kerbside's Rust proxy over TLS,
         # with the host certificate subject pinned.
         timeout-minutes: 10
+        env:
+          WORKDIR: ${{ env.OVIRT_LANE_WORKDIR }}
         run: |
           ${WORKDIR}/venv/bin/python3 \
               ${GITHUB_WORKSPACE}/kerbside/tools/ovirt-e2e/drive-console.py
@@ -532,9 +540,13 @@ jobs:
 
       # The kerbside-side artifacts, distinct from the target-side bundle
       # above: the daemon and gunicorn logs, ryll's stdio, the
-      # smoke-client log, and kerbside.env (which deploy-kerbside.sh
-      # deliberately keeps free of the engine password so it is safe to
-      # upload). if-no-files-found is warn
+      # smoke-client log, and kerbside.env. kerbside.env contains no
+      # secrets beyond the well-known loopback MariaDB credential
+      # hardcoded in deploy-kerbside.sh and
+      # tools/direct-qemu/start-kerbside.sh; the engine password is
+      # deliberately absent. Anyone adding a key to kerbside.env must
+      # clear that same bar -- these artifacts are world-downloadable
+      # for the full retention period. if-no-files-found is warn
       # rather than error -- a failure before the deploy step legitimately
       # leaves these absent. Deliberately excludes console.vv (carries a
       # live proxy token), the auth seed file (key material), and
@@ -548,13 +560,13 @@ jobs:
           retention-days: 90
           if-no-files-found: warn
           path: |
-            ${{ env.WORKDIR }}/kerbside.log
-            ${{ env.WORKDIR }}/kerbside.log.gunicorn-access
-            ${{ env.WORKDIR }}/kerbside.log.gunicorn-error
-            ${{ env.WORKDIR }}/kerbside.env
-            ${{ env.WORKDIR }}/ryll-ovirt.stdout
-            ${{ env.WORKDIR }}/ryll-ovirt.stderr
-            ${{ env.WORKDIR }}/smoke-client.log
+            ${{ env.OVIRT_LANE_WORKDIR }}/kerbside.log
+            ${{ env.OVIRT_LANE_WORKDIR }}/kerbside.log.gunicorn-access
+            ${{ env.OVIRT_LANE_WORKDIR }}/kerbside.log.gunicorn-error
+            ${{ env.OVIRT_LANE_WORKDIR }}/kerbside.env
+            ${{ env.OVIRT_LANE_WORKDIR }}/ryll-ovirt.stdout
+            ${{ env.OVIRT_LANE_WORKDIR }}/ryll-ovirt.stderr
+            ${{ env.OVIRT_LANE_WORKDIR }}/smoke-client.log
 
       - name: Retain the environment if requested
         # !cancelled(), not the bare event check: without it a failing step

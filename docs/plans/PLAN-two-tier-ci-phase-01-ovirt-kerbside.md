@@ -546,6 +546,35 @@ left as-is deliberately — it matches the sf-e2e convention
 and the credential is a public CI throwaway; tightening it
 should be done uniformly across both lanes or not at all.
 
+### Review follow-ups (PR #250)
+
+The review of the follow-up branch itself found that the
+new pinning check was the same class of never-can-fail
+oracle the branch had just removed from the terminate path:
+an empty `host_subject` maps to `None` in `build_config`,
+silently disabling verification while both the escalation
+line and the absent-rejection check still pass, and a real
+rejection would fail the smoke client before the log check
+ran. Fixed with a positive oracle: the escalation `info!` in
+`backend.rs` now logs the `host_subject` it is about to
+apply, and `drive-console.py` requires a non-empty pin on
+every escalation line. Both load-bearing `info!` sites
+(`backend.rs` escalation, `relay.rs` terminate) gained
+`CI-ORACLE` markers naming their consumers.
+
+Also from that review: the rejection needle was shortened to
+`pinned host_subject` (the message is produced by the ryll
+crate, not this repo, so the long form could drift silently;
+`verify-rust-proxy.sh` already matched the short fragment);
+the job-level workdir was renamed to `OVIRT_LANE_WORKDIR`
+and mapped to `WORKDIR` only on the deploy and drive steps,
+because a job-level `WORKDIR` leaks into steps running
+shakenfist/actions scripts; "secret-free by construction"
+wording was replaced with the precise invariant (nothing
+beyond the well-known loopback MariaDB credential); and the
+driver now fails distinctly when the daemon log is missing
+instead of reporting the oracle as absent.
+
 ## Back brief
 
 Before executing any step, back brief the operator on the

@@ -77,9 +77,9 @@ probe the oVirt environment: it also deploys the PR's own kerbside
 registers a live `type: ovirt` source against the engine it just
 built, and relays a real SPICE session from the oVirt hypervisor
 through the Rust proxy — asserting from the proxy log that the
-backend leg escalated to TLS and that certificate-subject pinning
-did not reject, then terminating the in-flight session via the REST
-API and asserting the proxy dropped it.
+backend leg escalated to TLS with a non-empty certificate-subject
+pin on every escalation, then terminating the in-flight session via
+the REST API and asserting the proxy dropped it.
 
 The runner-side scripts live in `tools/ovirt-e2e/` and are
 documented in `tools/ovirt-e2e/README.md`; the architecture decision

@@ -21,10 +21,11 @@ and registered a ``type: ovirt`` source against a live oVirt 4.5 engine. It:
      the control socket) to assert real SPICE relayed through the proxy --
      guest-agnostic, which matters here because the guest is a Debian 12 GNOME
      image rather than Uncalibrated Sextant;
-  5. asserts the proxy log shows the backend leg escalated to TLS and that
-     certificate-subject pinning did not reject -- pinning fails silently in
-     the passing direction, so the log lines are the only oracle that the
-     values asserted in step 2 were actually used;
+  5. asserts the proxy log shows the backend leg escalated to TLS with a
+     non-empty certificate-subject pin on every escalation line, and that
+     pinning did not visibly reject -- pinning fails silently in the passing
+     direction, so the escalation line's ``host_subject`` field is the only
+     oracle that the values asserted in step 2 were actually used;
   6. asserts an audit row and an active session exist for the console;
   7. terminates the console via kerbside's REST API while ryll is still
      connected, and asserts the proxy dropped the in-flight session (the
@@ -47,6 +48,7 @@ Part of docs/plans/PLAN-two-tier-ci-phase-01-ovirt-kerbside.md.
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import time
@@ -62,11 +64,19 @@ CONSOLE_NAME_PREFIX = 'smoke-test-'
 
 # Proxy log oracles, asserted against the kerbside daemon log (which
 # carries the Rust proxy's tracing output). These are load-bearing
-# assertions, not diagnostics, so they must stay in step with the
-# message text in rust/kerbside-proxy/src/backend.rs and relay.rs.
+# assertions, not diagnostics. The first two must stay in step with the
+# message text at the CI-ORACLE-marked info! sites in
+# rust/kerbside-proxy/src/backend.rs and relay.rs. The rejection needle
+# is different: that message is produced by the ryll
+# shakenfist-spice-protocol crate's verifier (rev-pinned via
+# rust/kerbside-proxy/Cargo.toml), not by this repo, so nothing here
+# flags a reword and a stale needle fails in the unsafe direction
+# (silently passing). Match on the same short, stable fragment
+# tools/direct-qemu/verify-rust-proxy.sh uses rather than the full
+# message.
 TLS_ESCALATION_ORACLE = ('hypervisor requires TLS; retrying backend '
                          'connection over the secure port')
-PINNED_SUBJECT_REJECTION = 'TLS: rejecting certificate: pinned host_subject'
+PINNED_SUBJECT_REJECTION = 'pinned host_subject'
 TERMINATE_ORACLE = 'session terminated by control plane'
 
 
@@ -224,6 +234,29 @@ def _log_contains(log_path, needle):
         return False
 
 
+def _escalation_pins(log_path):
+    """The host_subject= value from each TLS escalation log line.
+
+    The escalation info! in rust/kerbside-proxy/src/backend.rs logs the
+    pin it is about to apply as a trailing ``host_subject=`` field (the
+    subject may contain spaces, so take everything to end of line). Only
+    the text after the message is searched, so a tracing format change
+    that stopped rendering the field last would yield '' (a hard
+    failure) rather than silently matching something else. An
+    escalation line without the field, or with an empty value, yields
+    ''.
+    """
+    pins = []
+    with open(log_path, 'r', errors='replace') as f:
+        for line in f:
+            offset = line.find(TLS_ESCALATION_ORACLE)
+            if offset == -1:
+                continue
+            match = re.search(r'host_subject=(.*)$', line[offset:])
+            pins.append(match.group(1).strip() if match else '')
+    return pins
+
+
 def _session_present(db, source, console_uuid):
     """True if kerbside has an active session for the console."""
     for entry in db.get_sessions().values():
@@ -322,27 +355,50 @@ def main():
         # 5. Assert real SPICE was relayed through the proxy.
         _run_smoke_client(smoke_client, sock_path, smoke_log)
 
-        # 5b. Assert the backend TLS escalation and pinning actually
-        # happened. Step 2 proved the scrape *populated* secure_port and
+        # The log oracles from here on read the daemon log directly. A
+        # missing file is a lane misconfiguration (KERBSIDE_LOG_PATH is
+        # wrong, or the daemon never started), not a proxy behaviour --
+        # fail as that, rather than letting _log_contains report the
+        # unreadable log as 'oracle absent' and blaming the proxy.
+        if not os.path.exists(log_path):
+            raise SystemExit(
+                'kerbside daemon log %s does not exist; KERBSIDE_LOG_PATH '
+                'is wrong or the daemon never started' % log_path)
+
+        # 5b. Assert the backend TLS escalation actually happened, and
+        # that every escalation carried a non-empty certificate-subject
+        # pin. Step 2 proved the scrape *populated* secure_port and
         # host_subject; neither proves the proxy used them. If the proxy
-        # relayed happily over the plaintext port, or host_subject were
-        # dropped before build_config (an empty subject maps to None,
-        # which disables verification), the smoke client above would
-        # still pass. Pinning fails silently in the passing direction,
-        # so the log is the only oracle: the escalation line must be
-        # present and the rejection line absent.
-        if not _log_contains(log_path, TLS_ESCALATION_ORACLE):
+        # relayed happily over the plaintext port the escalation line
+        # would be absent; if host_subject were dropped before
+        # build_config (an empty subject maps to None, which disables
+        # verification) the TLS handshake would still succeed unpinned,
+        # so the positive oracle is the host_subject= field the
+        # escalation line logs at the point of use.
+        pins = _escalation_pins(log_path)
+        if not pins:
             _log('  kerbside daemon (proxy) log:\n%s' % _tail(log_path, 60))
             raise SystemExit(
                 'the proxy never logged %r; the backend leg did not '
                 'escalate to TLS' % TLS_ESCALATION_ORACLE)
+        if not all(pins):
+            _log('  kerbside daemon (proxy) log:\n%s' % _tail(log_path, 60))
+            raise SystemExit(
+                'a backend TLS escalation logged an empty host_subject; '
+                'the secure leg ran without certificate-subject pinning')
+
+        # Belt and braces only: a pinning rejection would have failed
+        # the smoke client above first (the rejected channel never
+        # relays), so this check is close to unreachable. It is kept
+        # because it is cheap and its failure mode (a rejection line
+        # with a somehow-working relay) would be genuinely alarming.
         if _log_contains(log_path, PINNED_SUBJECT_REJECTION):
             _log('  kerbside daemon (proxy) log:\n%s' % _tail(log_path, 60))
             raise SystemExit(
-                'the proxy logged %r; certificate-subject pinning '
-                'rejected the hypervisor' % PINNED_SUBJECT_REJECTION)
-        _log('backend TLS escalation confirmed, subject pinning did not '
-             'reject')
+                'the proxy logged a %r rejection; certificate-subject '
+                'pinning rejected the hypervisor' % PINNED_SUBJECT_REJECTION)
+        _log('backend TLS escalation confirmed with a non-empty subject '
+             'pin on all %d escalation(s)' % len(pins))
 
         # 6. Assert kerbside's bookkeeping.
         audit_count = db.count_audit_events(source, console_uuid)
