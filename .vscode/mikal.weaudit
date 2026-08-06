@@ -243,6 +243,62 @@
     {
       "path": "tools/audit",
       "author": "mikal"
+    },
+    {
+      "path": "kerbside/sources/base.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/sources/ovirt.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/sources/shakenfist.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/sources/static.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/sources",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/rpc/__init__.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/rpc/kerbside_pb2_grpc.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/rpc/kerbside_pb2_grpc.pyi",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/rpc/kerbside_pb2.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/rpc/kerbside_pb2.pyi",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/rpc/kerbside.proto",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/rpc/server.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/rpc/servicer.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/rpc",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

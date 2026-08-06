@@ -109,9 +109,57 @@
       "sha": "3c8074acf03b5a1167c08e126cedb9609a2ea941",
       "date": "2026-08-06"
     },
+    "kerbside/rpc/__init__.py": {
+      "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "date": "2026-08-07"
+    },
+    "kerbside/rpc/kerbside.proto": {
+      "sha": "92de329653c6be4c5a7f7b3b43909b474a0ed1e3",
+      "date": "2026-08-07"
+    },
+    "kerbside/rpc/kerbside_pb2.py": {
+      "sha": "4b2410772377e6d9310321f922d153c0dcb5fa03",
+      "date": "2026-08-07"
+    },
+    "kerbside/rpc/kerbside_pb2.pyi": {
+      "sha": "c6f988ad7429545df840826b97e028e4d98307b9",
+      "date": "2026-08-07"
+    },
+    "kerbside/rpc/kerbside_pb2_grpc.py": {
+      "sha": "0380b27620ff9d0e3be8f76ab0296ec8e5c2e415",
+      "date": "2026-08-07"
+    },
+    "kerbside/rpc/kerbside_pb2_grpc.pyi": {
+      "sha": "9e17e6659153acb4da822eb9842a16ba4419b4d1",
+      "date": "2026-08-07"
+    },
+    "kerbside/rpc/server.py": {
+      "sha": "d6af35e9ff278f5672884ac2d340c40053aaf3ad",
+      "date": "2026-08-07"
+    },
+    "kerbside/rpc/servicer.py": {
+      "sha": "0dcac8b48e8743bd90994187a0b1b65ce5182729",
+      "date": "2026-08-07"
+    },
     "kerbside/sf_token.py": {
       "sha": "377a26c25d7029cff1439039c2237de20e3a437f",
       "date": "2026-08-06"
+    },
+    "kerbside/sources/base.py": {
+      "sha": "9508569169800aacfe7745b363175ac241ac6a7c",
+      "date": "2026-08-07"
+    },
+    "kerbside/sources/ovirt.py": {
+      "sha": "1a1efe467942f68e18ac262d3818fb19c23ae720",
+      "date": "2026-08-07"
+    },
+    "kerbside/sources/shakenfist.py": {
+      "sha": "3c77e7e7dbe0d539bc76feb56f9a31aedeebe5e2",
+      "date": "2026-08-07"
+    },
+    "kerbside/sources/static.py": {
+      "sha": "87dd7d9c356780bb894b08a7bc01966cf4b00679",
+      "date": "2026-08-07"
     },
     "kerbside/util.py": {
       "sha": "499e55529e2c1d1a51d1042757c137d96069dd03",
