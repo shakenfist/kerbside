@@ -26,6 +26,8 @@ jobs:
       github.event.issue.pull_request &&
       contains(github.event.comment.body, '@shakenfist-bot please retest')
     runs-on: [self-hosted, static]
+    # Just a few gh API calls, so anything beyond this is a hang.
+    timeout-minutes: 10
 
     steps:
       - name: Handle trigger
