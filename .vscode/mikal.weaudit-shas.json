@@ -160,6 +160,66 @@
     "rust/kerbside-proxy/src/tls.rs": {
       "sha": "e2be3c864a08747f987880b5205d719f33a15f78",
       "date": "2026-08-05"
+    },
+    "tools/address-comments-with-claude.sh": {
+      "sha": "ad0b0df9ee27870b0caa5c3e52b5f91792ce0426",
+      "date": "2026-08-06"
+    },
+    "tools/audit/wave1.sh": {
+      "sha": "219fca05b9c7cd896827cd1281e841accbe69b9d",
+      "date": "2026-08-06"
+    },
+    "tools/audit/wave2-mechanical.sh": {
+      "sha": "14f673773e8a52d3d6f091a96a0b2a27a2302419",
+      "date": "2026-08-06"
+    },
+    "tools/build-proxy-wheel.sh": {
+      "sha": "dcf7182d68c4851e2981d5257e1c6f50dd394b6e",
+      "date": "2026-08-06"
+    },
+    "tools/ci-prune-reviews.sh": {
+      "sha": "6daef1e07eb05d46b0a13745d5338cf1aea23cd8",
+      "date": "2026-08-06"
+    },
+    "tools/dump-ovirt-host-subject.py": {
+      "sha": "e6192e0626cdae7afe7f853ad06ad07ac399b604",
+      "date": "2026-08-06"
+    },
+    "tools/flake8wrap.sh": {
+      "sha": "97ee081c8257372a4de994eba1b9e2b5434da1d2",
+      "date": "2026-08-06"
+    },
+    "tools/gen-protos.sh": {
+      "sha": "b886d3a887c6cbe39f454ad13a9271752b61ff9e",
+      "date": "2026-08-06"
+    },
+    "tools/pin-indirect-dependencies.sh": {
+      "sha": "241b462c281d6e33fa1d4023d15762a95d69112a",
+      "date": "2026-08-06"
+    },
+    "tools/render-review.py": {
+      "sha": "3e86e82eb69d2f60633fcfd27359ebf656dbf4ad",
+      "date": "2026-08-06"
+    },
+    "tools/review-schema.json": {
+      "sha": "1c8c73a1fde5b93f3f08daea5aa48f730b6fb024",
+      "date": "2026-08-06"
+    },
+    "tools/review-tracking.sh": {
+      "sha": "e63705ac5c57fd6d9fd0da21e18f399e3f88e4a4",
+      "date": "2026-08-06"
+    },
+    "tools/run-tempest-tests": {
+      "sha": "b17af445b479f810c2ea4e33eb26231ffeec8604",
+      "date": "2026-08-06"
+    },
+    "tools/stamp-proxy-version.sh": {
+      "sha": "fa5bc4dc6f461e287cd33f5de76e1d105cd44173",
+      "date": "2026-08-06"
+    },
+    "tools/test-ovirt-console.py": {
+      "sha": "c3ee796b2c44079bcacd21fa166e104e9a3930b1",
+      "date": "2026-08-06"
     }
   }
 }

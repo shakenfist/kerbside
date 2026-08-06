@@ -179,6 +179,70 @@
     {
       "path": "kerbside/util.py",
       "author": "mikal"
+    },
+    {
+      "path": "tools/address-comments-with-claude.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/build-proxy-wheel.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/ci-prune-reviews.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/dump-ovirt-host-subject.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/flake8wrap.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/gen-protos.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/pin-indirect-dependencies.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/render-review.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/review-schema.json",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/review-tracking.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/run-tempest-tests",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/stamp-proxy-version.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/test-ovirt-console.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/audit/wave1.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/audit/wave2-mechanical.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/audit",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
