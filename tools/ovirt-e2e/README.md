@@ -89,9 +89,14 @@ console checks, the workflow:
    the lane's test VM, mints an API JWT from the auth seed, fetches the
    proxied `.vv` and launches `ryll --headless` against it immediately,
    asserts real SPICE surfaces and a screenshot via
-   `tools/direct-qemu/smoke-client.py`, asserts a session and audit row
-   exist, then terminates the console via the REST API and asserts the
-   session and its termination audit event.
+   `tools/direct-qemu/smoke-client.py`, asserts from the proxy log that
+   the backend leg escalated to TLS and that subject pinning did not
+   reject (pinning fails silently in the passing direction, so the log
+   is the only oracle), asserts a session and audit row exist, then
+   terminates the console via the REST API **while ryll is still
+   connected** and asserts the proxy dropped the in-flight session (the
+   same `relay.rs` oracle `tools/direct-qemu/verify-terminate-live.sh`
+   uses) and that a termination audit event was recorded.
 
 The three scripts:
 
@@ -151,9 +156,10 @@ seed, the API JWT, the oVirt graphics-console ticket, or the `.vv` body.
 `sources.yaml` holds the engine password and is written 0600 by
 `gen-sources.py`; it is deliberately NOT uploaded as a CI artifact, along
 with `console.vv` and the auth seed file. The kerbside daemon log, the
-gunicorn logs, ryll's stdio, and the smoke-client log are uploaded
-instead -- an errored source or a failed relay is fully diagnosable from
-those without ever needing the secret files.
+gunicorn logs, ryll's stdio, the smoke-client log, and `kerbside.env`
+(secret-free by construction, see below) are uploaded instead -- an
+errored source or a failed relay is fully diagnosable from those without
+ever needing the secret files.
 
 ## Env-file contract
 

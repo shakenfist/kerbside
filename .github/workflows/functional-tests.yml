@@ -165,6 +165,12 @@ jobs:
     # route to.
     env:
       no_proxy: 127.0.0.1,localhost,ovirt.local,10.0.2.2
+      # The single source of truth for the runner-side kerbside deploy
+      # location: deploy-kerbside.sh and drive-console.py both honour
+      # this variable (it is their documented default), and the drive
+      # and artifact steps below reference it, so changing it here
+      # changes all of them together.
+      WORKDIR: /tmp/kerbside-ovirt-ci
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.test.name }}
       cancel-in-progress: true
@@ -392,6 +398,13 @@ jobs:
         # and the engine's certificate is CN=ovirt.local, so an IP URL
         # fails verification. The backend SPICE leg needs no DNS -- the
         # engine reports the console address as an IP.
+        #
+        # A plain append is fine, and there is deliberately no teardown
+        # of anything this job installs or starts on the runner (MariaDB,
+        # the kerbside daemon, gunicorn, ryll): these vm-labelled runners
+        # are single-use VMs discarded after the job -- that is also why
+        # the retention step below can hold the environment open just by
+        # sleeping -- so nothing accumulates across runs.
         run: echo '10.0.2.2 ovirt.local' | sudo tee -a /etc/hosts
 
       - name: Probe hypervisor SPICE ports from the runner
@@ -484,7 +497,7 @@ jobs:
         # with the host certificate subject pinned.
         timeout-minutes: 10
         run: |
-          /tmp/kerbside-ovirt-ci/venv/bin/python3 \
+          ${WORKDIR}/venv/bin/python3 \
               ${GITHUB_WORKSPACE}/kerbside/tools/ovirt-e2e/drive-console.py
 
       - name: Gather artifacts
@@ -518,8 +531,10 @@ jobs:
           path: /srv/github/artifacts/bundle.zip
 
       # The kerbside-side artifacts, distinct from the target-side bundle
-      # above: the daemon and gunicorn logs, ryll's stdio, and the
-      # smoke-client log. if-no-files-found is warn
+      # above: the daemon and gunicorn logs, ryll's stdio, the
+      # smoke-client log, and kerbside.env (which deploy-kerbside.sh
+      # deliberately keeps free of the engine password so it is safe to
+      # upload). if-no-files-found is warn
       # rather than error -- a failure before the deploy step legitimately
       # leaves these absent. Deliberately excludes console.vv (carries a
       # live proxy token), the auth seed file (key material), and
@@ -533,12 +548,13 @@ jobs:
           retention-days: 90
           if-no-files-found: warn
           path: |
-            /tmp/kerbside-ovirt-ci/kerbside.log
-            /tmp/kerbside-ovirt-ci/kerbside.log.gunicorn-access
-            /tmp/kerbside-ovirt-ci/kerbside.log.gunicorn-error
-            /tmp/kerbside-ovirt-ci/ryll-ovirt.stdout
-            /tmp/kerbside-ovirt-ci/ryll-ovirt.stderr
-            /tmp/kerbside-ovirt-ci/smoke-client.log
+            ${{ env.WORKDIR }}/kerbside.log
+            ${{ env.WORKDIR }}/kerbside.log.gunicorn-access
+            ${{ env.WORKDIR }}/kerbside.log.gunicorn-error
+            ${{ env.WORKDIR }}/kerbside.env
+            ${{ env.WORKDIR }}/ryll-ovirt.stdout
+            ${{ env.WORKDIR }}/ryll-ovirt.stderr
+            ${{ env.WORKDIR }}/smoke-client.log
 
       - name: Retain the environment if requested
         # !cancelled(), not the bare event check: without it a failing step
