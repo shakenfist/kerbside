@@ -143,6 +143,42 @@
     {
       "path": "rust/kerbside-proxy/src",
       "author": "mikal"
+    },
+    {
+      "path": "kerbside/__init__.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/config.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/consoletoken.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/db.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/main.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/proxy_supervisor.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/sf_token.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/util.py",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

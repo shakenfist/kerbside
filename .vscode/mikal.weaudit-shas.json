@@ -81,6 +81,42 @@
       "sha": "e11f4d65bca446150d6e2ed32a49a8fccfa0ebbc",
       "date": "2026-08-04"
     },
+    "kerbside/__init__.py": {
+      "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "date": "2026-08-06"
+    },
+    "kerbside/api.py": {
+      "sha": "476e263d297fb959437e60c26e2c4d4e69c271d4",
+      "date": "2026-08-06"
+    },
+    "kerbside/config.py": {
+      "sha": "4fd3e643b8729661fd544fdea0e521f925f3c6b2",
+      "date": "2026-08-06"
+    },
+    "kerbside/consoletoken.py": {
+      "sha": "6811fdf54cb562806ab427ff9eaf826e96bedc1d",
+      "date": "2026-08-06"
+    },
+    "kerbside/db.py": {
+      "sha": "c3612a3f570288c42907bec0243701344acbe3a4",
+      "date": "2026-08-06"
+    },
+    "kerbside/main.py": {
+      "sha": "732eb1092500ae57882563508833c23007ed4760",
+      "date": "2026-08-06"
+    },
+    "kerbside/proxy_supervisor.py": {
+      "sha": "3c8074acf03b5a1167c08e126cedb9609a2ea941",
+      "date": "2026-08-06"
+    },
+    "kerbside/sf_token.py": {
+      "sha": "377a26c25d7029cff1439039c2237de20e3a437f",
+      "date": "2026-08-06"
+    },
+    "kerbside/util.py": {
+      "sha": "499e55529e2c1d1a51d1042757c137d96069dd03",
+      "date": "2026-08-06"
+    },
     "rust/kerbside-proxy/README.md": {
       "sha": "7c828f68a2863e42702474ba2b81617a52131dd5",
       "date": "2026-08-05"
