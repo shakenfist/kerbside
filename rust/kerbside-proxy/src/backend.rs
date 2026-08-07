@@ -91,10 +91,17 @@ pub async fn run(
             // Only retry when the server explicitly asked for a secure
             // connection and we actually have a secure port to try.
             if is_need_secured(&first_err) && target.secure_port != 0 {
+                // CI-ORACLE: the message text and the host_subject field are
+                // load-bearing for tools/ovirt-e2e/drive-console.py, which
+                // asserts both that the escalation happened and that it
+                // carried a non-empty certificate-subject pin (an empty
+                // subject maps to None in build_config, silently disabling
+                // verification). Update the consumer if either changes.
                 info!(
                     %connection_ref,
                     hypervisor = %target.hypervisor,
                     channel_type = channel_type.name(),
+                    host_subject = %target.host_subject,
                     "hypervisor requires TLS; retrying backend connection over the secure port"
                 );
                 let mut secure_config = base_config;

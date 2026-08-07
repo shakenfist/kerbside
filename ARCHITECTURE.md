@@ -422,6 +422,17 @@ tools/                 # Utility scripts (incl. run-tempest-tests)
     drive-happy-path.py    # Mint → verify → exchange → proxied session
     drive-adversarial.py   # replay/expired/aud/kid/cross-namespace
     gather-artifacts.sh    # Collect logs from the primary (no token)
+  ovirt-e2e/           # oVirt end-to-end CI lane (two-tier CI phase 1):
+                       #   deploy the PR's kerbside on the runner against
+                       #   a live oVirt 4.5 engine, relay a proxied
+                       #   SPICE session with host_subject pinning
+    gen-sources.py     # Write the type: ovirt sources.yaml (engine CA
+                       #   fetched and embedded inline)
+    deploy-kerbside.sh # Venv-install kerbside + proxy wheel, reuse
+                       #   direct-qemu/start-kerbside.sh, wait for the
+                       #   source to be healthy
+    drive-console.py   # Scrape → .vv → ryll → smoke client → TLS/pinning
+                       #   log oracles → live REST terminate
 tests/
   fixtures/            # Committed test fixtures
     uncalibrated-sextant.qcow2  # Sextant UEFI guest image for CI

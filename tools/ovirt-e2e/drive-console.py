@@ -21,9 +21,16 @@ and registered a ``type: ovirt`` source against a live oVirt 4.5 engine. It:
      the control socket) to assert real SPICE relayed through the proxy --
      guest-agnostic, which matters here because the guest is a Debian 12 GNOME
      image rather than Uncalibrated Sextant;
-  5. asserts an audit row and an active session exist for the console;
-  6. terminates the console via kerbside's REST API and asserts the session is
-     removed and a termination audit event was appended.
+  5. asserts the proxy log shows the backend leg escalated to TLS with a
+     non-empty certificate-subject pin on every escalation line, and that
+     pinning did not visibly reject -- pinning fails silently in the passing
+     direction, so the escalation line's ``host_subject`` field is the only
+     oracle that the values asserted in step 2 were actually used;
+  6. asserts an audit row and an active session exist for the console;
+  7. terminates the console via kerbside's REST API while ryll is still
+     connected, and asserts the proxy dropped the in-flight session (the
+     relay.rs oracle, as tools/direct-qemu/verify-terminate-live.sh does),
+     the session is removed, and a termination audit event was appended.
 
 Configuration comes from ``${WORKDIR}/kerbside.env``, written by
 ``deploy-kerbside.sh``. WORKDIR defaults to ``/tmp/kerbside-ovirt-ci`` and may
@@ -41,6 +48,7 @@ Part of docs/plans/PLAN-two-tier-ci-phase-01-ovirt-kerbside.md.
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import time
@@ -53,6 +61,23 @@ DEFAULT_WORKDIR = '/tmp/kerbside-ovirt-ci'
 # tools/start-test-target.py, which names it smoke-test-<something>.
 # tools/test-ovirt-console.py matches on the same prefix.
 CONSOLE_NAME_PREFIX = 'smoke-test-'
+
+# Proxy log oracles, asserted against the kerbside daemon log (which
+# carries the Rust proxy's tracing output). These are load-bearing
+# assertions, not diagnostics. The first two must stay in step with the
+# message text at the CI-ORACLE-marked info! sites in
+# rust/kerbside-proxy/src/backend.rs and relay.rs. The rejection needle
+# is different: that message is produced by the ryll
+# shakenfist-spice-protocol crate's verifier (rev-pinned via
+# rust/kerbside-proxy/Cargo.toml), not by this repo, so nothing here
+# flags a reword and a stale needle fails in the unsafe direction
+# (silently passing). Match on the same short, stable fragment
+# tools/direct-qemu/verify-rust-proxy.sh uses rather than the full
+# message.
+TLS_ESCALATION_ORACLE = ('hypervisor requires TLS; retrying backend '
+                         'connection over the secure port')
+PINNED_SUBJECT_REJECTION = 'pinned host_subject'
+TERMINATE_ORACLE = 'session terminated by control plane'
 
 
 def _load_env_file(path):
@@ -200,6 +225,38 @@ def _run_smoke_client(smoke_client, sock_path, log_file):
     _log('smoke-client.py passed (output in %s)' % log_file)
 
 
+def _log_contains(log_path, needle):
+    """True if the daemon/proxy log currently contains `needle`."""
+    try:
+        with open(log_path, 'r', errors='replace') as f:
+            return needle in f.read()
+    except OSError:
+        return False
+
+
+def _escalation_pins(log_path):
+    """The host_subject= value from each TLS escalation log line.
+
+    The escalation info! in rust/kerbside-proxy/src/backend.rs logs the
+    pin it is about to apply as a trailing ``host_subject=`` field (the
+    subject may contain spaces, so take everything to end of line). Only
+    the text after the message is searched, so a tracing format change
+    that stopped rendering the field last would yield '' (a hard
+    failure) rather than silently matching something else. An
+    escalation line without the field, or with an empty value, yields
+    ''.
+    """
+    pins = []
+    with open(log_path, 'r', errors='replace') as f:
+        for line in f:
+            offset = line.find(TLS_ESCALATION_ORACLE)
+            if offset == -1:
+                continue
+            match = re.search(r'host_subject=(.*)$', line[offset:])
+            pins.append(match.group(1).strip() if match else '')
+    return pins
+
+
 def _session_present(db, source, console_uuid):
     """True if kerbside has an active session for the console."""
     for entry in db.get_sessions().values():
@@ -298,6 +355,51 @@ def main():
         # 5. Assert real SPICE was relayed through the proxy.
         _run_smoke_client(smoke_client, sock_path, smoke_log)
 
+        # The log oracles from here on read the daemon log directly. A
+        # missing file is a lane misconfiguration (KERBSIDE_LOG_PATH is
+        # wrong, or the daemon never started), not a proxy behaviour --
+        # fail as that, rather than letting _log_contains report the
+        # unreadable log as 'oracle absent' and blaming the proxy.
+        if not os.path.exists(log_path):
+            raise SystemExit(
+                'kerbside daemon log %s does not exist; KERBSIDE_LOG_PATH '
+                'is wrong or the daemon never started' % log_path)
+
+        # 5b. Assert the backend TLS escalation actually happened, and
+        # that every escalation carried a non-empty certificate-subject
+        # pin. Step 2 proved the scrape *populated* secure_port and
+        # host_subject; neither proves the proxy used them. If the proxy
+        # relayed happily over the plaintext port the escalation line
+        # would be absent; if host_subject were dropped before
+        # build_config (an empty subject maps to None, which disables
+        # verification) the TLS handshake would still succeed unpinned,
+        # so the positive oracle is the host_subject= field the
+        # escalation line logs at the point of use.
+        pins = _escalation_pins(log_path)
+        if not pins:
+            _log('  kerbside daemon (proxy) log:\n%s' % _tail(log_path, 60))
+            raise SystemExit(
+                'the proxy never logged %r; the backend leg did not '
+                'escalate to TLS' % TLS_ESCALATION_ORACLE)
+        if not all(pins):
+            _log('  kerbside daemon (proxy) log:\n%s' % _tail(log_path, 60))
+            raise SystemExit(
+                'a backend TLS escalation logged an empty host_subject; '
+                'the secure leg ran without certificate-subject pinning')
+
+        # Belt and braces only: a pinning rejection would have failed
+        # the smoke client above first (the rejected channel never
+        # relays), so this check is close to unreachable. It is kept
+        # because it is cheap and its failure mode (a rejection line
+        # with a somehow-working relay) would be genuinely alarming.
+        if _log_contains(log_path, PINNED_SUBJECT_REJECTION):
+            _log('  kerbside daemon (proxy) log:\n%s' % _tail(log_path, 60))
+            raise SystemExit(
+                'the proxy logged a %r rejection; certificate-subject '
+                'pinning rejected the hypervisor' % PINNED_SUBJECT_REJECTION)
+        _log('backend TLS escalation confirmed with a non-empty subject '
+             'pin on all %d escalation(s)' % len(pins))
+
         # 6. Assert kerbside's bookkeeping.
         audit_count = db.count_audit_events(source, console_uuid)
         if audit_count < 1:
@@ -308,23 +410,59 @@ def main():
             raise SystemExit(
                 'expected an active kerbside session for the console')
         _log('audit rows present (%d) and session is active' % audit_count)
+
+        # 7. Terminate via the live REST API while ryll is still
+        # connected, so this asserts an in-flight drop rather than the
+        # bookkeeping of a session that had already ended.
+        _log('terminating the console via the kerbside REST API')
+        url = 'http://127.0.0.1:%s/console/%s/%s/terminate' % (
+            api_port, source, console_uuid)
+        resp = requests.get(url, headers=headers, timeout=15)
+        if resp.status_code != 200:
+            raise SystemExit(
+                'terminate returned HTTP %d (expected 200)'
+                % resp.status_code)
+
+        # The daemon polls session_terminations every ~2s, so allow a
+        # bounded window for the relay to drop (the same oracle and
+        # reasoning as tools/direct-qemu/verify-terminate-live.sh).
+        deadline = time.time() + 30
+        while not _log_contains(log_path, TERMINATE_ORACLE):
+            if time.time() >= deadline:
+                _log('  kerbside daemon (proxy) log:\n%s'
+                     % _tail(log_path, 60))
+                raise SystemExit(
+                    'the proxy never logged %r within 30s of the '
+                    'terminate call; the in-flight session was not '
+                    'dropped' % TERMINATE_ORACLE)
+            time.sleep(1)
+        _log('proxy dropped the in-flight session')
+
+        # Secondary, non-fatal confirmation (as in
+        # verify-terminate-live.sh): headless ryll exits its event loop
+        # when its channels close.
+        try:
+            ryll.wait(timeout=15)
+            _log('ryll exited as its channels closed (code %s)'
+                 % ryll.returncode)
+        except subprocess.TimeoutExpired:
+            _log('ryll still running 15s after the drop; proceeding on '
+                 'the log oracle alone')
     finally:
-        # 7. Stop ryll before driving termination through the API.
+        # 8. Belt and braces: on the happy path ryll has already exited
+        # via the termination above, and terminate() on an exited
+        # process is a no-op. This only matters on the failure paths.
         ryll.terminate()
         try:
             ryll.wait(timeout=10)
         except subprocess.TimeoutExpired:
             ryll.kill()
 
-    # 7 (continued). Terminate via the live REST API and assert teardown.
-    _log('terminating the console via the kerbside REST API')
-    url = 'http://127.0.0.1:%s/console/%s/%s/terminate' % (
-        api_port, source, console_uuid)
-    resp = requests.get(url, headers=headers, timeout=15)
-    if resp.status_code != 200:
-        raise SystemExit(
-            'terminate returned HTTP %d (expected 200)' % resp.status_code)
-
+    # 9. Post-drop bookkeeping. _session_present() is a weak oracle at
+    # this point -- terminate deletes the ConsoleToken row that
+    # get_sessions() keys on, so it cannot return True once the API call
+    # returned 200. The in-flight assertion above is the real gate; this
+    # records what an operator listing sessions would now see.
     if _session_present(db, source, console_uuid):
         raise SystemExit('session still active after terminate')
 

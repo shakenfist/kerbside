@@ -89,9 +89,16 @@ console checks, the workflow:
    the lane's test VM, mints an API JWT from the auth seed, fetches the
    proxied `.vv` and launches `ryll --headless` against it immediately,
    asserts real SPICE surfaces and a screenshot via
-   `tools/direct-qemu/smoke-client.py`, asserts a session and audit row
-   exist, then terminates the console via the REST API and asserts the
-   session and its termination audit event.
+   `tools/direct-qemu/smoke-client.py`, asserts from the proxy log that
+   the backend leg escalated to TLS with a non-empty certificate-subject
+   pin on every escalation line (pinning fails silently in the passing
+   direction, so the `host_subject=` field the escalation line logs at
+   the point of use is the only positive oracle), asserts a session and
+   audit row exist, then
+   terminates the console via the REST API **while ryll is still
+   connected** and asserts the proxy dropped the in-flight session (the
+   same `relay.rs` oracle `tools/direct-qemu/verify-terminate-live.sh`
+   uses) and that a termination audit event was recorded.
 
 The three scripts:
 
@@ -151,9 +158,10 @@ seed, the API JWT, the oVirt graphics-console ticket, or the `.vv` body.
 `sources.yaml` holds the engine password and is written 0600 by
 `gen-sources.py`; it is deliberately NOT uploaded as a CI artifact, along
 with `console.vv` and the auth seed file. The kerbside daemon log, the
-gunicorn logs, ryll's stdio, and the smoke-client log are uploaded
-instead -- an errored source or a failed relay is fully diagnosable from
-those without ever needing the secret files.
+gunicorn logs, ryll's stdio, the smoke-client log, and `kerbside.env`
+(see the env-file contract below for the invariant it must keep to stay
+uploadable) are uploaded instead -- an errored source or a failed relay
+is fully diagnosable from those without ever needing the secret files.
 
 ## Env-file contract
 
@@ -180,7 +188,14 @@ written by `deploy-kerbside.sh` and read by `drive-console.py`:
   (no `/api` suffix).
 
 Deliberately absent: the engine password. The driver never needs it, and
-this file lands in the run's artifacts.
+this file lands in the run's artifacts, which are world-downloadable
+from a public repository for the full retention period. The invariant,
+stated precisely rather than as "secret-free": the only credential in
+this file is the well-known loopback MariaDB one
+(`kerbside:kerbside@127.0.0.1`), hardcoded in `deploy-kerbside.sh` and
+`tools/direct-qemu/start-kerbside.sh` and already public in this
+repository. Any key added to this file must clear that same bar --
+nothing that is not already public.
 
 See `docs/plans/PLAN-two-tier-ci-phase-01-ovirt-kerbside.md` for the
 architecture decision, the full configuration-trap list, and the risks

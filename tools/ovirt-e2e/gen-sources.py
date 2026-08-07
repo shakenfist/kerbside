@@ -67,10 +67,15 @@ def _fetch_ca_cert(engine_url: str) -> Optional[str]:
 
     This is the bootstrap fetch: we cannot verify the engine's HTTPS
     certificate until we hold its CA, which is the very thing we are asking
-    for. That is safe here because it is not the last word --
-    ``oVirtSource.__init__`` immediately re-fetches this same URL *verified*
-    against the CA we write out, and errors the source unless the bytes match.
-    A man in the middle here would therefore fail there.
+    for. ``oVirtSource.__init__`` immediately re-fetches this same URL
+    *verified against the CA we write out*, and errors the source unless the
+    bytes match -- so a CA that changes between the two fetches is caught.
+    That is a self-consistency check, not authentication of the engine: a
+    man in the middle present at bootstrap would serve a chain rooted in its
+    own substituted CA and pass both. This is trust-on-first-use, acceptable
+    here only because the engine sits on the lane's private test network
+    with throwaway credentials; do not copy this pattern anywhere the first
+    fetch crosses a network an attacker could sit on.
     """
     url = engine_url + CA_RESOURCE
 
