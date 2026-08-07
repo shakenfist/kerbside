@@ -355,6 +355,50 @@
     {
       "path": "kerbside/tests",
       "author": "mikal"
+    },
+    {
+      "path": "tests/fixtures/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/__init__.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/config.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/plugin.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/ryll_client.py",
+      "author": "mikal"
+    },
+    {
+      "path": "loadtests/latency/cleanupconsoles.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "loadtests/latency/Dockerfile",
+      "author": "mikal"
+    },
+    {
+      "path": "loadtests/latency/makeconsole.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "loadtests/latency/orchestrator.py",
+      "author": "mikal"
+    },
+    {
+      "path": "loadtests/latency",
+      "author": "mikal"
+    },
+    {
+      "path": "loadtests",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

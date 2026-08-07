@@ -221,6 +221,22 @@
       "sha": "499e55529e2c1d1a51d1042757c137d96069dd03",
       "date": "2026-08-06"
     },
+    "loadtests/latency/Dockerfile": {
+      "sha": "d32a31d4f504020525a71a9ebf34209cfee4c81a",
+      "date": "2026-08-08"
+    },
+    "loadtests/latency/cleanupconsoles.sh": {
+      "sha": "181480700807e60a8b1ae31bbee4c175794375c6",
+      "date": "2026-08-08"
+    },
+    "loadtests/latency/makeconsole.sh": {
+      "sha": "291f5057d4b3c808d60ca0e052975c79464e48b8",
+      "date": "2026-08-08"
+    },
+    "loadtests/latency/orchestrator.py": {
+      "sha": "aa96c2a7768ecd5a483bc806642302c6b46be768",
+      "date": "2026-08-08"
+    },
     "rust/kerbside-proxy/README.md": {
       "sha": "7c828f68a2863e42702474ba2b81617a52131dd5",
       "date": "2026-08-05"
@@ -256,6 +272,26 @@
     "rust/kerbside-proxy/src/tls.rs": {
       "sha": "e2be3c864a08747f987880b5205d719f33a15f78",
       "date": "2026-08-05"
+    },
+    "tempest-plugin/kerbside_tempest_plugin/__init__.py": {
+      "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "date": "2026-08-08"
+    },
+    "tempest-plugin/kerbside_tempest_plugin/config.py": {
+      "sha": "47398e47680a66840863b86a0b2330d079077a24",
+      "date": "2026-08-08"
+    },
+    "tempest-plugin/kerbside_tempest_plugin/plugin.py": {
+      "sha": "38d6e6f49d507181ae616aabf2f06feb35c2e3df",
+      "date": "2026-08-08"
+    },
+    "tempest-plugin/kerbside_tempest_plugin/ryll_client.py": {
+      "sha": "d27251dcc4b5eb552ded28722079ffa195ac7147",
+      "date": "2026-08-08"
+    },
+    "tests/fixtures/README.md": {
+      "sha": "6be0b5f64dcc9dc7c0316a325ab87c175f8a7c8d",
+      "date": "2026-08-08"
     },
     "tools/address-comments-with-claude.sh": {
       "sha": "ad0b0df9ee27870b0caa5c3e52b5f91792ce0426",
