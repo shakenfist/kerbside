@@ -157,6 +157,66 @@
       "sha": "87dd7d9c356780bb894b08a7bc01966cf4b00679",
       "date": "2026-08-07"
     },
+    "kerbside/tests/__init__.py": {
+      "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "date": "2026-08-08"
+    },
+    "kerbside/tests/functional/__init__.py": {
+      "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "date": "2026-08-08"
+    },
+    "kerbside/tests/functional/ryll_helper.py": {
+      "sha": "890db80ff60fe300ddc654399f0cef62aa1bc1ef",
+      "date": "2026-08-08"
+    },
+    "kerbside/tests/functional/test_openstack.py": {
+      "sha": "f3beb5d9abc596bf52acd1e322c529ec3858a4a7",
+      "date": "2026-08-08"
+    },
+    "kerbside/tests/functional/test_shakenfist.py": {
+      "sha": "e20f496edd01e53551364d434f069afeaa2415d7",
+      "date": "2026-08-08"
+    },
+    "kerbside/tests/unit/__init__.py": {
+      "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "date": "2026-08-08"
+    },
+    "kerbside/tests/unit/test_api.py": {
+      "sha": "88493043931c717084819f7300042d20282524e8",
+      "date": "2026-08-08"
+    },
+    "kerbside/tests/unit/test_db.py": {
+      "sha": "5808da38cdd244412b6207148f92919c0d9df554",
+      "date": "2026-08-08"
+    },
+    "kerbside/tests/unit/test_main.py": {
+      "sha": "63a0fe30a432130d990e5d6ca37c430b6c3cc76e",
+      "date": "2026-08-08"
+    },
+    "kerbside/tests/unit/test_proxy_supervisor.py": {
+      "sha": "e2ab89c1beeb5379797f4f8c7435cca715c4e160",
+      "date": "2026-08-08"
+    },
+    "kerbside/tests/unit/test_render_review.py": {
+      "sha": "b8a713a5d434be11aa694685789070c1a8cb5546",
+      "date": "2026-08-08"
+    },
+    "kerbside/tests/unit/test_rpc.py": {
+      "sha": "fd70252c5a1bb9fcfd95a6267c1cf6b66782e68a",
+      "date": "2026-08-08"
+    },
+    "kerbside/tests/unit/test_sf_token.py": {
+      "sha": "2b42aef35cbbaf8d8e7b15047604ba6ccba11776",
+      "date": "2026-08-08"
+    },
+    "kerbside/tests/unit/test_sources_shakenfist.py": {
+      "sha": "7fec3ddd2006ff5a84cdada07aca5e709cc2170a",
+      "date": "2026-08-08"
+    },
+    "kerbside/tests/unit/test_sources_static.py": {
+      "sha": "dee99ff7370d039b7b6bc97654de54c1542ff949",
+      "date": "2026-08-08"
+    },
     "kerbside/util.py": {
       "sha": "499e55529e2c1d1a51d1042757c137d96069dd03",
       "date": "2026-08-06"

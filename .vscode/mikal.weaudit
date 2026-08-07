@@ -283,6 +283,78 @@
     {
       "path": "kerbside/rpc",
       "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/functional/__init__.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/functional/ryll_helper.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/functional/test_openstack.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/functional/test_shakenfist.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/functional",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/unit/__init__.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/unit/test_api.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/unit/test_db.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/unit/test_main.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/unit/test_proxy_supervisor.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/unit/test_render_review.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/unit/test_rpc.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/unit/test_sf_token.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/unit/test_sources_shakenfist.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/unit/test_sources_static.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/unit",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests/__init__.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/tests",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
