@@ -93,19 +93,11 @@
       "author": "mikal"
     },
     {
-      "path": "ARCHITECTURE.md",
-      "author": "mikal"
-    },
-    {
       "path": "rust/kerbside-proxy/README.md",
       "author": "mikal"
     },
     {
       "path": "rust/kerbside-proxy/src/allowlist.rs",
-      "author": "mikal"
-    },
-    {
-      "path": "rust/kerbside-proxy/src/backend.rs",
       "author": "mikal"
     },
     {
@@ -125,10 +117,6 @@
       "author": "mikal"
     },
     {
-      "path": "rust/kerbside-proxy/src/relay.rs",
-      "author": "mikal"
-    },
-    {
       "path": "rust/kerbside-proxy/src/rpc.rs",
       "author": "mikal"
     },
@@ -138,10 +126,6 @@
     },
     {
       "path": "rust/kerbside-proxy/src/tls.rs",
-      "author": "mikal"
-    },
-    {
-      "path": "rust/kerbside-proxy/src",
       "author": "mikal"
     },
     {

@@ -5,10 +5,6 @@
       "sha": "cdf780e4f0810effa239a4368d9600fe9ac695c9",
       "date": "2026-08-04"
     },
-    "ARCHITECTURE.md": {
-      "sha": "2352f1458900f59e3586525a345359b0dfe967bf",
-      "date": "2026-08-04"
-    },
     "AUTHORS": {
       "sha": "52747656c9ce3a27509516db50abacb7930c8ca2",
       "date": "2026-08-04"
@@ -173,10 +169,6 @@
       "sha": "1b3b0819d21b6026b22ab22bf7b3ab3e05fba703",
       "date": "2026-08-05"
     },
-    "rust/kerbside-proxy/src/backend.rs": {
-      "sha": "22b7a5d6578e67beeb58c67880b80a933a774b2c",
-      "date": "2026-08-05"
-    },
     "rust/kerbside-proxy/src/listen.rs": {
       "sha": "3962d7ee3569d3d193f927541ed817d812267a44",
       "date": "2026-08-05"
@@ -191,10 +183,6 @@
     },
     "rust/kerbside-proxy/src/policy.rs": {
       "sha": "123ef48f8014983af93de89561a884ab2b31eadb",
-      "date": "2026-08-05"
-    },
-    "rust/kerbside-proxy/src/relay.rs": {
-      "sha": "b0054122dbeb5f38fc0f68eb62d603a0b1161339",
       "date": "2026-08-05"
     },
     "rust/kerbside-proxy/src/rpc.rs": {
