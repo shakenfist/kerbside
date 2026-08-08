@@ -21,6 +21,11 @@ on:
   pull_request:
     branches:
       - develop
+    paths-ignore:
+      - 'REVIEWS.md'
+      - '.vscode/*.weaudit'
+      - '.vscode/*.weaudit-shas.json'
+      - '.vscode/review-scope.toml'
 
 jobs:
   sanity_checks:
