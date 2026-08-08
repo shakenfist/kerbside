@@ -9,9 +9,12 @@
 # console.vv pointed at the proxy for a SPICE client to connect through,
 # and verifies the path via the proxy's /metrics endpoint.
 #
+# Full usage documentation (including the firewall warn-only capture and
+# the session-termination check): docs/direct-qemu-harness.md.
+#
 # This is the standalone sibling of lane-up.sh: lane-up.sh exercises the
-# Python proxy behind the full kerbside daemon + MariaDB; this script
-# exercises the new Rust proxy in isolation, per
+# proxy behind the full kerbside daemon + MariaDB; this script
+# exercises the Rust proxy in isolation, per
 # docs/plans/PLAN-rust-proxy-phase-03-proxy-skeleton.md step 3h. The full
 # ryll-based direct-qemu CI integration against the Rust proxy is phase 7
 # (see docs/proxy-architecture.md).
