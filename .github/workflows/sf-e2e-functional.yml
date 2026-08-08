@@ -3,9 +3,24 @@ name: Shaken Fist end-to-end functional test
 permissions:
   contents: read
 
-# Dispatch- and schedule-gated only (phase 9 decision 4): the deploy is
-# heavy, so this is NOT a pull_request gate until it is shown stable.
+# A pull_request smoke gate since two-tier CI phase 2
+# (docs/plans/PLAN-two-tier-ci-phase-02-sf-e2e-promotion.md), superseding
+# the phase 9 "dispatch/schedule only" caveat. The nightly schedule
+# survives the promotion: build-smoke-cluster deploys Shaken Fist at
+# develop HEAD, which moves independently of kerbside PRs, so the
+# schedule catches SF-side drift no kerbside PR would surface.
+# Review-only changes touch no code the lane exercises; keep the
+# paths-ignore list in sync with direct-qemu-functional.yml and
+# functional-tests.yml.
 on:
+  pull_request:
+    branches:
+      - develop
+    paths-ignore:
+      - 'REVIEWS.md'
+      - '.vscode/*.weaudit'
+      - '.vscode/*.weaudit-shas.json'
+      - '.vscode/review-scope.toml'
   workflow_dispatch:
     inputs:
       retention:
@@ -20,6 +35,12 @@ jobs:
   sf-e2e:
     runs-on: [self-hosted, vm, debian-12, l]
     timeout-minutes: 120
+
+    # A superseded push cancels the running lane rather than queueing
+    # another 120-minute-timeout job on the small l pool.
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
 
     # The single-node SF API and kerbside both live on the primary and are
     # reached over the primary's localhost; the well-known CI system key is
