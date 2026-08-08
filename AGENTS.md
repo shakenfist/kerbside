@@ -225,9 +225,10 @@ harness (`VERIFY-RUST-PROXY.md`), which needs no daemon or database.
 
 ### Shaken Fist end-to-end lane (`sf-e2e`)
 
-`.github/workflows/sf-e2e-functional.yml` (dispatch- and nightly-scheduled,
-NOT a PR gate — phase 9 decision 4) is the only lane that exercises the
-`type: shakenfist` console source against a real cluster. It stands up a
+`.github/workflows/sf-e2e-functional.yml` (a pull_request smoke gate since
+two-tier CI phase 2, plus nightly schedule and manual dispatch) is the
+only lane that exercises the `type: shakenfist` console source against a
+real cluster. It stands up a
 single-node Shaken Fist at develop HEAD (`build-smoke-cluster`, topology
 `localhost`), then `shakenfist/actions/deploy-kerbside-on-shakenfist`
 provisions `KERBSIDE_URL` + a signing key in SF and deploys a co-located

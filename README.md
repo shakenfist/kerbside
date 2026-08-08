@@ -33,8 +33,9 @@ This installs the Python control plane and a matching prebuilt
 for the packaging details, OS-level dependencies, and deployment pointers.
 
 The Shaken Fist console source is additionally covered end to end by the
-`sf-e2e` lane (`.github/workflows/sf-e2e-functional.yml`, dispatch- and
-nightly-scheduled). It stands up a real single-node Shaken Fist (via
+`sf-e2e` lane (`.github/workflows/sf-e2e-functional.yml`, a PR smoke
+gate that also runs nightly and on dispatch). It stands up a real
+single-node Shaken Fist (via
 `shakenfist/actions/build-smoke-cluster`), provisions `KERBSIDE_URL` + a
 signing key, deploys a co-located kerbside with a `type: shakenfist`
 source (`shakenfist/actions/deploy-kerbside-on-shakenfist`), and drives an
