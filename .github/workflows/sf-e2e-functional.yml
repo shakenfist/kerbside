@@ -4,23 +4,19 @@ permissions:
   contents: read
 
 # A pull_request smoke gate since two-tier CI phase 2
-# (docs/plans/PLAN-two-tier-ci-phase-02-sf-e2e-promotion.md), superseding
-# the phase 9 "dispatch/schedule only" caveat. The nightly schedule
-# survives the promotion: build-smoke-cluster deploys Shaken Fist at
-# develop HEAD, which moves independently of kerbside PRs, so the
-# schedule catches SF-side drift no kerbside PR would surface.
-# Review-only changes touch no code the lane exercises; keep the
-# paths-ignore list in sync with direct-qemu-functional.yml and
-# functional-tests.yml.
+# (docs/plans/PLAN-two-tier-ci-phase-02-sf-e2e-promotion.md), and a
+# required status check since phase 3 -- the merge_group trigger exists
+# only so the required check reports (as skipped, which satisfies it)
+# on queue entries; the lane itself runs on PRs, nightly, and on
+# dispatch. The nightly schedule survives the promotion:
+# build-smoke-cluster deploys Shaken Fist at develop HEAD, which moves
+# independently of kerbside PRs, so the schedule catches SF-side drift
+# no kerbside PR would surface.
 on:
+  merge_group:
   pull_request:
     branches:
       - develop
-    paths-ignore:
-      - 'REVIEWS.md'
-      - '.vscode/*.weaudit'
-      - '.vscode/*.weaudit-shas.json'
-      - '.vscode/review-scope.toml'
   workflow_dispatch:
     inputs:
       retention:
@@ -32,7 +28,42 @@ on:
     - cron: '30 2 * * *'
 
 jobs:
+  # Review-only changes touch no code the lane exercises; skip them.
+  # A filter job rather than trigger-level paths-ignore because a
+  # required check that never reports blocks the merge forever, while
+  # a skipped one satisfies it. The filter only runs on pull_request;
+  # schedule and dispatch runs default to code_changed=true. Keep the
+  # filter list in sync with direct-qemu-functional.yml and
+  # functional-tests.yml.
+  check_paths:
+    name: "Check paths"
+    runs-on: [self-hosted, static]
+    timeout-minutes: 10
+    outputs:
+      code_changed: ${{ steps.filter.outputs.code || 'true' }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          # 'every' requires a file to match ALL patterns; the default
+          # ANY-match makes '**' defeat the exclusions.
+          predicate-quantifier: 'every'
+          filters: |
+            code:
+              - '**'
+              - '!REVIEWS.md'
+              - '!.vscode/*.weaudit'
+              - '!.vscode/*.weaudit-shas.json'
+              - '!.vscode/review-scope.toml'
+
   sf-e2e:
+    needs: check_paths
+    if: >-
+      github.event_name != 'merge_group'
+      && needs.check_paths.outputs.code_changed != 'false'
     runs-on: [self-hosted, vm, debian-12, l]
     timeout-minutes: 120
 

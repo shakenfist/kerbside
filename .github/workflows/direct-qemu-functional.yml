@@ -3,21 +3,52 @@ name: Direct-qemu functional test
 permissions:
   contents: read
 
-# Review-only changes touch no code the lane exercises, and this lane is
-# an hour of VM time; skip them. Keep the path list in sync with
-# codeql-analysis.yml and the .vscode whitelist in .gitignore.
+# Smoke tier, and a required status check since two-tier CI phase 3
+# (docs/plans/PLAN-two-tier-ci-phase-03-merge-queue.md). The merge_group
+# trigger exists only so the required check reports (as skipped, which
+# satisfies it) on queue entries -- the lane itself runs on PRs only.
 on:
+  merge_group:
   pull_request:
     branches:
       - develop
-    paths-ignore:
-      - 'REVIEWS.md'
-      - '.vscode/*.weaudit'
-      - '.vscode/*.weaudit-shas.json'
-      - '.vscode/review-scope.toml'
 
 jobs:
+  # Review-only changes touch no code the lane exercises, and this lane
+  # is an hour of VM time; skip them. This is a filter job rather than
+  # trigger-level paths-ignore because a required check that never
+  # reports blocks the merge forever, while a skipped one satisfies
+  # it. Keep the filter list in sync with codeql-analysis.yml and the
+  # .vscode whitelist in .gitignore.
+  check_paths:
+    name: "Check paths"
+    runs-on: [self-hosted, static]
+    timeout-minutes: 10
+    outputs:
+      code_changed: ${{ steps.filter.outputs.code || 'true' }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          # 'every' requires a file to match ALL patterns; the default
+          # ANY-match makes '**' defeat the exclusions.
+          predicate-quantifier: 'every'
+          filters: |
+            code:
+              - '**'
+              - '!REVIEWS.md'
+              - '!.vscode/*.weaudit'
+              - '!.vscode/*.weaudit-shas.json'
+              - '!.vscode/review-scope.toml'
+
   direct-qemu-lane:
+    needs: check_paths
+    if: >-
+      github.event_name != 'merge_group'
+      && needs.check_paths.outputs.code_changed != 'false'
     runs-on: [self-hosted, vm, debian-12, l]
     timeout-minutes: 60
 

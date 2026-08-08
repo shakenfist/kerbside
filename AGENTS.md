@@ -319,10 +319,13 @@ tox -e bindep
     `scenario_artifact_dir`, `scenario_step_timeout`.
     Run last on the direct-qemu lane because the final keypress
     shuts the guest down.
-- The "Functional tests" lane (`functional-tests.yml`,
-  `ovirt_matrix` + `openstack_matrix`) runs per-PR, both legs blocking.
-  On a `workflow_dispatch` run, an unselected target skips cleanly via a
-  job-level `if:` (it does not report red). Instance readiness in the
+- The "Functional tests" cloud matrices (`functional-tests.yml`,
+  `ovirt_matrix` + `openstack_matrix`) are the merge tier since
+  two-tier CI phase 3: they run on `merge_group` (and
+  `workflow_dispatch`), not on pull requests, gated by the "Can merge"
+  required check. PRs run the smoke tier (sanity, direct-qemu,
+  sf-e2e). On a `workflow_dispatch` run, an unselected target skips
+  cleanly via a job-level `if:` (it does not report red). Instance readiness in the
   `shakenfist/actions` provisioning playbook gates on cloud-init
   completion, not just an open SSH port.
 

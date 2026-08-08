@@ -18,17 +18,57 @@ on:
         description: 'How long to retain the environment after the workflow run in minutes'
         required: true
         default: '0'
+  merge_group:
   pull_request:
     branches:
       - develop
-    paths-ignore:
-      - 'REVIEWS.md'
-      - '.vscode/*.weaudit'
-      - '.vscode/*.weaudit-shas.json'
-      - '.vscode/review-scope.toml'
 
 jobs:
+  # Detect review-tracking-only changes so the heavy jobs can skip.
+  # This replaces the old trigger-level paths-ignore, which cannot
+  # coexist with required status checks: a required check in a
+  # paths-ignore'd workflow never reports on a filtered PR, and a
+  # required check that never reports blocks the merge forever. With a
+  # filter job the workflow always reports, the heavy jobs skip on its
+  # output, and a skipped required check counts as satisfied. On
+  # workflow_dispatch the filter step is skipped and the output
+  # defaults to code_changed=true so all selected tests run. Keep the
+  # filter list in sync with codeql-analysis.yml's paths-ignore and
+  # the .vscode whitelist in .gitignore.
+  check_paths:
+    name: "Check paths"
+    runs-on: [self-hosted, static]
+    timeout-minutes: 10
+    outputs:
+      code_changed: ${{ steps.filter.outputs.code || 'true' }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name != 'workflow_dispatch'
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          # By default a file matches the filter if it matches ANY
+          # listed pattern, which makes '**' match everything and
+          # silently defeats the exclusions. 'every' requires a file
+          # to match ALL patterns, which is the correct semantics for
+          # an "everything except review marks" filter.
+          predicate-quantifier: 'every'
+          filters: |
+            code:
+              - '**'
+              - '!REVIEWS.md'
+              - '!.vscode/*.weaudit'
+              - '!.vscode/*.weaudit-shas.json'
+              - '!.vscode/review-scope.toml'
+
   sanity_checks:
+    # Runs in both tiers: on pull_request as the core of the smoke
+    # gate, and again in the merge group because it is minutes of m
+    # runner and re-validates lint and units against the merged tree,
+    # which no smoke run saw.
+    needs: check_paths
+    if: needs.check_paths.outputs.code_changed != 'false'
     # The bindep step below needs passwordless sudo for apt, which the
     # shared static pool does not grant, so this stays on an ephemeral vm
     # runner. m: light lint + unit tests + coverage.
@@ -127,15 +167,20 @@ jobs:
           path: cover.zip
 
   ovirt_matrix:
-    # On a workflow_dispatch run, skip this job cleanly (neutral) when
-    # its target was not selected, rather than running a step that calls
-    # core.setFailed -- which reported an unselected target as red and
-    # then left the always() artifact steps to time out against a guest
-    # that was never provisioned. On pull_request both targets run.
-    # The target name is a literal because the matrix context is not
-    # available in a job-level if:; it mirrors the single matrix entry
-    # below ('ovirt-45-rocky-8').
-    if: github.event_name != 'workflow_dispatch' || contains(inputs.target, 'ovirt-45-rocky-8')
+    # Merge tier (two-tier CI phase 3): runs in the merge queue and on
+    # workflow_dispatch, never on pull_request. On a workflow_dispatch
+    # run, skip this job cleanly (neutral) when its target was not
+    # selected, rather than running a step that calls core.setFailed --
+    # which reported an unselected target as red and then left the
+    # always() artifact steps to time out against a guest that was
+    # never provisioned. The target name is a literal because the
+    # matrix context is not available in a job-level if:; it mirrors
+    # the single matrix entry below ('ovirt-45-rocky-8').
+    if: >-
+      (github.event_name == 'merge_group'
+       || (github.event_name == 'workflow_dispatch'
+           && contains(inputs.target, 'ovirt-45-rocky-8')))
+      && needs.check_paths.outputs.code_changed != 'false'
     name: "${{ matrix.test.description }}"
     strategy:
       fail-fast: false
@@ -157,7 +202,7 @@ jobs:
     # is heavier than the environment-provisioning work the m runner was
     # sized for.
     runs-on: [self-hosted, vm, debian-12, l]
-    needs: sanity_checks
+    needs: [sanity_checks, check_paths]
     timeout-minutes: 120
     # The runner image exports http_proxy/https_proxy pointing at an
     # upstream squid cache for apt, github, and the cargo registry.
@@ -192,7 +237,7 @@ jobs:
       - name: Set environment variables
         shell: bash
         run: |
-          echo "SF_HEAD_SHA=${{ github.event.pull_request.head.sha }}" >> $GITHUB_ENV
+          echo "SF_HEAD_SHA=${{ github.event.pull_request.head.sha || github.sha }}" >> $GITHUB_ENV
           echo "SHAKENFIST_NAMESPACE=$(hostname)" >> $GITHUB_ENV
 
       - name: Checkout the actions repository
@@ -586,15 +631,20 @@ jobs:
           MINUTES: ${{ inputs.retention }}
 
   openstack_matrix:
-    # On a workflow_dispatch run, skip this job cleanly (neutral) when
-    # its target was not selected, rather than running a step that calls
-    # core.setFailed -- which reported an unselected target as red and
-    # then left the always() artifact steps to time out against a guest
-    # that was never provisioned. On pull_request both targets run.
-    # The target name is a literal because the matrix context is not
-    # available in a job-level if:; it mirrors the single matrix entry
-    # below ('kolla-ansible-master-debian-12').
-    if: github.event_name != 'workflow_dispatch' || contains(inputs.target, 'kolla-ansible-master-debian-12')
+    # Merge tier (two-tier CI phase 3): runs in the merge queue and on
+    # workflow_dispatch, never on pull_request. On a workflow_dispatch
+    # run, skip this job cleanly (neutral) when its target was not
+    # selected, rather than running a step that calls core.setFailed --
+    # which reported an unselected target as red and then left the
+    # always() artifact steps to time out against a guest that was
+    # never provisioned. The target name is a literal because the
+    # matrix context is not available in a job-level if:; it mirrors
+    # the single matrix entry below ('kolla-ansible-master-debian-12').
+    if: >-
+      (github.event_name == 'merge_group'
+       || (github.event_name == 'workflow_dispatch'
+           && contains(inputs.target, 'kolla-ansible-master-debian-12')))
+      && needs.check_paths.outputs.code_changed != 'false'
     name: "${{ matrix.test.description }}"
     strategy:
       fail-fast: false
@@ -610,7 +660,7 @@ jobs:
           },
         ]
     runs-on: [self-hosted, vm, debian-12, m]
-    needs: sanity_checks
+    needs: [sanity_checks, check_paths]
     timeout-minutes: 120
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.test.name }}
@@ -818,11 +868,14 @@ jobs:
     name: "Automated reviewer"
     # The needs: list is the "review only once CI has passed" gate:
     # a job skipped because a dependency failed never starts the
-    # reusable workflow. Everything else about the reviewer --
+    # reusable workflow. Since two-tier CI phase 3 that means the
+    # smoke tier only -- the cloud matrices run in the merge queue,
+    # after review, so the review posts in minutes rather than after
+    # the slowest cloud lane. Everything else about the reviewer --
     # runner, timeout, fork restriction, bot-commit check --
     # lives in the shared workflow so it stays in step with the
     # rest of the fleet.
-    needs: [sanity_checks, ovirt_matrix, openstack_matrix]
+    needs: [sanity_checks]
     # A cross-repository reusable workflow cannot grant itself more
     # token scope than its caller has, so the permissions go here.
     permissions:
@@ -831,3 +884,64 @@ jobs:
       issues: write
     uses: shakenfist/actions/.github/workflows/pr-auto-review.yml@main
     secrets: inherit
+
+  # The merge-queue gate jobs, mirroring shakenfist/shakenfist. Their
+  # display names ("Can see status", "Can enqueue", "Can merge") are
+  # the required status checks in the develop ruleset -- see
+  # docs/plans/PLAN-two-tier-ci-phase-03-merge-queue.md. The jq below
+  # treats a skipped need as satisfied, which is what lets
+  # check_paths-driven skips (and the cross-tier skip of the other
+  # gate) pass a required check. The flip side: a failed dependency
+  # manifests in its dependents as 'skipped', which would read as
+  # green -- so each gate must directly need every job whose failure
+  # should block it, not rely on transitive needs.
+  can_see_status:
+    name: "Can see status"
+    runs-on: [self-hosted, static]
+    # Runs "true", so five minutes is generous even on a busy runner.
+    timeout-minutes: 5
+    steps:
+      - name: "Immediate success"
+        run: true
+
+  can_enqueue:
+    name: "Can enqueue"
+    needs:
+      - check_paths
+      - sanity_checks
+    if: always() && github.event_name != 'merge_group'
+    permissions:
+      actions: read
+    runs-on: [self-hosted, static]
+    # A jq expression over the needs context.
+    timeout-minutes: 5
+    steps:
+      - env:
+          NEEDS_JSON: "${{toJSON(needs)}}"
+        name: Transform outcomes
+        run: |
+          echo "ALL_SUCCESS=$(echo "$NEEDS_JSON" | jq '. | to_entries | map([.value.result == "success", .value.result == "skipped"] | any) | all')" >>$GITHUB_ENV
+      - name: Check outcomes
+        run: "[ $ALL_SUCCESS == true ]"
+
+  can_merge:
+    name: "Can merge"
+    needs:
+      - check_paths
+      - sanity_checks
+      - ovirt_matrix
+      - openstack_matrix
+    if: always() && github.event_name == 'merge_group'
+    permissions:
+      actions: read
+    runs-on: [self-hosted, static]
+    # A jq expression over the needs context.
+    timeout-minutes: 5
+    steps:
+      - env:
+          NEEDS_JSON: "${{toJSON(needs)}}"
+        name: Transform outcomes
+        run: |
+          echo "ALL_SUCCESS=$(echo "$NEEDS_JSON" | jq '. | to_entries | map([.value.result == "success", .value.result == "skipped"] | any) | all')" >>$GITHUB_ENV
+      - name: Check outcomes
+        run: "[ $ALL_SUCCESS == true ]"
