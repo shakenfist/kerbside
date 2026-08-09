@@ -268,7 +268,7 @@ Phases will get detailed plan files as each is started.
 | 1. oVirt lane deploys kerbside | [PLAN-two-tier-ci-phase-01-ovirt-kerbside.md](PLAN-two-tier-ci-phase-01-ovirt-kerbside.md) | Complete |
 | 2. Promote sf-e2e to PR smoke gate | [PLAN-two-tier-ci-phase-02-sf-e2e-promotion.md](PLAN-two-tier-ci-phase-02-sf-e2e-promotion.md) | Complete |
 | 3. Merge queue adoption and tier split | [PLAN-two-tier-ci-phase-03-merge-queue.md](PLAN-two-tier-ci-phase-03-merge-queue.md) | Workflows landed; queue enablement is an operator step (phase plan steps 4-5) |
-| 4. Documentation | PLAN-two-tier-ci-phase-04-docs.md | Not started |
+| 4. Documentation | [PLAN-two-tier-ci-phase-04-docs.md](PLAN-two-tier-ci-phase-04-docs.md) | Complete |
 
 - **Phase 1** is independent of the precondition and can
   start first: extend the oVirt lane so the environment
@@ -336,6 +336,19 @@ Phases will get detailed plan files as each is started.
   per-deployment-permutation documentation suite (Shaken
   Fist, OpenStack, multi-cloud, static, and eventually
   Proxmox) as follow-on work outside this plan's scope.
+
+  **Executed 2026-08-10.** The page is
+  `docs/use-cases/ovirt.md`; the tier split is documented
+  in `docs/testing.md`'s "CI tiers" section, which every
+  other file now points at rather than restating. Two
+  things worth carrying forward: the master plan's prose
+  blurred `SpiceProxyDefault` into something kerbside
+  needs unset, when in fact kerbside never reads
+  engine-generated `.vv` files and the setting is simply
+  irrelevant to it — the page says so precisely. And the
+  engine account's least-privilege story is documented as
+  untested rather than invented, since only `SuperUser`
+  has ever been exercised.
 
 Future work, explicitly out of scope here but shaping the
 design: a multinode Shaken Fist lane and a Proxmox source

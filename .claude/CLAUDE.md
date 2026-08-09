@@ -90,20 +90,49 @@ Check with `git log --format='%h %G? %s'` before pushing review marks;
 
 Protocol documentation lives in `docs/`. When making user-visible changes,
 check whether `docs/` needs updating. See `docs/index.md` for the full
-documentation index.
+documentation index. Per-deployment operator guides live in
+`docs/use-cases/` (oVirt today; the remaining pages are tracked in
+`docs/plans/PLAN-use-case-docs.md`).
 
 ## CI Workflows
 
-- `functional-tests.yml` - Lint, unit tests, oVirt/OpenStack integration
-- `rust.yml` - Rust proxy lint, tests, and wheel build
-- `direct-qemu-functional.yml` - End-to-end proxy checks against a local qemu
+Develop is protected by a merge queue and the lanes are split into two
+tiers. `docs/testing.md` is the authority on what runs where, the gate
+jobs, and the required checks -- read it before changing any workflow.
+
+Smoke tier, on every pull request:
+
+- `functional-tests.yml` (`sanity_checks`) - flake8, unit tests, coverage
+- `direct-qemu-functional.yml` - the proxy against a local qemu SPICE
+  server; also nightly
+- `sf-e2e-functional.yml` - single-node Shaken Fist end to end; also
+  nightly
+
+Merge tier, in the merge queue only:
+
+- `functional-tests.yml` (`ovirt_matrix`, `openstack_matrix`) - full
+  oVirt and Kolla/OpenStack builds with the PR's kerbside deployed
+
+Neither tier:
+
+- `rust.yml` - Rust proxy lint, tests, and wheel build (advisory,
+  path-filtered)
+- `codeql-analysis.yml` - Security scanning
+- `prune-reviews.yml` - Prunes stale review marks after a develop push
+- `pin-indirect-dependencies.yml` - Regenerates the pinned indirect
+  dependency block
+- `renovate.yml` - Dependency updates
+- `release.yml` - PyPI release via signed tags
+- `export-repo-config.yml` - Repo config archival, including the ruleset
+  that `tools/check-required-checks.sh` validates against
 - `pr-address-comments.yml` - Bot-triggered comment addressing
 - `pr-re-review.yml` - Bot-triggered re-review
 - `pr-retest.yml` - Bot-triggered functional test re-run
-- `release.yml` - PyPI release via signed tags
-- `renovate.yml` - Dependency updates
-- `codeql-analysis.yml` - Security scanning
-- `export-repo-config.yml` - Repo config archival
+
+The five required status checks are gate jobs (`Can see status`,
+`Can enqueue`, `Can merge`, `Can enqueue: direct-qemu`,
+`Can enqueue: sf-e2e`). Renaming one without updating the ruleset
+blocks every merge in the repository.
 
 ## Skills
 

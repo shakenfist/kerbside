@@ -275,7 +275,10 @@ and launches `ryll --headless` against it immediately — oVirt
 graphics-console tickets expire in ~120s — then asserts a real relayed
 SPICE session via `smoke-client.py`, a session and audit row, and clean
 teardown on terminate). See `tools/ovirt-e2e/README.md` and
-`docs/plans/PLAN-two-tier-ci-phase-01-ovirt-kerbside.md`.
+`docs/plans/PLAN-two-tier-ci-phase-01-ovirt-kerbside.md`. The
+operator-facing version of what this lane proves — the front-door
+architecture, the engine account, and the network prerequisites — is
+`docs/use-cases/ovirt.md`.
 
 `drive-console.py` asserts against the proxy's log text, so it strips ANSI
 before matching and keeps "the field would not parse" separate from "the
@@ -291,10 +294,10 @@ SPICE wire-format parsing lives in the Rust proxy, which reuses the ryll
 git rev); the L1 firewall grammar is in `rust/kerbside-proxy/src/allowlist.rs`.
 
 See the protocol documentation in `docs/` for detailed information:
-- `docs/protocol-overview.md` - SPICE protocol fundamentals
-- `docs/spice-link-protocol.md` - Connection handshake and authentication
-- `docs/channel-protocols.md` - Per-channel message formats
-- `docs/usb-redirection.md` - USB device redirection protocol
+- `docs/spice/protocol-overview.md` - SPICE protocol fundamentals
+- `docs/spice/spice-link-protocol.md` - Connection handshake and authentication
+- `docs/spice/channel-protocols.md` - Per-channel message formats
+- `docs/spice/usb-redirection.md` - USB device redirection protocol
 - `docs/proxy-architecture.md` - Kerbside proxy internals
 
 External reference: https://www.spice-space.org/spice-protocol.html
@@ -334,21 +337,15 @@ tox -e bindep
     `scenario_artifact_dir`, `scenario_step_timeout`.
     Run last on the direct-qemu lane because the final keypress
     shuts the guest down.
-- The "Functional tests" cloud matrices (`functional-tests.yml`,
-  `ovirt_matrix` + `openstack_matrix`) are the merge tier since
-  two-tier CI phase 3: they run on `merge_group` (and
-  `workflow_dispatch`), not on pull requests, gated by the "Can merge"
-  required check. PRs run the smoke tier (sanity, direct-qemu,
-  sf-e2e). On a `workflow_dispatch` run, an unselected target skips
-  cleanly via a job-level `if:` (it does not report red). Instance
-  readiness in the `shakenfist/actions` provisioning playbook gates
-  on cloud-init completion, not just an open SSH port.
-- `rust.yml` sits in neither tier: it is advisory and path-scoped to
-  `rust/**` plus the proto in both. Rust breakage still gates merges
-  via the proxy wheel builds in direct-qemu (smoke) and the cloud
-  matrices (merge); what never runs against the merged tree is
-  clippy and `cargo test`, an accepted gap (phase 3 plan,
-  decision 6).
+- Which lane runs where, the gate jobs, and the five required status
+  checks are documented in `docs/testing.md` ("CI tiers"). Read that
+  before changing a workflow; it is the authority, and this file
+  deliberately does not restate it.
+- Two behaviours that only matter when you are driving CI by hand: on
+  a `workflow_dispatch` run of `functional-tests.yml`, an unselected
+  target skips cleanly via a job-level `if:` (it does not report red);
+  and instance readiness in the `shakenfist/actions` provisioning
+  playbook gates on cloud-init completion, not just an open SSH port.
 
 ## Code Style
 
