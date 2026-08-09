@@ -1,0 +1,85 @@
+{
+    "bypass_actors": [],
+    "conditions": {
+        "ref_name": {
+            "exclude": [],
+            "include": [
+                "~DEFAULT_BRANCH"
+            ]
+        }
+    },
+    "enforcement": "active",
+    "name": "Develop branch",
+    "rules": [
+        {
+            "parameters": null,
+            "type": "deletion"
+        },
+        {
+            "parameters": null,
+            "type": "non_fast_forward"
+        },
+        {
+            "parameters": {
+                "check_response_timeout_minutes": 360,
+                "grouping_strategy": "ALLGREEN",
+                "max_entries_to_build": 1,
+                "max_entries_to_merge": 5,
+                "merge_method": "MERGE",
+                "min_entries_to_merge": 1,
+                "min_entries_to_merge_wait_minutes": 5
+            },
+            "type": "merge_queue"
+        },
+        {
+            "parameters": {
+                "allowed_merge_methods": [
+                    "merge",
+                    "squash",
+                    "rebase"
+                ],
+                "dismiss_stale_reviews_on_push": true,
+                "dismissal_restriction": {
+                    "allowed_actors": [],
+                    "enabled": false
+                },
+                "require_code_owner_review": false,
+                "require_last_push_approval": false,
+                "required_approving_review_count": 0,
+                "required_review_thread_resolution": false,
+                "required_reviewers": []
+            },
+            "type": "pull_request"
+        },
+        {
+            "parameters": {
+                "do_not_enforce_on_create": false,
+                "required_status_checks": [
+                    {
+                        "context": "Can see status",
+                        "integration_id": 15368
+                    },
+                    {
+                        "context": "Can enqueue",
+                        "integration_id": 15368
+                    },
+                    {
+                        "context": "Can merge",
+                        "integration_id": 15368
+                    },
+                    {
+                        "context": "Can enqueue: direct-qemu",
+                        "integration_id": 15368
+                    },
+                    {
+                        "context": "Can enqueue: sf-e2e",
+                        "integration_id": 15368
+                    }
+                ],
+                "strict_required_status_checks_policy": false
+            },
+            "type": "required_status_checks"
+        }
+    ],
+    "target": "branch"
+}
