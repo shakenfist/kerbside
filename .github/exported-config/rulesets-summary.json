@@ -2,7 +2,7 @@
     {
         "enforcement": "active",
         "id": 20252051,
-        "name": "Protect default branch history",
+        "name": "Develop branch",
         "target": "branch"
     }
 ]
