@@ -395,6 +395,78 @@
     {
       "path": "loadtests",
       "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/generate-tls.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/install-proxy-wheel.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/lane-down.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/lane-up.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/mock-grpc-server.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/probe-runner.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/rebuild-sextant-qcow2.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/run-host-subject-checks.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/run-loadtest.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/run-scenario.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/setup-mariadb.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/smoke-client.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/start-kerbside.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/start-qemu.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/start-rust-proxy.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/verify-rust-proxy.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/verify-terminate-live.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/wait-for-banner.sh",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
