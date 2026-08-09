@@ -168,7 +168,33 @@ changes, re-run tox) and commits.
 
 ## Outcome
 
-To be filled in when the phase completes.
+Complete. `kerbside/tests/unit/test_api_html.py` implements all
+eight tests as specified, in two classes: `LoginPageTestCase`
+(unauthenticated, no JWT patch) and `HtmlPagesTestCase` (JWT
+patched in `setUp`). Fixtures are module-level constants, deep
+copied per mock return so no test can mutate another's data.
+`tox -epy3` runs 110 tests green (8 new, 102 pre-existing), and
+flake8 is clean.
+
+Three notes from the implementation and review:
+
+* The plan's predictions about application behaviour all held —
+  no discrepancies between what it said each view calls and what
+  `api.py` does, and no production code needed to change.
+* Patch targets were made consistently `kerbside.api.db.<fn>`
+  across the file during review. `test_api.py` uses both that
+  form and `kerbside.db.<fn>`; they patch the same attribute on
+  the same module object (`api.py` does `from kerbside import
+  db`), but one form per file reads better.
+* The `password` leak guard was verified by mutation rather than
+  trusted: adding `{{ source.password }}` to `sources.html`
+  failed exactly `test_sources_page_renders_and_hides_password`
+  and nothing else, then the template was reverted. The guard
+  catches a real leak rather than passing vacuously, which
+  matters because later phases rewrite that template.
+
+The two terminate-redirect tests carry `NOTE(phase 8)` comments
+recording that they change when those routes move to POST.
 
 ## Back brief
 

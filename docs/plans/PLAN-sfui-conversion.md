@@ -230,7 +230,7 @@ locally-running kerbside.
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 1. Template smoke tests | PLAN-sfui-conversion-phase-01-smoke-tests.md | Planned |
+| 1. Template smoke tests | PLAN-sfui-conversion-phase-01-smoke-tests.md | Done |
 | 2. Vendor sfui + static plumbing | PLAN-sfui-conversion-phase-02-vendoring.md | Not started |
 | 3. sfui canonical additions (shakenfist/sfui repo) | PLAN-sfui-conversion-phase-03-sfui-canonical.md | Not started |
 | 4. New base + login page | PLAN-sfui-conversion-phase-04-base-login.md | Not started |
