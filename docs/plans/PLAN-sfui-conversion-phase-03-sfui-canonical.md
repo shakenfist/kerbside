@@ -436,7 +436,123 @@ standard checklist:
 
 ## Outcome
 
-To be filled in when the phase completes.
+Done, 2026-08-10, in five commits across three
+repositories as planned:
+
+* shakenfist/sfui, on `develop`: `a6e2587` promotes
+  morphdom, `221dcfa` adds `sf.css` and `demo.html`
+  (steps 3b and 3c together, since the demo is how the
+  stylesheet gets reviewed), `83ad8ce` moves the
+  components onto the radius properties.
+* kerbside, on `sfui-conversion`: the re-vendor at
+  `83ad8ce`, verbatim per `tools/vendor.sh --check`.
+* private-ci, on `master`: `9d90d22` re-vendors, drops
+  the duplicate morphdom and repoints the script tag.
+
+`sf.css` came out at 611 lines. It contains no colour
+literal, no `!important` and no id selector, every
+`var(--sf-*)` in it resolves to something `tokens.css` or
+`sf.css` defines, and its braces balance. Packaging in
+kerbside needed no change and was checked rather than
+assumed: `python -m build` ships all ten vendored files,
+`sf.css` and `morphdom-umd.js` included, in both the
+wheel and the sdist.
+
+### The demo page paid for itself immediately
+
+`.sf-table-scroll` could not scroll. `.sf-table` is
+`width: 100%`, so inside the wrapper it shrank to fit and
+wrapped every cell instead of overflowing -- a
+ten-column table squeezed into 900px of unreadable
+two-line cells, which is exactly what kerbside's consoles
+table would have become in phase 5. Fixed by sizing the
+contained table to its content
+(`.sf-table-scroll > .sf-table { min-width: max-content }`).
+Nothing but rendering the page would have caught this;
+the CSS is entirely valid and reads correctly.
+
+The plan's other worry, that the native `<details>`
+marker might be invisible on one palette, turned out
+fine: it inherits `currentColor`, and both palettes were
+screenshotted to confirm it.
+
+### Corrections to this plan, found while executing it
+
+* **Decision 4 overcounted the radius literals.**
+  `sf-tabs.js:58` is `padding: 8px 14px`, not a radius.
+  Only two literals existed -- the tab badge's `8px` and
+  the theme toggle's `6px` -- and spacing stays local to
+  a component under rule 3 of the component contract.
+  Step 3d was therefore a two-line change, done in this
+  session rather than by a sub-agent.
+* **The tint convention was internally inconsistent.**
+  The key facts state 15%, citing the badges, but
+  `.sf-banner`'s cited source uses 12%. Converged on 15%
+  so the stylesheet has one tint strength rather than two
+  and the next primitive has nothing to choose.
+* **The management-session grep contradicted itself.**
+  `grep '!important' sf.css` "must return nothing", but
+  documenting the no-`!important` rule in the file header
+  trips it. The header says "important flags" instead;
+  the README, which is not a grep target, spells it out.
+* `--sf-code-max-height` had no specified default. It is
+  `24rem`; the dashboard sets `180px` locally when it
+  adopts `.sf-code`.
+* `.sf-badge` variants are named for tokens
+  (`--green`, `--amber`, `--red`, `--purple`, `--pink`,
+  `--accent`, `--dim`) rather than for states, because
+  what a state means is host-page policy under the
+  component contract, and a partial set would force a
+  re-vendor the first time a page needs another colour.
+
+### The accepted dashboard deltas are seven, not four
+
+Beyond the four the plan lists, adopting `sf.css` in the
+dashboard will also change: table rows gain a hover
+highlight (the plan mandates the rule but did not list
+its consequence); `.cancel-btn` and `.clear-btn` change
+typeface, because they set no `font-family` today and so
+render in the browser's button font while `.sf-btn` is
+`font-family: inherit`; and `.startup-banner` loses its
+centring and shifts 12% to 15%. All are single-property
+differences and none needs a canonical change.
+
+Also worth knowing for that work: `.sf-status-line`
+declassifies `#update-status`, but the dashboard selects
+that element by id in JavaScript, so adoption there means
+*adding* the class, not replacing the id.
+
+### Verification
+
+Both palettes of `demo.html` were rendered and read.
+Headless Chromium defaults to `prefers-color-scheme:
+dark`; `--blink-settings=preferredColorScheme=2` forces
+light, which exercises the same auto path `sf-theme.js`
+resolves, so no cookie is needed.
+
+The no-visual-change criterion for step 3d was proved
+rather than asserted: rendering both components on a page
+with `tokens.css` but no `sf.css`, before and after the
+change, produced byte-identical screenshots, and so did
+`demo.html` with `sf.css` loaded.
+
+private-ci was verified by running the conductor and
+loading the dashboard, not by reading the diff: the new
+path serves, the old one 404s, and the rendered page has
+painted panels with a live timestamp, which only happens
+if `paintPanel()` reached `morphdom()` without throwing.
+`sf.css` is present but inert there -- no `<link>`, no
+`sf-page` class.
+
+### Still to do
+
+The three sfui commits and the private-ci commit are
+local and unpushed, pending the operator's answer on the
+branch question in "Repository and branch logistics".
+Until sfui's are pushed, kerbside's `.sfui-commit` names
+a commit that canonical HEAD does not have, so the daily
+`sfui-vendor` audit cannot confirm it; that resolves the
+moment sfui is pushed.
 
 ## Back brief
 
