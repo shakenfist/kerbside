@@ -3,23 +3,38 @@ name: Direct-qemu functional test
 permissions:
   contents: read
 
-# Smoke tier, and a required status check since two-tier CI phase 3
-# (docs/plans/PLAN-two-tier-ci-phase-03-merge-queue.md). The merge_group
-# trigger exists only so the required check reports (as skipped, which
-# satisfies it) on queue entries -- the lane itself runs on PRs only.
+# Smoke tier since two-tier CI phase 3
+# (docs/plans/PLAN-two-tier-ci-phase-03-merge-queue.md): the
+# "Can enqueue: direct-qemu" gate below is a required status check in
+# the develop ruleset. The merge_group trigger exists only so the
+# required check reports (as skipped, which satisfies it) on queue
+# entries -- the lane itself runs on PRs and nightly. The schedule
+# bounds the accepted phase 3 risk that the merge queue never re-runs
+# this lane against the merged tree: a semantic conflict between
+# independently-green PRs surfaces within a day rather than on the
+# next PR that happens to touch the proxy path.
 on:
   merge_group:
   pull_request:
     branches:
       - develop
+  schedule:
+    # Nightly at 03:30 UTC, offset an hour from sf-e2e's schedule so
+    # the two l-runner lanes do not contend for the same small pool.
+    - cron: '30 3 * * *'
 
 jobs:
   # Review-only changes touch no code the lane exercises, and this lane
   # is an hour of VM time; skip them. This is a filter job rather than
   # trigger-level paths-ignore because a required check that never
   # reports blocks the merge forever, while a skipped one satisfies
-  # it. Keep the filter list in sync with codeql-analysis.yml and the
-  # .vscode whitelist in .gitignore.
+  # it. The filter only runs on pull_request; merge_group and schedule
+  # runs default to code_changed=true (on merge_group the lane skips
+  # on the event before the filter output is consulted). Keep the
+  # filter list in sync with its other copies: the check_paths jobs in
+  # functional-tests.yml and sf-e2e-functional.yml, the trigger-level
+  # paths-ignore in codeql-analysis.yml, and the .vscode whitelist in
+  # .gitignore.
   check_paths:
     name: "Check paths"
     runs-on: [self-hosted, static]
@@ -227,3 +242,28 @@ jobs:
             /tmp/kerbside-host-subject-checks-mismatch/ryll-ci.stdout
             /tmp/kerbside-host-subject-checks-mismatch/ryll-ci.stderr
             /tmp/kerbside-host-subject-checks-mismatch/tls/
+
+  # The aggregate gate whose display name is the required status check
+  # in the develop ruleset -- do not rename it (or this workflow's
+  # jobs) without updating the ruleset, or the queue wedges on a check
+  # that never reports. The lane job itself must NOT be the required
+  # check: if check_paths failed, GitHub would report the lane as
+  # skipped, and a skipped required check counts as satisfied -- the
+  # gate turns that check_paths failure into a visible red instead.
+  # The jq treats a skipped need as satisfied, which is what lets a
+  # review-only PR (lane skipped by the filter) pass.
+  can_enqueue_direct_qemu:
+    name: "Can enqueue: direct-qemu"
+    needs: [check_paths, direct-qemu-lane]
+    if: always() && github.event_name != 'merge_group'
+    runs-on: [self-hosted, static]
+    # A jq expression over the needs context.
+    timeout-minutes: 5
+    steps:
+      - env:
+          NEEDS_JSON: "${{toJSON(needs)}}"
+        name: Transform outcomes
+        run: |
+          echo "ALL_SUCCESS=$(echo "$NEEDS_JSON" | jq '. | to_entries | map([.value.result == "success", .value.result == "skipped"] | any) | all')" >>$GITHUB_ENV
+      - name: Check outcomes
+        run: "[ $ALL_SUCCESS == true ]"

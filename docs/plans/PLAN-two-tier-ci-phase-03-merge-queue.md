@@ -130,13 +130,31 @@ smaller repo). The pattern:
    inverse filter with `predicate-quantifier: 'every'`. Review-only
    PRs then pass all required checks via skips and can merge
    through the queue.
-5. **`direct-qemu-lane` and `sf-e2e` become required checks too.**
-   Each workflow gains a `merge_group` trigger and its own
-   `check_paths`; the heavy job runs only on `pull_request` (with
-   code changes), so a merge group costs them nothing — the jobs
-   report `skipped`, which satisfies the requirement. Without this,
-   a red smoke lane would not stop a merge, and the smoke tier
-   would still gate nothing.
+5. **The direct-qemu and sf-e2e lanes gate PRs through their own
+   aggregate gates.** Each workflow gains a `merge_group` trigger,
+   its own `check_paths`, and an aggregate gate job ("Can enqueue:
+   direct-qemu" / "Can enqueue: sf-e2e") that is the required
+   check; the heavy job runs only on `pull_request` (with code
+   changes), so a merge group costs them nothing — the gates report
+   `skipped` there, which satisfies the requirement. The lane jobs
+   themselves must NOT be the required checks (the first review of
+   PR #268 caught this): if `check_paths` failed, GitHub would
+   report the lane as `skipped`, and a skipped required check
+   counts as satisfied — a filter hiccup would silently green the
+   smoke gate. The gate's `always()` + jq turns that failure into
+   a visible red, exactly as decision 3 does inside
+   functional-tests.yml. Without any of this, a red smoke lane
+   would not stop a merge, and the smoke tier would still gate
+   nothing.
+   The merge queue deliberately does not re-run these lanes against
+   the merged tree — a queue entry already costs two cloud
+   deployments, and adding the 1-hour direct-qemu lane to every
+   entry is the wrong trade on this cluster. The accepted residual
+   risk is a semantic conflict between independently-green PRs in
+   the proxy-path coverage only these lanes have; it is bounded by
+   nightly schedules on both (direct-qemu gains one in this phase —
+   03:30 UTC, offset from sf-e2e's 02:30 so the two l-runner lanes
+   do not contend), so such a conflict surfaces within a day.
 6. **`rust.yml` stays advisory.** It is deliberately path-scoped to
    `rust/**`, so as a required check it would deadlock Python-only
    PRs, and un-scoping it wastes an xl runner per PR. Rust
@@ -206,8 +224,13 @@ Target: `~DEFAULT_BRANCH`. Rules:
   - `Can see status`
   - `Can enqueue`
   - `Can merge`
-  - `direct-qemu-lane`
-  - `sf-e2e`
+  - `Can enqueue: direct-qemu`
+  - `Can enqueue: sf-e2e`
+
+  These are display names of gate jobs; renaming any of them
+  without updating the ruleset produces a required check that
+  never reports, which blocks all merges. Each gate job carries a
+  comment saying so.
 
 Then dispatch `export-repo-config.yml` so
 `.github/exported-config/` archives the new ruleset.
@@ -217,15 +240,37 @@ Then dispatch `export-repo-config.yml` so
 The gate jobs' PR-side behaviour is proven by this phase's own PR
 (gates appear in the rollup; "Can merge" reports skipped). The
 merge-group path cannot execute until the ruleset flips, so after
-step 4: queue a trivial scratch PR, confirm entry requires the
-required checks, confirm the merge group runs `sanity_checks` +
-both matrices + `can_merge` and merges on green. `workflow_dispatch`
-still runs the matrices directly for lane debugging, but note a
-dispatch run never attaches checks to a PR — for a wedged PR
-rollup, close/reopen remains the reliable retrigger. If the queue
-itself wedges, eject via the UI and consult the failure with the
-merge-ci-triage skill; the 360-minute check timeout bounds how long
-a dead entry can block the queue.
+step 4, in order:
+
+1. Queue a trivial code-touching scratch PR. Confirm entry requires
+   the five checks, that the merge group runs `sanity_checks` +
+   both matrices + `can_merge` — specifically that the matrices
+   *run* rather than skip (re-confirming the fleet's
+   dorny-on-merge_group evidence on this repo) — and that it
+   merges on green.
+2. Prove the negative path once: push a deliberately-broken commit
+   to a scratch PR (e.g. a lint failure) and confirm "Can enqueue"
+   goes red on the PR, and — if queued with a bypass — that
+   `can_merge` goes red in the group. Nothing currently
+   demonstrates a gate turning red in this repo; the fleet run
+   above proves the jq, but one local demonstration is cheap.
+3. Merge a review-marks-only PR through the queue and confirm every
+   required check is satisfied by skips (the acceptance criterion).
+
+`workflow_dispatch` still runs the matrices directly for lane
+debugging, but note a dispatch run never attaches checks to a PR —
+for a wedged PR rollup, close/reopen remains the reliable
+retrigger. This also means the pr-retest bot's contract has
+narrowed: `@shakenfist-bot please retest` dispatches
+functional-tests.yml, which after this phase runs the *merge* tier
+(with the dispatch default target) and attaches nothing to the PR's
+blocking checks. Re-pointing the bot (plausibly at `gh run rerun`,
+which does re-attach) belongs in the shared ci-review-automation
+template in shakenfist/development, not this repo; until then,
+close/reopen is the honest retest. If the queue itself wedges,
+eject via the UI and consult the failure with the merge-ci-triage
+skill; the 360-minute check timeout bounds how long a dead entry
+can block the queue.
 
 ## Risks considered
 
@@ -234,9 +279,16 @@ a dead entry can block the queue.
 - **Review-only PR deadlock under required checks** — addressed by
   decision 4; this is the sharpest edge of the whole design, since
   the failure mode is a PR that can never merge.
-- **dorny/paths-filter behaviour on `merge_group` refs** — not
-  re-derived here: the identical `check_paths` job has run in
-  shakenfist/shakenfist across both events since 2024.
+- **dorny/paths-filter behaviour on `merge_group` refs** — only
+  functional-tests.yml consults the filter there (the smoke lanes
+  skip on the event first), and the behaviour is verified against
+  fleet production rather than assumed: in shakenfist/shakenfist
+  run 31258644604 (2026-08-08, a `merge_group` event) "Check
+  paths" succeeded, the merge-tier collections ran rather than
+  skipping, and "Can merge" went red on their failure — which
+  also live-proves the gate jq's negative path. Step 5 re-confirms
+  on this repo's first code-carrying queue entry that the matrices
+  run rather than skip.
 - **Runner supply for merge groups** — none needed beyond today:
   merge-tier jobs request the same labels PR runs already use, and
   the conductor is label-driven.
@@ -244,6 +296,40 @@ a dead entry can block the queue.
   queue exists, so its merge_group code paths first execute during
   step 5's scratch PR, not on this PR. Accepted; the PR-side paths
   are exercised on this PR.
+
+## Review follow-ups (PR #268)
+
+The automated review's first round (2 fix, 2 document, 6 consider,
+2 info) shaped the design above; the substantive outcomes:
+
+- **Skip-masking in the smoke workflows (fix, taken):** the
+  required checks were originally the bare lane job names, so a
+  `check_paths` failure would have greened them via the
+  skipped-satisfies rule. Decision 5 now uses per-workflow
+  aggregate gates, and the ruleset list in step 4 names the gates.
+- **paths-filter on merge_group (fix, resolved by evidence):** the
+  reviewer flagged the functional-tests filter running on
+  `merge_group` as unvalidated with a possible silent-bypass
+  outcome. Fleet production evidence (risk list) shows both feared
+  outcomes do not occur; the filter is kept because it is what
+  lets review-marks-only queue entries skip the cloud lanes, and
+  step 5 re-confirms locally.
+- **No post-merge coverage for direct-qemu (consider, taken):**
+  the lane gained a nightly schedule; the
+  no-smoke-revalidation-in-queue trade is now recorded in
+  decision 5 instead of implicit.
+- **pr-retest contract narrowed (consider, documented):** see step
+  5; the bot fix belongs in the shared template.
+- **Reviewer event gating (consider, taken):**
+  `automated_reviewer` now carries a local
+  `if: github.event_name == 'pull_request'` rather than relying
+  solely on the cross-repo guard.
+- **Gate rename hazard (consider, taken):** every required-check
+  job carries a do-not-rename comment naming the ruleset.
+- **Unquoted `$ALL_SUCCESS` in the gate jq (consider, declined):**
+  deliberately byte-identical with the shakenfist/shakenfist
+  template; it fails closed either way. Change it fleet-wide or
+  not at all.
 
 ## Acceptance criteria
 

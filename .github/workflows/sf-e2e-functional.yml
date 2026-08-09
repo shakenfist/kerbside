@@ -4,10 +4,11 @@ permissions:
   contents: read
 
 # A pull_request smoke gate since two-tier CI phase 2
-# (docs/plans/PLAN-two-tier-ci-phase-02-sf-e2e-promotion.md), and a
-# required status check since phase 3 -- the merge_group trigger exists
-# only so the required check reports (as skipped, which satisfies it)
-# on queue entries; the lane itself runs on PRs, nightly, and on
+# (docs/plans/PLAN-two-tier-ci-phase-02-sf-e2e-promotion.md); since
+# phase 3 the "Can enqueue: sf-e2e" gate below is a required status
+# check in the develop ruleset -- the merge_group trigger exists only
+# so the required check reports (as skipped, which satisfies it) on
+# queue entries; the lane itself runs on PRs, nightly, and on
 # dispatch. The nightly schedule survives the promotion:
 # build-smoke-cluster deploys Shaken Fist at develop HEAD, which moves
 # independently of kerbside PRs, so the schedule catches SF-side drift
@@ -32,9 +33,13 @@ jobs:
   # A filter job rather than trigger-level paths-ignore because a
   # required check that never reports blocks the merge forever, while
   # a skipped one satisfies it. The filter only runs on pull_request;
-  # schedule and dispatch runs default to code_changed=true. Keep the
-  # filter list in sync with direct-qemu-functional.yml and
-  # functional-tests.yml.
+  # merge_group, schedule, and dispatch runs default to
+  # code_changed=true (on merge_group the lane skips on the event
+  # before the filter output is consulted). Keep the filter list in
+  # sync with its other copies: the check_paths jobs in
+  # functional-tests.yml and direct-qemu-functional.yml, the
+  # trigger-level paths-ignore in codeql-analysis.yml, and the
+  # .vscode whitelist in .gitignore.
   check_paths:
     name: "Check paths"
     runs-on: [self-hosted, static]
@@ -171,3 +176,30 @@ jobs:
         run: sleep $(( $MINUTES * 60 ))
         env:
           MINUTES: ${{ inputs.retention }}
+
+  # The aggregate gate whose display name is the required status check
+  # in the develop ruleset -- do not rename it (or this workflow's
+  # jobs) without updating the ruleset, or the queue wedges on a check
+  # that never reports. The lane job itself must NOT be the required
+  # check: if check_paths failed, GitHub would report the lane as
+  # skipped, and a skipped required check counts as satisfied -- the
+  # gate turns that check_paths failure into a visible red instead.
+  # The jq treats a skipped need as satisfied, which is what lets a
+  # review-only PR (lane skipped by the filter) pass. The gate also
+  # runs on schedule and dispatch, where its verdict gates nothing --
+  # harmless, and simpler than another event condition.
+  can_enqueue_sf_e2e:
+    name: "Can enqueue: sf-e2e"
+    needs: [check_paths, sf-e2e]
+    if: always() && github.event_name != 'merge_group'
+    runs-on: [self-hosted, static]
+    # A jq expression over the needs context.
+    timeout-minutes: 5
+    steps:
+      - env:
+          NEEDS_JSON: "${{toJSON(needs)}}"
+        name: Transform outcomes
+        run: |
+          echo "ALL_SUCCESS=$(echo "$NEEDS_JSON" | jq '. | to_entries | map([.value.result == "success", .value.result == "skipped"] | any) | all')" >>$GITHUB_ENV
+      - name: Check outcomes
+        run: "[ $ALL_SUCCESS == true ]"

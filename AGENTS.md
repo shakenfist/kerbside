@@ -191,7 +191,11 @@ leg so the harness exercises the proxy-side cancellation path live.
 
 `.github/workflows/direct-qemu-functional.yml` runs the smoke + banner +
 Sextant scenario (`run-scenario.sh`) against the real daemon+API+MariaDB
-stack with a headless ryll client through the Rust proxy. `start-kerbside.sh`
+stack with a headless ryll client through the Rust proxy. Since two-tier
+CI phase 3 its "Can enqueue: direct-qemu" gate job is a required status
+check in the develop ruleset (renaming it without updating the ruleset
+blocks all merges), and the lane also runs nightly because the merge
+queue does not re-run it against the merged tree. `start-kerbside.sh`
 pre-checks the proxy binary via `find_proxy_bin()`, and the lane builds and
 installs the `kerbside-proxy` wheel so it resolves on `PATH` as in a real
 deployment. The lane also runs the live API-terminate test
@@ -228,7 +232,9 @@ harness (`VERIFY-RUST-PROXY.md`), which needs no daemon or database.
 `.github/workflows/sf-e2e-functional.yml` (a pull_request smoke gate since
 two-tier CI phase 2, plus nightly schedule and manual dispatch) is the
 only lane that exercises the `type: shakenfist` console source against a
-real cluster. It stands up a
+real cluster. Since phase 3 its "Can enqueue: sf-e2e" gate job is a
+required status check in the develop ruleset; renaming it without
+updating the ruleset blocks all merges. It stands up a
 single-node Shaken Fist at develop HEAD (`build-smoke-cluster`, topology
 `localhost`), then `shakenfist/actions/deploy-kerbside-on-shakenfist`
 provisions `KERBSIDE_URL` + a signing key in SF and deploys a co-located
@@ -325,9 +331,9 @@ tox -e bindep
   `workflow_dispatch`), not on pull requests, gated by the "Can merge"
   required check. PRs run the smoke tier (sanity, direct-qemu,
   sf-e2e). On a `workflow_dispatch` run, an unselected target skips
-  cleanly via a job-level `if:` (it does not report red). Instance readiness in the
-  `shakenfist/actions` provisioning playbook gates on cloud-init
-  completion, not just an open SSH port.
+  cleanly via a job-level `if:` (it does not report red). Instance
+  readiness in the `shakenfist/actions` provisioning playbook gates
+  on cloud-init completion, not just an open SSH port.
 
 ## Code Style
 

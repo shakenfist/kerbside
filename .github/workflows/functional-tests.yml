@@ -32,9 +32,22 @@ jobs:
   # filter job the workflow always reports, the heavy jobs skip on its
   # output, and a skipped required check counts as satisfied. On
   # workflow_dispatch the filter step is skipped and the output
-  # defaults to code_changed=true so all selected tests run. Keep the
-  # filter list in sync with codeql-analysis.yml's paths-ignore and
-  # the .vscode whitelist in .gitignore.
+  # defaults to code_changed=true so all selected tests run.
+  #
+  # Unlike the sibling smoke workflows, the filter here deliberately
+  # also runs on merge_group: its output is consumed by the merge-tier
+  # jobs, so a review-marks-only queue entry skips two hours of cloud
+  # deployment. dorny/paths-filter on a merge-group ref is production
+  # behaviour in shakenfist/shakenfist, not a guess: in run
+  # 31258644604 (2026-08-08) "Check paths" succeeded on a merge_group
+  # event, the merge-tier collections ran rather than skipping, and
+  # "Can merge" went red when they failed. Re-confirm on this repo's
+  # first queue entries (phase 3 plan, step 5) all the same.
+  #
+  # Keep the filter list in sync with its other copies: the
+  # check_paths jobs in direct-qemu-functional.yml and
+  # sf-e2e-functional.yml, the trigger-level paths-ignore in
+  # codeql-analysis.yml, and the .vscode whitelist in .gitignore.
   check_paths:
     name: "Check paths"
     runs-on: [self-hosted, static]
@@ -874,7 +887,12 @@ jobs:
     # the slowest cloud lane. Everything else about the reviewer --
     # runner, timeout, fork restriction, bot-commit check --
     # lives in the shared workflow so it stays in step with the
-    # rest of the fleet.
+    # rest of the fleet. The event gate below is technically redundant
+    # with the shared workflow's internal pull_request guard, but
+    # keeping it local means this repo's tier membership does not
+    # depend on a guard in another repository, and merge-group and
+    # dispatch rollups stay free of a no-op reviewer job.
+    if: github.event_name == 'pull_request'
     needs: [sanity_checks]
     # A cross-repository reusable workflow cannot grant itself more
     # token scope than its caller has, so the permissions go here.

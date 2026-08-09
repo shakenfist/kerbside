@@ -2,9 +2,13 @@ name: CodeQL
 
 permissions: {}
 
-# Review-only changes cannot affect code analysis; skip them. Keep the
-# path list in sync with direct-qemu-functional.yml and the .vscode
-# whitelist in .gitignore.
+# Review-only changes cannot affect code analysis; skip them. This
+# workflow may keep trigger-level paths-ignore because CodeQL is not a
+# required status check (the check_paths workflows cannot -- see
+# functional-tests.yml). Keep the path list in sync with its other
+# copies: the check_paths jobs in functional-tests.yml,
+# direct-qemu-functional.yml, and sf-e2e-functional.yml, and the
+# .vscode whitelist in .gitignore.
 on:
   push:
     branches: [develop]
