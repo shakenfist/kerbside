@@ -457,10 +457,6 @@
       "author": "mikal"
     },
     {
-      "path": "tools/direct-qemu/verify-rust-proxy.sh",
-      "author": "mikal"
-    },
-    {
       "path": "tools/direct-qemu/verify-terminate-live.sh",
       "author": "mikal"
     },
