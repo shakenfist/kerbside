@@ -10,6 +10,7 @@
 //! and graceful shutdown on SIGTERM/Ctrl-C. Firewall enforcement (L0/L1) is
 //! phase 4; daemon integration and session-termination push are phase 5.
 
+use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -137,7 +138,16 @@ async fn main() -> Result<()> {
     let default_level = if args.verbose { "debug" } else { "info" };
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level));
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    // tracing-subscriber enables ANSI colouring unconditionally; it does not
+    // test the sink. Under the daemon the proxy inherits stdout into a log
+    // file, and escape sequences land between a field name and its `=`
+    // (`host_subject<esc>=<esc>value`), which breaks every downstream grep of
+    // that file. Colour only when stdout -- the writer fmt() defaults to --
+    // is really a terminal.
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_ansi(std::io::stdout().is_terminal())
+        .init();
 
     info!(
         node_name = %args.node_name,

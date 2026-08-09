@@ -79,6 +79,21 @@ TLS_ESCALATION_ORACLE = ('hypervisor requires TLS; retrying backend '
 PINNED_SUBJECT_REJECTION = 'pinned host_subject'
 TERMINATE_ORACLE = 'session terminated by control plane'
 
+# tracing renders a structured field as `<esc>[3mname<esc>[0m<esc>[2m=`,
+# so the literal `name=` a naive search looks for is not in the line at
+# all when colour is on -- which is how #272 turned a correctly pinned
+# TLS leg into an "empty host_subject" security failure. The proxy now
+# disables ANSI unless its stdout is a terminal
+# (rust/kerbside-proxy/src/main.rs), but a log captured from an older
+# build, or from a terminal-attached run, still carries escapes, so
+# strip them on read rather than trusting the writer.
+_ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
+
+
+def _strip_ansi(text):
+    """Remove SGR escape sequences from captured tracing output."""
+    return _ANSI_RE.sub('', text)
+
 
 def _load_env_file(path):
     """Load a KEY=VALUE env file into os.environ (skipping blanks)."""
@@ -229,32 +244,44 @@ def _log_contains(log_path, needle):
     """True if the daemon/proxy log currently contains `needle`."""
     try:
         with open(log_path, 'r', errors='replace') as f:
-            return needle in f.read()
+            return needle in _strip_ansi(f.read())
     except OSError:
         return False
 
 
 def _escalation_pins(log_path):
-    """The host_subject= value from each TLS escalation log line.
+    """(pins, unparseable) from the TLS escalation log lines.
 
     The escalation info! in rust/kerbside-proxy/src/backend.rs logs the
     pin it is about to apply as a trailing ``host_subject=`` field (the
     subject may contain spaces, so take everything to end of line). Only
     the text after the message is searched, so a tracing format change
-    that stopped rendering the field last would yield '' (a hard
-    failure) rather than silently matching something else. An
-    escalation line without the field, or with an empty value, yields
-    ''.
+    that stopped rendering the field last cannot silently match
+    something else.
+
+    ``pins`` holds one value per escalation line that carried a
+    parseable field -- '' when the field was present but empty, which is
+    a real unpinned escalation. Lines that carry the oracle but no
+    parseable ``host_subject=`` at all are counted in ``unparseable``
+    instead, and are the caller's cue that this check has gone blind.
+    Folding them into ``pins`` as '' (as this did until #272) reports a
+    harness failure as a proxy security failure, which is the most
+    misleading outcome available.
     """
     pins = []
+    unparseable = 0
     with open(log_path, 'r', errors='replace') as f:
         for line in f:
+            line = _strip_ansi(line)
             offset = line.find(TLS_ESCALATION_ORACLE)
             if offset == -1:
                 continue
             match = re.search(r'host_subject=(.*)$', line[offset:])
-            pins.append(match.group(1).strip() if match else '')
-    return pins
+            if match is None:
+                unparseable += 1
+                continue
+            pins.append(match.group(1).strip())
+    return pins, unparseable
 
 
 def _session_present(db, source, console_uuid):
@@ -375,7 +402,15 @@ def main():
         # verification) the TLS handshake would still succeed unpinned,
         # so the positive oracle is the host_subject= field the
         # escalation line logs at the point of use.
-        pins = _escalation_pins(log_path)
+        pins, unparseable = _escalation_pins(log_path)
+        if unparseable:
+            _log('  kerbside daemon (proxy) log:\n%s' % _tail(log_path, 60))
+            raise SystemExit(
+                '%d backend TLS escalation line(s) carried no parseable '
+                'host_subject= field; the proxy log format has changed and '
+                'this check can no longer tell whether pinning happened. '
+                'This is a harness failure, not a proxy failure -- fix the '
+                'parser before reading anything into it.' % unparseable)
         if not pins:
             _log('  kerbside daemon (proxy) log:\n%s' % _tail(log_path, 60))
             raise SystemExit(

@@ -277,6 +277,13 @@ SPICE session via `smoke-client.py`, a session and audit row, and clean
 teardown on terminate). See `tools/ovirt-e2e/README.md` and
 `docs/plans/PLAN-two-tier-ci-phase-01-ovirt-kerbside.md`.
 
+`drive-console.py` asserts against the proxy's log text, so it strips ANSI
+before matching and keeps "the field would not parse" separate from "the
+field was empty" — the first is a harness fault, the second is a real
+unpinned TLS leg, and conflating them (issue #272) reported a broken parser
+as a security failure for two days. Any new log-derived oracle should do the
+same. Proxy log colouring is described in `docs/proxy-architecture.md`.
+
 ### Modifying SPICE Protocol Handling
 
 SPICE wire-format parsing lives in the Rust proxy, which reuses the ryll
