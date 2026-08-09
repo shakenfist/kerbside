@@ -104,6 +104,7 @@ class oVirtSource(base.BaseSource):
                 vm.id, connection=connection, acquire_ticket=False)
             if not console:
                 log.debug('Ignoring instance with no SPICE console.')
+                continue
 
             yield {
                 'uuid': vm.id,
