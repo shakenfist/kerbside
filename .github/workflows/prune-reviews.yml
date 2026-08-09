@@ -5,9 +5,13 @@ name: Prune stale review marks
 # regenerated review state straight back as the bot: prune only ever
 # removes marks, so the commit does not need to be signed -- the
 # attestations live in the signed commits that introduced the stamps.
-# The push uses the workflow's own GITHUB_TOKEN, which does not
-# trigger workflows, so this cannot loop (and a second run would find
-# nothing to prune anyway). See the steady state section of
+# The push authenticates as shakenfist-bot (DEPENDENCIES_TOKEN): the
+# develop ruleset requires a pull request before merging, and GitHub
+# does not allow the built-in Actions app as a bypass actor, so the
+# bypass is the "SF Can Skip Merge Queue" team, which the bot belongs
+# to. A PAT push retriggers this workflow once; that is safe, not a
+# loop -- the second run finds nothing to prune. See the steady state
+# section of
 # https://github.com/shakenfist/development/blob/main/docs/code-review-tracking.md
 
 on:
@@ -30,6 +34,8 @@ jobs:
     steps:
       - name: Checkout kerbside
         uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.DEPENDENCIES_TOKEN }}
 
       - name: Clone the development repository
         run: |
