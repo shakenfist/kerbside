@@ -52,7 +52,7 @@ class SfThemeToggle extends LitElement {
         [role='radiogroup'] {
             display: inline-flex;
             border: 1px solid var(--sf-border, #2a2d3a);
-            border-radius: 6px;
+            border-radius: var(--sf-radius, 6px);
             overflow: hidden;
             background: var(--sf-surface, #1a1d27);
         }

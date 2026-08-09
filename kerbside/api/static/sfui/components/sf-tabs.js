@@ -68,7 +68,7 @@ class SfTabs extends LitElement {
             border-bottom-color: var(--sf-accent, #6c9eff);
         }
         .badge {
-            border-radius: 8px;
+            border-radius: var(--sf-radius-lg, 8px);
             font-size: 0.75em;
             line-height: 1;
             padding: 3px 6px;

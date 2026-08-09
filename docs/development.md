@@ -113,10 +113,18 @@ Version 1.6.5 is cached at `kerbside/api/static/js`.
 
 `kerbside/api/static/sfui` is a vendored copy of
 [shakenfist/sfui](https://github.com/shakenfist/sfui), the Shaken
-Fist design system (design tokens, a theme boot script, the brand
-logo, and Lit-based web components such as `sf-tabs`). It is copied
-in verbatim by sfui's own `tools/vendor.sh`, which also stamps the
-copy with its source commit in `.sfui-commit`.
+Fist design system: design tokens (`tokens.css`), the shared page
+stylesheet (`sf.css`), a theme boot script, the brand logo,
+Lit-based web components such as `sf-tabs`, and the vendored Lit
+and morphdom libraries those pages need. It is copied in verbatim
+by sfui's own `tools/vendor.sh`, which also stamps the copy with
+its source commit in `.sfui-commit`.
+
+The design system's own `README.md` is vendored along with it, so
+the full contract -- the token rules, what `sf.css` provides and
+how its cascade layer works, and the component contract -- is
+readable at `kerbside/api/static/sfui/README.md` without leaving
+the repository.
 
 Never edit anything under `kerbside/api/static/sfui/` in place:
 change the canonical sfui checkout instead and re-vendor, or the

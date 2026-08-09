@@ -1,0 +1,611 @@
+/*
+ * Shaken Fist web UI page styles.
+ *
+ * The shared page-level stylesheet for Shaken Fist web
+ * interfaces: the primitives a page is actually built from --
+ * chrome, sections, tables, buttons, badges, cards, code
+ * blocks, banners, disclosures, form controls. It exists so
+ * that two projects do not write them twice and then drift.
+ * It is not a framework: no grid system, no utility
+ * vocabulary, no JavaScript, and no opinion about layout
+ * beyond a centered container. Every color comes from
+ * tokens.css, which a page links first.
+ *
+ * Everything here lives in the sfui cascade layer, split into
+ * the sub-layers declared below. Unlayered rules beat layered
+ * ones whatever their specificity, so a page's own <style>
+ * block or stylesheet always wins over this file, with no
+ * important flag and no specificity contest. That is what
+ * makes adoption incremental: a page can take one primitive at
+ * a time and keep local overrides for everything else.
+ *
+ * Nothing here applies until <body> carries the sf-page class.
+ * The reset and the element-level base rules are gated on it,
+ * so merely linking this stylesheet is inert -- a consumer can
+ * vendor the file long before any of its pages is ready to use
+ * it. Without the gate, `* { margin: 0; padding: 0 }` would
+ * silently flatten every page that linked the file.
+ *
+ * Conventions, all mechanically checkable:
+ *
+ *   - Component classes are single .sf-* classes with BEM-style
+ *     -- modifiers: .sf-btn, .sf-btn--danger, .sf-btn--sm. A
+ *     modifier never styles anything on its own; it augments
+ *     the base class. A component may reach its own structural
+ *     children by element name (.sf-table th, .sf-header h1),
+ *     and nothing else.
+ *   - A class never shares a name with an sfui custom element:
+ *     differing from the element by only a leading dot is a
+ *     readability trap, so .sf-tabs and .sf-theme-toggle are
+ *     reserved and never used as class names. Where those
+ *     elements need page-level placement, the rule is written
+ *     against the element (:where(.sf-page) :where(sf-tabs)).
+ *   - Element-level base rules take the
+ *     :where(.sf-page) :where(a) form, i.e. zero specificity,
+ *     so even a bare `a {}` in a page overrides them.
+ *   - No important flags, no id selectors, and no color that is
+ *     not a token or a color-mix() of one.
+ *
+ * The non-color custom properties live here rather than in
+ * tokens.css, whose remit is color and whose central invariant
+ * -- every token defined in both palettes -- is meaningless for
+ * a font stack. The geometry:
+ *
+ *   --sf-font-sans, --sf-font-mono
+ *                     the two font stacks
+ *   --sf-radius-sm, --sf-radius, --sf-radius-lg
+ *                     4px / 6px / 8px, the radius scale the
+ *                     sfui components use as well
+ *
+ * and four documented knobs, which are the first thing to reach
+ * for when a page needs different measurements (an unlayered
+ * override is the second):
+ *
+ *   --sf-container-max     .sf-container's max width; 1100px by
+ *                          default, set it to 100% for a
+ *                          full-bleed page
+ *   --sf-page-pad          .sf-page's padding; the default drops
+ *                          from 2rem to 1rem under 700px
+ *   --sf-code-max-height   how tall .sf-code grows before it
+ *                          scrolls
+ *   --sf-table-cell-pad    .sf-table's th and td padding
+ */
+@layer sfui.reset, sfui.base, sfui.components, sfui.utilities;
+
+/*
+ * The reset, gated on sf-page and written at zero specificity.
+ * The gate is the whole point: a page that has not opted in is
+ * untouched by it.
+ */
+@layer sfui.reset {
+    :where(.sf-page),
+    :where(.sf-page) * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+}
+
+/*
+ * Page defaults and chrome: the geometry properties, the body,
+ * the container, the element-level base rules, and the header,
+ * status line and footer that frame every page.
+ */
+@layer sfui.base {
+    :root {
+        --sf-font-sans: -apple-system, BlinkMacSystemFont,
+                        'Segoe UI', Roboto, Oxygen, Ubuntu,
+                        sans-serif;
+        --sf-font-mono: 'SF Mono', Consolas,
+                        'Liberation Mono', monospace;
+        --sf-radius-sm: 4px;
+        --sf-radius: 6px;
+        --sf-radius-lg: 8px;
+        --sf-container-max: 1100px;
+        --sf-page-pad: 2rem;
+        --sf-code-max-height: 24rem;
+        --sf-table-cell-pad: 0.5rem 0.8rem;
+    }
+
+    :where(.sf-page) {
+        font-family: var(--sf-font-sans);
+        background: var(--sf-bg);
+        color: var(--sf-text);
+        min-height: 100vh;
+        padding: var(--sf-page-pad);
+    }
+
+    .sf-container {
+        max-width: var(--sf-container-max);
+        margin: 0 auto;
+    }
+
+    /* One link treatment for the whole page rather than one per
+       table: interactive means the accent token, and the hover
+       shift to --sf-accent-hover comes with it. */
+    :where(.sf-page) :where(a) {
+        color: var(--sf-accent);
+        text-decoration: none;
+    }
+
+    :where(.sf-page) :where(a:hover) {
+        color: var(--sf-accent-hover);
+        text-decoration: underline;
+    }
+
+    /* The tab strip is a custom element, so its page-level
+       placement is styled on the element; .sf-tabs is reserved
+       and must not become a class. */
+    :where(.sf-page) :where(sf-tabs) {
+        margin-bottom: 1.5rem;
+    }
+
+    .sf-header {
+        position: relative;
+        margin-bottom: 2.5rem;
+        padding-bottom: 1.5rem;
+        /* Brand lives in the chrome: the header rule leans
+           toward the Shaken Fist teal. This is the reference
+           brand treatment. */
+        border-bottom: 1px solid
+            color-mix(in srgb, var(--sf-brand) 45%,
+                      var(--sf-border));
+    }
+
+    /* The lockup is left-aligned. A page that wants it centered
+       says so itself, unlayered. */
+    .sf-header h1 {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        font-size: 1.8rem;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        margin-bottom: 0.4rem;
+    }
+
+    .sf-header h1 img {
+        height: 2.2rem;
+        width: auto;
+    }
+
+    .sf-header p {
+        color: var(--sf-text-dim);
+        font-size: 0.95rem;
+    }
+
+    .sf-header sf-theme-toggle {
+        position: absolute;
+        top: 0;
+        right: 0;
+    }
+
+    /* A one-line machine-generated status under the heading --
+       "updated 12s ago" -- monospaced so the digits do not
+       jitter as it refreshes. */
+    .sf-status-line {
+        font-family: var(--sf-font-mono);
+        font-size: 0.82rem;
+    }
+
+    .sf-footer {
+        text-align: center;
+        margin-top: 2.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--sf-border);
+        color: var(--sf-text-dim);
+        font-size: 0.8rem;
+    }
+
+    @media (max-width: 700px) {
+        /* Narrow screens cannot spare 2rem on each side. */
+        :root {
+            --sf-page-pad: 1rem;
+        }
+
+        /* In the corner the toggle would sit on top of the
+           heading; in flow it lands below the status line. */
+        .sf-header sf-theme-toggle {
+            position: static;
+            margin-top: 0.75rem;
+        }
+    }
+}
+
+/*
+ * The content primitives. Each is a single class plus its
+ * modifiers, and each may reach its own structural children by
+ * element name.
+ */
+@layer sfui.components {
+    /* Sections: a labelled band of the page, its heading in the
+       small dim uppercase treatment shared with table headers
+       and field labels. */
+    .sf-section {
+        margin-bottom: 2rem;
+    }
+
+    .sf-section-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.4rem;
+        border-bottom: 1px solid var(--sf-border);
+    }
+
+    .sf-section-header h2 {
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--sf-text-dim);
+    }
+
+    .sf-card {
+        background: var(--sf-surface);
+        border: 1px solid var(--sf-border);
+        border-radius: var(--sf-radius-lg);
+        padding: 1.2rem 1.3rem;
+    }
+
+    .sf-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .sf-table th,
+    .sf-table td {
+        text-align: left;
+        padding: var(--sf-table-cell-pad);
+        border-bottom: 1px solid var(--sf-border);
+        font-size: 0.88rem;
+    }
+
+    .sf-table th {
+        font-size: 0.78rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--sf-text-dim);
+    }
+
+    /* Data is monospaced: columns of ids, times and counts line
+       up, and a proportional font makes them impossible to
+       compare down the column. */
+    .sf-table td {
+        font-family: var(--sf-font-mono);
+    }
+
+    /* Zebra striping on the even rows, so the first data row
+       stays plain against the header row. Derived from the dim
+       text token rather than a surface color, so it reads the
+       same over a page background and inside a card. */
+    .sf-table--striped tbody tr:nth-child(even) {
+        background: color-mix(
+            in srgb, var(--sf-text-dim) 8%, transparent);
+    }
+
+    /* Row hover last, so it wins over the stripe. A wide table
+       is much easier to read across with the row under the
+       pointer picked out. */
+    .sf-table tbody tr:hover {
+        background: color-mix(
+            in srgb, var(--sf-accent) 8%, transparent);
+    }
+
+    /* Wrapper for a table too wide for its column: the table
+       scrolls inside this rather than widening the page. The
+       min-width is what makes that work. .sf-table is width:
+       100%, so on its own it would shrink to the wrapper and
+       wrap every cell to shreds -- a ten-column table squeezed
+       into 900px, not a table you scroll. Sized to its content
+       instead, it keeps readable columns and overflows, which is
+       what the wrapper is here to catch. */
+    .sf-table-scroll {
+        display: block;
+        max-width: 100%;
+        overflow-x: auto;
+    }
+
+    .sf-table-scroll > .sf-table {
+        min-width: max-content;
+    }
+
+    /* Buttons are outlines that fill on hover. The neutral base
+       is a border-colored outline; the modifiers take a token.
+       :disabled comes after the modifier hover rules, because
+       it has to beat them at equal specificity. */
+    .sf-btn {
+        background: transparent;
+        border: 1px solid var(--sf-border);
+        color: var(--sf-text);
+        border-radius: var(--sf-radius-sm);
+        padding: 0.15rem 0.6rem;
+        font-family: inherit;
+        font-size: 0.78rem;
+        cursor: pointer;
+    }
+
+    .sf-btn:hover {
+        border-color: var(--sf-accent);
+        color: var(--sf-accent);
+    }
+
+    .sf-btn--primary {
+        border-color: var(--sf-accent);
+        color: var(--sf-accent);
+    }
+
+    /* Text on a filled control takes the page background color,
+       the same convention as the sf-tabs badges. */
+    .sf-btn--primary:hover {
+        background: var(--sf-accent);
+        color: var(--sf-bg);
+    }
+
+    .sf-btn--danger {
+        border-color: var(--sf-red);
+        color: var(--sf-red);
+    }
+
+    .sf-btn--danger:hover {
+        background: var(--sf-red);
+        color: var(--sf-bg);
+    }
+
+    .sf-btn--sm {
+        font-size: 0.72rem;
+    }
+
+    .sf-btn:disabled {
+        background: transparent;
+        border-color: var(--sf-text-dim);
+        color: var(--sf-text-dim);
+        cursor: default;
+    }
+
+    /* A cluster of related controls. Spaced rather than joined:
+       joined borders need per-child radius surgery, and the
+       cluster reads perfectly well with a gap. */
+    .sf-btn-group {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+    }
+
+    /* Badges: a state word on a tint of the token that carries
+       its meaning. Variants are named for the token, not for a
+       state, because what a state means is the page's judgement
+       and every page's vocabulary differs. */
+    .sf-badge {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border-radius: var(--sf-radius-sm);
+        font-size: 0.72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .sf-badge--green {
+        background: color-mix(
+            in srgb, var(--sf-green) 15%, transparent);
+        color: var(--sf-green);
+    }
+
+    .sf-badge--amber {
+        background: color-mix(
+            in srgb, var(--sf-amber) 15%, transparent);
+        color: var(--sf-amber);
+    }
+
+    .sf-badge--red {
+        background: color-mix(
+            in srgb, var(--sf-red) 15%, transparent);
+        color: var(--sf-red);
+    }
+
+    .sf-badge--purple {
+        background: color-mix(
+            in srgb, var(--sf-purple) 15%, transparent);
+        color: var(--sf-purple);
+    }
+
+    .sf-badge--pink {
+        background: color-mix(
+            in srgb, var(--sf-pink) 15%, transparent);
+        color: var(--sf-pink);
+    }
+
+    .sf-badge--accent {
+        background: color-mix(
+            in srgb, var(--sf-accent) 15%, transparent);
+        color: var(--sf-accent);
+    }
+
+    .sf-badge--dim {
+        background: color-mix(
+            in srgb, var(--sf-text-dim) 15%, transparent);
+        color: var(--sf-text-dim);
+    }
+
+    /* Command output and log tails: monospaced, scrolling past
+       --sf-code-max-height. The fill is the page background, so
+       this reads as inset when it sits on a surface -- inside a
+       .sf-card, which is where it is meant to go. Directly on
+       the page only its border separates it from its
+       surroundings. */
+    .sf-code {
+        background: var(--sf-bg);
+        border: 1px solid var(--sf-border);
+        border-radius: var(--sf-radius);
+        padding: 0.6rem 0.8rem;
+        font-family: var(--sf-font-mono);
+        font-size: 0.72rem;
+        line-height: 1.5;
+        color: var(--sf-text-dim);
+        max-height: var(--sf-code-max-height);
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+
+    /* A page-wide notice. The bare class is neutral; the
+       modifier chooses the token, and with it the tint, the
+       border and the text color. Text is left-aligned, because
+       a banner is full width and a notice long enough to wrap
+       reads badly centered; a page with a one-line notice can
+       center it itself. */
+    .sf-banner {
+        border: 1px solid var(--sf-border);
+        border-radius: var(--sf-radius-lg);
+        padding: 0.8rem 1.2rem;
+        margin-bottom: 1.5rem;
+        color: var(--sf-text);
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+
+    .sf-banner--warn {
+        background: color-mix(
+            in srgb, var(--sf-amber) 15%, transparent);
+        border-color: var(--sf-amber);
+        color: var(--sf-amber);
+    }
+
+    .sf-banner--error {
+        background: color-mix(
+            in srgb, var(--sf-red) 15%, transparent);
+        border-color: var(--sf-red);
+        color: var(--sf-red);
+    }
+
+    .sf-banner--info {
+        background: color-mix(
+            in srgb, var(--sf-accent) 15%, transparent);
+        border-color: var(--sf-accent);
+        color: var(--sf-accent);
+    }
+
+    /* "Nothing here", in place of a table or a card grid. */
+    .sf-empty {
+        text-align: center;
+        padding: 2rem;
+        color: var(--sf-text-dim);
+        font-size: 0.95rem;
+    }
+
+    /* The small print under a table: what the numbers mean, how
+       far back the window reaches. */
+    .sf-footnote {
+        margin-top: 0.6rem;
+        font-size: 0.75rem;
+        color: var(--sf-text-dim);
+    }
+
+    /* Disclosures are <details>. The native marker is kept and
+       inherits currentColor, so it follows the palette without
+       a hand-drawn triangle to go invisible on one of them. */
+    .sf-disclosure > summary {
+        cursor: pointer;
+        padding: 0.2rem 0;
+        color: var(--sf-accent);
+        font-size: 0.88rem;
+    }
+
+    .sf-disclosure > summary:hover {
+        color: var(--sf-accent-hover);
+    }
+
+    /* The panel variant: a stack of these is an accordion. The
+       horizontal padding is on the <details> so it insets the
+       summary bar and the body alike. */
+    .sf-disclosure--panel {
+        background: var(--sf-surface);
+        border: 1px solid var(--sf-border);
+        border-radius: var(--sf-radius-lg);
+        padding: 0 1rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .sf-disclosure--panel > summary {
+        padding: 0.7rem 0;
+        color: var(--sf-text);
+        font-size: 0.95rem;
+        font-weight: 600;
+    }
+
+    .sf-disclosure--panel > summary:hover {
+        color: var(--sf-accent);
+    }
+
+    .sf-disclosure--panel[open] {
+        padding-bottom: 1rem;
+    }
+
+    .sf-disclosure--panel[open] > summary {
+        border-bottom: 1px solid var(--sf-border);
+        margin-bottom: 0.8rem;
+    }
+
+    /* Form controls. The label takes the same small dim
+       uppercase treatment as a table header, so a form and a
+       table read as the same design. */
+    .sf-field {
+        margin-bottom: 1rem;
+    }
+
+    .sf-label {
+        display: block;
+        margin-bottom: 0.3rem;
+        font-size: 0.78rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--sf-text-dim);
+    }
+
+    .sf-input {
+        width: 100%;
+        background: var(--sf-bg);
+        border: 1px solid var(--sf-border);
+        border-radius: var(--sf-radius-sm);
+        padding: 0.4rem 0.6rem;
+        font-family: inherit;
+        font-size: 0.9rem;
+        color: var(--sf-text);
+    }
+
+    /* The focus ring is recolored, never removed. */
+    .sf-input:focus-visible {
+        border-color: var(--sf-accent);
+        outline: 1px solid var(--sf-accent);
+    }
+
+    .sf-form-error {
+        margin-top: 0.4rem;
+        color: var(--sf-red);
+        font-size: 0.82rem;
+    }
+}
+
+/*
+ * Utilities: single-property helpers. They are last in the
+ * layer order deliberately, so .sf-num beats .sf-table td
+ * without needing a compound selector to outweigh it.
+ */
+@layer sfui.utilities {
+    /* Push an element to the far end of a flex row -- a control
+       hard right in a .sf-section-header. */
+    .sf-push-right {
+        margin-left: auto;
+    }
+
+    /* Numeric column: right-aligned, on the th and the td both,
+       so the header sits over its digits. */
+    .sf-num {
+        text-align: right;
+    }
+}
