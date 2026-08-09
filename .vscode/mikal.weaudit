@@ -101,10 +101,6 @@
       "author": "mikal"
     },
     {
-      "path": "rust/kerbside-proxy/src/main.rs",
-      "author": "mikal"
-    },
-    {
       "path": "rust/kerbside-proxy/src/metrics.rs",
       "author": "mikal"
     },

@@ -241,10 +241,6 @@
       "sha": "3962d7ee3569d3d193f927541ed817d812267a44",
       "date": "2026-08-05"
     },
-    "rust/kerbside-proxy/src/main.rs": {
-      "sha": "f739e38650c8b8118187c49a223af87259608686",
-      "date": "2026-08-05"
-    },
     "rust/kerbside-proxy/src/metrics.rs": {
       "sha": "8e24d840c061d280a4f68b943c3df3d4b8a370df",
       "date": "2026-08-05"
