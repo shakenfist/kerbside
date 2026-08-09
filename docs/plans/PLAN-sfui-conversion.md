@@ -232,7 +232,7 @@ locally-running kerbside.
 |-------|------|--------|
 | 1. Template smoke tests | PLAN-sfui-conversion-phase-01-smoke-tests.md | Done |
 | 2. Vendor sfui + static plumbing | PLAN-sfui-conversion-phase-02-vendoring.md | Done |
-| 3. sfui canonical additions (shakenfist/sfui repo) | PLAN-sfui-conversion-phase-03-sfui-canonical.md | Not started |
+| 3. sfui canonical additions (shakenfist/sfui repo) | PLAN-sfui-conversion-phase-03-sfui-canonical.md | Planned |
 | 4. New base + login page | PLAN-sfui-conversion-phase-04-base-login.md | Not started |
 | 5. Consoles page | PLAN-sfui-conversion-phase-05-consoles.md | Not started |
 | 6. Sessions, sources and audit pages | PLAN-sfui-conversion-phase-06-remaining-pages.md | Not started |
@@ -560,6 +560,13 @@ implemented because the following statements will be true:
 * A `flasgger` decision: it is a declared dependency but
   is never imported — drop it or wire it up (independent
   of this plan; noticed during the survey).
+* An `sf-poll.js` page-infrastructure helper in sfui,
+  wrapping the fetch-and-morph polling loop. Deliberately
+  not built in phase 3: the dashboard's loop is entangled
+  with its per-panel change detection and kerbside's will
+  be a simpler whole-container morph, and there is no way
+  to tell which parts are genuinely common until both
+  exist. Revisit after phase 7.
 * A `tools/vendor.sh --check` step in kerbside's own CI.
   Considered and deliberately not built in phase 2: it
   would clone sfui on every run to check what the daily
