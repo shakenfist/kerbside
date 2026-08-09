@@ -108,7 +108,7 @@ as one PR. The crate depends on the ryll
 rev in `Cargo.toml`; bump the `rev` (and commit the updated `Cargo.lock`)
 when picking up ryll changes. CI runs fmt/clippy/test/build via
 `.github/workflows/rust.yml`; end-to-end verification against qemu is
-`tools/direct-qemu/VERIFY-RUST-PROXY.md`.
+`docs/direct-qemu-harness.md`.
 
 #### Packaging and release (phase 6)
 
@@ -145,7 +145,7 @@ pipeline detail) and `docs/configuration.md` (the `FIREWALL_MODE` /
 `FIREWALL_PERMITTED_CHANNELS` config knobs) for the full picture.
 
 To validate the firewall against a real client without risking a broken
-session, run the harness in `tools/direct-qemu/VERIFY-FIREWALL.md`: it
+session, run the warn-only capture in `docs/direct-qemu-harness.md`: it
 brings the mock gRPC server up delivering a `WARN_ONLY` `FirewallPolicy`,
 drives a real SPICE client (remote-viewer/virt-viewer/ryll headless)
 through the proxy, then asserts
@@ -181,7 +181,8 @@ See `docs/proxy-architecture.md` and `ARCHITECTURE.md` for the full flow
 and the distributed-deployment rationale.
 
 To validate live termination against a real client without a full
-API+daemon+MariaDB stack, use `tools/direct-qemu/VERIFY-TERMINATION.md`:
+API+daemon+MariaDB stack, use the termination check in
+`docs/direct-qemu-harness.md`:
 the mock gRPC server's `ProxyControl` stream emits a one-shot
 `TerminateSession` a configurable number of seconds after the first
 authorization (`MOCK_GRPC_TERMINATE_AFTER`), standing in for the API/DB
@@ -221,7 +222,8 @@ Awaiting screen on the first key and freezes at the bootloader prompt). It
 brings up its OWN isolated lane (separate WORKDIR, `QCOW2` overridden) and
 tears it down before the scenario lane starts, exactly as
 `verify-terminate-live.sh` does. This is distinct from the local mock
-harness (`VERIFY-RUST-PROXY.md`), which needs no daemon or database.
+harness (`docs/direct-qemu-harness.md`), which needs no daemon or
+database.
 
 ### Shaken Fist end-to-end lane (`sf-e2e`)
 
