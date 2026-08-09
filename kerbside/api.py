@@ -318,7 +318,7 @@ class Console(sf_api.Resource):
 
 class ConsolesAudit(sf_api.Resource):
     get_args = {
-        'limit': fields.Int(missing=20)
+        'limit': fields.Int(load_default=20)
     }
 
     @verify_token
