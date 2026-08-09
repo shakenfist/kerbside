@@ -129,10 +129,6 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/api.py",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/config.py",
       "author": "mikal"
     },
