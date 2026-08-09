@@ -334,6 +334,12 @@ tox -e bindep
   cleanly via a job-level `if:` (it does not report red). Instance
   readiness in the `shakenfist/actions` provisioning playbook gates
   on cloud-init completion, not just an open SSH port.
+- `rust.yml` sits in neither tier: it is advisory and path-scoped to
+  `rust/**` plus the proto in both. Rust breakage still gates merges
+  via the proxy wheel builds in direct-qemu (smoke) and the cloud
+  matrices (merge); what never runs against the merged tree is
+  clippy and `cargo test`, an accepted gap (phase 3 plan,
+  decision 6).
 
 ## Code Style
 

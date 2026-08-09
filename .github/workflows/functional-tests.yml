@@ -85,6 +85,10 @@ jobs:
               - '!.vscode/*.weaudit'
               - '!.vscode/*.weaudit-shas.json'
               - '!.vscode/review-scope.toml'
+      # Make the verdict visible in the log rather than inferred from
+      # which downstream jobs skipped.
+      - name: Report verdict
+        run: echo "code_changed=${{ steps.filter.outputs.code || 'true (defaulted)' }}"
 
   sanity_checks:
     # Runs in both tiers: on pull_request as the core of the smoke
@@ -117,9 +121,7 @@ jobs:
       # name never reports and blocks every merge; catch that here
       # rather than when merges stop working.
       - name: Verify required-check names against the exported ruleset
-        run: |
-          command -v jq > /dev/null || sudo apt-get install -y jq
-          tools/check-required-checks.sh
+        run: tools/check-required-checks.sh
 
       - name: Install additional dependencies not tracked by pip
         timeout-minutes: 5

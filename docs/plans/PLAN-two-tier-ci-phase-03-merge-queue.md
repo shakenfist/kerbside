@@ -254,6 +254,18 @@ Target: `~DEFAULT_BRANCH`. Rules:
     `bypass_mode: always` — the human escape hatch for a wedged
     queue.
 
+  No bypass is needed for export-repo-config.yml: despite the
+  direct-looking single-parent bot commits on develop, those are
+  rebase-merged "Repository configuration changed" PRs (e.g.
+  commit 7a9e4e7 is PR #222) — the reusable workflow pushes a
+  branch and opens a PR with `github.token`, verified against its
+  source. The post-flip consequence is different: PRs created (or
+  pushed to) with a workflow token get no `pull_request` events,
+  so the nightly config PR and any bot-fixup push carry zero check
+  runs and cannot enqueue until the PR is closed and reopened (or
+  merged by a bypass actor). pr-address-comments.yml now says this
+  in the comment it posts after pushing.
+
 Then dispatch `export-repo-config.yml` so
 `.github/exported-config/` archives the new ruleset.
 
@@ -280,6 +292,11 @@ step 4, in order:
    above proves the jq, but one local demonstration is cheap.
 3. Merge a review-marks-only PR through the queue and confirm every
    required check is satisfied by skips (the acceptance criterion).
+4. When the next nightly "Repository configuration changed" PR
+   appears, confirm the close/reopen dance attaches its checks and
+   it merges through the queue — the export flow itself needs no
+   bypass (it lands via PRs), but its PRs are created with a
+   workflow token and so start with zero check runs.
 
 `workflow_dispatch` still runs the matrices directly for lane
 debugging, but note a dispatch run never attaches checks to a PR —
@@ -317,8 +334,11 @@ can block the queue.
   `merge_group` event) "Check paths" succeeded, the merge-tier
   collections ran rather than skipping, and "Can merge" went red
   on their failure — which also live-proves the gate jq's negative
-  path. Step 5 re-confirms on this repo's first code-carrying
-  queue entry that the matrices run rather than skip.
+  path. dorny/paths-filter also hardcodes `dot: true` in its
+  matcher options (src/filter.ts), so `'**'` matches dot paths and
+  a PR touching only `.github/**` counts as code. Step 5
+  re-confirms on this repo's first code-carrying queue entry that
+  the matrices run rather than skip.
 - **Runner supply for merge groups** — none needed beyond today:
   merge-tier jobs request the same labels PR runs already use, and
   the conductor is label-driven.
@@ -399,6 +419,47 @@ outcomes:
 - **Gate permissions inconsistency (consider, resolved by
   comment):** the fleet-mirrored `actions: read` is annotated as
   non-load-bearing rather than churned.
+
+Round 3 (2 fix, 6 consider, 2 info) — the substantive outcomes:
+
+- **export-repo-config vs the ruleset (fix, premise corrected):**
+  the reviewer read the single-parent bot commits on develop as
+  direct pushes needing a bypass. They are rebase-merged
+  "Repository configuration changed" PRs (commit 7a9e4e7 is
+  PR #222); the reusable workflow pushes a branch and opens a PR
+  with `github.token`, so no bypass is needed. The real post-flip
+  consequence — workflow-token PRs start with zero check runs — is
+  recorded in step 4 and validated in step 5 item 4.
+- **Bot-fixup pushes leave PRs unenqueueable (fix, taken
+  minimally):** pr-address-comments.yml's success comment now
+  tells the operator at the moment it matters that the push did
+  not re-run the blocking checks and close/reopen attaches them.
+  The PAT alternative changes the template's deliberate
+  workflow-token security posture and belongs in the shared
+  template with the pr-retest rework.
+- **Dot-path matching in the filter (consider, resolved by
+  evidence):** dorny/paths-filter hardcodes `dot: true`
+  (src/filter.ts, `MatchOptions`), so `'**'` matches
+  `.github/...` paths and the feared silent code_changed=false on
+  dot-only PRs cannot occur. The suggested verdict echo step was
+  taken in all three check_paths jobs for log visibility.
+- **Nightly failure alerting (consider, taken):** both scheduled
+  lanes gained a `nightly_failure_issue` job
+  (tools/file-nightly-failure-issue.sh) that files or updates a
+  fixed-title tracking issue on scheduled failure — a separate
+  job so `issues: write` is never granted to a job that runs PR
+  code.
+- **check-required-checks.sh matching (consider, taken):** the
+  grep is now anchored to job-level indentation and accepts
+  unquoted or quoted names; re-mutation-tested, including the
+  step-name false-pass the reviewer found.
+- **jq install hardening (consider, taken by removal):** the
+  script now parses the ruleset with python3, so the apt install
+  step is gone entirely.
+- **Superseded runs reporting red gates (consider, taken):** both
+  smoke workflows moved concurrency to workflow level, so a
+  superseded push cancels the gate along with the lane.
+- **rust.yml tier membership in AGENTS.md (consider, taken).**
 
 ## Acceptance criteria
 

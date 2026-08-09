@@ -28,6 +28,15 @@ on:
     # Nightly at 02:30 UTC.
     - cron: '30 2 * * *'
 
+# A superseded push cancels the whole run -- gate included, so it
+# reports cancelled rather than red on the old SHA -- instead of
+# stacking 120-minute-timeout jobs on the small l pool. Merge-group
+# refs are unique per queue entry, so this never cancels across
+# entries.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # Review-only changes touch no code the lane exercises; skip them.
   # A filter job rather than trigger-level paths-ignore because a
@@ -65,6 +74,10 @@ jobs:
               - '!.vscode/*.weaudit'
               - '!.vscode/*.weaudit-shas.json'
               - '!.vscode/review-scope.toml'
+      # Make the verdict visible in the log rather than inferred from
+      # which downstream jobs skipped.
+      - name: Report verdict
+        run: echo "code_changed=${{ steps.filter.outputs.code || 'true (defaulted)' }}"
 
   sf-e2e:
     needs: check_paths
@@ -73,12 +86,6 @@ jobs:
       && needs.check_paths.outputs.code_changed != 'false'
     runs-on: [self-hosted, vm, debian-12, l]
     timeout-minutes: 120
-
-    # A superseded push cancels the running lane rather than queueing
-    # another 120-minute-timeout job on the small l pool.
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}
-      cancel-in-progress: true
 
     # The single-node SF API and kerbside both live on the primary and are
     # reached over the primary's localhost; the well-known CI system key is
@@ -205,3 +212,27 @@ jobs:
           echo "ALL_SUCCESS=$(echo "$NEEDS_JSON" | jq '. | to_entries | map([.value.result == "success", .value.result == "skipped"] | any) | all')" >>$GITHUB_ENV
       - name: Check outcomes
         run: "[ $ALL_SUCCESS == true ]"
+
+  # The nightly schedule is load-bearing: it bounds the accepted
+  # two-tier CI risk that the merge queue never re-runs this lane
+  # against the merged tree (and catches SF-at-develop-HEAD drift),
+  # and a red entry in the Actions tab alerts nobody. File or update a
+  # tracking issue instead. A separate job so issues: write is never
+  # granted to the lane job.
+  nightly_failure_issue:
+    name: "File nightly failure issue"
+    needs: [sf-e2e]
+    if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
+    runs-on: [self-hosted, static]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: File or update the tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tools/file-nightly-failure-issue.sh sf-e2e \
+              "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

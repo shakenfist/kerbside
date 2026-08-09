@@ -24,6 +24,16 @@ on:
     # lanes are usually (not guaranteedly) clear of each other.
     - cron: '30 3 * * *'
 
+# A superseded push cancels the whole run -- gate included, so it
+# reports cancelled rather than red on the old SHA -- instead of
+# stacking 60-minute jobs on the small l pool; the lane backs a
+# required check now, so a superseded run is pure waste. Merge-group
+# refs are unique per queue entry, so this never cancels across
+# entries.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # Review-only changes touch no code the lane exercises, and this lane
   # is an hour of VM time; skip them. This is a filter job rather than
@@ -61,6 +71,10 @@ jobs:
               - '!.vscode/*.weaudit'
               - '!.vscode/*.weaudit-shas.json'
               - '!.vscode/review-scope.toml'
+      # Make the verdict visible in the log rather than inferred from
+      # which downstream jobs skipped.
+      - name: Report verdict
+        run: echo "code_changed=${{ steps.filter.outputs.code || 'true (defaulted)' }}"
 
   direct-qemu-lane:
     needs: check_paths
@@ -69,15 +83,6 @@ jobs:
       && needs.check_paths.outputs.code_changed != 'false'
     runs-on: [self-hosted, vm, debian-12, l]
     timeout-minutes: 60
-
-    # A superseded push cancels the running lane rather than stacking
-    # 60-minute jobs on the small l pool -- the lane backs a required
-    # check now, so a superseded run is pure waste. Merge-group refs
-    # are unique per queue entry, so this can never cancel across
-    # entries.
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}
-      cancel-in-progress: true
 
     # The runner image exports http_proxy/https_proxy pointing at an
     # upstream squid cache for apt, github, and the cargo registry.
@@ -279,3 +284,27 @@ jobs:
           echo "ALL_SUCCESS=$(echo "$NEEDS_JSON" | jq '. | to_entries | map([.value.result == "success", .value.result == "skipped"] | any) | all')" >>$GITHUB_ENV
       - name: Check outcomes
         run: "[ $ALL_SUCCESS == true ]"
+
+  # The nightly schedule is load-bearing: it bounds the accepted
+  # two-tier CI risk that the merge queue never re-runs this lane
+  # against the merged tree, and a red entry in the Actions tab alerts
+  # nobody. File or update a tracking issue instead. A separate job so
+  # issues: write is never granted to the lane job, which runs PR
+  # code.
+  nightly_failure_issue:
+    name: "File nightly failure issue"
+    needs: [direct-qemu-lane]
+    if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
+    runs-on: [self-hosted, static]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: File or update the tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tools/file-nightly-failure-issue.sh direct-qemu \
+              "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
