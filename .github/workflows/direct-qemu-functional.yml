@@ -3,21 +3,84 @@ name: Direct-qemu functional test
 permissions:
   contents: read
 
-# Review-only changes touch no code the lane exercises, and this lane is
-# an hour of VM time; skip them. Keep the path list in sync with
-# codeql-analysis.yml and the .vscode whitelist in .gitignore.
+# Smoke tier since two-tier CI phase 3
+# (docs/plans/PLAN-two-tier-ci-phase-03-merge-queue.md): the
+# "Can enqueue: direct-qemu" gate below is a required status check in
+# the develop ruleset. The merge_group trigger exists only so the
+# required check reports (as skipped, which satisfies it) on queue
+# entries -- the lane itself runs on PRs and nightly. The schedule
+# bounds the accepted phase 3 risk that the merge queue never re-runs
+# this lane against the merged tree: a semantic conflict between
+# independently-green PRs surfaces within a day rather than on the
+# next PR that happens to touch the proxy path.
 on:
+  merge_group:
   pull_request:
     branches:
       - develop
-    paths-ignore:
-      - 'REVIEWS.md'
-      - '.vscode/*.weaudit'
-      - '.vscode/*.weaudit-shas.json'
-      - '.vscode/review-scope.toml'
+  schedule:
+    # Nightly at 03:30 UTC, an hour after sf-e2e's schedule. sf-e2e
+    # normally finishes in well under an hour, so the two l-runner
+    # lanes are usually (not guaranteedly) clear of each other.
+    - cron: '30 3 * * *'
+
+# A superseded push cancels the whole run -- gate included, so it
+# reports cancelled rather than red on the old SHA -- instead of
+# stacking 60-minute jobs on the small l pool; the lane backs a
+# required check now, so a superseded run is pure waste. Merge-group
+# refs are unique per queue entry, so this never cancels across
+# entries.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  # Review-only changes touch no code the lane exercises, and this lane
+  # is an hour of VM time; skip them. This is a filter job rather than
+  # trigger-level paths-ignore because a required check that never
+  # reports blocks the merge forever, while a skipped one satisfies
+  # it. The filter only runs on pull_request; schedule runs default to
+  # code_changed=true. On merge_group the whole job skips -- nothing
+  # consumes its output there (the lane and gate skip on the event),
+  # so running it would just burn a static-pool slot per queue entry.
+  # Keep the filter list in sync with its other copies: the
+  # check_paths jobs in functional-tests.yml and
+  # sf-e2e-functional.yml, the trigger-level paths-ignore in
+  # codeql-analysis.yml, and the .vscode whitelist in .gitignore.
+  check_paths:
+    name: "Check paths"
+    if: github.event_name != 'merge_group'
+    runs-on: [self-hosted, static]
+    timeout-minutes: 10
+    outputs:
+      code_changed: ${{ steps.filter.outputs.code || 'true' }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          # 'every' requires a file to match ALL patterns; the default
+          # ANY-match makes '**' defeat the exclusions.
+          predicate-quantifier: 'every'
+          filters: |
+            code:
+              - '**'
+              - '!REVIEWS.md'
+              - '!.vscode/*.weaudit'
+              - '!.vscode/*.weaudit-shas.json'
+              - '!.vscode/review-scope.toml'
+      # Make the verdict visible in the log rather than inferred from
+      # which downstream jobs skipped.
+      - name: Report verdict
+        run: echo "code_changed=${{ steps.filter.outputs.code || 'true (defaulted)' }}"
+
   direct-qemu-lane:
+    needs: check_paths
+    if: >-
+      github.event_name != 'merge_group'
+      && needs.check_paths.outputs.code_changed != 'false'
     runs-on: [self-hosted, vm, debian-12, l]
     timeout-minutes: 60
 
@@ -196,3 +259,52 @@ jobs:
             /tmp/kerbside-host-subject-checks-mismatch/ryll-ci.stdout
             /tmp/kerbside-host-subject-checks-mismatch/ryll-ci.stderr
             /tmp/kerbside-host-subject-checks-mismatch/tls/
+
+  # The aggregate gate whose display name is the required status check
+  # in the develop ruleset -- do not rename it (or this workflow's
+  # jobs) without updating the ruleset, or the queue wedges on a check
+  # that never reports. The lane job itself must NOT be the required
+  # check: if check_paths failed, GitHub would report the lane as
+  # skipped, and a skipped required check counts as satisfied -- the
+  # gate turns that check_paths failure into a visible red instead.
+  # The jq treats a skipped need as satisfied, which is what lets a
+  # review-only PR (lane skipped by the filter) pass.
+  can_enqueue_direct_qemu:
+    name: "Can enqueue: direct-qemu"
+    needs: [check_paths, direct-qemu-lane]
+    if: always() && github.event_name != 'merge_group'
+    runs-on: [self-hosted, static]
+    # A jq expression over the needs context.
+    timeout-minutes: 5
+    steps:
+      - env:
+          NEEDS_JSON: "${{toJSON(needs)}}"
+        name: Transform outcomes
+        run: |
+          echo "ALL_SUCCESS=$(echo "$NEEDS_JSON" | jq '. | to_entries | map([.value.result == "success", .value.result == "skipped"] | any) | all')" >>$GITHUB_ENV
+      - name: Check outcomes
+        run: "[ $ALL_SUCCESS == true ]"
+
+  # The nightly schedule is load-bearing: it bounds the accepted
+  # two-tier CI risk that the merge queue never re-runs this lane
+  # against the merged tree, and a red entry in the Actions tab alerts
+  # nobody. File or update a tracking issue instead. A separate job so
+  # issues: write is never granted to the lane job, which runs PR
+  # code.
+  nightly_failure_issue:
+    name: "File nightly failure issue"
+    needs: [direct-qemu-lane]
+    if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
+    runs-on: [self-hosted, static]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: File or update the tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tools/file-nightly-failure-issue.sh direct-qemu \
+              "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

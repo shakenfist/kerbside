@@ -198,6 +198,8 @@ jobs:
 
           ${summary}
 
+          Note: this push was made with the workflow token, so it does not trigger CI -- the PR's blocking smoke checks have not re-run on the new head. Close and reopen the PR to attach them.
+
           [View workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
           EOF
           )"

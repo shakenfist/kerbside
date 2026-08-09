@@ -4,23 +4,20 @@ permissions:
   contents: read
 
 # A pull_request smoke gate since two-tier CI phase 2
-# (docs/plans/PLAN-two-tier-ci-phase-02-sf-e2e-promotion.md), superseding
-# the phase 9 "dispatch/schedule only" caveat. The nightly schedule
-# survives the promotion: build-smoke-cluster deploys Shaken Fist at
-# develop HEAD, which moves independently of kerbside PRs, so the
-# schedule catches SF-side drift no kerbside PR would surface.
-# Review-only changes touch no code the lane exercises; keep the
-# paths-ignore list in sync with direct-qemu-functional.yml and
-# functional-tests.yml.
+# (docs/plans/PLAN-two-tier-ci-phase-02-sf-e2e-promotion.md); since
+# phase 3 the "Can enqueue: sf-e2e" gate below is a required status
+# check in the develop ruleset -- the merge_group trigger exists only
+# so the required check reports (as skipped, which satisfies it) on
+# queue entries; the lane itself runs on PRs, nightly, and on
+# dispatch. The nightly schedule survives the promotion:
+# build-smoke-cluster deploys Shaken Fist at develop HEAD, which moves
+# independently of kerbside PRs, so the schedule catches SF-side drift
+# no kerbside PR would surface.
 on:
+  merge_group:
   pull_request:
     branches:
       - develop
-    paths-ignore:
-      - 'REVIEWS.md'
-      - '.vscode/*.weaudit'
-      - '.vscode/*.weaudit-shas.json'
-      - '.vscode/review-scope.toml'
   workflow_dispatch:
     inputs:
       retention:
@@ -31,16 +28,64 @@ on:
     # Nightly at 02:30 UTC.
     - cron: '30 2 * * *'
 
+# A superseded push cancels the whole run -- gate included, so it
+# reports cancelled rather than red on the old SHA -- instead of
+# stacking 120-minute-timeout jobs on the small l pool. Merge-group
+# refs are unique per queue entry, so this never cancels across
+# entries.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # Review-only changes touch no code the lane exercises; skip them.
+  # A filter job rather than trigger-level paths-ignore because a
+  # required check that never reports blocks the merge forever, while
+  # a skipped one satisfies it. The filter only runs on pull_request;
+  # schedule and dispatch runs default to code_changed=true. On
+  # merge_group the whole job skips -- nothing consumes its output
+  # there (the lane and gate skip on the event), so running it would
+  # just burn a static-pool slot per queue entry. Keep the filter
+  # list in sync with its other copies: the check_paths jobs in
+  # functional-tests.yml and direct-qemu-functional.yml, the
+  # trigger-level paths-ignore in codeql-analysis.yml, and the
+  # .vscode whitelist in .gitignore.
+  check_paths:
+    name: "Check paths"
+    if: github.event_name != 'merge_group'
+    runs-on: [self-hosted, static]
+    timeout-minutes: 10
+    outputs:
+      code_changed: ${{ steps.filter.outputs.code || 'true' }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          # 'every' requires a file to match ALL patterns; the default
+          # ANY-match makes '**' defeat the exclusions.
+          predicate-quantifier: 'every'
+          filters: |
+            code:
+              - '**'
+              - '!REVIEWS.md'
+              - '!.vscode/*.weaudit'
+              - '!.vscode/*.weaudit-shas.json'
+              - '!.vscode/review-scope.toml'
+      # Make the verdict visible in the log rather than inferred from
+      # which downstream jobs skipped.
+      - name: Report verdict
+        run: echo "code_changed=${{ steps.filter.outputs.code || 'true (defaulted)' }}"
+
   sf-e2e:
+    needs: check_paths
+    if: >-
+      github.event_name != 'merge_group'
+      && needs.check_paths.outputs.code_changed != 'false'
     runs-on: [self-hosted, vm, debian-12, l]
     timeout-minutes: 120
-
-    # A superseded push cancels the running lane rather than queueing
-    # another 120-minute-timeout job on the small l pool.
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}
-      cancel-in-progress: true
 
     # The single-node SF API and kerbside both live on the primary and are
     # reached over the primary's localhost; the well-known CI system key is
@@ -140,3 +185,54 @@ jobs:
         run: sleep $(( $MINUTES * 60 ))
         env:
           MINUTES: ${{ inputs.retention }}
+
+  # The aggregate gate whose display name is the required status check
+  # in the develop ruleset -- do not rename it (or this workflow's
+  # jobs) without updating the ruleset, or the queue wedges on a check
+  # that never reports. The lane job itself must NOT be the required
+  # check: if check_paths failed, GitHub would report the lane as
+  # skipped, and a skipped required check counts as satisfied -- the
+  # gate turns that check_paths failure into a visible red instead.
+  # The jq treats a skipped need as satisfied, which is what lets a
+  # review-only PR (lane skipped by the filter) pass. The gate also
+  # runs on schedule and dispatch, where its verdict gates nothing --
+  # harmless, and simpler than another event condition.
+  can_enqueue_sf_e2e:
+    name: "Can enqueue: sf-e2e"
+    needs: [check_paths, sf-e2e]
+    if: always() && github.event_name != 'merge_group'
+    runs-on: [self-hosted, static]
+    # A jq expression over the needs context.
+    timeout-minutes: 5
+    steps:
+      - env:
+          NEEDS_JSON: "${{toJSON(needs)}}"
+        name: Transform outcomes
+        run: |
+          echo "ALL_SUCCESS=$(echo "$NEEDS_JSON" | jq '. | to_entries | map([.value.result == "success", .value.result == "skipped"] | any) | all')" >>$GITHUB_ENV
+      - name: Check outcomes
+        run: "[ $ALL_SUCCESS == true ]"
+
+  # The nightly schedule is load-bearing: it bounds the accepted
+  # two-tier CI risk that the merge queue never re-runs this lane
+  # against the merged tree (and catches SF-at-develop-HEAD drift),
+  # and a red entry in the Actions tab alerts nobody. File or update a
+  # tracking issue instead. A separate job so issues: write is never
+  # granted to the lane job.
+  nightly_failure_issue:
+    name: "File nightly failure issue"
+    needs: [sf-e2e]
+    if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
+    runs-on: [self-hosted, static]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: File or update the tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tools/file-nightly-failure-issue.sh sf-e2e \
+              "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
