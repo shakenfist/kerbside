@@ -77,6 +77,10 @@
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-06"
     },
+    "kerbside/api.py": {
+      "sha": "adcf66797ecc79e76cfde8ab669dcd718f1392d4",
+      "date": "2026-08-10"
+    },
     "kerbside/config.py": {
       "sha": "4fd3e643b8729661fd544fdea0e521f925f3c6b2",
       "date": "2026-08-06"
@@ -233,13 +237,25 @@
       "sha": "7c828f68a2863e42702474ba2b81617a52131dd5",
       "date": "2026-08-05"
     },
+    "rust/kerbside-proxy/build.rs": {
+      "sha": "8f2219aec8c8267d6913aa52ca5ae5656cdb183a",
+      "date": "2026-08-10"
+    },
     "rust/kerbside-proxy/src/allowlist.rs": {
       "sha": "1b3b0819d21b6026b22ab22bf7b3ab3e05fba703",
       "date": "2026-08-05"
     },
+    "rust/kerbside-proxy/src/backend.rs": {
+      "sha": "795676bc0318be12170d82da8b09bad5fab3dce2",
+      "date": "2026-08-10"
+    },
     "rust/kerbside-proxy/src/listen.rs": {
       "sha": "3962d7ee3569d3d193f927541ed817d812267a44",
       "date": "2026-08-05"
+    },
+    "rust/kerbside-proxy/src/main.rs": {
+      "sha": "3495e6888a9bbdc39ca8a692bce6f3a5082aeaa9",
+      "date": "2026-08-10"
     },
     "rust/kerbside-proxy/src/metrics.rs": {
       "sha": "8e24d840c061d280a4f68b943c3df3d4b8a370df",
@@ -248,6 +264,10 @@
     "rust/kerbside-proxy/src/policy.rs": {
       "sha": "123ef48f8014983af93de89561a884ab2b31eadb",
       "date": "2026-08-05"
+    },
+    "rust/kerbside-proxy/src/relay.rs": {
+      "sha": "45dc6c045313676ac98bd49e9a033e7ac4754e43",
+      "date": "2026-08-10"
     },
     "rust/kerbside-proxy/src/rpc.rs": {
       "sha": "a50c7c209641787f1aa0bfdeea558820c812537f",
