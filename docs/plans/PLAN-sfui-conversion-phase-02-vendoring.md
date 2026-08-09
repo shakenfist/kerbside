@@ -234,7 +234,43 @@ checklist:
 
 ## Outcome
 
-To be filled in when the phase completes.
+Complete. `kerbside/api/static/sfui/` holds the seven
+distributable files plus `components/` and `.sfui-commit`
+recording `5949092`, vendored by sfui's `tools/vendor.sh`
+from a clean checkout. `tools/vendor.sh --check` exits zero
+and the stamp matches sfui HEAD, both verified in the
+management session rather than taken from the sub-agent's
+report. No template or Python file changed; `tox -epy3`
+still passes 110 tests.
+
+Packaging: proven, and no `[tool.setuptools.package-data]`
+entry was needed. `python -m build` produced a wheel and an
+sdist each containing all eight files, the `.sfui-commit`
+dotfile and the nested `components/` directory included. The
+check was meaningful rather than accidentally passing: the
+directory exists only in the index at that point, not in
+`HEAD`, so the setuptools_scm file finder demonstrably
+enumerated the new content. Implicit inclusion is doing the
+job and an explicit declaration would just be another thing
+to keep in sync.
+
+Two review corrections to the sub-agent's work:
+
+* The vendored-sfui rule was moved out of AGENTS.md's "Key
+  Files to Understand" table into "Common Pitfalls". The
+  table is for files an agent reads to understand the
+  system, and a never-edit-in-place rule is a trap to avoid;
+  as a table row it also pushed `db.py` and `main.py` down
+  the list it was second in.
+* A repetitive sentence in `.vscode/review-scope.toml`'s
+  header comment was tightened into the existing sentence
+  about vendored JavaScript.
+
+The plan's line-number citations for `AGENTS.md` (16 and 58)
+were stale — that file has no static-asset mentions at all —
+which the sub-agent correctly flagged rather than forcing an
+edit at the cited lines. The `ARCHITECTURE.md` citation was
+a few lines out but pointed at the right block.
 
 ## Back brief
 

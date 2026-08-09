@@ -108,3 +108,30 @@ downloading Bootstrap 5.3 and jQuery 3.7.0 and then installing to
 
 Kerbside's web administration API uses Axios for HTTP requests.
 Version 1.6.5 is cached at `kerbside/api/static/js`.
+
+### sfui
+
+`kerbside/api/static/sfui` is a vendored copy of
+[shakenfist/sfui](https://github.com/shakenfist/sfui), the Shaken
+Fist design system (design tokens, a theme boot script, the brand
+logo, and Lit-based web components such as `sf-tabs`). It is copied
+in verbatim by sfui's own `tools/vendor.sh`, which also stamps the
+copy with its source commit in `.sfui-commit`.
+
+Never edit anything under `kerbside/api/static/sfui/` in place:
+change the canonical sfui checkout instead and re-vendor, or the
+next sync will silently discard the local change. To re-vendor from
+a clean, up-to-date sfui checkout:
+
+```shell
+tools/vendor.sh <path-to-kerbside>/kerbside/api/static/sfui
+```
+
+To check whether the vendored copy has drifted from canonical sfui
+without copying anything:
+
+```shell
+tools/vendor.sh --check <path-to-kerbside>/kerbside/api/static/sfui
+```
+
+Both commands are run from the sfui checkout, not from kerbside.
