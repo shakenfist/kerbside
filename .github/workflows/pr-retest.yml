@@ -4,6 +4,15 @@
 # This is useful after bot commits (which don't trigger CI) or when you
 # want to re-run checks without pushing a new commit.
 #
+# Since two-tier CI phase 3, know what this does and does not do: a
+# workflow_dispatch of functional-tests.yml runs the MERGE tier (with
+# the dispatch default target), not the smoke lanes that block a PR,
+# and a dispatch run never attaches checks to the PR rollup. To
+# re-trigger a PR's blocking checks, close and reopen the PR.
+# Re-pointing this bot at the smoke lanes belongs in the shared
+# template, not here. See
+# docs/plans/PLAN-two-tier-ci-phase-03-merge-queue.md (step 5).
+#
 # Template source: shakenfist/development/templates/ci-review-automation/
 
 name: PR Retest
@@ -59,6 +68,6 @@ jobs:
         run: |
           gh pr comment "${{ github.event.issue.number }}" \
             --repo "${{ github.repository }}" \
-            --body "Triggered functional tests on branch \`${PR_REF}\`.
+            --body "Triggered a functional-tests dispatch (merge tier) on branch \`${PR_REF}\`. This does not re-run or re-attach this PR's blocking smoke checks -- close and reopen the PR for that.
 
           [View workflow runs](https://github.com/${{ github.repository }}/actions/workflows/functional-tests.yml)"

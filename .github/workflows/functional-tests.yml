@@ -61,6 +61,17 @@ jobs:
         id: filter
         if: github.event_name != 'workflow_dispatch'
         with:
+          # On merge_group there is no PR payload, so make the
+          # comparison base explicit rather than letting the action
+          # infer one: develop is the queue's target branch, which by
+          # definition does not yet contain the queued PRs' changes,
+          # so a wrong code_changed=false -- the outcome that would
+          # let "Can merge" go green on skips having tested nothing --
+          # is structurally impossible; if develop advances mid-queue
+          # the diff only grows, erring toward running the tier. On
+          # pull_request events the action ignores base and compares
+          # against the PR's base branch as before.
+          base: develop
           # By default a file matches the filter if it matches ANY
           # listed pattern, which makes '**' match everything and
           # silently defeats the exclusions. 'every' requires a file
@@ -101,6 +112,14 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      # A required check whose ruleset context matches no workflow job
+      # name never reports and blocks every merge; catch that here
+      # rather than when merges stop working.
+      - name: Verify required-check names against the exported ruleset
+        run: |
+          command -v jq > /dev/null || sudo apt-get install -y jq
+          tools/check-required-checks.sh
 
       - name: Install additional dependencies not tracked by pip
         timeout-minutes: 5
@@ -912,7 +931,11 @@ jobs:
   # gate) pass a required check. The flip side: a failed dependency
   # manifests in its dependents as 'skipped', which would read as
   # green -- so each gate must directly need every job whose failure
-  # should block it, not rely on transitive needs.
+  # should block it, not rely on transitive needs. The
+  # "permissions: actions: read" on the two jq gates mirrors the
+  # shakenfist/shakenfist template byte-for-byte and is not
+  # load-bearing (the jq reads only the needs context); the per-lane
+  # gates in the smoke workflows deliberately omit it.
   can_see_status:
     name: "Can see status"
     runs-on: [self-hosted, static]

@@ -19,8 +19,9 @@ on:
     branches:
       - develop
   schedule:
-    # Nightly at 03:30 UTC, offset an hour from sf-e2e's schedule so
-    # the two l-runner lanes do not contend for the same small pool.
+    # Nightly at 03:30 UTC, an hour after sf-e2e's schedule. sf-e2e
+    # normally finishes in well under an hour, so the two l-runner
+    # lanes are usually (not guaranteedly) clear of each other.
     - cron: '30 3 * * *'
 
 jobs:
@@ -28,15 +29,17 @@ jobs:
   # is an hour of VM time; skip them. This is a filter job rather than
   # trigger-level paths-ignore because a required check that never
   # reports blocks the merge forever, while a skipped one satisfies
-  # it. The filter only runs on pull_request; merge_group and schedule
-  # runs default to code_changed=true (on merge_group the lane skips
-  # on the event before the filter output is consulted). Keep the
-  # filter list in sync with its other copies: the check_paths jobs in
-  # functional-tests.yml and sf-e2e-functional.yml, the trigger-level
-  # paths-ignore in codeql-analysis.yml, and the .vscode whitelist in
-  # .gitignore.
+  # it. The filter only runs on pull_request; schedule runs default to
+  # code_changed=true. On merge_group the whole job skips -- nothing
+  # consumes its output there (the lane and gate skip on the event),
+  # so running it would just burn a static-pool slot per queue entry.
+  # Keep the filter list in sync with its other copies: the
+  # check_paths jobs in functional-tests.yml and
+  # sf-e2e-functional.yml, the trigger-level paths-ignore in
+  # codeql-analysis.yml, and the .vscode whitelist in .gitignore.
   check_paths:
     name: "Check paths"
+    if: github.event_name != 'merge_group'
     runs-on: [self-hosted, static]
     timeout-minutes: 10
     outputs:
@@ -66,6 +69,15 @@ jobs:
       && needs.check_paths.outputs.code_changed != 'false'
     runs-on: [self-hosted, vm, debian-12, l]
     timeout-minutes: 60
+
+    # A superseded push cancels the running lane rather than stacking
+    # 60-minute jobs on the small l pool -- the lane backs a required
+    # check now, so a superseded run is pure waste. Merge-group refs
+    # are unique per queue entry, so this can never cancel across
+    # entries.
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
 
     # The runner image exports http_proxy/https_proxy pointing at an
     # upstream squid cache for apt, github, and the cargo registry.

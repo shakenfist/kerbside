@@ -230,7 +230,29 @@ Target: `~DEFAULT_BRANCH`. Rules:
   These are display names of gate jobs; renaming any of them
   without updating the ruleset produces a required check that
   never reports, which blocks all merges. Each gate job carries a
-  comment saying so.
+  comment saying so, and `tools/check-required-checks.sh` (run by
+  `sanity_checks`) asserts every context in the exported ruleset
+  matches a workflow job name — it passes trivially until this
+  step's change is exported, which is the natural ordering.
+- `bypass_actors` (the first review round caught that omitting
+  these breaks prune-reviews):
+  - The GitHub Actions app (integration 15368), `bypass_mode:
+    always`. This exists specifically for
+    `prune-reviews.yml`, which lands its bot commit with a direct
+    `git push origin develop` using the workflow `GITHUB_TOKEN`
+    after every merge — it has no PR to route through the queue,
+    and a "require a pull request" rule would otherwise reject it,
+    silently stopping review-mark pruning until the consistency
+    audit noticed. The bypass is broad on paper but scoped in
+    practice by workflow token permissions: the repo's workflows
+    default to `contents: read` and only the prune job elevates to
+    `contents: write`. Accepted side effect: a prune push landing
+    while entries are queued invalidates the in-flight merge group
+    and it rebuilds.
+  - The shakenfist org team "SF Can Skip Merge Queue" (the same
+    team shakenfist/shakenfist's ruleset trusts, id 11722172),
+    `bypass_mode: always` — the human escape hatch for a wedged
+    queue.
 
 Then dispatch `export-repo-config.yml` so
 `.github/exported-config/` archives the new ruleset.
@@ -246,8 +268,10 @@ step 4, in order:
    the five checks, that the merge group runs `sanity_checks` +
    both matrices + `can_merge` — specifically that the matrices
    *run* rather than skip (re-confirming the fleet's
-   dorny-on-merge_group evidence on this repo) — and that it
-   merges on green.
+   dorny-on-merge_group evidence on this repo, now with the
+   explicit `base: develop`) — that it merges on green, and that
+   the prune-reviews push after the merge still lands (proving the
+   Actions-app bypass).
 2. Prove the negative path once: push a deliberately-broken commit
    to a scratch PR (e.g. a lint failure) and confirm "Can enqueue"
    goes red on the PR, and — if queued with a bypass — that
@@ -280,15 +304,21 @@ can block the queue.
   decision 4; this is the sharpest edge of the whole design, since
   the failure mode is a PR that can never merge.
 - **dorny/paths-filter behaviour on `merge_group` refs** — only
-  functional-tests.yml consults the filter there (the smoke lanes
-  skip on the event first), and the behaviour is verified against
-  fleet production rather than assumed: in shakenfist/shakenfist
-  run 31258644604 (2026-08-08, a `merge_group` event) "Check
-  paths" succeeded, the merge-tier collections ran rather than
-  skipping, and "Can merge" went red on their failure — which
-  also live-proves the gate jq's negative path. Step 5 re-confirms
-  on this repo's first code-carrying queue entry that the matrices
-  run rather than skip.
+  functional-tests.yml consults the filter there (the smoke
+  workflows' filter jobs skip on the event entirely), and the
+  comparison base is explicit rather than inferred:
+  `base: develop`, the queue's target branch. That makes the
+  dangerous outcome — a wrong `code_changed=false` greening "Can
+  merge" on skips — structurally impossible, because develop by
+  definition does not yet contain the queued PRs' changes; develop
+  advancing mid-queue only grows the diff, erring toward running
+  the tier. Fleet production evidence agrees: in
+  shakenfist/shakenfist run 31258644604 (2026-08-08, a
+  `merge_group` event) "Check paths" succeeded, the merge-tier
+  collections ran rather than skipping, and "Can merge" went red
+  on their failure — which also live-proves the gate jq's negative
+  path. Step 5 re-confirms on this repo's first code-carrying
+  queue entry that the matrices run rather than skip.
 - **Runner supply for merge groups** — none needed beyond today:
   merge-tier jobs request the same labels PR runs already use, and
   the conductor is label-driven.
@@ -331,6 +361,45 @@ The automated review's first round (2 fix, 2 document, 6 consider,
   template; it fails closed either way. Change it fleet-wide or
   not at all.
 
+Round 2 (2 fix, 2 doc, 5 consider, 3 info) — the substantive
+outcomes:
+
+- **prune-reviews vs the pull_request rule (fix, taken):** the
+  ruleset spec originally had no bypass actors, which would have
+  broken `prune-reviews.yml`'s direct bot push on the first
+  post-flip merge. Step 4 now specifies the Actions-app and
+  skip-queue-team bypasses, and step 5 validates the prune push.
+- **Implicit paths-filter base on merge_group (fix, taken in
+  spirit):** the filter now passes an explicit `base: develop`
+  with the direction-of-error argument recorded in the risk list.
+  The suggested belt-and-braces guard in `can_merge` was declined:
+  its trigger condition (code changed but matrices skipped) can
+  only arise when a direct need already turned the gate red, and
+  the wrong-`false` case it aimed at is unreachable with an
+  explicit develop base.
+- **check_paths no-op on merge_group (consider, taken with a
+  correction):** both smoke workflows now skip the whole filter
+  job on merge_group. The reviewer's suggested condition
+  (`== 'pull_request'`) would have skipped it on schedule and
+  dispatch too, and a skipped need cascades — the nightly lanes
+  would never have run again. Implemented as `!= 'merge_group'`.
+- **Ruleset/job name drift (consider, taken):**
+  `tools/check-required-checks.sh`, run from `sanity_checks`,
+  mutation-tested in both directions.
+- **direct-qemu concurrency + overstated schedule comment
+  (consider, taken):** the lane gained the same superseded-push
+  cancellation sf-e2e has, and the offset comment no longer reads
+  as a guarantee.
+- **Merge throughput unstated (consider, taken):** recorded below
+  with the acceptance criteria.
+- **pr-retest and plan-supersession docs (both doc items, taken):**
+  pr-retest.yml now says honestly what a dispatch does and does
+  not do, and the phase-8 / test-harness dispositions carry dated
+  supersession notes.
+- **Gate permissions inconsistency (consider, resolved by
+  comment):** the fleet-mirrored `actions: read` is annotated as
+  non-load-bearing rather than churned.
+
 ## Acceptance criteria
 
 - A pull request runs sanity, direct-qemu, sf-e2e (and rust when
@@ -342,3 +411,16 @@ The automated review's first round (2 fix, 2 document, 6 consider,
   required check satisfied by skips.
 - The automated reviewer posts after the smoke tier, not after the
   cloud lanes.
+
+Steady-state throughput expectation, to make the phase 4 review
+concrete: a queue entry costs roughly two hours (sanity plus the
+slower cloud matrix), and `max_entries_to_build` 1 serialises
+entries, so the ceiling is on the order of 12 merges/day — with
+entries queued inside the same 5-minute window batching into one
+group of up to 5. That comfortably covers this repository's actual
+merge rate (a few PRs on a busy day). The symptom that says this
+design has gone wrong is a queue depth that never drains; the
+levers, in order, are raising `max_entries_to_build` so entries
+build speculatively in parallel, and enabling renovate automerge so
+dependency bumps batch into shared entries as decision 10
+anticipates.
