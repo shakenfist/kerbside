@@ -311,18 +311,21 @@ Work lands in three repositories, so this needs settling
 before execution rather than mid-flight:
 
 * **sfui**: the initial import was committed directly to
-  `develop` with the operator's approval, the repository has
-  no CI and no other contributors, so directly to `develop`
-  again is the sensible default. **Confirm with the operator
-  before pushing**, since the standing rule is that the
-  operator creates all pull requests.
+  `develop`. **Decided otherwise (2026-08-10):** every
+  repository in this phase gets a branch and a pull
+  request, because the consumers have GitHub-hosted CI
+  that only a pull request triggers, and a change that
+  reaches a default branch without a PR never gets tested.
+  sfui's branch is `page-styles`.
 * **kerbside**: the re-vendor commit goes on the existing
   `sfui-conversion` branch in the
   `kerbside-wt-sfui` worktree, alongside the rest of the
   conversion.
-* **private-ci**: `master`, matching how the earlier sfui
-  work landed there. Note the session-memory warning about
-  concurrent sessions sharing that clone — check
+* **private-ci**: branch `morphdom-from-sfui`, for the same
+  reason; the earlier sfui work landed straight on `master`,
+  which is the habit this phase stops. Note the
+  session-memory warning about concurrent sessions sharing
+  that clone — check
   `git status` immediately before staging, and stop if the
   working tree changes unexpectedly.
 
@@ -546,13 +549,32 @@ if `paintPanel()` reached `morphdom()` without throwing.
 
 ### Still to do
 
-The three sfui commits and the private-ci commit are
-local and unpushed, pending the operator's answer on the
-branch question in "Repository and branch logistics".
-Until sfui's are pushed, kerbside's `.sfui-commit` names
-a commit that canonical HEAD does not have, so the daily
-`sfui-vendor` audit cannot confirm it; that resolves the
-moment sfui is pushed.
+Three pull requests, one per repository, none of them yet
+pushed:
+
+| Repository | Branch | Commits |
+|------------|--------|---------|
+| shakenfist/sfui | `page-styles` | `a6e2587`, `221dcfa`, `83ad8ce` |
+| shakenfist/kerbside | `sfui-conversion` | the conversion so far, `88c8ba7`..`1353b34` |
+| shakenfist/private-ci | `morphdom-from-sfui` | `9d90d22` |
+
+**sfui merges first.** Both consumers' `.sfui-commit`
+names `83ad8ce`, which does not exist on canonical
+`develop` until that pull request lands, and the daily
+`sfui-vendor` audit checks the recorded commit against
+canonical HEAD. Kerbside's own CI does not check the
+vendored copy -- phase 2 deliberately rejected a
+`vendor.sh --check` CI step -- so its pull request can be
+raised and tested in parallel; only the audit is affected.
+
+Nothing breaks if they merge out of order. Each consumer
+carries its own copy of every file it serves, so
+private-ci's dashboard keeps working from
+`conductor/static/sfui/morphdom-umd.js` whatever sfui's
+branch is doing; the only cost of merging a consumer first
+is a provenance stamp that briefly points at a commit
+canonical sfui has not published, and private-ci is not in
+the audit's matrix at all.
 
 ## Back brief
 
