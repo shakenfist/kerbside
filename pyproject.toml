@@ -52,7 +52,7 @@ dependencies = [
     # leave pydantic-core alone.
     # never-pin: pydantic-core
     "pydantic==2.13.4",                 # mit
-    "pydantic-settings==2.14.2",        # mit
+    "pydantic-settings==2.15.0",        # mit
     "typing-extensions==4.16.0",        # (indirect dependency)
 
     # These also move as a set
