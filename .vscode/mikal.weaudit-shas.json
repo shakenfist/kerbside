@@ -1,6 +1,62 @@
 {
   "version": 1,
   "files": {
+    ".github/actionlint.yaml": {
+      "sha": "ca9be799707e0aefba16e5e594f1b37e4c58c299",
+      "date": "2026-08-11"
+    },
+    ".github/workflows/codeql-analysis.yml": {
+      "sha": "65c6d12908899aa0e4ed65201f45298aa1b68ef3",
+      "date": "2026-08-11"
+    },
+    ".github/workflows/direct-qemu-functional.yml": {
+      "sha": "c04468910928181af7e62c4ade7f72e84d13a0e2",
+      "date": "2026-08-11"
+    },
+    ".github/workflows/export-repo-config.yml": {
+      "sha": "53b5d8eb46e89e228dd88d42d7e1b0c3ea6694cd",
+      "date": "2026-08-11"
+    },
+    ".github/workflows/functional-tests.yml": {
+      "sha": "f56eb209ca73d99b4fd589d6d85821eefbf5aa65",
+      "date": "2026-08-11"
+    },
+    ".github/workflows/pin-indirect-dependencies.yml": {
+      "sha": "0faad202ec3336b3fa8b6ed2787c557fc3172c24",
+      "date": "2026-08-11"
+    },
+    ".github/workflows/pr-address-comments.yml": {
+      "sha": "361512a22229e0c4c72755085e476020e3819ce6",
+      "date": "2026-08-11"
+    },
+    ".github/workflows/pr-re-review.yml": {
+      "sha": "066168bcb5b6ccbd0247bc40c74d804fc173b084",
+      "date": "2026-08-11"
+    },
+    ".github/workflows/pr-retest.yml": {
+      "sha": "a0ea78c49dc0ee483c3d8137efef2987a1a378f6",
+      "date": "2026-08-11"
+    },
+    ".github/workflows/prune-reviews.yml": {
+      "sha": "27c5c370391a513b7978fe4eb2c0302c3da68ae3",
+      "date": "2026-08-11"
+    },
+    ".github/workflows/release.yml": {
+      "sha": "c4fccccf43b2e178d081da1cc2774ddb064c5bca",
+      "date": "2026-08-11"
+    },
+    ".github/workflows/renovate.yml": {
+      "sha": "0bdfbcf6f1405d296c40cd561c7619baba5caaa3",
+      "date": "2026-08-11"
+    },
+    ".github/workflows/rust.yml": {
+      "sha": "3f1cdab763fae0f5391c8fc0105b39df9fd22d7e",
+      "date": "2026-08-11"
+    },
+    ".github/workflows/sf-e2e-functional.yml": {
+      "sha": "cc2302723a2d2dfeea4b667deb2c091d0ecab49b",
+      "date": "2026-08-11"
+    },
     "AUTHORS": {
       "sha": "52747656c9ce3a27509516db50abacb7930c8ca2",
       "date": "2026-08-04"
