@@ -455,6 +455,30 @@
     {
       "path": "tools/direct-qemu/wait-for-banner.sh",
       "author": "mikal"
+    },
+    {
+      "path": "kerbside/api.py",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/backend.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/main.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/relay.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/build.rs",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
