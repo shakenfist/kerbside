@@ -394,6 +394,8 @@ kerbside/
   api/                 # Web UI assets
     templates/         # Jinja2 templates
     static/            # CSS, JS, icons
+      sfui/            # Vendored shakenfist/sfui design system (never
+                       #   edited in place; see docs/development.md)
 rust/kerbside-proxy/   # The Rust SPICE proxy (binary crate)
   src/                 # listeners, TLS, handshake, backend leg, relay,
                        #   firewall (policy.rs/allowlist.rs), gRPC client

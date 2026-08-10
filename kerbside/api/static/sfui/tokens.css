@@ -1,0 +1,89 @@
+/*
+ * Shaken Fist web UI design tokens.
+ *
+ * These custom properties are the shared visual vocabulary for
+ * Shaken Fist web interfaces: every color a page or an sfui
+ * component uses must come from here. Pages link this file;
+ * components reference the tokens from inside their shadow DOM
+ * (custom properties are the one thing that pierces shadow
+ * boundaries, which is what makes them the theming contract).
+ *
+ * Semantics, not decoration: pick the token whose meaning
+ * matches, never the one whose color looks right today.
+ *
+ *   --sf-green   success; safe to act (ready to merge, built)
+ *   --sf-amber   attention; waiting on someone or something
+ *   --sf-red     broken or urgent; a human must intervene
+ *   --sf-purple  housekeeping and meta (priority items, stale
+ *                branches)
+ *   --sf-pink    anomalous state (stray workers, failure detail)
+ *   --sf-accent  interactive: links, selection, information
+ *   --sf-teal, --sf-orange
+ *                series colors for charts and tables that need
+ *                more than one hue without a status meaning
+ *   --sf-brand   the Shaken Fist teal. Brand lives in the page
+ *                chrome -- logo lockup, header accents -- and
+ *                never carries meaning in the content area,
+ *                where the semantic tokens own color. Distinct
+ *                from --sf-teal, which is a series color.
+ *
+ * Two palettes, one vocabulary: the dark palette is the :root
+ * default (matching the var() fallbacks baked into components),
+ * and [data-theme="light"] overrides every token with a light
+ * value. Every token must be defined in both palettes; a token
+ * present in only one is an audit failure. There are
+ * deliberately no prefers-color-scheme media queries here --
+ * the sfui theme boot script resolves the "auto" preference
+ * itself and always stamps a concrete light or dark on the
+ * document element, so this file needs exactly two states and
+ * the light palette has no media-query copy to drift from.
+ *
+ * Pages needing a translucent tint of a token (badge and banner
+ * fills) derive it with color-mix(in srgb, var(--sf-*) N%,
+ * transparent) rather than restating the color as an rgba()
+ * literal, so tints follow the palette automatically.
+ */
+:root {
+    color-scheme: dark;
+    --sf-bg: #0f1117;
+    --sf-surface: #1a1d27;
+    --sf-border: #2a2d3a;
+    --sf-text: #e1e4ed;
+    --sf-text-dim: #8b8fa3;
+    --sf-accent: #6c9eff;
+    --sf-accent-hover: #8bb4ff;
+    --sf-green: #4ade80;
+    --sf-amber: #fbbf24;
+    --sf-purple: #a78bfa;
+    --sf-pink: #f472b6;
+    --sf-teal: #2dd4bf;
+    --sf-orange: #fb923c;
+    --sf-red: #f87171;
+    --sf-brand: #58a8c8;
+}
+
+/*
+ * The light palette. Not an inversion of the dark palette: the
+ * dark values are bright pastels chosen to read against a near-
+ * black background and would wash out on white, so each status
+ * color here is a darker weight of the same hue, aiming for
+ * WCAG AA contrast against --sf-surface for text-sized uses.
+ */
+:root[data-theme="light"] {
+    color-scheme: light;
+    --sf-bg: #f4f5f8;
+    --sf-surface: #ffffff;
+    --sf-border: #d7dae2;
+    --sf-text: #1c1f28;
+    --sf-text-dim: #5a6172;
+    --sf-accent: #2563eb;
+    --sf-accent-hover: #1d4ed8;
+    --sf-green: #15803d;
+    --sf-amber: #b45309;
+    --sf-purple: #6d28d9;
+    --sf-pink: #be185d;
+    --sf-teal: #0f766e;
+    --sf-orange: #c2410c;
+    --sf-red: #b91c1c;
+    --sf-brand: #1d6d87;
+}

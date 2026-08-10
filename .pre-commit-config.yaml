@@ -27,15 +27,16 @@ repos:
         args: ['-x']
 
   # Trailing whitespace, end-of-file, basic hygiene.
-  # Vendored Bootstrap assets under kerbside/api/static/{css,js}/ are
+  # Vendored Bootstrap assets under kerbside/api/static/{css,js}/ and
+  # the vendored sfui copy under kerbside/api/static/sfui/ are
   # excluded so we do not gratuitously modify upstream files.
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: ^kerbside/api/static/(css|js)/
+        exclude: ^kerbside/api/static/(css|js|sfui)/
       - id: end-of-file-fixer
-        exclude: ^kerbside/api/static/(css|js)/
+        exclude: ^kerbside/api/static/(css|js|sfui)/
       - id: check-yaml
       - id: check-merge-conflict
       - id: check-added-large-files

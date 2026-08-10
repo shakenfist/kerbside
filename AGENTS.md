@@ -429,6 +429,13 @@ activity is visible in the Prometheus `/metrics` endpoint.
 3. **Database Connections**: SQLAlchemy sessions should be properly closed.
    Use context managers or explicit `session.close()`.
 
+4. **Vendored sfui**: `kerbside/api/static/sfui/` is a verbatim copy of
+   the shakenfist/sfui design system, stamped with its source commit in
+   `.sfui-commit`. Never edit it in place: change canonical sfui and
+   re-vendor, or the next sync silently discards the change and the
+   consistency audit reports the drift. See "Vendored web assets" in
+   `docs/development.md`.
+
 ## Dependency Management
 
 ### Indirect Dependency Pinning
