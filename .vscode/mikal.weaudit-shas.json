@@ -1,10 +1,6 @@
 {
   "version": 1,
   "files": {
-    ".pre-commit-config.yaml": {
-      "sha": "cdf780e4f0810effa239a4368d9600fe9ac695c9",
-      "date": "2026-08-04"
-    },
     "AUTHORS": {
       "sha": "52747656c9ce3a27509516db50abacb7930c8ca2",
       "date": "2026-08-04"

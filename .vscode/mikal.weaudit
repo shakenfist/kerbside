@@ -69,10 +69,6 @@
       "author": "mikal"
     },
     {
-      "path": ".pre-commit-config.yaml",
-      "author": "mikal"
-    },
-    {
       "path": "alembic.ini",
       "author": "mikal"
     },
@@ -333,15 +329,7 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/tests/unit",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/tests/__init__.py",
-      "author": "mikal"
-    },
-    {
-      "path": "kerbside/tests",
       "author": "mikal"
     },
     {
