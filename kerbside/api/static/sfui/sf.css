@@ -218,6 +218,53 @@
  * element name.
  */
 @layer sfui.components {
+    /* Site navigation: the same strip <sf-tabs> draws, in plain
+       anchors, for the case where picking an item means loading
+       another page rather than swapping a panel in this one.
+       Real links keep middle-click, "open in a new tab" and
+       operation without JavaScript, and a screen reader hears
+       links instead of a tablist promising panels that are not
+       here. Navigation is therefore CSS only and there must
+       never be an <sf-nav> element -- the inverse of the
+       .sf-tabs class reservation above.
+
+       Every measurement below is taken from <sf-tabs>'s nav and
+       button rules in components/sf-tabs.js so that the design
+       system has one tab-strip appearance whichever mechanism
+       produced it. The two must stay visually in step: a change
+       to either belongs in both. */
+    .sf-nav {
+        display: flex;
+        gap: 4px;
+        border-bottom: 1px solid var(--sf-border);
+        /* Matching the page-level placement the base layer gives
+           :where(sf-tabs), so the two sit the same in flow. */
+        margin-bottom: 1.5rem;
+    }
+
+    /* The underline is switched off explicitly because the base
+       layer gives every page link one on hover. This layer is
+       later, so it wins with no specificity contest and no
+       important flag. */
+    .sf-nav a {
+        border-bottom: 2px solid transparent;
+        padding: 8px 14px;
+        color: var(--sf-text-dim);
+        text-decoration: none;
+    }
+
+    .sf-nav a:hover {
+        color: var(--sf-text);
+    }
+
+    /* The current section is marked with aria-current, the state
+       assistive technology already reads, rather than a modifier
+       class that could disagree with it. */
+    .sf-nav a[aria-current='page'] {
+        color: var(--sf-text);
+        border-bottom-color: var(--sf-accent);
+    }
+
     /* Sections: a labelled band of the page, its heading in the
        small dim uppercase treatment shared with table headers
        and field labels. */
