@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Kerbside{% endblock %}</title>
+    <!-- Render-blocking on purpose: stamps data-theme before
+         first paint so there is no flash of the wrong theme. It
+         is a classic script, so window.sfTheme is available
+         synchronously to the inline scripts below. -->
+    <script src="/static/sfui/sf-theme.js"></script>
+    <link rel="stylesheet" href="/static/sfui/tokens.css">
+    <link rel="stylesheet" href="/static/sfui/sf.css">
+    <script type="module"
+            src="/static/sfui/components/sf-theme-toggle.js"></script>
+    {% if refresh %}
+    <meta http-equiv="refresh" content="30">
+    {% endif %}
+
+    <style>
+        /* Local classes are kb-, never sf-, so a reader can tell
+           at a glance whether a class comes from the design
+           system or from kerbside, and so no local name can ever
+           collide with a future sfui primitive. Pages converted
+           in later phases follow the same convention.
+
+           These rules are unlayered, so they beat every sfui.*
+           layer whatever their specificity -- which is how
+           sf.css's absolute positioning of
+           .sf-header sf-theme-toggle is neutralised below with
+           no important flag and no specificity contest. */
+        .kb-header-controls {
+            position: absolute;
+            top: 0;
+            right: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .kb-header-controls sf-theme-toggle {
+            position: static;
+        }
+
+        @media (max-width: 700px) {
+            /* Mirrors what sf.css does to a lone theme toggle at
+               this width: in the corner the cluster would sit on
+               top of the heading, so it drops into flow instead. */
+            .kb-header-controls {
+                position: static;
+                margin-top: 0.75rem;
+            }
+        }
+    </style>
+    {% block styles %}{% endblock %}
+</head>
+
+<body class="sf-page">
+    <div class="sf-container">
+        <header class="sf-header">
+            <!-- The alt text is deliberately empty: the heading
+                 text carries the name, so announcing the logo
+                 would duplicate it. sf.css sizes
+                 .sf-header h1 img, so no width or height here. -->
+            <h1><img src="/static/sfui/shakenfist-logo.svg"
+                     alt="">Kerbside VDI Proxy</h1>
+
+            <div class="kb-header-controls">
+                <sf-theme-toggle id="theme-toggle"></sf-theme-toggle>
+                {% if navitems %}
+                <!-- Logout is a button, not an anchor: it changes
+                     server state and must not be reachable by a
+                     GET. -->
+                <button type="button" id="logout"
+                        class="sf-btn sf-btn--sm">Logout</button>
+                {% endif %}
+            </div>
+        </header>
+
+        {# The navigation and the logout button are session
+           chrome, gated together on navitems: the login page is
+           rendered with an empty list, so it offers neither a
+           link that would 401 nor a logout for a session that
+           does not exist. #}
+        {% if navitems %}
+        <nav class="sf-nav" aria-label="Sections">
+            {% for navitem in navitems %}
+            <a href="{{ navitem.href }}"
+               {% if navitem.active %}aria-current="page"{% endif %}
+               >{{ navitem.name }}</a>
+            {% endfor %}
+        </nav>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+
+        {# Rendered only when there is something to say, so a page
+           that does not refresh gets no empty bordered footer.
+           .sf-status-line is deliberately left unused: it is the
+           home for the polling status line a later phase adds. #}
+        {% if refresh %}
+        <footer class="sf-footer">
+            Content refreshed at {{ when.strftime('%H:%M:%S') }}.
+        </footer>
+        {% endif %}
+    </div>
+
+    {% block scripts %}{% endblock %}
+
+    <script>
+        // Theme wiring. The toggle is a dumb component: it shows
+        // the stored preference and reports the user's choice;
+        // sf-theme.js owns the cookie and the document element.
+        // Setting .preference before the component's module has
+        // upgraded the element is safe -- Lit replays instance
+        // properties set pre-upgrade.
+        var themeToggle = document.getElementById('theme-toggle');
+        themeToggle.preference = sfTheme.preference;
+        themeToggle.addEventListener(
+            'sf-theme-changed',
+            function (event) {
+                sfTheme.set(event.detail.preference);
+            });
+    </script>
+
+    {% if navitems %}
+    <script>
+        // Auth.delete has no @verify_token, so flask-jwt-extended's
+        // cookie CSRF protection does not apply to it and this
+        // needs no CSRF header.
+        document.getElementById('logout').addEventListener(
+            'click',
+            function () {
+                fetch('/auth', {method: 'DELETE'}).then(
+                    function () {
+                        window.location.href = '/';
+                    });
+            });
+    </script>
+    {% endif %}
+</body>
+
+</html>
