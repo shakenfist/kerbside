@@ -576,6 +576,28 @@ is a provenance stamp that briefly points at a commit
 canonical sfui has not published, and private-ci is not in
 the audit's matrix at all.
 
+### The merge commit makes the stamp stale
+
+sfui's pull request merged as a merge commit, so canonical
+`develop` is `494ea9e` and the `83ad8ce` both consumers
+recorded is an ancestor of it rather than HEAD. No file
+changed -- `git diff 83ad8ce 494ea9e` is empty -- but the
+`sfui-vendor` audit fails on *behind canonical HEAD* as
+well as on edited content, so kerbside would have been
+flagged for a stamp that describes byte-identical files.
+
+Kerbside's branch was re-vendored at `494ea9e` before its
+pull request merged. The diff is one line, `.sfui-commit`
+alone, and `tools/vendor.sh --check` then passes. private-ci
+still records `83ad8ce`; it is not in the audit's matrix, so
+its stamp gets corrected by the next re-vendor rather than
+by a commit of its own.
+
+The rule for phases 4 onwards: **vendor from canonical
+`develop` after the sfui change has merged**, never from
+the sfui feature branch, or every consumer lands one merge
+commit behind.
+
 ## Back brief
 
 Before executing this phase, back brief the operator on the

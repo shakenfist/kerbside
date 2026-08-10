@@ -143,3 +143,10 @@ tools/vendor.sh --check <path-to-kerbside>/kerbside/api/static/sfui
 ```
 
 Both commands are run from the sfui checkout, not from kerbside.
+
+Re-vendor from sfui's `develop` branch once the change you need has
+merged there, not from the branch you made it on. The `sfui-vendor`
+consistency audit compares `.sfui-commit` against canonical
+`develop` and reports a copy that is behind it, so a stamp naming a
+feature branch commit -- or an ancestor of a merge commit -- is
+flagged even when every vendored file is byte for byte correct.
