@@ -1,5 +1,17 @@
 # Two-tier CI: smoke gates on PRs, full clouds in the merge queue
 
+**Status: complete (2026-08-10).** All four phases have landed and
+the merge queue has been live since 2026-08-09. Like every plan in
+this directory this is a point-in-time record: the Situation below
+describes CI as it was on 2026-08-02, not as it is now — for that,
+read `docs/testing.md`.
+
+Two validation items from phase 3 remain undemonstrated rather than
+undone, and are recorded there: a review-marks-only PR through the
+queue, and the close/reopen dance on a bot-created configuration
+PR. Both will happen on their own the next time one of those PRs
+appears; neither blocks anything.
+
 ## Prompt
 
 Before responding to questions or discussion points in this
@@ -267,7 +279,7 @@ Phases will get detailed plan files as each is started.
 |-------|------|--------|
 | 1. oVirt lane deploys kerbside | [PLAN-two-tier-ci-phase-01-ovirt-kerbside.md](PLAN-two-tier-ci-phase-01-ovirt-kerbside.md) | Complete |
 | 2. Promote sf-e2e to PR smoke gate | [PLAN-two-tier-ci-phase-02-sf-e2e-promotion.md](PLAN-two-tier-ci-phase-02-sf-e2e-promotion.md) | Complete |
-| 3. Merge queue adoption and tier split | [PLAN-two-tier-ci-phase-03-merge-queue.md](PLAN-two-tier-ci-phase-03-merge-queue.md) | Workflows landed; queue enablement is an operator step (phase plan steps 4-5) |
+| 3. Merge queue adoption and tier split | [PLAN-two-tier-ci-phase-03-merge-queue.md](PLAN-two-tier-ci-phase-03-merge-queue.md) | Complete — queue live 2026-08-09 |
 | 4. Documentation | [PLAN-two-tier-ci-phase-04-docs.md](PLAN-two-tier-ci-phase-04-docs.md) | Complete |
 
 - **Phase 1** is independent of the precondition and can
