@@ -392,7 +392,8 @@ kerbside/
                        #   stubs, servicer, UDS server)
   sources/             # Cloud source implementations
   api/                 # Web UI assets
-    templates/         # Jinja2 templates
+    templates/         # Jinja2 templates: base.html (old Bootstrap base)
+                       #   and base-sfui.html (new sfui base; see AGENTS.md)
     static/            # CSS, JS, icons
       sfui/            # Vendored shakenfist/sfui design system (never
                        #   edited in place; see docs/development.md)

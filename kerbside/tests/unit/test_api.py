@@ -7,6 +7,39 @@ import testtools
 from kerbside import api
 
 
+class GetNavItemsTestCase(testtools.TestCase):
+    """Unit tests for api.get_nav_items(), a pure function with no Flask
+    or database dependency, so it is exercised directly rather than
+    through the test client the other classes here use.
+
+    This is the guard for the defect step 4d of the sfui conversion's
+    phase 4 fixed: ConsolesAudit.get() used to pass 'Audit', a name that
+    never appears in base_navitems, so nothing was ever marked active on
+    the audit page. A name that is not in the list must leave every item
+    inactive rather than silently matching nothing -- these tests would
+    have caught that.
+    """
+
+    def test_named_section_is_the_only_one_active(self):
+        for current in ('Sources', 'Consoles', 'Sessions'):
+            navitems = api.get_nav_items(current)
+
+            active = [item['name'] for item in navitems if item['active']]
+            self.assertEqual([current], active)
+
+    def test_unknown_name_leaves_every_item_inactive(self):
+        navitems = api.get_nav_items('Audit')
+
+        self.assertEqual(
+            [], [item['name'] for item in navitems if item['active']])
+
+    def test_none_leaves_every_item_inactive(self):
+        navitems = api.get_nav_items(None)
+
+        self.assertEqual(
+            [], [item['name'] for item in navitems if item['active']])
+
+
 class TerminateApiTestCase(testtools.TestCase):
     """The terminate endpoints must ADD a session-termination intent alongside
     removing the token, so in-flight connections get dropped.
