@@ -1,83 +1,115 @@
-{% extends "base.html" %}
+{% extends "base-sfui.html" %}
+
+{% block title %}Kerbside login{% endblock %}
+
+{% block styles %}
+<style>
+    /* Local classes are kb-, never sf-, per the convention set in
+       base-sfui.html. A login form is a single short column, so
+       the card is narrowed and centred rather than spanning the
+       whole container. */
+    .kb-login {
+        max-width: 25rem;
+        margin: 0 auto;
+    }
+
+    /* sfui's reset zeroes every margin under .sf-page, so the
+       heading needs its own space above the first field. The size
+       is a step down from the chrome's h1 rather than the
+       browser default, which would compete with it. */
+    .kb-login h2 {
+        font-size: 1.2rem;
+        font-weight: 600;
+        margin-bottom: 1.2rem;
+    }
+
+    /* Same reason: the button is the last thing in the form and
+       .sf-field's bottom margin is above it, not below the error
+       region, so the submit control asks for its own space. */
+    .kb-login button {
+        margin-top: 1rem;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container py-5" style="width: 400px">
-    <div class="row align-items-center">
-        <div class="card" style="border-radius: 1rem;">
-            <div class="row g-0">
-                <div class="card-body text-black">
-                    <p class="h1 fw-bold text-center ml-4 mr-4">Kerbside Login</span>
+<div class="kb-login">
+    <div class="sf-card">
+        <form id="login-form">
+            <h2>Kerbside Login</h2>
 
-                    <form>
-                        <div class="form-outline  mt-4 ml-4 mr-4">
-                            <label class="form-label" for="username">Username</label>
-                            <input type="username" id="username" class="form-control" />
-                        </div>
-
-                        <div class="form-outline mt-4 ml-4 mr-4">
-                            <label class="form-label" for="password">Password</label>
-                            <input type="password" id="password" class="form-control" />
-                        </div>
-
-                        <div class="container mt-4 mb-4 text-center">
-                            <font color="red"><span id="error"></span></font>
-                            </div>
-
-                            <div class="container mt-4 mb-4 text-center is-invalid">
-                            <button type="button" id="submit" class="btn btn-primary" onclick="login();">
-                                Sign in
-                            </button>
-                        </div>
-                    </form>
-                </div>
+            <div class="sf-field">
+                <label class="sf-label" for="username">Username</label>
+                <input class="sf-input" id="username" type="text"
+                       autocomplete="username" required>
             </div>
-        </div>
+
+            <div class="sf-field">
+                <label class="sf-label" for="password">Password</label>
+                <input class="sf-input" id="password" type="password"
+                       autocomplete="current-password" required>
+            </div>
+
+            {# role="alert" so a failed login is announced, not
+               merely painted red. #}
+            <div class="sf-form-error" id="error" role="alert"></div>
+
+            <button type="submit"
+                    class="sf-btn sf-btn--primary">Sign in</button>
+        </form>
     </div>
 </div>
 {% endblock %}
+
 {% block scripts %}
 <script>
-    document.addEventListener("keypress", function(event) {
-        if (event.key === "Enter") {
-            event.preventDefault();
-            login();
-        }
+    // A real form with a submit button, so the Enter key works
+    // without a keypress listener reimplementing it.
+    var loginForm = document.getElementById('login-form');
+    var loginError = document.getElementById('error');
+
+    loginForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        loginError.textContent = '';
+
+        // The content type is sent even though /auth tolerates its
+        // absence: shakenfist_utilities.api parses the body with
+        // flask.request.get_json(force=True).
+        fetch('/auth', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                username: document.getElementById('username').value,
+                password: document.getElementById('password').value,
+                as_cookie: true
+            })
+        }).then(
+            function (response) {
+                if (response.ok) {
+                    window.location.href = '/source';
+                } else if (response.status == 400) {
+                    loginError.textContent = 'Bad request.';
+                } else if (response.status == 401) {
+                    loginError.textContent = 'Unauthorized.';
+                } else if (response.status == 500) {
+                    loginError.textContent = 'Server error.';
+                } else {
+                    // The body is read as text: this message has
+                    // always meant to quote what the server said.
+                    response.text().then(function (body) {
+                        loginError.textContent = (
+                            'Unknown error: ' + body + '(' +
+                            response.status + ')');
+                    });
+                }
+            },
+            function () {
+                // fetch only rejects for a network-level failure.
+                // A rejection handler here rather than a .catch()
+                // so a bug in the handler above is not reported as
+                // a request error.
+                loginError.textContent = 'Request error.';
+            });
     });
-
-    function login() {
-        var username = document.getElementById("username").value;
-        var password = document.getElementById("password").value;
-        var error_span = document.getElementById("error");
-
-        error_span.textContent = "";
-        axios.post("/auth", {
-            username: username,
-            password: password,
-            as_cookie: true
-        }).then(function (response) {
-            window.location.href = "/source";
-        }).catch(function (error) {
-            if (error.response) {
-                if (error.response.status == 400) {
-                    error_span.textContent = "Bad request.";
-                }
-                else if (error.response.status == 401) {
-                    error_span.textContent = "Unauthorized.";
-                }
-                else if (error.response.status == 500) {
-                    error_span.textContent = "Server error.";
-                }
-                else {
-                    error_span.textContent = (
-                        "Unknown error: " + error.response.data + "(" +
-                        error.response.status + ")");
-                }
-            } else if (error.request) {
-                error_span.textContent = "Request error.";
-            } else {
-                error_span.textContent = "Unknown error: " + error.message;
-            }
-        });
-    }
 </script>
 {% endblock %}

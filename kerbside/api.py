@@ -137,7 +137,7 @@ class Root(sf_api.Resource):
             resp = flask.Response(
                 flask.render_template(
                     'login.html',
-                    navitems=get_nav_items(None),
+                    navitems=[],
                     refresh=False, when=datetime.datetime.now()),
                 mimetype='text/html')
             resp.status_code = 200
@@ -330,7 +330,7 @@ class ConsolesAudit(sf_api.Resource):
                     'audit.html', console=db.get_console(source, uuid),
                     total_events=db.count_audit_events(source, uuid),
                     events=db.get_audit_events(source, uuid, limit=limit),
-                    navitems=get_nav_items('Audit'),
+                    navitems=get_nav_items('Consoles'),
                     refresh=True, when=datetime.datetime.now()),
                 mimetype='text/html')
         else:
