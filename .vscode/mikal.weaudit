@@ -217,19 +217,11 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/sources/ovirt.py",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/sources/shakenfist.py",
       "author": "mikal"
     },
     {
       "path": "kerbside/sources/static.py",
-      "author": "mikal"
-    },
-    {
-      "path": "kerbside/sources",
       "author": "mikal"
     },
     {

@@ -137,10 +137,6 @@
       "sha": "9508569169800aacfe7745b363175ac241ac6a7c",
       "date": "2026-08-07"
     },
-    "kerbside/sources/ovirt.py": {
-      "sha": "1a1efe467942f68e18ac262d3818fb19c23ae720",
-      "date": "2026-08-07"
-    },
     "kerbside/sources/shakenfist.py": {
       "sha": "3c77e7e7dbe0d539bc76feb56f9a31aedeebe5e2",
       "date": "2026-08-07"
