@@ -26,6 +26,12 @@ Rust proxy.
   runs on the CI runner, as plain processes, via
   `tools/direct-qemu/start-kerbside.sh`.
 - ryll also runs on the runner, driving kerbside's proxy over localhost.
+- The engine holds two VMs: the `smoke-test-*` SPICE guest the lane
+  actually drives, and `no-spice-test`, a diskless network-boot VM with
+  a VNC display created by `tools/create-ovirt-vnc-vm.py`. The second
+  one exists to be *ignored*: kerbside's discovery must skip a VM it
+  cannot broker and keep scraping, and until that VM existed no lane
+  had ever taken that branch.
 
 kerbside cannot live on the oVirt node: `pyproject.toml` sets
 `requires-python = ">=3.11"`, and that node is Rocky 8 with a Python 3.6
@@ -86,7 +92,10 @@ console checks, the workflow:
    `kerbside.env` for the driver, and polls until the `type: ovirt`
    source reaches a non-errored state.
 5. Runs `drive-console.py`, which waits for the oVirt scrape to discover
-   the lane's test VM, mints an API JWT from the auth seed, fetches the
+   the lane's test VM, asserts the engine's *other* VM -- the diskless
+   VNC-only `no-spice-test` that `tools/create-ovirt-vnc-vm.py` leaves
+   running on the target -- was skipped rather than brokered, mints an
+   API JWT from the auth seed, fetches the
    proxied `.vv` and launches `ryll --headless` against it immediately,
    asserts real SPICE surfaces and a screenshot via
    `tools/direct-qemu/smoke-client.py`, asserts from the proxy log that

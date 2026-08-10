@@ -177,6 +177,18 @@ backend leg escalated to TLS with a non-empty certificate-subject
 pin on every escalation, then terminating the in-flight session via
 the REST API and asserting the proxy dropped it.
 
+The engine also holds a second VM, `no-spice-test`: diskless,
+network-boot, with a VNC display and therefore no SPICE console
+(`tools/create-ovirt-vnc-vm.py`). It exists to be ignored. Discovery
+has to skip a VM it cannot broker and carry on scraping, and every
+other VM in every lane has a SPICE display, so that branch had never
+run in CI — which is how a missing `continue` in
+`kerbside/sources/ovirt.py` survived: it errored the whole source,
+dropped every VM discovered after the offending one, and reaped
+their consoles as no longer available, once a minute.
+`drive-console.py` now asserts that VM is absent from the console
+list while the SPICE one is present.
+
 The runner-side scripts live in `tools/ovirt-e2e/` and are
 documented in `tools/ovirt-e2e/README.md`; the architecture decision
 and bring-up history are in

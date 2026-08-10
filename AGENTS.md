@@ -280,6 +280,15 @@ operator-facing version of what this lane proves — the front-door
 architecture, the engine account, and the network prerequisites — is
 `docs/use-cases/ovirt.md`.
 
+The engine also carries `no-spice-test`, a diskless VNC-only VM created by
+`tools/create-ovirt-vnc-vm.py` purely so discovery's skip-and-continue
+branch runs somewhere. Every other VM in every lane has a SPICE display,
+which is why a missing `continue` in `kerbside/sources/ovirt.py` went
+unnoticed: it errored the source, truncated the scrape, and reaped the
+surviving consoles as gone. `drive-console.py` asserts that VM is absent
+from the console list. If you add a lane VM, think about which branch it
+leaves untested.
+
 `drive-console.py` asserts against the proxy's log text, so it strips ANSI
 before matching and keeps "the field would not parse" separate from "the
 field was empty" — the first is a harness fault, the second is a real
