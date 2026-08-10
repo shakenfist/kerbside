@@ -286,6 +286,11 @@ An audit (by hand or by an agent) should confirm:
   lockups), never on content-area elements whose color conveys
   state. `sf.css`'s `.sf-header` is chrome by definition and is
   the one place in the stylesheet the token appears.
+- Every consumer's `.sfui-commit` names the head of canonical
+  `develop`, not merely an ancestor of it:
+  `git rev-parse develop` here against the file there. This is
+  the one audit rule a byte-for-byte correct copy can still fail
+  (see Vendoring into a consumer).
 
 ## Vendored dependencies
 
@@ -323,12 +328,26 @@ never edit a vendored copy directly -- fix the canonical file
 here and re-vendor, otherwise the next sync silently discards
 the local change.
 
+Vendor from `develop`, and only once the change you need has
+merged there -- never from the branch you made it on. The
+`sfui-vendor` consistency audit compares `.sfui-commit` against
+canonical `develop` and reports a copy that is behind it, so a
+stamp naming a branch commit is flagged even when every vendored
+file is byte for byte correct. A pull request merged as a merge
+commit is the easy way to get this wrong: the commit you
+vendored from is then an ancestor of `develop` rather than its
+head, and the audit does not care that the merge changed no
+files.
+
 Current consumers:
 
 - private-ci: the conductor dashboard, vendored at
   `conductor/static/sfui/`. Its header is the reference brand
   treatment (see Theming).
-- kerbside: expected next, when its admin UI converts to sfui.
+- kerbside: the admin UI, vendored at
+  `kerbside/api/static/sfui/`. Converting incrementally, page by
+  page, which is what the `sf-page` gate is for (see Page
+  styles).
 
 ## Components
 
