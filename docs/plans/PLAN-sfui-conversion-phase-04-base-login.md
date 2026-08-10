@@ -480,6 +480,82 @@ current implementation line by line.
   reason `navitems` can stand in for "authenticated" today. If
   that ever changes, revisit design decision 2.
 
+## Outcome
+
+Done, 2026-08-11, in six commits across two repositories,
+all five steps as planned:
+
+* shakenfist/sfui, on `nav-links`: `e372c91` adds `.sf-nav`,
+  its README rationale and the `demo.html` strip (step 4a).
+  Merged to `develop` as `042939e`.
+* kerbside, on `sfui-conversion-phase-04`: `271bd86`
+  re-vendors at `042939e` (4b), `07db4ac` is this plan,
+  `e94616d` adds `base-sfui.html` (4c), `ad0465f` converts
+  the login page and fixes the two `api.py` context calls
+  (4d), `e112cb2` adds the two tests, the preview tool and
+  the docs (4e).
+
+The merge round trip in the middle of the phase went as the
+risks section described. The four kerbside commits were
+written first against the old `develop`, then the branch was
+reset to a `develop` that had moved on by six commits, the
+re-vendor committed, and the four cherry-picked back on top.
+Only `docs/plans/index.md` conflicted, because two-tier CI
+phase 4 had landed a row of its own in the meantime.
+
+`tools/vendor.sh --check` exits zero, `.sfui-commit` is
+canonical `develop`'s head, and the re-vendor is a
+two-merge jump: kerbside's pending `sfui-revendor-readme`
+branch, which would have made the intermediate hop, is
+subsumed and should be deleted unmerged.
+
+### Corrections to this plan, found while executing it
+
+* **The verification recipe did not work as written.**
+  `python3 tools/preview-templates.py` fails on a host
+  without kerbside's dependencies installed, which is every
+  host that has only ever run `tox`. The recipe now uses
+  `.tox/py3/bin/python`, and the script's import of
+  `kerbside.api` is guarded so the failure names the
+  interpreter rather than `flask`.
+* **The port in the recipe is an example, and saying so
+  matters.** 8099 was already taken on the development host,
+  and a stale `http.server` left over from an earlier
+  preview serves convincing 404s from a directory that has
+  since been deleted -- which looks exactly like a broken
+  template.
+
+### Verification
+
+Both palettes were rendered at 1280px and read, and the
+narrow layout at 400px: the `.kb-header-controls` cluster
+leaves its absolute corner and sits under the title, as
+design decision 4 intended, and nothing overflows. The login
+page carries no navigation and no logout control, and the
+theme toggle is present, per design decision 2.
+
+The management-session greps come back clean: no colour
+literal, important flag or id selector in either template,
+and no reference to Bootstrap, axios or jQuery, while all
+four remain under `kerbside/api/static/` for the pages that
+still need them. `git diff origin/develop..HEAD --
+kerbside/api/templates/` touches exactly two files, so
+`base.html` and the four pages on it are byte-unchanged.
+`tox -eflake8` and `tox -epy3` pass with the phase 1 smoke
+tests unedited.
+
+### The login button is undersized, and the fix is canonical
+
+`.sf-btn` is `font-size: 0.78rem; padding: 0.15rem 0.6rem`,
+sized for the dashboard's table-row actions, while
+`.sf-input` is `0.9rem; 0.4rem 0.6rem`. On a form the
+primary button therefore reads as smaller than the fields
+above it. It is not wrong enough to block the phase, but it
+is wrong enough that phases 5 and 6 must not work around it
+locally: the fix is a form-scale button in `sf.css` matching
+`.sf-input`'s metrics, not a `kb-` override that four pages
+would copy. Raised with the operator; awaiting a decision.
+
 ## Back brief
 
 Given on 2026-08-11, before any step ran, and approved:
