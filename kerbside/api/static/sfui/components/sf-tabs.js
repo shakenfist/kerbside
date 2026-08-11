@@ -38,6 +38,12 @@ class SfTabs extends LitElement {
         selected: {type: String, reflect: true},
     };
 
+    /*
+     * sf.css's .sf-nav is the link version of this strip, for
+     * site navigation, and copies the nav and button rules below
+     * measurement for measurement. The two must stay visually in
+     * step: a change here belongs there as well.
+     */
     static styles = css`
         :host {
             display: block;

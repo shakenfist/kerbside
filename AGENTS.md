@@ -448,7 +448,9 @@ activity is visible in the Prometheus `/metrics` endpoint.
    `.sfui-commit`. Never edit it in place: change canonical sfui and
    re-vendor, or the next sync silently discards the change and the
    consistency audit reports the drift. See "Vendored web assets" in
-   `docs/development.md`.
+   `docs/development.md`. Templates converted to sfui extend
+   `base-sfui.html`; the rest still extend the old `base.html` until
+   the conversion finishes.
 
 ## Dependency Management
 

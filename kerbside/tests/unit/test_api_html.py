@@ -67,6 +67,24 @@ class LoginPageTestCase(testtools.TestCase):
         self.assertIn('Username', body)
         self.assertIn('Password', body)
 
+    def test_login_page_offers_no_navigation(self):
+        # Root.get() passes navitems=[] for the login branch (design
+        # decision 2 of the phase 4 plan), so base-sfui.html's
+        # {% if navitems %} guard renders neither the nav strip nor the
+        # logout control. '/console' and '/session' would only appear as
+        # navitem hrefs, so their absence is the signal that no navigation
+        # was offered to an unauthenticated user.
+        #
+        # '/source' is deliberately NOT asserted here: it is legitimately
+        # present regardless, because login.html's own script redirects
+        # there on a successful sign-in.
+        resp = self.client.get('/', headers={'Accept': 'text/html'})
+
+        self.assertEqual(200, resp.status_code)
+        body = resp.get_data(as_text=True)
+        self.assertNotIn('/console', body)
+        self.assertNotIn('/session', body)
+
 
 class HtmlPagesTestCase(testtools.TestCase):
     """Smoke tests for the authenticated HTML pages and the HTML-mode
