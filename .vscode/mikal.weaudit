@@ -285,10 +285,6 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/tests/unit/test_api.py",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/tests/unit/test_db.py",
       "author": "mikal"
     },
@@ -434,10 +430,6 @@
     },
     {
       "path": "tools/direct-qemu/wait-for-banner.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "kerbside/api.py",
       "author": "mikal"
     },
     {
@@ -594,10 +586,6 @@
     },
     {
       "path": "tools/file-nightly-failure-issue.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools",
       "author": "mikal"
     },
     {

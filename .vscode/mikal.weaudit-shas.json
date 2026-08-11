@@ -133,10 +133,6 @@
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-06"
     },
-    "kerbside/api.py": {
-      "sha": "adcf66797ecc79e76cfde8ab669dcd718f1392d4",
-      "date": "2026-08-10"
-    },
     "kerbside/config.py": {
       "sha": "4fd3e643b8729661fd544fdea0e521f925f3c6b2",
       "date": "2026-08-06"
@@ -227,10 +223,6 @@
     },
     "kerbside/tests/unit/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
-      "date": "2026-08-08"
-    },
-    "kerbside/tests/unit/test_api.py": {
-      "sha": "88493043931c717084819f7300042d20282524e8",
       "date": "2026-08-08"
     },
     "kerbside/tests/unit/test_db.py": {
