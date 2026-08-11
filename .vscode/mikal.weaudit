@@ -511,6 +511,14 @@
     {
       "path": ".github/actionlint.yaml",
       "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/functional-tests.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
