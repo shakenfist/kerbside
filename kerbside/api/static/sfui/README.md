@@ -116,6 +116,16 @@ complex values in properties, so a server-rendered nav would
 have to be marshalled into an inline script to set `.tabs`,
 where a Jinja `{% for %}` over anchors is four lines.
 
+Buttons come in two sizes, and the default is the smaller one.
+`.sf-btn` is sized for an action on a table row, which is where
+almost every button in these UIs lives; `.sf-btn--lg` takes
+`.sf-input`'s padding and font size, so a button that submits a
+form is exactly as tall as the fields above it. Without it a
+submit control reads as smaller than its own form. The two
+rules carry comments saying they must stay in step. Size and
+color are separate modifiers -- a form's primary control is
+`.sf-btn .sf-btn--primary .sf-btn--lg`.
+
 Naming, matching the element and event conventions:
 
 - Component classes are single `.sf-*` classes with BEM-style
