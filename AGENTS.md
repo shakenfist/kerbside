@@ -289,6 +289,14 @@ surviving consoles as gone. `drive-console.py` asserts that VM is absent
 from the console list. If you add a lane VM, think about which branch it
 leaves untested.
 
+Anything in that script that looks up an oVirt object by name must scope
+the lookup to the `test` cluster or its datacenter. The lane runs two
+datacenters and both have an `ovirtmgmt` network and vNIC profile of the
+same name, so a bare name match silently picks whichever the engine lists
+first and fails with a 409 only when it guesses wrong (issue #283). The
+merge tier is the only place this code runs, so a smoke-green PR proves
+nothing about it.
+
 `drive-console.py` asserts against the proxy's log text, so it strips ANSI
 before matching and keeps "the field would not parse" separate from "the
 field was empty" — the first is a harness fault, the second is a real

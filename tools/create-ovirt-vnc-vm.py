@@ -67,6 +67,66 @@ def _log(msg):
     sys.stdout.flush()
 
 
+def _resolve_vnic_profile(system_service, cluster_name, network_name):
+    """Find the vNIC profile for `network_name` as `cluster_name` sees it.
+
+    Every datacenter gets its own network named ovirtmgmt, each with a
+    distinct id and its own vNIC profile. This lane has two of them: the
+    `Default` datacenter engine-setup creates, and the `test` datacenter
+    start-test-target.py creates. Picking a profile by name alone takes
+    whichever the engine happens to list first, and attaching the wrong
+    datacenter's profile fails with HTTP 409 "The specified Logical
+    Network doesn't exist in the current Cluster" -- intermittently,
+    because the listing order is not guaranteed.
+
+    So resolve the network through the cluster that will host the VM,
+    which is the same constraint the engine enforces, and take the
+    profile from that network. shakenfist/actions' start-test-target.py
+    guards the same hazard in _fix_management_network().
+    """
+    clusters = system_service.clusters_service().list()
+    cluster = None
+    for c in clusters:
+        if c.name == cluster_name:
+            cluster = c
+            break
+    if cluster is None:
+        raise SystemExit(
+            'ERROR: no cluster named %s; available: %s'
+            % (cluster_name,
+               ', '.join(sorted(c.name for c in clusters)) or '(none)'))
+
+    cluster_service = system_service.clusters_service().cluster_service(
+        cluster.id)
+    networks = cluster_service.networks_service().list()
+    network = None
+    for n in networks:
+        if n.name == network_name:
+            network = n
+            break
+    if network is None:
+        raise SystemExit(
+            'ERROR: cluster %s has no network named %s; it has: %s'
+            % (cluster_name, network_name,
+               ', '.join(sorted(n.name for n in networks)) or '(none)'))
+
+    network_service = system_service.networks_service().network_service(
+        network.id)
+    profiles = network_service.vnic_profiles_service().list()
+    if not profiles:
+        raise SystemExit(
+            'ERROR: network %s (id %s) on cluster %s has no vNIC profiles'
+            % (network_name, network.id, cluster_name))
+
+    # A network normally has exactly one profile, sharing its name.
+    # Prefer that one, but any profile on this network is attachable to
+    # a VM in this cluster, which is the property that matters.
+    for p in profiles:
+        if p.name == network_name:
+            return p
+    return profiles[0]
+
+
 def _wait_for_status(vm_service, wanted, timeout_secs):
     """Poll a VM until it reports one of `wanted`, or give up loudly."""
     deadline = time.time() + timeout_secs
@@ -126,18 +186,10 @@ def main():
             timeout_secs)
 
         if not vm_service.nics_service().list():
-            profiles = system_service.vnic_profiles_service().list()
-            profile = None
-            for p in profiles:
-                if p.name == args.network:
-                    profile = p
-                    break
-            if profile is None:
-                raise SystemExit(
-                    'ERROR: no vNIC profile named %s; available: %s'
-                    % (args.network,
-                       ', '.join(sorted(p.name for p in profiles))))
-            _log('attaching a NIC on %s' % args.network)
+            profile = _resolve_vnic_profile(
+                system_service, args.cluster, args.network)
+            _log('attaching a NIC on %s (vNIC profile %s, id %s)'
+                 % (args.network, profile.name, profile.id))
             vm_service.nics_service().add(
                 types.Nic(name='nic1',
                           vnic_profile=types.VnicProfile(id=profile.id)))
