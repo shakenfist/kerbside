@@ -32,25 +32,13 @@ This installs the Python control plane and a matching prebuilt
 [docs/installation.md](https://github.com/shakenfist/kerbside/blob/develop/docs/installation.md)
 for the packaging details, OS-level dependencies, and deployment pointers.
 
-The Shaken Fist console source is additionally covered end to end by the
-`sf-e2e` lane (`.github/workflows/sf-e2e-functional.yml`, a PR smoke
-gate that also runs nightly and on dispatch). It stands up a real
-single-node Shaken Fist (via
-`shakenfist/actions/build-smoke-cluster`), provisions `KERBSIDE_URL` + a
-signing key, deploys a co-located kerbside with a `type: shakenfist`
-source (`shakenfist/actions/deploy-kerbside-on-shakenfist`), and drives an
-SF-minted token through offline verification, exchange, and a proxied
-SPICE session against the Sextant guest booted inside the SF instance,
-plus an adversarial matrix (replay, expired, wrong audience, unknown kid,
-cross-namespace mint). Driver scripts live in `tools/sf-e2e/` (see
-`tools/sf-e2e/README.md`).
-
 ## Documentation
 
 In the [docs/](https://github.com/shakenfist/kerbside/blob/develop/docs/index.md)
 directory:
 
 - [Documentation Index](https://github.com/shakenfist/kerbside/blob/develop/docs/index.md) - What Kerbside is, the broker model, and the connection flow
+- [Kerbside for oVirt](https://github.com/shakenfist/kerbside/blob/develop/docs/use-cases/ovirt.md) - The first of the per-deployment guides: what Kerbside replaces in an oVirt deployment, and how to set it up
 - [Installation](https://github.com/shakenfist/kerbside/blob/develop/docs/installation.md) - Packages, OS dependencies, and deployment
 - [Configuration](https://github.com/shakenfist/kerbside/blob/develop/docs/configuration.md) - Configuration reference, including the SPICE firewall knobs
 - [Console Sources](https://github.com/shakenfist/kerbside/blob/develop/docs/console-sources.md) - Configuring sources.yaml for Shaken Fist, OpenStack, and oVirt

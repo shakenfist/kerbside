@@ -62,6 +62,12 @@ DEFAULT_WORKDIR = '/tmp/kerbside-ovirt-ci'
 # tools/test-ovirt-console.py matches on the same prefix.
 CONSOLE_NAME_PREFIX = 'smoke-test-'
 
+# The VM tools/create-ovirt-vnc-vm.py leaves running with a VNC display
+# and no SPICE console. Kerbside must skip it during discovery, so it
+# must never appear as a console. Keep in step with that script's
+# --name default.
+NO_SPICE_VM_NAME = 'no-spice-test'
+
 # Proxy log oracles, asserted against the kerbside daemon log (which
 # carries the Rust proxy's tracing output). These are load-bearing
 # assertions, not diagnostics. The first two must stay in step with the
@@ -141,6 +147,38 @@ def _discover_console(db, source, timeout=180):
     raise SystemExit(
         'the oVirt scrape never produced a %s* console for source %s '
         'within %ds' % (CONSOLE_NAME_PREFIX, source, timeout))
+
+
+def _assert_no_spice_vm_skipped(db, source):
+    """Assert the VNC-only VM was skipped rather than brokered or fatal.
+
+    tools/create-ovirt-vnc-vm.py leaves a running VM with no SPICE
+    console in the engine. Discovery must skip it and keep going. The
+    two ways that can go wrong fail differently and both are caught:
+
+    * Skipping it fatally (the missing `continue` in sources/ovirt.py)
+      errors the whole source, so deploy-kerbside.sh's wait for a
+      non-errored source fails before this ever runs, and if it somehow
+      got past that, _discover_console() would time out.
+    * Not skipping it at all -- brokering a console kerbside cannot
+      actually connect to -- shows up here as a console row that should
+      not exist.
+
+    Only the second needs asserting, but say so out loud either way: a
+    guard that can only pass is worse than no guard.
+    """
+    names = sorted(
+        c.get('name') or ''
+        for c in db.get_consoles(include_audit=False)
+        if c.get('source') == source)
+    if NO_SPICE_VM_NAME in names:
+        raise SystemExit(
+            '%s has no SPICE console, so kerbside must not have brokered '
+            'it, but it is in the console list for source %s (consoles: '
+            '%s). Discovery is yielding VMs it cannot connect to.'
+            % (NO_SPICE_VM_NAME, source, ', '.join(names)))
+    _log('confirmed %s was skipped; source %s brokered: %s'
+         % (NO_SPICE_VM_NAME, source, ', '.join(names)))
 
 
 def _mint_auth_jwt(seed_path):
@@ -340,6 +378,9 @@ def main():
          'secure_port=%s host_subject=%s'
          % (console_uuid, console.get('name'), hypervisor_ip, insecure_port,
             secure_port, host_subject))
+
+    # 1b. Assert the VM with no SPICE console was skipped, not brokered.
+    _assert_no_spice_vm_skipped(db, source)
 
     # 2. Assert the values the backend TLS leg depends on.
     if not secure_port:

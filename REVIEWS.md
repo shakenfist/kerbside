@@ -65,7 +65,6 @@ for how this works, including how to verify the attestations.
 | kerbside/rpc/servicer.py | mikal | 2026-08-07 | 0dcac8b48e87 |
 | kerbside/sf_token.py | mikal | 2026-08-06 | 377a26c25d70 |
 | kerbside/sources/base.py | mikal | 2026-08-07 | 950856916980 |
-| kerbside/sources/ovirt.py | mikal | 2026-08-07 | 1a1efe467942 |
 | kerbside/sources/shakenfist.py | mikal | 2026-08-07 | 3c77e7e7dbe0 |
 | kerbside/sources/static.py | mikal | 2026-08-07 | 87dd7d9c3567 |
 | kerbside/tests/__init__.py | mikal | 2026-08-08 | e69de29bb2d1 |

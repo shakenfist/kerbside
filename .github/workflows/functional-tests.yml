@@ -336,6 +336,7 @@ jobs:
               ${GITHUB_WORKSPACE}/actions/tools/start-test-target.py \
               ${GITHUB_WORKSPACE}/kerbside/tools/test-ovirt-console.py \
               ${GITHUB_WORKSPACE}/kerbside/tools/dump-ovirt-host-subject.py \
+              ${GITHUB_WORKSPACE}/kerbside/tools/create-ovirt-vnc-vm.py \
               /tmp/${{ matrix.test.name }}-answers.conf \
               ${GITHUB_WORKSPACE}/actions/etc/${{ matrix.test.name }}-repos.patch \
               ${{ matrix.test.baseuser }}@10.0.2.2:/srv/
@@ -453,6 +454,28 @@ jobs:
                   --host-password foobar \
                   --storage-path /srv/ovirt-storage \
                   --disk-image /srv/debian-12-gnome-agents.qcow2"
+
+      - name: Create a second VM with no SPICE console
+        # kerbside's oVirt source must skip a VM it cannot broker and
+        # carry on scraping. Before this VM existed, every VM in the
+        # lane had a SPICE display, so the skip path never ran here --
+        # and a missing `continue` in sources/ovirt.py errored the whole
+        # source instead, dropping every VM after the offending one and
+        # reaping their consoles as gone. drive-console.py asserts this
+        # VM is absent from the console list while the SPICE one is
+        # present, which fails in both directions.
+        run: |
+          . $GITHUB_ENV
+
+          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ matrix.test.baseuser }}@10.0.2.2 \
+              "python3 /srv/create-ovirt-vnc-vm.py \
+                  --url https://${{ matrix.test.hostname }}.local/ovirt-engine/api \
+                  --username ${{ matrix.test.ovirt_username }} \
+                  --password foobar \
+                  --ca-file /etc/pki/ovirt-engine/ca.pem \
+                  --cluster test"
 
       - name: Test SPICE console connectivity
         run: |

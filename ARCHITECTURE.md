@@ -265,7 +265,7 @@ Pluggable console discovery from different cloud platforms.
 | Source | File | Description |
 |--------|------|-------------|
 | Shaken Fist | `shakenfist.py` | Uses `shakenfist_client` library; a `system` credential scrapes the whole cluster, caches the cluster's VDI token signing keys, and pins each console's `host_subject` from the node's SPICE cert subject |
-| oVirt | `ovirt.py` | Uses `ovirtsdk4` library |
+| oVirt | `ovirt.py` | Uses `ovirtsdk4` library; scrapes the engine for console addresses and pins each VM's host certificate subject, and acquires a short-lived graphics-console ticket per `.vv` request. Kerbside dials the hypervisor directly and never reads an engine-generated `.vv`, so oVirt's own SPICE proxy is not in the path — see [docs/use-cases/ovirt.md](docs/use-cases/ovirt.md) |
 | OpenStack | `api.py` | On-demand via Nova token validation |
 | Static | `static.py` | Reads VM mapping from an inline `consoles:` list in sources.yaml; no external API calls; designed for CI and ad-hoc debugging |
 
@@ -448,7 +448,10 @@ tempest-plugin/        # Kerbside Tempest plugin (separate releasable)
                        #   control_socket_path unset — drop-in safe)
 loadtests/             # Load testing tools
   latency/             # Latency loadtest (orchestrator.py + Dockerfile)
-docs/                  # Protocol documentation
+docs/                  # Operator, developer, and protocol documentation
+  spice/               # SPICE protocol reference
+  use-cases/           # Per-deployment operator guides (oVirt today)
+  plans/               # Point-in-time plan records, not living docs
 ```
 
 ## Sextant Scenario Test
@@ -473,9 +476,11 @@ is usable afterwards.
 
 ## Related Documentation
 
-For detailed SPICE protocol documentation, see the [docs/](docs/) directory:
+For detailed SPICE protocol documentation, see the
+[docs/](docs/index.md) directory:
 
-- [Protocol Overview](docs/protocol-overview.md) - SPICE protocol fundamentals
-- [Channel Protocols](docs/channel-protocols.md) - Per-channel message formats
-- [Capabilities](docs/capabilities.md) - Feature negotiation
+- [Protocol Overview](docs/spice/protocol-overview.md) - SPICE protocol fundamentals
+- [Channel Protocols](docs/spice/channel-protocols.md) - Per-channel message formats
+- [Capabilities](docs/spice/capabilities.md) - Feature negotiation
 - [Proxy Architecture](docs/proxy-architecture.md) - Internal proxy design details
+- [Use Cases](docs/use-cases/ovirt.md) - Per-deployment operator guides
