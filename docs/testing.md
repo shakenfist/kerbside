@@ -189,6 +189,18 @@ their consoles as no longer available, once a minute.
 `drive-console.py` now asserts that VM is absent from the console
 list while the SPICE one is present.
 
+Attaching that VM's NIC has one trap worth knowing about. The lane runs
+two datacenters — `Default`, from `engine-setup`, and `test`, from
+`start-test-target.py` — and each gets its own network named
+`ovirtmgmt`, with its own id and its own vNIC profile of the same name.
+Selecting a profile by name alone picks whichever the engine lists
+first, and attaching the wrong datacenter's profile fails with HTTP 409
+`The specified Logical Network doesn't exist in the current Cluster`.
+`create-ovirt-vnc-vm.py` therefore resolves the network through the
+cluster that will host the VM, which is the constraint the engine
+actually enforces; `_resolve_vnic_profile` is covered by
+`kerbside/tests/unit/test_create_ovirt_vnc_vm.py`.
+
 The runner-side scripts live in `tools/ovirt-e2e/` and are
 documented in `tools/ovirt-e2e/README.md`; the architecture decision
 and bring-up history are in
