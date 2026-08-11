@@ -473,10 +473,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/functional-tests.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/pin-indirect-dependencies.yml",
       "author": "mikal"
     },
@@ -510,10 +506,6 @@
     },
     {
       "path": ".github/workflows/sf-e2e-functional.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows",
       "author": "mikal"
     },
     {
