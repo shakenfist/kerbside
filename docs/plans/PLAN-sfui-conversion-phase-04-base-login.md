@@ -482,18 +482,23 @@ current implementation line by line.
 
 ## Outcome
 
-Done, 2026-08-11, in six commits across two repositories,
-all five steps as planned:
+Done, 2026-08-11, across two repositories, all five steps as
+planned plus a second sfui round trip for the button size the
+screenshots turned up:
 
 * shakenfist/sfui, on `nav-links`: `e372c91` adds `.sf-nav`,
   its README rationale and the `demo.html` strip (step 4a).
-  Merged to `develop` as `042939e`.
+  Merged to `develop` as `042939e`. Then, on
+  `form-scale-button`: `89ed7e4` adds `.sf-btn--lg`, merged as
+  `c199966`.
 * kerbside, on `sfui-conversion-phase-04`: `271bd86`
   re-vendors at `042939e` (4b), `07db4ac` is this plan,
   `e94616d` adds `base-sfui.html` (4c), `ad0465f` converts
   the login page and fixes the two `api.py` context calls
   (4d), `e112cb2` adds the two tests, the preview tool and
-  the docs (4e).
+  the docs (4e). `f5828b4` re-vendors again at `c199966`, and
+  the commit carrying this outcome puts `.sf-btn--lg` on the
+  login button.
 
 The merge round trip in the middle of the phase went as the
 risks section described. The four kerbside commits were
@@ -544,17 +549,36 @@ kerbside/api/templates/` touches exactly two files, so
 `tox -eflake8` and `tox -epy3` pass with the phase 1 smoke
 tests unedited.
 
-### The login button is undersized, and the fix is canonical
+### The login button was undersized, and the fix was canonical
 
 `.sf-btn` is `font-size: 0.78rem; padding: 0.15rem 0.6rem`,
 sized for the dashboard's table-row actions, while
-`.sf-input` is `0.9rem; 0.4rem 0.6rem`. On a form the
-primary button therefore reads as smaller than the fields
-above it. It is not wrong enough to block the phase, but it
-is wrong enough that phases 5 and 6 must not work around it
-locally: the fix is a form-scale button in `sf.css` matching
-`.sf-input`'s metrics, not a `kb-` override that four pages
-would copy. Raised with the operator; awaiting a decision.
+`.sf-input` is `0.9rem; 0.4rem 0.6rem`. On a form the primary
+button therefore read as smaller than the fields above it.
+The rendered screenshots made this obvious in a way the
+stylesheet had not, and it was fixed inside the phase rather
+than deferred, because phases 5 and 6 copy this page.
+
+The fix is canonical, not a `kb-` override that four more
+pages would copy: sfui `89ed7e4` adds `.sf-btn--lg`, which
+takes `.sf-input`'s padding and font size rather than a
+scaled-up `.sf-btn`, so the control is exactly as tall as its
+fields. Merged as `c199966`, re-vendored in kerbside by
+`f5828b4`, and used on the login button by the commit that
+records this outcome.
+
+Three decisions inside that change are worth carrying into
+later phases. Size and colour are separate modifiers, so a
+form's primary control is
+`.sf-btn .sf-btn--primary .sf-btn--lg` -- making `--primary`
+imply a size would be the wrong axis, since a primary action
+in a table row is still a table-row action. The base size was
+left alone, because rescaling `.sf-btn` and pushing the small
+size onto the table rows would repaint every existing button
+in both consumers to fix one page. And sfui's own `demo.html`
+had the identical defect in its cancel form, unnoticed since
+phase 3: a gallery only pays off when someone renders it and
+looks, which is the same lesson `.sf-table-scroll` taught.
 
 ## Back brief
 
