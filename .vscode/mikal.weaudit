@@ -511,6 +511,98 @@
     {
       "path": ".github/actionlint.yaml",
       "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/functional-tests.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/verify-rust-proxy.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/ovirt-e2e/deploy-kerbside.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/ovirt-e2e/drive-console.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/ovirt-e2e/gen-sources.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/ovirt-e2e/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/ovirt-e2e",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/deploy-kerbside.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/drive-adversarial.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/drive-happy-path.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/gather-artifacts.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/gen-sources.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/import-instance.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/provision-sf.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/check-required-checks.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/create-ovirt-vnc-vm.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/file-nightly-failure-issue.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools",
+      "author": "mikal"
+    },
+    {
+      "path": ".pre-commit-config.yaml",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

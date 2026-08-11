@@ -17,6 +17,10 @@
       "sha": "53b5d8eb46e89e228dd88d42d7e1b0c3ea6694cd",
       "date": "2026-08-11"
     },
+    ".github/workflows/functional-tests.yml": {
+      "sha": "af471a9e2f73bd4a89b0d6625f0056b4d725b869",
+      "date": "2026-08-12"
+    },
     ".github/workflows/pin-indirect-dependencies.yml": {
       "sha": "0faad202ec3336b3fa8b6ed2787c557fc3172c24",
       "date": "2026-08-11"
@@ -52,6 +56,10 @@
     ".github/workflows/sf-e2e-functional.yml": {
       "sha": "cc2302723a2d2dfeea4b667deb2c091d0ecab49b",
       "date": "2026-08-11"
+    },
+    ".pre-commit-config.yaml": {
+      "sha": "48c64c7448876a58734d7960324b755d440c1ed9",
+      "date": "2026-08-12"
     },
     "AUTHORS": {
       "sha": "52747656c9ce3a27509516db50abacb7930c8ca2",
@@ -361,9 +369,17 @@
       "sha": "dcf7182d68c4851e2981d5257e1c6f50dd394b6e",
       "date": "2026-08-06"
     },
+    "tools/check-required-checks.sh": {
+      "sha": "91101dd29e9e9a033ea8a1af805cce92043122b2",
+      "date": "2026-08-12"
+    },
     "tools/ci-prune-reviews.sh": {
       "sha": "6daef1e07eb05d46b0a13745d5338cf1aea23cd8",
       "date": "2026-08-06"
+    },
+    "tools/create-ovirt-vnc-vm.py": {
+      "sha": "e1be037112c1e615a692a8b78eb6126b8e418a69",
+      "date": "2026-08-12"
     },
     "tools/direct-qemu/generate-tls.sh": {
       "sha": "cd1043f9b384cc21ebd8b9c3e96676030fc820e1",
@@ -425,6 +441,10 @@
       "sha": "e0b4408e11acbf05f9c8054036fea35dd71e320d",
       "date": "2026-08-09"
     },
+    "tools/direct-qemu/verify-rust-proxy.sh": {
+      "sha": "dc8b8d2724a879727c56a568ba186b850a379c92",
+      "date": "2026-08-12"
+    },
     "tools/direct-qemu/verify-terminate-live.sh": {
       "sha": "0ca7535c96892e287d7744c2a159f20fd74929c9",
       "date": "2026-08-09"
@@ -437,6 +457,10 @@
       "sha": "e6192e0626cdae7afe7f853ad06ad07ac399b604",
       "date": "2026-08-06"
     },
+    "tools/file-nightly-failure-issue.sh": {
+      "sha": "23ba46f6ba44a5029054e50aa003aceae3f1907d",
+      "date": "2026-08-12"
+    },
     "tools/flake8wrap.sh": {
       "sha": "97ee081c8257372a4de994eba1b9e2b5434da1d2",
       "date": "2026-08-06"
@@ -444,6 +468,22 @@
     "tools/gen-protos.sh": {
       "sha": "b886d3a887c6cbe39f454ad13a9271752b61ff9e",
       "date": "2026-08-06"
+    },
+    "tools/ovirt-e2e/README.md": {
+      "sha": "e3fb19693f9a3ae68870d803f857cecc1c5704e4",
+      "date": "2026-08-12"
+    },
+    "tools/ovirt-e2e/deploy-kerbside.sh": {
+      "sha": "4b6b56ef0b72b9da47c705a9840ab00d6a341334",
+      "date": "2026-08-12"
+    },
+    "tools/ovirt-e2e/drive-console.py": {
+      "sha": "3d0ed4e95c6b97810cfbb46f3be1826b49cbdd17",
+      "date": "2026-08-12"
+    },
+    "tools/ovirt-e2e/gen-sources.py": {
+      "sha": "ad320c5516d78e4e2d6ef3b06dff8ce41fe07993",
+      "date": "2026-08-12"
     },
     "tools/pin-indirect-dependencies.sh": {
       "sha": "241b462c281d6e33fa1d4023d15762a95d69112a",
@@ -464,6 +504,38 @@
     "tools/run-tempest-tests": {
       "sha": "b17af445b479f810c2ea4e33eb26231ffeec8604",
       "date": "2026-08-06"
+    },
+    "tools/sf-e2e/README.md": {
+      "sha": "3d2ed4ddb8a51396110594a362900929b61f1230",
+      "date": "2026-08-12"
+    },
+    "tools/sf-e2e/deploy-kerbside.sh": {
+      "sha": "e8e1ff15b8046c103a6575aee00160dcf5a29bdf",
+      "date": "2026-08-12"
+    },
+    "tools/sf-e2e/drive-adversarial.py": {
+      "sha": "872f55647813694fbb0676da8ca93cac5265ccdf",
+      "date": "2026-08-12"
+    },
+    "tools/sf-e2e/drive-happy-path.py": {
+      "sha": "ebc9fbe7c1922bed95af60b0a2510e8d31da2d85",
+      "date": "2026-08-12"
+    },
+    "tools/sf-e2e/gather-artifacts.sh": {
+      "sha": "d69a14d5aededc72e791d089a9f78b4a2a1d42be",
+      "date": "2026-08-12"
+    },
+    "tools/sf-e2e/gen-sources.py": {
+      "sha": "75113490d3dbdb3a6c002125ccfac2097ee2b393",
+      "date": "2026-08-12"
+    },
+    "tools/sf-e2e/import-instance.sh": {
+      "sha": "bcb2bd5d5f9ee620982fae6b5ddf950e1a15c96e",
+      "date": "2026-08-12"
+    },
+    "tools/sf-e2e/provision-sf.sh": {
+      "sha": "66332d85a7081b5cc499f0a1adf7b896e7617e38",
+      "date": "2026-08-12"
     },
     "tools/stamp-proxy-version.sh": {
       "sha": "fa5bc4dc6f461e287cd33f5de76e1d105cd44173",
