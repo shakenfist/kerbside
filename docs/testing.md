@@ -76,6 +76,33 @@ asserts every required context in the exported ruleset
 `export-repo-config.yml`) still matches a job name in
 `.github/workflows/`.
 
+### Merge queue concurrency
+
+Every job in `functional-tests.yml` carries a `concurrency` group so a
+superseded run is cancelled rather than left to finish. Keying that
+group needs care, because `github.ref` means something different in the
+merge queue: it is the per-attempt queue branch,
+`gh-readonly-queue/develop/pr-NNN-SHA`, and GitHub mints a fresh SHA
+each time it rebuilds the group — which it does on every push to
+develop. Keying on it puts each rebuild in a group of its own, so
+nothing ever matches and nothing is ever cancelled. The superseded runs
+keep building whole clouds against sfcbr, starving the one group that
+can still merge.
+
+So on `merge_group` the group is keyed on the base branch instead, and
+on every other event on `github.ref` as usual. That is only safe
+because the develop ruleset sets `max_entries_to_build: 1`: the queue
+builds one entry at a time, so any other in-flight `merge_group` run is
+by definition superseded and GitHub has already abandoned its queue
+branch. **Raising `max_entries_to_build` above 1 would make this wrong**
+— speculative groups for different entries would then cancel each other
+— so that setting and this concurrency key have to move together.
+
+The sibling smoke workflows (`direct-qemu-functional.yml`,
+`sf-e2e-functional.yml`) still key on `github.ref` alone. They trigger
+on `merge_group` but skip their heavy jobs there, so a piled-up run
+costs seconds and no cloud capacity.
+
 For the design rationale see
 [plans/PLAN-two-tier-ci.md](plans/PLAN-two-tier-ci.md) and
 [plans/PLAN-two-tier-ci-phase-03-merge-queue.md](plans/PLAN-two-tier-ci-phase-03-merge-queue.md).

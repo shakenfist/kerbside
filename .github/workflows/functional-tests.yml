@@ -107,8 +107,30 @@ jobs:
       # first-touch package) cannot hard-fail the job.
       PIP_EXTRA_INDEX_URL: https://pypi.org/simple/
       PIP_TRUSTED_HOST: 192.168.1.15
+    # On every event except merge_group, github.ref identifies the thing
+    # being tested and is the right concurrency key. On merge_group it is
+    # the per-attempt queue branch, gh-readonly-queue/develop/pr-NNN-SHA,
+    # and GitHub mints a fresh SHA every time it rebuilds the group --
+    # which it does on each push to develop. Keying on it therefore puts
+    # every rebuild in a group of its own, so cancel-in-progress never
+    # matches and superseded runs are never cancelled: they run to
+    # completion, building whole clouds against sfcbr, starving the one
+    # group that can actually merge. #279 had three of these overlapping.
+    #
+    # Cancelling them is safe here because the develop ruleset sets
+    # max_entries_to_build: 1, so the queue only ever builds one entry at
+    # a time and any other in-flight merge_group run is by definition
+    # superseded -- GitHub has already abandoned its queue branch. Key
+    # those runs on the base branch so they share one group. The
+    # merge_group- prefix keeps them from colliding with a
+    # workflow_dispatch run on develop, whose github.ref is the same
+    # branch.
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-lint
+      group: >-
+        ${{ github.workflow }}-lint-${{
+        github.event_name == 'merge_group'
+        && format('merge_group-{0}', github.event.merge_group.base_ref)
+        || github.ref }}
       cancel-in-progress: true
 
     steps:
@@ -259,8 +281,17 @@ jobs:
       # the deploy and drive steps. The artifact step references it
       # directly, so changing it here changes all of them together.
       OVIRT_LANE_WORKDIR: /tmp/kerbside-ovirt-ci
+    # See sanity_checks above for why merge_group is keyed on the base
+    # branch rather than github.ref. This job is the one that made it
+    # matter: it builds a full nested oVirt cloud, so a superseded run
+    # left alive here is two hours of sfcbr capacity spent on a merge
+    # group that can no longer merge.
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.test.name }}
+      group: >-
+        ${{ github.workflow }}-${{ matrix.test.name }}-${{
+        github.event_name == 'merge_group'
+        && format('merge_group-{0}', github.event.merge_group.base_ref)
+        || github.ref }}
       cancel-in-progress: true
 
     # NOTE(mikal): git repos are checked out to /srv/github/_work/{org}/{repo}
@@ -719,8 +750,14 @@ jobs:
     runs-on: [self-hosted, vm, debian-12, m]
     needs: [sanity_checks, check_paths]
     timeout-minutes: 120
+    # See sanity_checks above for why merge_group is keyed on the base
+    # branch rather than github.ref.
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.test.name }}
+      group: >-
+        ${{ github.workflow }}-${{ matrix.test.name }}-${{
+        github.event_name == 'merge_group'
+        && format('merge_group-{0}', github.event.merge_group.base_ref)
+        || github.ref }}
       cancel-in-progress: true
 
     # NOTE(mikal): git repos are checked out to /srv/github/_work/{org}/{repo}
