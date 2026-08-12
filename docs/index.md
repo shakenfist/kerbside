@@ -143,16 +143,27 @@ of a HTML5 desktop environment.
 ### Use Cases
 
 One page per deployment permutation: what Kerbside is worth in that
-setting, how the pieces fit together, and how to set it up.
+setting, how the pieces fit together, and how to set it up. The last
+column names the CI lane that exercises the scenario end to end; see
+[testing.md](testing.md) for what the lanes do and what the tiers mean.
 
-- [Kerbside for oVirt](use-cases/ovirt.md) - Replacing oVirt's SPICE
-  proxy (squid) with a protocol-aware front door: discovery via the
-  engine API, host-subject pinned TLS to the hypervisor, and the
-  engine, network, and account prerequisites
+| Scenario | Description | Tested in Kerbside CI |
+|----------|-------------|-----------------------|
+| Multi-cloud aggregation | One Kerbside brokering several sources at once, so users keep a single console entry point as workloads move between providers | Not covered |
+| OpenStack | Nova 2025.1 spice-direct consoles, deployed alongside the cluster with Kolla-Ansible via kerbside-patches | `openstack_matrix`, merge tier |
+| [oVirt](use-cases/ovirt.md) | Replaces oVirt's SPICE proxy (squid) with a protocol-aware front door: discovery via the engine API, host-subject pinned TLS to the hypervisor, and the engine, network, and account prerequisites | `ovirt_matrix`, merge tier |
+| Placement topologies | Kerbside instances placed by user population rather than by cloud — one per regional office, close to its users, with the WAN hop as the inspected backend leg | Not covered |
+| Proxmox | Deferred until a Proxmox source driver exists | No source yet |
+| Shaken Fist | Broker embedded in Shaken Fist itself; Ed25519 VDI console tokens exchanged offline at `/sf-console.vv` | `sf-e2e`, smoke tier and nightly |
+| Standalone / static source | The static driver (`kerbside/sources/static.py`) for labs, demos, and direct-qemu style fleets | Unit tests only |
 
-Pages for Shaken Fist, OpenStack, multi-cloud aggregation, placement
-topologies, and the standalone static source are planned; see
+Scenarios without a link are planned rather than written; see
 [plans/PLAN-use-case-docs.md](plans/PLAN-use-case-docs.md).
+
+The direct-qemu lane is deliberately absent from the table: it drives
+the Rust proxy against a local qemu SPICE server with a *mock* control
+plane, so it exercises the proxy rather than any console source. See
+[direct-qemu-harness.md](direct-qemu-harness.md).
 
 ### Operator Documentation
 
