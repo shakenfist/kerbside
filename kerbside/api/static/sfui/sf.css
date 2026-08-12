@@ -367,6 +367,8 @@
        The base size is a table-row action, which is where most
        buttons in these UIs live. A button that submits a form
        is a different size and takes .sf-btn--lg. */
+    /* No underline: the base layer hover-underlines every page
+       link, but this later layer wins with no specificity contest. */
     .sf-btn {
         background: transparent;
         border: 1px solid var(--sf-border);
@@ -376,6 +378,7 @@
         font-family: inherit;
         font-size: 0.78rem;
         cursor: pointer;
+        text-decoration: none;
     }
 
     .sf-btn:hover {
