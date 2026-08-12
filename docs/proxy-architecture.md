@@ -225,7 +225,7 @@ For every framed message the relay's `pump` runs:
    `Terminate` (flush and end the whole relay — a single SPICE channel is
    one duplex TCP connection, so either direction ending ends the
    session). `Drop` is a variant on the `Verdict` enum reserved for future
-   L2/L3 use (e.g. defanging); no v1 rule emits it, because silently
+   L2/L3 use (e.g. defanging); no rule emits it today, because silently
    dropping a mid-stream SPICE message would desynchronise the channel.
 
 ### Warn-only mode
@@ -271,20 +271,18 @@ built from Python's `FIREWALL_MODE`/`FIREWALL_PERMITTED_CHANNELS` config
 **not** delivered over gRPC: which message types are structurally valid on
 a channel is a fact about the SPICE protocol, not a deployment policy, so
 they are compiled into the proxy. Size caps, the rate ceiling, and
-per-verdict severities keep their compiled defaults in v1 (no gRPC config
+per-verdict severities keep their compiled defaults (no gRPC config
 surface yet).
 
-Out of scope for phase 4, and not yet implemented anywhere in the Rust
-proxy: L2 body validation (scancode ranges, clipboard/file-transfer/
-usbredir device-class filtering), session recording, and L3
-rewriting/injection.
+Not implemented anywhere in the Rust proxy: L2 body validation (scancode
+ranges, clipboard/file-transfer/usbredir device-class filtering), session
+recording, and L3 rewriting/injection.
 
 ## Process Supervision and Session Termination
 
-Phase 5 (`docs/plans/PLAN-rust-proxy-phase-05-daemon-integration.md`) makes
-the Python daemon able to **run** the Rust proxy, and makes API-driven
-session termination actually drop in-flight connections rather than only
-blocking new ones.
+The Python daemon runs the Rust proxy as a child process, and API-driven
+session termination drops in-flight connections rather than only blocking
+new ones.
 
 ### Process model: the daemon supervises the Rust proxy as a child
 
@@ -315,14 +313,14 @@ flowchart TD
   10-second graceful-drain window (below), so the daemon gives the proxy a
   chance to drain before forcing it.
 
-### How the binary gets there: packaging (phase 6)
+### How the binary gets there: packaging
 
 `find_proxy_bin()`'s middle leg — `shutil.which('kerbside-proxy')` — is
-what resolves the binary in a real deployment, and phase 6 is what makes
-that leg succeed. The crate is published to PyPI as a separate
-`kerbside-proxy` package: a maturin `bindings = "bin"` wheel
-(`rust/kerbside-proxy/pyproject.toml`) whose compiled binary is laid into
-the wheel's `*.data/scripts/` directory, which pip installs onto `PATH`.
+what resolves the binary in a real deployment. The crate is published to
+PyPI as a separate `kerbside-proxy` package: a maturin
+`bindings = "bin"` wheel (`rust/kerbside-proxy/pyproject.toml`) whose
+compiled binary is laid into the wheel's `*.data/scripts/` directory,
+which pip installs onto `PATH`.
 `kerbside` exact-pins `kerbside-proxy` at the same version, so `pip install
 kerbside` transitively installs a matching proxy and the gRPC contract
 matches by construction.
@@ -337,16 +335,16 @@ no aarch64 build host is required); no source distribution is published, so
 an unsupported platform gets a clean pip error rather than a doomed source
 build. In development you bypass all of this: `find_proxy_bin()` falls
 through to the in-repo `cargo build` output, or you set
-`KERBSIDE_PROXY_BIN` explicitly. See
-`docs/plans/PLAN-rust-proxy-phase-06-packaging.md` and `RELEASE-SETUP.md`.
+`KERBSIDE_PROXY_BIN` explicitly. See `RELEASE-SETUP.md`.
 
 ### Session termination: dropping in-flight connections
 
-Before phase 5, `ConsolesTerminate`/`SessionTerminate` only removed or
-expired the DB token, which blocks a **new** connection attempt; a client
-already connected kept its channels open until it disconnected itself —
-there was no path from "the API terminated this session" to "the proxy
-holding that session's sockets finds out".
+Removing or expiring the DB token blocks a **new** connection attempt, but
+it does nothing to a client that is already connected: that client keeps
+its channels open until it disconnects itself. Dropping a live session
+needs a path from "the API terminated this session" to "the proxy holding
+that session's sockets finds out", so
+`ConsolesTerminate`/`SessionTerminate` do both.
 
 **The distributed-deployment constraint.** Kerbside can run with the REST
 API and the proxy processes on different machines (the proxy is often
@@ -389,10 +387,10 @@ flowchart TD
 
 Concretely:
 
-1. **API** (`api.py`, `ConsolesTerminate`/`SessionTerminate`): keeps the
-   existing token expire/remove and additionally calls
+1. **API** (`api.py`, `ConsolesTerminate`/`SessionTerminate`): expires or
+   removes the token, and calls
    `db.request_session_termination(session_id, reason)`, which
-   upserts a row into the new `session_terminations` table
+   upserts a row into the `session_terminations` table
    (`session_id` primary key, `requested_at`, optional `reason`; migration
    `c4e7a1b9d2f3`). Idempotent — re-terminating an already-terminated
    session just refreshes `requested_at`.
@@ -403,8 +401,8 @@ Concretely:
    every id not already sent on this stream, interleaved with `Heartbeat`s
    so the stream stays alive between events. A DB error is logged and the
    loop continues rather than killing the stream. Natural token *expiry*
-   (no explicit termination) is never pushed — this matches the Python
-   proxy's existing behaviour, where expiry only blocks new connections.
+   (no explicit termination) is never pushed — expiry only blocks new
+   connections.
 3. **Rust proxy** (`session.rs::SessionRegistry`, `rpc.rs::
    run_proxy_control`): a `Mutex<HashMap<session_id, CancellationToken>>`
    refcounted across the session's live channels (one entry per session,

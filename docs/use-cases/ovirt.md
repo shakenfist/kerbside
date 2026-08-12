@@ -24,7 +24,11 @@ Kerbside replaces it with a protocol-aware front door:
   [proxy-architecture.md](../proxy-architecture.md).
 - **Sessions are objects, not TCP flows.** Every proxied console
   is a row you can list over the REST API, with an audit trail,
-  and can terminate in flight.
+  and can terminate in flight. This is especially important because
+  SPICE console sessions produce multiple flows, but the multiplier
+  varies based on the client's capabilities and usage -- so you can't
+  simply divide the number of observed flows by a constant to
+  determine the number of connected clients.
 - **The hypervisor is never reachable from the client network.**
   Clients reach kerbside; kerbside reaches oVirt. The SPICE
   ports do not need a route to users at all.
@@ -236,9 +240,7 @@ because the oVirt node is Rocky 8 with a Python 3.6 interpreter
 and kerbside requires 3.11 or newer. That is a CI expedient. The
 topology it produces — kerbside off-box from oVirt, reaching the
 engine by name and the hypervisor by address — is the shape a
-real deployment has anyway. See
-[PLAN-two-tier-ci-phase-01-ovirt-kerbside.md](../plans/PLAN-two-tier-ci-phase-01-ovirt-kerbside.md)
-for the bring-up detail.
+real deployment has anyway.
 
 ## User interaction model
 
