@@ -49,6 +49,34 @@ alembic downgrade -1
 kerbside configuration, so ensure your kerbside config is properly set
 up before running migrations.
 
+## Diagrams in the documentation
+
+Diagrams in `docs/` are [mermaid](https://mermaid.js.org/) fenced
+blocks, which GitHub renders natively -- not ASCII art. Prefer a
+vertical flow (`flowchart TD`, `stateDiagram-v2`, `erDiagram`) so a
+diagram stays readable on a narrow page; `sequenceDiagram` is the
+right choice for a message exchange between two peers.
+
+Two kinds of fenced block in `docs/spice/` are deliberately *not*
+diagrams and stay as plain text: the `Offset Size Type Field` byte
+tables that document a wire structure field by field, and the
+byte-layout boxes in
+[spice/protocol-overview.md](spice/protocol-overview.md). Mermaid's
+`packet` diagram is the only construct that fits the latter, and
+GitHub's mermaid version does not reliably support it yet, so the
+ASCII survives until that changes.
+
+The database entity relationship diagram exists twice: in
+[schema.md](schema.md) and, for standalone viewing, in
+`docs/schema.html`. Keep the two in sync -- the `add-database-migration`
+skill says to update both.
+
+To check a diagram before pushing, render it with mermaid-cli:
+
+```shell
+npx @mermaid-js/mermaid-cli mmdc -i diagram.mmd -o diagram.svg
+```
+
 ## Review tracking
 
 Kerbside receives periodic whole-file human review in addition to the

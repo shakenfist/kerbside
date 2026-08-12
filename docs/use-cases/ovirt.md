@@ -48,29 +48,20 @@ It talks to the engine API to find consoles and to acquire
 tickets, then connects to the hypervisor's SPICE port directly.
 It never reads an engine-generated `.vv` file.
 
-```
-+------------------+                +-----------------+                  +----------------+
-|  Broker          |  1. request    |                 |  A. discovery    |                |
-|  (your portal,   +--------------->|                 |     (per minute) |  oVirt engine  |
-|   or Kerbside's  |                |    Kerbside     +<---------------->+                |
-|   own web UI)    |<---------------+                 |  B. ticket, per  |                |
-+--------+---------+  2. .vv file   |                 |     .vv request  +----------------+
-         |                          |                 |
-         | 3. deliver               |                 |
-         v                          |                 |
-+------------------+  4. connect,   |                 |
-|  SPICE client    |     token as   |                 |
-|  (remote-viewer, +--------------->|                 |
-|   ryll)          |     password   |                 |
-+------------------+                +--------+--------+
-                                             |
-                                             | 5. 5900 -> NEED_SECURED ->
-                                             |    5901 TLS: engine CA
-                                             |    verified, subject pinned
-                                             v
-                                    +-----------------+
-                                    | Hypervisor QEMU |
-                                    +-----------------+
+```mermaid
+flowchart TD
+    broker["Broker<br/>(your portal, or<br/>Kerbside's own web UI)"]
+    client["SPICE client<br/>(remote-viewer, ryll)"]
+    kerbside["Kerbside"]
+    engine["oVirt engine"]
+    hypervisor["Hypervisor QEMU"]
+
+    broker -- "1. request" --> kerbside
+    kerbside -- "2. .vv file" --> broker
+    broker -- "3. deliver" --> client
+    client -- "4. connect, token as password" --> kerbside
+    kerbside <-- "A. discovery (per minute)<br/>B. ticket, per .vv request" --> engine
+    kerbside -- "5. 5900 → NEED_SECURED → 5901 TLS:<br/>engine CA verified, subject pinned" --> hypervisor
 ```
 
 **Discovery (A).** Once a minute the `type: ovirt` source driver

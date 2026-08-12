@@ -371,6 +371,10 @@ tox -e bindep
 - Wrap lines at 80 characters
 - Use `LOG.with_fields({...}).info()` for structured logging
 - Add audit events for security-sensitive operations
+- Diagrams in `docs/` are mermaid fenced blocks, not ASCII art, and
+  prefer a vertical flow. See "Diagrams in the documentation" in
+  `docs/development.md` for the conventions and the two deliberate
+  plain-text exceptions.
 
 ## Review tracking
 

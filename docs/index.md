@@ -122,7 +122,7 @@ Kolla-Ansible in the
 At the time of last update to this document, the Kolla OpenStack project had
 merged the OCI build portion of the proposed Kerbside support into the Kolla
 project, but had not yet merged the deployment code into Kolla-Ansible. That
-deployment code is tracked on 
+deployment code is tracked on
 [the OpenStack gerrit review system](https://review.opendev.org/q/topic:%22spice-direct-consoles%22)
 if you are curious as to its current state.
 

@@ -22,19 +22,16 @@ worker process per connection. Shared state (tokens, channel bookkeeping,
 audit) lives in the database, reached indirectly through the control-plane
 gRPC service — the proxy never touches MariaDB directly.
 
-```
-+---------------------------+
-|    kerbside-daemon        |  binds the gRPC UDS, then supervises the child
-+-------------+-------------+
-              | subprocess.Popen
-              v
-+---------------------------+   gRPC over UDS    +----------------------+
-|    kerbside-proxy (Rust)  | <----------------> | KerbsideProxy service |
-|    one tokio task / conn  |  authorize, audit, | (in the daemon)       |
-+-------------+-------------+  channel records   +----------------------+
-              | TLS relay
-              v
-         hypervisor SPICE
+```mermaid
+flowchart TD
+    daemon["kerbside-daemon<br/>binds the gRPC UDS,<br/>then supervises the child"]
+    proxy["kerbside-proxy (Rust)<br/>one tokio task per connection"]
+    service["KerbsideProxy service<br/>(in the daemon)"]
+    hypervisor["hypervisor SPICE"]
+
+    daemon -- "subprocess.Popen" --> proxy
+    proxy <-- "gRPC over UDS:<br/>authorize, audit, channel records" --> service
+    proxy -- "TLS relay" --> hypervisor
 ```
 
 ## Connection Listener
@@ -293,18 +290,12 @@ blocking new ones.
 
 `kerbside daemon run` supervises the Rust proxy binary as a child:
 
-```
-+---------------------------+
-|    kerbside-daemon        |  main.py:daemon_run
-|    (main.py)               |  - binds the gRPC UDS server FIRST
-+-------------+-------------+
-              |
-              | subprocess.Popen
-              v
-+---------------------------+
-|    kerbside-proxy         |  the Rust binary (rust/kerbside-proxy/)
-|    (async tokio tasks)    |  - dials the gRPC UDS at startup
-+---------------------------+  (ClearNodeChannels) and lazily thereafter
+```mermaid
+flowchart TD
+    daemon["kerbside-daemon (main.py:daemon_run)<br/>binds the gRPC UDS server FIRST"]
+    proxy["kerbside-proxy (async tokio tasks)<br/>the Rust binary (rust/kerbside-proxy/)<br/>dials the gRPC UDS at startup (ClearNodeChannels)<br/>and lazily thereafter"]
+
+    daemon -- "subprocess.Popen" --> proxy
 ```
 
 - The gRPC UDS server is bound **before** the child is launched, because
@@ -369,28 +360,31 @@ the same UDS as every other RPC in the table above. Termination therefore
 has to be a DB-mediated intent that each node acts on independently for
 the channels it happens to hold:
 
-```
-REST API                         Proxy node A              Proxy node B
-(may be elsewhere)                (holds channels           (holds other
-                                    1,2 of session S)         channels of S)
-    |                                   |                          |
-    | INSERT session_terminations(S)    |                          |
-    v                                   |                          |
-+----------+                            |                          |
-| MariaDB  | <--- polls get_terminations_for_node("A") ------------+
-| (only    | <--- polls get_terminations_for_node("B") -------------------+
-|  shared  |                            |                          |
-|  bus)    |                            |                          |
-+----------+                            |                          |
-                                         v                          v
-                              ProxyControl: TerminateSession(S)   ...same...
-                                         |
-                                         v
-                          Rust proxy: SessionRegistry.terminate(S)
-                                         |
-                                         v
-                    relay::run's select! sees token.cancelled() -> teardown
-                    (once per channel this node holds -- here, 2 relays end)
+```mermaid
+flowchart TD
+    api["REST API<br/>(may be elsewhere)"]
+    db[("MariaDB<br/>the only shared bus")]
+
+    api -- "INSERT session_terminations(S)" --> db
+
+    subgraph nodeA["Proxy node A — holds channels 1, 2 of session S"]
+        direction TB
+        daemonA["Daemon stream:<br/>ProxyControl TerminateSession(S)"]
+        registryA["Rust proxy:<br/>SessionRegistry.terminate(S)"]
+        relayA["relay::run's select! sees token.cancelled()<br/>→ teardown, once per channel this node<br/>holds — here, 2 relays end"]
+        daemonA --> registryA --> relayA
+    end
+
+    subgraph nodeB["Proxy node B — holds other channels of session S"]
+        direction TB
+        daemonB["Daemon stream:<br/>ProxyControl TerminateSession(S)"]
+        registryB["Rust proxy:<br/>SessionRegistry.terminate(S)"]
+        relayB["relay::run's select! sees token.cancelled()<br/>→ teardown, once per channel this node holds"]
+        daemonB --> registryB --> relayB
+    end
+
+    db -- "polls get_terminations_for_node(A)" --> daemonA
+    db -- "polls get_terminations_for_node(B)" --> daemonB
 ```
 
 Concretely:
