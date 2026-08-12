@@ -520,3 +520,63 @@ its own gate: before the sub-agent runs, restate the cell
 structure (four action columns and what each contains) and
 the two-step state machine to the operator, because 5d is
 cheap to brief and expensive to redo.
+
+## Outcome
+
+All five steps landed as planned: 5a merged to sfui as
+`f17a74c` (pull request #5), 5b re-vendored both consumers
+(`ac9504b` here; private-ci `80af1aa`, pushed to master the
+same hour so the 06:00 UTC audit never saw a stale copy), 5c
+is `2529bfe`, 5d is `b6870eb`, 5e is `efe81dc`.
+
+### Corrections to this plan, found while executing it
+
+* **`.sf-btn-group` already existed** (`sf.css:435`), so the
+  connect pair needed no `kb-` CSS at all — the plan's "if
+  the primitives already look right bare, add no styles"
+  hope came true for that cell.
+* **`pointerleave` does not bubble**, so the delegated
+  disarm listens for `pointerout` instead, guarded to
+  `pointerType === 'mouse'`: a touch pointer is destroyed
+  the instant the tap ends, and disarming on it would make
+  the second tap impossible. The buttons have no child
+  elements, so `pointerout` on them only ever means the
+  pointer actually left.
+* **The number-only summaries needed accessible names.**
+  Review caught that the tokens and terminate summaries
+  exposed a bare number once the icons went `aria-hidden`
+  (the old markup's `alt` text had carried the meaning), so
+  both gained an `aria-label`. The label matches the
+  existing "1 active authentication tokens" pluralization
+  bug in the visible prose rather than silently fixing one
+  of the two; a wording pass is deliberately not this
+  phase's business.
+
+### Verification
+
+Both palettes were rendered at 1280px from the new
+`tools/preview-templates.py consoles` fixtures and read,
+plus a forced-open variant and the 400px narrow layout: the
+icons follow the theme in both palettes, an open audit
+disclosure widens the table into its scroll wrapper exactly
+as the accepted risk described (and reads fine), and the
+narrow layout drops the header cluster into flow with the
+table scrolling in place.
+
+The two-step state machine was exercised with real DOM
+events in headless Chromium against the rendered page, with
+the terminate URL rewritten to a fragment so the navigation
+is observable: arm relabels to "Confirm?", arming a second
+button restores the first, `focusout` disarms, and only the
+second activation of the same button navigates. All five
+assertions passed.
+
+The mechanical checks all come back clean: `<tr>`/`</tr>`
+and `<li>`/`</li>` balance in the rendered page, the ticket
+and `host_subject` never render, no `static/icons` reference
+survives, the management-session grep finds no color
+literal, Bootstrap residue or important flag, and
+`tools/vendor.sh --check` passes for both consumers at sfui
+HEAD `f17a74c`. `tox -epy3` runs 128 tests including the
+new no-sessions smoke test; the pre-existing smoke tests
+are byte-unedited.
