@@ -54,14 +54,18 @@ the following steps need to occur:
    implemented.
 
 2. The cloud boots the instance that runs the desktop. The Broker waits for the
-   instance to be booted.
+   instance to be booted. In some cases the broker needs to perform additional
+   configuration on the instance once it has booted -- for example for OpenStack
+   the broker must request a console access token that is then provided to
+   Kerbside as proof of the right to connect to that specific instance.
 
 3. The Broker requests a `.vv` virt-viewer compatible ini file from Kerbside,
    and delivers that to the requesting user. The configuration file describes a
    connection to Kerbside, along with short lived access token.
 
-4. The user opens the `.vv` file with a SPICE client such as `remote-viewer`.
-   `remote-viewer` connects to Kerbside.
+4. The user opens the `.vv` file with a SPICE client such as `remote-viewer` or
+   [`ryll`](https://shakenfist.com/components/ryll/). This client connects to
+   Kerbside.
 
 5. Kerbside uses the access token to determine which instance in the cloud is
    the requested desktop and initiates a proxied connection to the hypervisor.
@@ -69,26 +73,29 @@ the following steps need to occur:
 6. The user then happily uses their SPICE console, largely unaware of these
    various steps.
 
+7. Kerbside monitors the SPICE protocol traffic as it flows between the client
+   and the hypervisor and enforces simple packet validity and security rules
+   on the traffic. This stops the client from attempting to exploit the
+   hypervisor by sending deliberately malformed requests.
+
+8. A Kerbside administrator may choose to terminate a session for various
+   business reasons. If requested, Kerbside will tear down the channel between
+   the client and the hypervisor, and the hypervisor will detect a client
+   disconnect.
+
 ### Connection Flow Diagram
 
-```
-+------------------+              +-------------------+              +------------------+
-|                  |              |                   |              |                  |
-|  External Broker |  1. Request  |     Kerbside      |  5. Connect  |   Hypervisor     |
-|  (SF/Horizon)    +------------->|   SPICE Proxy     +------------->|   (QEMU/KVM)     |
-|                  |   .vv file   |                   |   to console |                  |
-+--------+---------+              +---------+---------+              +------------------+
-         |                                  ^
-         | 2. Return                        |
-         |    .vv file                      | 4. Connect with
-         v                                  |    access token
-+--------+---------+                        |
-|                  |                        |
-|   User's SPICE   +------------------------+
-|   Client         |  3. User opens .vv file
-|  (remote-viewer) |
-|                  |
-+------------------+
+```mermaid
+flowchart TD
+    broker["External Broker<br/>(SF/Horizon)"]
+    client["User's SPICE Client<br/>(remote-viewer, ryll)"]
+    kerbside["Kerbside<br/>SPICE Proxy"]
+    hypervisor["Hypervisor<br/>(QEMU/KVM)"]
+
+    broker -- "1. Request .vv file" --> kerbside
+    broker -- "2. Return .vv file" --> client
+    client -- "3. User opens .vv file<br/>4. Connect with access token" --> kerbside
+    kerbside -- "5. Connect to console" --> hypervisor
 ```
 
 ### Implementation in OpenStack
@@ -112,6 +119,12 @@ ports on the hypervisor, and so Kerbside acts as an intermediary to protect
 those hypervisors. There is a sample implementation of Kerbside deployment using
 Kolla-Ansible in the
 [Kerbside Patches repository](https://github.com/shakenfist/kerbside-patches).
+At the time of last update to this document, the Kolla OpenStack project had
+merged the OCI build portion of the proposed Kerbside support into the Kolla
+project, but had not yet merged the deployment code into Kolla-Ansible. That
+deployment code is tracked on 
+[the OpenStack gerrit review system](https://review.opendev.org/q/topic:%22spice-direct-consoles%22)
+if you are curious as to its current state.
 
 ### What About Bumblebee?
 
