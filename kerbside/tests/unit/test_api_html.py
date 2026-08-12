@@ -130,6 +130,28 @@ class HtmlPagesTestCase(testtools.TestCase):
         self.assertIn('testvm', body)
         self.assertNotIn('sekrit-hypervisor-ticket', body)
 
+    @mock.patch('kerbside.api.db.get_consoles')
+    def test_consoles_page_renders_without_sessions(
+            self, mock_get_consoles):
+        # The no-sessions branch (decision 3 of the phase 5 plan) renders
+        # a dim zero badge and no terminate disclosure instead of the
+        # dropdown the sessions case exercises above -- a distinct
+        # fixture proves that branch renders too, not just that it
+        # exists in the template.
+        quiet_console = copy.deepcopy(CONSOLE)
+        quiet_console.update({
+            'name': 'quietvm', 'sessions': [], 'token_count': 0, 'audit': [],
+        })
+        mock_get_consoles.return_value = [quiet_console]
+
+        resp = self.client.get('/console', headers={'Accept': 'text/html'})
+
+        self.assertEqual(200, resp.status_code)
+        self.assertIn('text/html', resp.content_type)
+        body = resp.get_data(as_text=True)
+        self.assertIn('quietvm', body)
+        self.assertNotIn('sekrit-hypervisor-ticket', body)
+
     @mock.patch('kerbside.api.db.get_sessions')
     def test_sessions_page_renders(self, mock_get_sessions):
         mock_get_sessions.return_value = copy.deepcopy(SESSIONS)

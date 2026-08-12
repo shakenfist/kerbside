@@ -393,8 +393,18 @@ kerbside/
   sources/             # Cloud source implementations
   api/                 # Web UI assets
     templates/         # Jinja2 templates: base.html (old Bootstrap base)
-                       #   and base-sfui.html (new sfui base; see AGENTS.md)
-    static/            # CSS, JS, icons
+                       #   and base-sfui.html (new sfui base; see AGENTS.md).
+                       #   login.html and consoles.html extend base-sfui.html;
+                       #   sessions.html, sources.html and audit.html still
+                       #   extend base.html until phase 6.
+      icons/           # Theme-following icons, inlined via
+                       #   {% include 'icons/....svg' %} rather than served
+                       #   as static assets -- an SVG loaded through <img>
+                       #   never inherits the page's currentColor, so
+                       #   following the theme requires the markup to be
+                       #   part of the page.
+    static/            # CSS, JS (static/icons/ retired; see templates/icons/
+                       #   above)
       sfui/            # Vendored shakenfist/sfui design system (never
                        #   edited in place; see docs/development.md)
 rust/kerbside-proxy/   # The Rust SPICE proxy (binary crate)
