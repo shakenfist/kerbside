@@ -1,6 +1,7 @@
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 import click
+import datetime
 import importlib.resources
 from shakenfist_utilities import logs
 import logging
@@ -359,3 +360,145 @@ def db_downgrade(ctx, revision):
 
 
 db.add_command(db_downgrade)
+
+
+@click.group(help='DEMONSTRATION USE ONLY. Helpers for running the '
+                  'standalone kerbside demo; not supported in production.')
+def demo():
+    pass
+
+
+cli.add_command(demo)
+
+
+# The sentinel every security-relevant config field defaults to. Minting a
+# token signed with it would be signing with a constant that is public in
+# this source tree -- see issue #131.
+_UNCONFIGURED = '~~unconfigured~~'
+
+
+def _demo_sources_or_fail():
+    """Return the configured sources, refusing unless all are static.
+
+    A session JWT is not scoped to a source: verify_token() checks the
+    signature and expiry and nothing else, so the resulting token
+    authorises every console of every configured source. "Only mint for
+    static sources" therefore cannot be enforced per source; the only
+    coherent reading is to refuse entirely unless the whole deployment is
+    static, which is what this does.
+
+    The sources file is read rather than the sources table, because the
+    table can hold rows that _parse_sources() has not yet reconciled, and
+    a stale row blocking a legitimate demo is how a guard ends up growing
+    a --force flag.
+
+    Every failure here is fatal and fail-closed: an unreadable or empty
+    source list is "unknown", not "no non-static sources".
+    """
+    if not os.path.exists(config.SOURCES_PATH):
+        _fail('Refusing to mint: no sources file at %s. This command only '
+              'runs against a configured static-source demo.'
+              % config.SOURCES_PATH)
+
+    try:
+        with open(config.SOURCES_PATH) as f:
+            sources = yaml.safe_load(f)
+    except (OSError, yaml.YAMLError) as e:
+        _fail('Refusing to mint: could not read sources from %s: %s'
+              % (config.SOURCES_PATH, e))
+
+    if not sources or not isinstance(sources, list):
+        _fail('Refusing to mint: %s defines no sources. This command only '
+              'runs against a configured static-source demo.'
+              % config.SOURCES_PATH)
+
+    for source in sources:
+        source_type = source.get('type')
+        if source_type != 'static':
+            _fail(
+                'Refusing to mint: source "%s" is of type "%s", not '
+                '"static". This command is a demonstration affordance and '
+                'will not issue credentials for a deployment that fronts a '
+                'real cloud. See issue #300 for the underlying gap.'
+                % (source.get('source', '<unnamed>'), source_type))
+
+    return sources
+
+
+@demo.command(
+    name='token',
+    help='DEMONSTRATION USE ONLY. Mint a bearer token for the demo stack. '
+         'Refuses unless every configured source is of type "static".')
+@click.option('--subject', required=True,
+              help='The JWT subject (a username) to mint the token for')
+@click.option('--duration', type=int, default=None,
+              help='Token lifetime in minutes [default: API_TOKEN_DURATION]')
+@click.option('--output', type=click.Path(dir_okay=False, writable=True),
+              default=None,
+              help='Write the token to this file (mode 0600) instead of '
+                   'stdout. Prefer this when capturing the token in a '
+                   'script: kerbside prints startup diagnostics to stdout, '
+                   'so stdout is not a clean channel.')
+@click.pass_context
+def demo_token(ctx, subject, duration, output):
+    if config.AUTH_SECRET_SEED == _UNCONFIGURED:
+        _fail('Refusing to mint: AUTH_SECRET_SEED is unconfigured, so the '
+              'token would be signed with a constant that is public in the '
+              'kerbside source tree. Set it to a random value, for example '
+              'with "openssl rand -hex 32".')
+
+    _demo_sources_or_fail()
+
+    if duration is None:
+        duration = config.API_TOKEN_DURATION
+
+    # Minted through the same flask-jwt-extended call the Keystone login
+    # path uses (api.py), inside an app context so it picks up the
+    # configured signing key. Deliberately NOT a hand-rolled PyJWT
+    # payload: one place decides the claim shape, which is the whole
+    # reason this is a command rather than a snippet in a shell script.
+    #
+    # The openstack_token claim that the Keystone path adds is omitted.
+    # Nothing in kerbside ever reads it -- verified by grep -- so a token
+    # without it is functionally identical. Do not "fix" this by adding
+    # an empty one.
+    from . import api as kerbside_api
+
+    with kerbside_api.app.app_context():
+        # Sign with the seed this command validated above, rather than
+        # whatever api.py captured into JWT_SECRET_KEY when it was
+        # imported. They are the same value in a normal CLI run, but
+        # depending on import ordering for a signing key is the kind of
+        # coupling that breaks quietly and produces tokens nothing will
+        # accept.
+        kerbside_api.app.config['JWT_SECRET_KEY'] = config.AUTH_SECRET_SEED
+
+        token = kerbside_api.create_access_token(
+            identity=subject,
+            additional_claims={'iss': config.PUBLIC_FQDN},
+            expires_delta=datetime.timedelta(minutes=duration))
+
+    LOG.with_fields({'subject': subject, 'duration': duration}).warning(
+        'Minted a demonstration API token')
+    click.echo(
+        'WARNING: this is a demonstration token, minted directly from '
+        'AUTH_SECRET_SEED because kerbside has no non-Keystone login '
+        '(issue #300). Do not use this pattern in production.', err=True)
+
+    if output:
+        # 0600 before anything is written: this is a bearer credential,
+        # and it is worth not racing a wider default umask.
+        fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'w') as f:
+            f.write(token)
+        click.echo('Token written to %s' % output, err=True)
+        return
+
+    # NOTE(mikal): stdout is NOT a clean channel here. util.configure_logging()
+    # and api.py both print startup diagnostics to it at import time, so a
+    # caller doing token=$(kerbside demo token) captures those too. Use
+    # --output when scripting; this path is for reading off a terminal.
+    click.echo(token)
+
+
+demo.add_command(demo_token)

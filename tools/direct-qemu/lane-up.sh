@@ -110,15 +110,17 @@ fi
 
 # ── Step 6: Fetch the .vv file from the kerbside REST API ────────────────────
 #
-# All console endpoints require a JWT Bearer token.  We know the
-# AUTH_SECRET_SEED because start-kerbside.sh wrote it to
-# ${WORKDIR}/kerbside-auth-seed.txt.  We mint a token directly with
-# PyJWT (installed as a dependency of flask-jwt-extended) using the
-# same payload shape that flask-jwt-extended's create_access_token
-# produces: fresh=false, type=access, sub=<identity>, jti=<uuid>,
-# iat=now, exp=now+1h.  The kerbside verify_token decorator only
-# calls verify_jwt_in_request which checks the signature and expiry;
-# it does not validate any keystone claims.
+# All console endpoints require a JWT Bearer token.  "kerbside demo
+# token" mints one from AUTH_SECRET_SEED, which start-kerbside.sh has
+# already put in the environment.  This used to be a hand-rolled PyJWT
+# payload here, reverse-engineered from flask-jwt-extended's internals;
+# the command mints through create_access_token itself, so the claim
+# shape is decided in one place instead of drifting between this script
+# and the library.
+#
+# The command refuses unless every configured source is of type static,
+# which holds for this lane -- so a refusal means sources.yaml is wrong,
+# not that the token step needs working around.
 #
 # Endpoint: GET /console/proxy/<source>/<uuid>/console.vv
 # The "proxy" variant embeds the CA cert and points ryll at kerbside's
@@ -126,44 +128,30 @@ fi
 # at QEMU's SPICE port directly.  This is the correct endpoint for
 # smoke-checking that kerbside sits in the connection path.
 
+# start-kerbside.sh runs as a child process, so its exported seed does not
+# reach us; it persists the seed to a file for exactly this reason. Both
+# the seed and the sources path have to be in the command's environment:
+# it refuses on an unconfigured seed, and it reads SOURCES_PATH to check
+# that every configured source is static.
 SEED_FILE="${WORKDIR}/kerbside-auth-seed.txt"
 if [ ! -f "${SEED_FILE}" ]; then
     echo "ERROR: auth seed file not found: ${SEED_FILE}" >&2
     exit 1
 fi
-AUTH_SEED="$(cat "${SEED_FILE}")"
 
-JWT_TOKEN="$(python3 - "${AUTH_SEED}" << 'PYEOF'
-import sys
-import time
-import uuid
+# --output rather than capturing stdout: kerbside prints startup
+# diagnostics to stdout at import time (util.configure_logging and
+# api.py), so $(...) would capture those along with the token.
+TOKEN_FILE="${WORKDIR}/kerbside-api-token.txt"
+KERBSIDE_AUTH_SECRET_SEED="$(cat "${SEED_FILE}")" \
+KERBSIDE_SOURCES_PATH="${SOURCES_PATH}" \
+    kerbside demo token --subject kerbside-ci --output "${TOKEN_FILE}"
 
-# flask-jwt-extended depends on PyJWT; import it the same way.
-import jwt as pyjwt
-
-seed = sys.argv[1]
-now = int(time.time())
-payload = {
-    'fresh': False,
-    'iat': now,
-    'jti': str(uuid.uuid4()),
-    'type': 'access',
-    # flask-jwt-extended validates that sub is a string (RFC 7519
-    # StringOrURI); a list here is rejected at verify time with
-    # "Subject must be a string".  kerbside.verify_token does not
-    # inspect the identity, only the signature/expiry, so any
-    # string is fine.
-    'sub': 'kerbside-ci',
-    'nbf': now,
-    'exp': now + 3600,
-}
-token = pyjwt.encode(payload, seed, algorithm='HS256')
-# PyJWT >= 2.x returns str; earlier versions returned bytes.
-if isinstance(token, bytes):
-    token = token.decode('utf-8')
-print(token, end='')
-PYEOF
-)"
+JWT_TOKEN="$(cat "${TOKEN_FILE}")"
+if [ -z "${JWT_TOKEN}" ]; then
+    echo "ERROR: kerbside demo token wrote no token to ${TOKEN_FILE}" >&2
+    exit 1
+fi
 
 VV_URL="http://127.0.0.1:${API_PORT}/console/proxy/${CONSOLE_SOURCE}/${CONSOLE_UUID}/console.vv"
 echo "[lane-up] Fetching .vv from ${VV_URL}"
