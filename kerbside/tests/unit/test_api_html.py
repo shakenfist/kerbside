@@ -162,6 +162,17 @@ class HtmlPagesTestCase(testtools.TestCase):
         self.assertIn('sess-1', body)
         self.assertIn('testvm', body)
 
+    @mock.patch('kerbside.api.db.get_sessions')
+    def test_sessions_page_renders_empty(self, mock_get_sessions):
+        mock_get_sessions.return_value = {}
+
+        resp = self.client.get('/session', headers={'Accept': 'text/html'})
+
+        self.assertEqual(200, resp.status_code)
+        self.assertIn('text/html', resp.content_type)
+        body = resp.get_data(as_text=True)
+        self.assertIn('There are no active sessions', body)
+
     @mock.patch('kerbside.api.db.get_sources')
     def test_sources_page_renders_and_hides_password(self, mock_get_sources):
         mock_get_sources.return_value = [copy.deepcopy(SOURCE)]
@@ -173,6 +184,20 @@ class HtmlPagesTestCase(testtools.TestCase):
         body = resp.get_data(as_text=True)
         self.assertIn('sf1', body)
         self.assertIn('CA-CERT-MARKER', body)
+        self.assertNotIn('sekrit-source-password', body)
+
+    @mock.patch('kerbside.api.db.get_sources')
+    def test_sources_page_renders_without_ca_cert(self, mock_get_sources):
+        source = copy.deepcopy(SOURCE)
+        source.update({'name': 'no-ca-source', 'ca_cert': None})
+        mock_get_sources.return_value = [source]
+
+        resp = self.client.get('/source', headers={'Accept': 'text/html'})
+
+        self.assertEqual(200, resp.status_code)
+        self.assertIn('text/html', resp.content_type)
+        body = resp.get_data(as_text=True)
+        self.assertIn('no-ca-source', body)
         self.assertNotIn('sekrit-source-password', body)
 
     @mock.patch('kerbside.api.db.get_audit_events')
@@ -195,6 +220,24 @@ class HtmlPagesTestCase(testtools.TestCase):
         body = resp.get_data(as_text=True)
         self.assertIn('audit-marker-event', body)
         self.assertIn('testvm', body)
+
+    @mock.patch('kerbside.api.db.get_audit_events')
+    @mock.patch('kerbside.api.db.count_audit_events')
+    @mock.patch('kerbside.api.db.get_console')
+    def test_audit_page_hides_ticket_and_shows_total(
+            self, mock_get_console, mock_count_events, mock_get_events):
+        mock_get_console.return_value = copy.deepcopy(CONSOLE)
+        mock_count_events.return_value = 4242
+        mock_get_events.return_value = [copy.deepcopy(AUDIT_EVENT)]
+
+        resp = self.client.get(
+            '/console/sf1/u-1234/audit', headers={'Accept': 'text/html'})
+
+        self.assertEqual(200, resp.status_code)
+        body = resp.get_data(as_text=True)
+        self.assertIn('audit-marker-event', body)
+        self.assertIn('4242', body)
+        self.assertNotIn('sekrit-hypervisor-ticket', body)
 
     # NOTE: the terminate routes below are still GET. They move to POST as part
     # of the sfui conversion; these two tests will need to issue POSTs at that

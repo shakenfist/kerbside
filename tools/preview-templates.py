@@ -16,13 +16,10 @@ screenshot.
 
 Only pages that have actually been converted onto base-sfui.html are
 listed in PAGES below -- this script must never invent fixtures for a
-page that has not been converted yet. Today that is 'login' and
-'consoles': login is an unauthenticated GET / that renders directly, no
-database and no JWT needed; consoles needs both mocked. The sessions,
-sources and audit pages each need authentication and one or more
-kerbside.db calls mocked; as they are converted, add them as further
-entries in PAGES, each carrying whatever list of (target, patch kwargs)
-pairs its route needs, rather than restructuring this script.
+page that has not been converted yet. Today that is all five: 'login',
+which renders directly with no database and no JWT needed, and
+'consoles', 'sessions', 'sources' and 'audit', which each need
+authentication and one or more kerbside.db calls mocked.
 """
 
 import argparse
@@ -37,7 +34,8 @@ sys.path.insert(0, REPO_ROOT)
 
 try:
     from kerbside import api  # noqa: E402
-    from kerbside.tests.unit.test_api_html import CONSOLE  # noqa: E402
+    from kerbside.tests.unit.test_api_html import (  # noqa: E402
+        AUDIT_EVENT, CONSOLE, SESSIONS, SOURCE)
 except ImportError as e:
     # kerbside's dependencies are not installed system wide, so a bare
     # system python3 gets a bare ModuleNotFoundError here. Say which
@@ -58,9 +56,9 @@ except ImportError as e:
 #       for the duration of the request, innermost last. Empty for a page
 #       that needs neither authentication nor the database, like login.
 #
-# A future authenticated page looks like:
+# An authenticated page looks like:
 #
-#   'source': {
+#   'sources': {
 #       'route': '/source',
 #       'patches': [
 #           ('kerbside.api.verify_jwt_in_request',
@@ -69,15 +67,32 @@ except ImportError as e:
 #       ],
 #   },
 #
-# The consoles entry below follows that shape, reusing the smoke test's
-# CONSOLE fixture rather than duplicating it -- a second, no-sessions
-# variant sits alongside it so one screenshot shows both terminate
-# states: the disclosure of two-step buttons, and the dim zero badge.
+# Every authenticated entry below reuses the smoke test's fixtures rather
+# than duplicating them, and adds a second, differing row or event where
+# that shows a branch a single fixture would not: consoles gets a
+# no-sessions variant so one screenshot shows both terminate states (the
+# disclosure of two-step buttons, and the dim zero badge); sources gets an
+# errored, no-CA variant alongside the ok, CA-bearing one; audit gets
+# several distinguishable events instead of just one.
 QUIET_CONSOLE = copy.deepcopy(CONSOLE)
 QUIET_CONSOLE.update({
     'name': 'quietvm', 'uuid': 'u-5678', 'sessions': [], 'token_count': 0,
     'audit': [],
 })
+
+# A second source, distinct from SOURCE, so one screenshot shows both
+# badge states (errored/ok), the CA disclosure open and closed, and the
+# dim 'none' badge for a source with no ca_cert.
+ERRORED_SOURCE = copy.deepcopy(SOURCE)
+ERRORED_SOURCE.update({
+    'name': 'ovirt1', 'errored': True, 'ca_cert': None,
+})
+
+# A handful of distinguishable events, so the audit table shows more
+# than a single row.
+AUDIT_EVENTS = [copy.deepcopy(AUDIT_EVENT) for _ in range(3)]
+for _index, _event in enumerate(AUDIT_EVENTS):
+    _event['message'] = 'audit-marker-event-%d' % _index
 
 PAGES = {
     'login': {
@@ -91,6 +106,36 @@ PAGES = {
              {'return_value': (None, {})}),
             ('kerbside.api.db.get_consoles',
              {'return_value': [copy.deepcopy(CONSOLE), QUIET_CONSOLE]}),
+        ],
+    },
+    'sessions': {
+        'route': '/session',
+        'patches': [
+            ('kerbside.api.verify_jwt_in_request',
+             {'return_value': (None, {})}),
+            ('kerbside.api.db.get_sessions',
+             {'return_value': copy.deepcopy(SESSIONS)}),
+        ],
+    },
+    'sources': {
+        'route': '/source',
+        'patches': [
+            ('kerbside.api.verify_jwt_in_request',
+             {'return_value': (None, {})}),
+            ('kerbside.api.db.get_sources',
+             {'return_value': [copy.deepcopy(SOURCE), ERRORED_SOURCE]}),
+        ],
+    },
+    'audit': {
+        'route': '/console/sf1/u-1234/audit',
+        'patches': [
+            ('kerbside.api.verify_jwt_in_request',
+             {'return_value': (None, {})}),
+            ('kerbside.api.db.get_console',
+             {'return_value': copy.deepcopy(CONSOLE)}),
+            ('kerbside.api.db.count_audit_events', {'return_value': 42}),
+            ('kerbside.api.db.get_audit_events',
+             {'return_value': AUDIT_EVENTS}),
         ],
     },
 }
