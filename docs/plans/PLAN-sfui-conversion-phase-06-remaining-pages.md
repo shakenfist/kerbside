@@ -368,3 +368,60 @@ on the plan and how the intended work aligns with it. No step
 in this phase is expensive to redo, so no additional gate
 beyond the standing back brief is required; the one sequencing
 hard-stop is the PR #292 rebase in the logistics section.
+
+## Outcome
+
+Executed 2026-08-14. PR #292 had merged, so the branch was
+rebased onto `develop` at `98bef5c` (clean, no conflicts)
+before any implementation ran; the plan commit is `498f5ff`.
+All five steps landed, each as its own commit after
+management-session review of the actual files:
+
+- 6a `e0256f6` — the two-step terminate script moved verbatim
+  into `includes/two-step-terminate.html` (extraction verified
+  byte-for-byte; the rendered consoles page differed only in
+  the dynamic footer timestamp).
+- 6b `0edecc4` — sessions page: disclosure-panel accordion,
+  first open, stable `session-` ids, shared terminate include,
+  tolerant interpolation for orphan sessions.
+- 6c `d4fdf29` — sources page: named-fields-only table over
+  the secret-carrying context, red/green errored badges,
+  guarded `last_seen`, CA disclosure with `sf-code` body,
+  dim `none`/`never` badges.
+- 6d `7901fa8` — audit page: section header with the UUID
+  outside the uppercase h2, defects fixed, `total_events`
+  footnote with the `?limit=200` link.
+- 6e `0f1779f` — preview entries for all three pages, three
+  new marker-based smoke tests (audit ticket-absence and
+  total_events, empty sessions, no-CA source), docs updated
+  in the post-#292 voice.
+
+### Corrections to this plan, found while executing it
+
+- The verification grep "`axios` → nothing over
+  `kerbside/api/templates/`" cannot hold until phase 9: the
+  deliberately untouched `base.html` still loads axios. The
+  greps were scoped to exclude `base.html`; every converted
+  template and the include are clean.
+- The 6b brief under-specified design decision 6: it did not
+  name the Created column's strftime. Caught in management
+  review; the ProxyChannel constructor always stamps
+  `created`, so the unguarded call matches the consoles-page
+  precedent.
+
+### Verification
+
+All items from the Verification section ran clean:
+`tox -eflake8` and `tox -epy3` (131 tests, up from 128);
+`kerbside/api.py` and `kerbside/api/static/` byte-identical
+to `develop`; mechanical greps clean (no `extends
+"base.html"`, no `data-bs-`, no `id="data"`, one
+`armedTerminate` copy, no color literals); all three pages
+rendered and eyeballed in both palettes plus the forced-open
+CA disclosure and a 400px sessions render (the channels
+table scrolls inside its panel); rendered `<tr>` counts
+balanced and both secret sentinels absent; and the DOM-event
+harness against the rendered sessions page passed all five
+assertions (arm, focusout disarm, re-arm, fire on second
+activation via the rewritten `#fired` URL, no spurious
+disarm before the fire).

@@ -240,7 +240,7 @@ locally-running kerbside.
 | 3. sfui canonical additions (shakenfist/sfui repo) | PLAN-sfui-conversion-phase-03-sfui-canonical.md | Done |
 | 4. New base + login page | PLAN-sfui-conversion-phase-04-base-login.md | Done |
 | 5. Consoles page | PLAN-sfui-conversion-phase-05-consoles.md | Done |
-| 6. Sessions, sources and audit pages | PLAN-sfui-conversion-phase-06-remaining-pages.md | Planned |
+| 6. Sessions, sources and audit pages | PLAN-sfui-conversion-phase-06-remaining-pages.md | Done |
 | 7. morphdom polling | PLAN-sfui-conversion-phase-07-polling.md | Not started |
 | 8. Terminate actions to POST (#133) | PLAN-sfui-conversion-phase-08-terminate-post.md | Not started |
 | 9. Teardown, docs and issue closure | PLAN-sfui-conversion-phase-09-teardown.md | Not started |
