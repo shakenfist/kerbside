@@ -11,7 +11,7 @@
 #
 # The wheel carries a compiled binary, so it is platform-tagged; CI builds
 # a manylinux wheel per architecture (x86_64 and aarch64). No sdist is
-# published (see PLAN-rust-proxy-phase-06-packaging.md).
+# published.
 #
 # The package VERSION is read from Cargo.toml `[package] version` (via
 # `dynamic = ["version"]`), which the release stamps from the `v*` tag so

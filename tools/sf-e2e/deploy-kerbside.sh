@@ -27,7 +27,6 @@
 #     [--api-port 13002]
 #
 # SECURITY: never echoes the system key, the auth seed, or key material.
-# Part of docs/plans/PLAN-kerbside-vdi-tokens-phase-09-e2e.md.
 
 set -euo pipefail
 

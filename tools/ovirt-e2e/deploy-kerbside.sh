@@ -38,7 +38,6 @@
 #     [--api-port 13002]
 #
 # SECURITY: never echoes the engine password, the auth seed, or key material.
-# Part of docs/plans/PLAN-two-tier-ci-phase-01-ovirt-kerbside.md.
 
 set -euo pipefail
 

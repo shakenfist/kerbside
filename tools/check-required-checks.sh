@@ -1,23 +1,20 @@
 #!/bin/bash
 
-# Assert that every required status check context in the exported
-# develop ruleset (.github/exported-config/ruleset-*.json, archived by
-# export-repo-config.yml) matches a job display name in
-# .github/workflows/. The required checks are bound to workflow jobs
-# purely by display-name string matching, and a required check whose
-# name matches no job never reports -- which blocks every merge in the
-# repository until an operator edits the ruleset by hand. This check
-# converts that failure from "discovered when merges stop working"
-# into a red smoke check. See
-# docs/plans/PLAN-two-tier-ci-phase-03-merge-queue.md.
+# Assert that every required status check context in the exported develop
+# ruleset (.github/exported-config/ruleset-*.json, archived by
+# export-repo-config.yml) matches a job display name in .github/workflows/. The
+# required checks are bound to workflow jobs purely by display-name string
+# matching, and a required check whose name matches no job never reports --
+# which blocks every merge in the repository until an operator edits the
+# ruleset by hand. This check converts that failure from "discovered when
+# merges stop working" into a red smoke check.
 #
 # The match is anchored to job-level indentation (four spaces) so a
 # step name can never satisfy it, and accepts unquoted, single- or
 # double-quoted YAML names. Parsing uses python3 rather than jq so the
 # script has no dependencies beyond the runner image.
 #
-# Until the phase 3 ruleset change has been applied and re-exported,
-# the exported rulesets contain no required_status_checks and this
+# If the exported rulesets contain no required_status_checks, this
 # passes trivially.
 
 set -e

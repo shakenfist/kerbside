@@ -206,8 +206,8 @@ class SigningKeyRefreshTestCase(testtools.TestCase):
     """Signing keys refresh via per-tick source re-instantiation.
 
     The maintenance loop rebuilds each source every tick, and __init__
-    fetches the keys, so there is no separate refresh timer (phase 6
-    decision 3). This documents that construction re-runs the fetch.
+    fetches the keys, so there is no separate refresh timer. This
+    documents that construction re-runs the fetch.
     """
 
     def test_construction_refetches_signing_keys(self):

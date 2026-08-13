@@ -1,14 +1,13 @@
 //! kerbside-proxy: an inspection-first SPICE relay.
 //!
-//! This is the phase-3 proxy: it installs the rustls crypto provider, parses
-//! the CLI configuration (mirroring `kerbside/config.py`), and initialises
-//! tracing, then stands up the full connection path -- the plaintext
-//! (redirect-to-secure) and TLS SPICE listeners, the gRPC client to the
-//! `KerbsideProxy` control service, the per-connection handshake +
-//! authorization, the backend hypervisor connect, and the inspection-first
-//! relay -- behind a concurrency cap, with a Prometheus `/metrics` endpoint
-//! and graceful shutdown on SIGTERM/Ctrl-C. Firewall enforcement (L0/L1) is
-//! phase 4; daemon integration and session-termination push are phase 5.
+//! It installs the rustls crypto provider, parses the CLI configuration
+//! (mirroring `kerbside/config.py`), and initialises tracing, then stands up
+//! the full connection path -- the plaintext (redirect-to-secure) and TLS SPICE
+//! listeners, the gRPC client to the `KerbsideProxy` control service, the
+//! per-connection handshake + authorization, the backend hypervisor connect,
+//! and the inspection-first relay with its L0/L1 firewall enforcement -- behind
+//! a concurrency cap, with a Prometheus `/metrics` endpoint and graceful
+//! shutdown on SIGTERM/Ctrl-C.
 
 use std::io::IsTerminal;
 use std::net::SocketAddr;
@@ -46,12 +45,12 @@ mod session;
 /// handoff.
 mod backend;
 
-/// The relay's inspection policy seam (Policy/Verdict/Direction). Phase 3
-/// ships PermissivePolicy; phase 4 fills it with L0/L1 enforcement.
+/// The relay's inspection policy seam (Policy/Verdict/Direction) and the
+/// `EnforcingPolicy` L0/L1 firewall engine that fills it.
 mod policy;
 
 /// The compiled-in L1 message-type grammar table (per channel + direction).
-/// Consulted by phase 4's firewall engine (`policy.rs`).
+/// Consulted by the firewall engine (`policy.rs`).
 mod allowlist;
 
 /// The inspection-first, per-message-framed SPICE relay.
@@ -63,14 +62,13 @@ mod metrics;
 
 /// A coarse cap on concurrently-handled secure connections, enforced by a
 /// `tokio::sync::Semaphore` in `main`'s secure-connection handler. This is a
-/// blunt process-wide limit to bound resource use under load; phases 4/5 may
-/// make it configurable (a CLI flag) or replace it with finer-grained
+/// blunt process-wide limit to bound resource use under load; it could later
+/// become configurable (a CLI flag) or be replaced with finer-grained
 /// backpressure.
 const MAX_CONCURRENT_SESSIONS: usize = 1000;
 
 /// Kerbside SPICE proxy configuration. Defaults mirror `kerbside/config.py`
-/// so the Python daemon can pass matching values when it spawns the proxy
-/// (phase 5).
+/// so the Python daemon can pass matching values when it spawns the proxy.
 #[derive(Debug, Parser)]
 #[command(name = "kerbside-proxy", about = "Kerbside SPICE proxy")]
 struct Args {
@@ -191,8 +189,7 @@ async fn main() -> Result<()> {
     // Consume the ProxyControl event stream in the background: heartbeats are
     // logged, TerminateSession cancels the session's in-flight channels via the
     // shared registry. A failure to even open the stream (e.g. the daemon is
-    // not up yet) is logged and the task simply ends; it is not reconnected
-    // this phase.
+    // not up yet) is logged and the task simply ends; it is not reconnected.
     {
         let state = state.clone();
         tokio::spawn(async move {

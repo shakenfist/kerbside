@@ -9,7 +9,7 @@ kerbside tree (``loadtests/latency/orchestrator.py`` and
 are lifted from them rather than reinvented. They are not reused
 directly because the tempest plugin is an installable package and
 cannot import from ``loadtests/`` or ``tools/``. Consolidating the
-three copies is noted as phase 7 future work.
+three copies is future work.
 
 Design notes:
 
@@ -25,7 +25,7 @@ Design notes:
   the caller owns the read loop by calling ``call`` and ``wait_for_event``.
 - **EOF is a distinct, catchable condition.** End-of-stream during any
   read raises :class:`RyllConnectionClosed`, a type separate from
-  :class:`RyllTimeout` and :class:`RyllRpcError`. The phase 7 scenario
+  :class:`RyllTimeout` and :class:`RyllRpcError`. The Sextant scenario
   test treats EOF after the final keypress as expected (ryll exits and
   unlinks the socket once the guest shuts down), so it must be catchable
   specifically rather than blanket-caught alongside genuine failures.
@@ -291,9 +291,9 @@ class RyllClient:
 
         Thin wrapper over :meth:`call`. The server silently drops event
         names it does not recognise, so the returned ``subscribed`` list
-        may be a subset of ``names`` — the caller should check it. In the
-        phase 7 lane an empty result for ``digest_updated`` means ryll was
-        built without the ``digest-decode`` feature.
+        may be a subset of ``names`` — the caller should check it. An
+        empty result for ``digest_updated`` means ryll was built without
+        the ``digest-decode`` feature.
         """
         result = self.call('subscribe', {'events': list(names)}, timeout=timeout)
         return result.get('subscribed', [])

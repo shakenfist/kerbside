@@ -63,7 +63,7 @@ class AuthorizeConnectionRequest(_message.Message):
     CHANNEL_ID_FIELD_NUMBER: _builtins.int
     token: _builtins.str
     """token is the RSA-decrypted plaintext the proxy recovered from the SPICE
-    client's encrypted password (phase 1, decrypt_password).
+    client's encrypted password (decrypt_password).
     """
     connection_ref: _builtins.str
     """connection_ref is a proxy-generated per-connection identifier that

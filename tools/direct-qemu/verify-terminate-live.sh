@@ -1,11 +1,10 @@
 #!/bin/bash
-# Phase 7: end-to-end proof that terminating a session via the REST API drops
-# the in-flight connection on the Rust proxy -- exercising the whole phase-5
+# End-to-end proof that terminating a session via the REST API drops the
+# in-flight connection on the Rust proxy -- exercising the whole termination
 # bridge live (API -> session_terminations DB row -> the daemon's node-scoped
 # ProxyControl poll -> TerminateSession -> the proxy's SessionRegistry cancel
-# -> relay teardown). Phase 5 only ever drove this through the mock's
-# one-shot ProxyControl emitter; here it runs through the real daemon, API,
-# and MariaDB.
+# -> relay teardown). Unlike the mock harness's one-shot ProxyControl
+# emitter, this runs through the real daemon, API, and MariaDB.
 #
 # Self-contained: brings up its OWN isolated lane (a separate WORKDIR so it
 # neither clobbers nor is clobbered by the shared scenario lane, and so its

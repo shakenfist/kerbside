@@ -16,7 +16,7 @@
 //!    (`AuthorizeConnection`), sending the client the protocol-correct
 //!    `SpiceError` on denial/failure, and
 //! 7. on success, hands the authorized stream off to the backend leg + relay
-//!    (`crate::backend::run`, a stub until phases 3e/3f).
+//!    (`crate::backend::run`).
 //!
 //! Every path that gets as far as a successful `RegisterChannel`
 //! deregisters on teardown, and no path panics: a hostile or broken client
@@ -49,7 +49,7 @@ struct SessionEntry {
 }
 
 /// A `session_id -> CancellationToken` registry so the control plane can drop
-/// every in-flight channel of a session at once (phase-5 `TerminateSession`).
+/// every in-flight channel of a session at once (`TerminateSession`).
 ///
 /// A SPICE session is several channels, each its own connection/task; they all
 /// share one [`CancellationToken`] keyed by `session_id`, so cancelling it
@@ -57,8 +57,8 @@ struct SessionEntry {
 /// last channel of a session ends. This node only ever tracks the channels it
 /// hosts (a load balancer may place other channels of the same session on other
 /// nodes, which each terminate their own — see the distributed-deployment note
-/// in the phase-5 plan). All methods are short synchronous map operations; the
-/// `std::sync::Mutex` is never held across an `.await`.
+/// in `docs/proxy-architecture.md`). All methods are short synchronous map
+/// operations; the `std::sync::Mutex` is never held across an `.await`.
 #[derive(Default)]
 pub struct SessionRegistry {
     inner: Mutex<HashMap<String, SessionEntry>>,
@@ -125,10 +125,10 @@ impl SessionRegistry {
 pub struct SharedState {
     pub rpc: KerbsideRpc,
     pub node_name: String,
-    /// Per-session cancellation registry (phase 5): the `ProxyControl`
-    /// consumer terminates a session by cancelling its token here. Held behind
-    /// its own `Arc` so it can be cloned into the ProxyControl consumer task
-    /// and the shutdown drain independently of the rest of `SharedState`.
+    /// Per-session cancellation registry: the `ProxyControl` consumer
+    /// terminates a session by cancelling its token here. Held behind its own
+    /// `Arc` so it can be cloned into the ProxyControl consumer task and the
+    /// shutdown drain independently of the rest of `SharedState`.
     pub sessions: Arc<SessionRegistry>,
 }
 

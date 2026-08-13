@@ -20,8 +20,6 @@ Two details matter and are easy to get wrong:
 
 SECURITY: the source password is the engine admin password, so this file is a
 secret. It is written 0600 and its contents are never echoed.
-
-Part of docs/plans/PLAN-two-tier-ci-phase-01-ovirt-kerbside.md.
 """
 
 import argparse

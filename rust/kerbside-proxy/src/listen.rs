@@ -8,9 +8,8 @@
 //!
 //! The secure listener terminates TLS and hands the resulting `SpiceStream`
 //! (plus the peer address) off to a caller-supplied handler. The handshake,
-//! authorization, backend connect, and relay are implemented in later steps
-//! of phase 3 (3d-3f) behind that handler seam; this step only wires the
-//! accept loop and a stub handler.
+//! authorization, backend connect, and relay all live behind that handler seam;
+//! this module only wires the accept loop.
 
 use std::future::Future;
 use std::net::SocketAddr;
@@ -37,8 +36,7 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 /// before the first probe, then probes at 15 s intervals, 3 retries — so a
 /// vanished peer is detected in roughly 75 s. Keepalive is the PRIMARY
 /// dead-peer detector for a relayed session (the relay's idle-read timeout is
-/// only a generous backstop); it closes the phase-3 deferred permit-pinning
-/// finding on the client leg.
+/// only a generous backstop).
 const CLIENT_KEEPALIVE_TIME: Duration = Duration::from_secs(30);
 const CLIENT_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
 const CLIENT_KEEPALIVE_RETRIES: u32 = 3;

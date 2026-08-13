@@ -1,20 +1,15 @@
 """Latency loadtest orchestrator driving Ryll's control socket.
 
-This script is the latency loadtest's SUT-side driver. See the kerbside
-phase 4 plan at docs/plans/PLAN-test-harness-phase-04-port-latency.md
-for context and the phase 6 plan at
-docs/plans/PLAN-test-harness-phase-06-digest-decoding.md for the
-metric switch-back recorded here.
+This script is the latency loadtest's SUT-side driver.
 
 Wire protocol: https://github.com/shakenfist/ryll/blob/main/docs/control-socket-protocol.md
 
 The CSV column is **keypress-to-screen latency in seconds**: time
 between the cadence thread sending a `send_key down` and the first
-`surface_drawn` event received afterwards.  Phase 4 had to fall back
-to SPICE PING/PONG round-trip latency because the v1.0 control socket
-had no "a draw just happened" event; the v1.1 protocol added
-`surface_drawn` for exactly this use case, and this orchestrator
-hard-fails at startup against a v1.0 server that does not advertise it.
+`surface_drawn` event received afterwards.  `surface_drawn` arrived in
+v1.1 of the control-socket protocol, so this orchestrator hard-fails at
+startup against a v1.0 server that does not advertise it, rather than
+silently reporting a different metric under the same column name.
 """
 
 import argparse

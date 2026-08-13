@@ -47,8 +47,6 @@
 # and Prometheus ports until they accept TCP connections (or times out and
 # dumps the log) before returning, so callers do not need their own
 # readiness loop.
-#
-# Part of docs/plans/PLAN-rust-proxy-phase-03-proxy-skeleton.md step 3h.
 
 set -euo pipefail
 

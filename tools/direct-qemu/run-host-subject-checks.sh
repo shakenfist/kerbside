@@ -1,7 +1,7 @@
 #!/bin/bash
 # Drive both host_subject enforcement outcomes through the standalone
 # Rust-proxy harness (verify-rust-proxy.sh), gating the direct-qemu
-# functional workflow per phase 2 of PLAN-host-subject.
+# functional workflow.
 #
 # For each mode (match, then mismatch) this: brings up a BACKEND_TLS=1
 # harness lane, launches ryll headless against the harness's console.vv
@@ -35,8 +35,6 @@
 # /tmp/kerbside-host-subject-checks), RYLL_BIN (ryll binary, default `ryll`
 # resolved via PATH), RYLL_READY_TIMEOUT (seconds to wait for ryll's control
 # socket, default 30).
-#
-# Part of docs/plans/PLAN-host-subject-phase-02-kerbside-adoption.md step 2c.
 
 set -euo pipefail
 

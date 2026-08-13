@@ -109,7 +109,7 @@ static BYTES_RELAYED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
 /// `action` (`enforced` — the blocking verdict was applied — vs `observed` —
 /// `WarnOnly` let it through, or the rule is intrinsically observe-only). The
 /// enforced/observed split directly answers "what would `Enforce` have tripped?"
-/// during a `WarnOnly` run (phase-4 plan, Design decision 3).
+/// during a `WarnOnly` run.
 static FIREWALL_VERDICTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     let vec = IntCounterVec::new(
         Opts::new(

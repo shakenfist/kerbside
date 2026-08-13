@@ -1,13 +1,13 @@
 # Offline verification of Shaken Fist VDI console tokens.
 #
-# Shaken Fist mints an Ed25519-signed JWT (phase 2) and hands a viewer an
-# exchange URL (<KERBSIDE_URL>/sf-console.vv?token=<jwt>). This module
-# validates that JWT *entirely offline*: the signing public keys are cached
-# in the kerbside DB by the shakenfist source (see sources/shakenfist.py),
-# and verification reads them from there -- it never calls Shaken Fist on
-# the hot path. The single exception is a cache miss on an unknown kid,
-# which triggers exactly one refetch of every shakenfist source's keys via
-# refresh_all_signing_keys() before giving up.
+# Shaken Fist mints an Ed25519-signed JWT and hands a viewer an exchange URL
+# (<KERBSIDE_URL>/sf-console.vv?token=<jwt>). This module validates that JWT
+# *entirely offline*: the signing public keys are cached in the kerbside DB by
+# the shakenfist source (see sources/shakenfist.py), and verification reads
+# them from there -- it never calls Shaken Fist on the hot path. The single
+# exception is a cache miss on an unknown kid, which triggers exactly one
+# refetch of every shakenfist source's keys via refresh_all_signing_keys()
+# before giving up.
 #
 # SECURITY: the raw token string and any private material must never appear
 # in a log line or an exception message. Public keys are fine to log.

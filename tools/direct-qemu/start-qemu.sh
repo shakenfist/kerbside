@@ -21,8 +21,6 @@
 # with SPICE TLS behaves, and the path the kerbside proxy's backend leg
 # implements. --x509-dir must contain qemu's fixed filenames ca-cert.pem,
 # server-cert.pem, and server-key.pem (see generate-tls.sh's qemu-x509/).
-# Part of docs/plans/PLAN-test-harness-phase-05-direct-qemu-ci.md step 5b and
-# docs/plans/PLAN-host-subject-phase-02-kerbside-adoption.md step 2b.
 
 set -euo pipefail
 

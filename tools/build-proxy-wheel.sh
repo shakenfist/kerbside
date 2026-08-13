@@ -34,12 +34,12 @@
 # wheel inside the quay.io/pypa/manylinux_2_28_aarch64 image under
 # binfmt/QEMU emulation instead (slower, but the canonical manylinux path).
 
-# NATIVE MODE (--native): build a plain host-arch wheel with no zig, no
-# forced manylinux tag, and no rustup target. This is for callers that build
-# and INSTALL the wheel on the same machine (the phase-7 direct-qemu Rust
-# lane), where portability is irrelevant -- so it needs only maturin + a host
-# cargo, not rustup/ziglang. Release wheels for distribution still use the
-# per-arch manylinux/zig path above.
+# NATIVE MODE (--native): build a plain host-arch wheel with no zig, no forced
+# manylinux tag, and no rustup target. This is for callers that build and
+# INSTALL the wheel on the same machine (the direct-qemu Rust lane), where
+# portability is irrelevant -- so it needs only maturin + a host cargo, not
+# rustup/ziglang. Release wheels for distribution still use the per-arch
+# manylinux/zig path above.
 
 set -euo pipefail
 

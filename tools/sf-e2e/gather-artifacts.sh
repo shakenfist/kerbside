@@ -8,11 +8,9 @@
 # SECURITY: NEVER collects the SF token JWT, the auth seed, or instance.env
 # (which holds the test namespace key). The console.vv (a kerbside
 # consoletoken, as the direct-qemu lane already uploads) and sources.yaml
-# (whose password is the well-known CI system key) are included per the
-# phase 9 plan.
+# (whose password is the well-known CI system key) are included.
 #
 # Usage: gather-artifacts.sh BASE_USER PRIMARY OUTDIR
-# Part of docs/plans/PLAN-kerbside-vdi-tokens-phase-09-e2e.md.
 
 set -uo pipefail
 

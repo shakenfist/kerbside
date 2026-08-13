@@ -1,6 +1,6 @@
 #!/bin/bash
-# Phase 6/7: non-gating keypress-to-screen latency loadtest on a DEDICATED,
-# throwaway lane.
+# Non-gating keypress-to-screen latency loadtest on a DEDICATED, throwaway
+# lane.
 #
 # The orchestrator (loadtests/latency/orchestrator.py) measures the
 # user-perceivable metric: a cadence thread injects real `send_key` events and

@@ -9,19 +9,18 @@ name = "kerbside-proxy"
 path = "src/main.rs"
 
 [dependencies]
-# The ryll SPICE protocol crate provides the server-role handshake drivers,
-# the SpiceClient connector, SpiceStream, constants, and the mini-header
-# framing this proxy reuses. Pinned to ryll develop (contains the phase-1
-# server primitives, the phase-4 completed main/display message-type tables
-# the L1 allowlist derives from, and the host-subject verifier that enforces
-# ConnectionConfig.host_subject during the TLS handshake). Cargo resolves the
-# workspace member by package name and builds only it plus its dependency
-# subtree, not the ryll GUI binary.
+# The ryll SPICE protocol crate provides the server-role handshake drivers, the
+# SpiceClient connector, SpiceStream, constants, and the mini-header framing
+# this proxy reuses. Pinned to ryll develop (contains the server primitives,
+# the main/display message-type tables the L1 allowlist derives from, and the
+# host-subject verifier that enforces ConnectionConfig.host_subject during the
+# TLS handshake). Cargo resolves the workspace member by package name and
+# builds only it plus its dependency subtree, not the ryll GUI binary.
 shakenfist-spice-protocol = { git = "https://github.com/shakenfist/ryll", rev = "0f297a68d73115fac15e07f8c751ad6754a88810" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "macros", "signal", "sync"] }
 tokio-rustls = "0.26"
-# CancellationToken for the phase-5 session-termination registry (session.rs):
+# CancellationToken for the session-termination registry (session.rs):
 # one token per session, shared by its channel relays, cancelled when the
 # control plane sends TerminateSession.
 tokio-util = "0.7"

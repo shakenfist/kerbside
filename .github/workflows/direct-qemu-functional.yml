@@ -3,16 +3,13 @@ name: Direct-qemu functional test
 permissions:
   contents: read
 
-# Smoke tier since two-tier CI phase 3
-# (docs/plans/PLAN-two-tier-ci-phase-03-merge-queue.md): the
-# "Can enqueue: direct-qemu" gate below is a required status check in
-# the develop ruleset. The merge_group trigger exists only so the
-# required check reports (as skipped, which satisfies it) on queue
-# entries -- the lane itself runs on PRs and nightly. The schedule
-# bounds the accepted phase 3 risk that the merge queue never re-runs
-# this lane against the merged tree: a semantic conflict between
-# independently-green PRs surfaces within a day rather than on the
-# next PR that happens to touch the proxy path.
+# Smoke tier: the "Can enqueue: direct-qemu" gate below is a required status
+# check in the develop ruleset. The merge_group trigger exists only so the
+# required check reports (as skipped, which satisfies it) on queue entries --
+# the lane itself runs on PRs and nightly. The schedule bounds the accepted
+# risk that the merge queue never re-runs this lane against the merged tree: a
+# semantic conflict between independently-green PRs surfaces within a day
+# rather than on the next PR that happens to touch the proxy path.
 on:
   merge_group:
   pull_request:
@@ -103,7 +100,6 @@ jobs:
         run: sudo chmod a+rw /dev/kvm
 
       - name: Install system packages
-        # Phase 6 step 6d (kerbside test-harness plan):
         # `cargo build --no-default-features -p ryll` no longer
         # links eframe/egui-winit/cpal/opus-decoder, so the runtime
         # libraries libgl1/libx11-6/libxcb1/libxkbcommon0/
@@ -150,8 +146,8 @@ jobs:
 
       # Build the kerbside-proxy wheel and install it into the kerbside venv,
       # so find_proxy_bin() resolves it via shutil.which on PATH exactly as a
-      # wheel-installed deployment would (phase 6). Runs after the venv exists
-      # and before the daemon starts.
+      # wheel-installed deployment would. Runs after the venv exists and before
+      # the daemon starts.
       - name: Build and install the Rust proxy wheel
         run: |
           python3 -m venv "${RUNNER_TEMP}/maturin-venv"
@@ -176,7 +172,6 @@ jobs:
       # (separate WORKDIR, torn down inside the script) BEFORE the scenario
       # lane, and therefore neither disturbs nor is disturbed by it.
       # continue-on-error keeps a measurement hiccup from failing the lane.
-      # (The Python baseline for the comparison lives in phase-7 history.)
       - name: Latency loadtest (non-gating)
         continue-on-error: true
         run: tools/direct-qemu/run-loadtest.sh
@@ -227,13 +222,12 @@ jobs:
         if: always()
         run: tools/direct-qemu/lane-down.sh
 
-      # Phase 2 of PLAN-host-subject: prove backend host_subject enforcement
-      # end to end (accept a matching pin, refuse a mismatched one) against a
-      # real TLS-enabled qemu backend. Runs on the standalone Rust-proxy
-      # harness (tools/direct-qemu/verify-rust-proxy.sh), AFTER the main
-      # lane's teardown above, because both lanes bind the same default
-      # ports (proxy 5900/5901, qemu SPICE 5910) -- running concurrently
-      # would collide.
+      # Prove backend host_subject enforcement end to end (accept a matching
+      # pin, refuse a mismatched one) against a real TLS-enabled qemu backend.
+      # Runs on the standalone Rust-proxy harness
+      # (tools/direct-qemu/verify-rust-proxy.sh), AFTER the main lane's
+      # teardown above, because both lanes bind the same default ports (proxy
+      # 5900/5901, qemu SPICE 5910) -- running concurrently would collide.
       - name: Host subject enforcement checks
         run: tools/direct-qemu/run-host-subject-checks.sh
 

@@ -25,7 +25,6 @@ overwrites the injected key, so each injects-then-exchanges promptly; (d)'s
 unknown-kid refetch is run last because it also refreshes the cache.
 
 SECURITY: no token string, no private key, no key material is ever printed.
-Part of docs/plans/PLAN-kerbside-vdi-tokens-phase-09-e2e.md.
 """
 
 import json

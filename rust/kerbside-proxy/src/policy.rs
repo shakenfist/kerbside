@@ -1,10 +1,11 @@
 //! The relay's inspection policy seam.
 //!
 //! Every framed SPICE message the relay pumps in either direction is passed
-//! through a [`Policy`] before it is forwarded. Phase 3 ships only
-//! [`PermissivePolicy`], which forwards everything; phase 4 fills this seam
-//! with L0 (framing / size / rate) and L1 (per-channel, per-direction
-//! message-type allowlist) firewall enforcement without reshaping the relay.
+//! through a [`Policy`] before it is forwarded. [`EnforcingPolicy`] fills this
+//! seam with L0 (framing / size / rate) and L1 (per-channel, per-direction
+//! message-type allowlist) firewall enforcement, without the relay itself
+//! needing to know the rules. [`PermissivePolicy`], which forwards everything,
+//! is retained as the trait baseline the unit tests exercise.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -31,10 +32,10 @@ pub enum Direction {
 /// [`EnforcingPolicy`] constructs `Forward` and `Terminate` (the latter is the
 /// default verdict for an L1 grammar violation on a modeled channel). `Drop` is
 /// retained in the API for future L2/L3 use (e.g. defanging) — no v1 rule emits
-/// it, because dropping a SPICE message mid-stream desynchronises the channel
-/// (phase-4 plan, Design decision 3). The narrow `#[allow(dead_code)]` on the
-/// `Drop` variant keeps it in the API without a warning until such a rule
-/// exists; the relay already handles all three verdicts.
+/// it, because dropping a SPICE message mid-stream desynchronises the channel.
+/// The narrow `#[allow(dead_code)]` on the `Drop` variant keeps it in the API
+/// without a warning until such a rule exists; the relay already handles all
+/// three verdicts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Verdict {
     /// Forward the message to the peer, unchanged.
@@ -50,15 +51,15 @@ pub enum Verdict {
 /// Inspects framed SPICE messages and decides their fate.
 ///
 /// The relay calls [`inspect`](Policy::inspect) for every complete message in
-/// each direction. `&mut self` lets a phase-4 policy accumulate per-connection
-/// state (rate counters, handshake progress, per-surface bookkeeping, ...).
+/// each direction. `&mut self` lets a policy accumulate per-connection state
+/// (rate counters, handshake progress, per-surface bookkeeping, ...).
 ///
-/// Each relay direction owns its OWN policy instance in phase 3 (see
-/// [`crate::relay::run`]); because [`PermissivePolicy`] is stateless this needs
-/// no synchronisation and avoids a shared lock on the hot path. If phase 4
-/// needs state shared across the two directions, it can wrap a single policy in
-/// an `Arc<Mutex<..>>` (or `tokio::sync::Mutex`) then and construct the two
-/// direction views from it.
+/// Each relay direction owns its OWN policy instance (see
+/// [`crate::relay::run`]), which avoids a shared lock on the hot path; state
+/// that must be shared across the two directions lives behind an `Arc` instead
+/// (the connection's `FirewallPolicy` and `VerdictTally` both do). A future
+/// rule needing mutable cross-direction state would wrap a single policy in an
+/// `Arc<Mutex<..>>` and construct the two direction views from it.
 pub trait Policy: Send {
     /// Inspect one framed SPICE message and decide its fate.
     ///
@@ -95,13 +96,11 @@ pub trait Policy: Send {
     }
 }
 
-/// The phase-3 policy: forward every message unchanged.
+/// A no-op policy: forward every message unchanged.
 ///
-/// This is the "inspection-first framed relay with a no-op policy" of the
-/// master plan's design decision 5 — the framing and the seam are real, the
-/// enforcement is deferred to phase 4. Phase 4's relay uses [`EnforcingPolicy`]
-/// instead; `PermissivePolicy` is retained as the `Policy`-trait baseline the
-/// relay/pump unit tests exercise, hence `#[allow(dead_code)]`.
+/// The relay uses [`EnforcingPolicy`]; `PermissivePolicy` is retained as the
+/// `Policy`-trait baseline the relay/pump unit tests exercise, hence
+/// `#[allow(dead_code)]`.
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PermissivePolicy;
@@ -120,10 +119,10 @@ impl Policy for PermissivePolicy {
 
 /// How the firewall acts on a rule that decides to block a message.
 ///
-/// Settled with the operator (phase-4 plan, Design decision 3): the default
-/// ships enforcing, with a first-class `WarnOnly` mode for confidence-building.
-/// Structured so the mode can later be made per-direction without a data-model
-/// change (a single global mode is enough for v1).
+/// Settled with the operator: the default ships enforcing, with a first-class
+/// `WarnOnly` mode for confidence-building. Structured so the mode can later be
+/// made per-direction without a data-model change (a single global mode is
+/// enough for v1).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum EnforcementMode {
     /// A rule's blocking verdict (`Drop`/`Terminate`) is applied, and recorded
@@ -135,8 +134,8 @@ pub enum EnforcementMode {
     /// `tracing::warn!`. This lets an operator run real traffic and see exactly
     /// what enforcement WOULD have tripped before flipping to `Enforce`.
     ///
-    /// Constructed from the `FirewallPolicy` delivered over gRPC (step 4e) when
-    /// the daemon selects `WARN_ONLY`, and by the enforcement-mode unit tests.
+    /// Constructed from the `FirewallPolicy` delivered over gRPC when the
+    /// daemon selects `WARN_ONLY`, and by the enforcement-mode unit tests.
     WarnOnly,
 }
 
@@ -148,7 +147,7 @@ enum Rule {
     /// grammar (a real grammar violation).
     DisallowedType,
     /// L1: a message arrived on a channel with no modeled grammar. Always
-    /// observe-only — never a type-based terminate (Design decision 4).
+    /// observe-only — never a type-based terminate.
     UnmodeledType,
     /// L0: a message's declared body size exceeded the per-(channel,direction)
     /// policy cap (which sits below the relay's absolute resource guard).
@@ -244,10 +243,10 @@ const ALL_CHANNELS: [ChannelType; 11] = [
 
 /// The set of channel types a deployment permits the proxy to relay.
 ///
-/// Represented as a bitmask keyed by the `ChannelType` discriminant (1..=11).
-/// The enforcement point (denying a forbidden channel before relay) is wired in
-/// step 4e when the policy arrives over gRPC; today the default permits every
-/// channel, so there is no behavioural gap.
+/// Represented as a bitmask keyed by the `ChannelType` discriminant (1..=11). A
+/// forbidden channel is denied in `session.rs` before any relay is set up, not
+/// here; the default permits every channel, so that path only fires for a
+/// deployment that restricts `permitted_channels`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PermittedChannels(u16);
 
@@ -263,7 +262,7 @@ impl PermittedChannels {
     }
 
     /// Build the permitted set from the `ChannelType` discriminants delivered in
-    /// the gRPC `FirewallPolicy` (step 4e).
+    /// the gRPC `FirewallPolicy`.
     ///
     /// An EMPTY slice means "permit all" — a deployment that restricts channels
     /// lists the permitted ones, while permitting NONE is nonsensical (it would
@@ -306,7 +305,7 @@ const GENEROUS_SIZE_CAP: u32 = 16 * 1024 * 1024;
 /// (inputs-client and cursor-client). Key and mouse events are well-modeled,
 /// fixed, and tiny (tens of bytes); 4 KiB is generous headroom over any
 /// legitimate one while still refusing an absurd body long before the absolute
-/// guard. Validated/tuned by step 4f.
+/// guard.
 const INPUT_CLIENT_SIZE_CAP: u32 = 4 * 1024;
 
 /// A coarse per-direction rate/throughput ceiling.
@@ -329,15 +328,14 @@ pub struct RateLimit {
 /// The tunable firewall knobs for one connection, delivered per-connection.
 ///
 /// Shared across the two relay directions as an `Arc<FirewallPolicy>` so the
-/// allowlist lookup and cap checks need no lock on the hot path (phase-4 plan,
-/// Design decision 2). This holds only the deployment-tunable knobs; the L1
-/// allowlist tables themselves are a compiled-in fact about the SPICE protocol
-/// (`allowlist.rs`), not policy.
+/// allowlist lookup and cap checks need no lock on the hot path. This holds
+/// only the deployment-tunable knobs; the L1 allowlist tables themselves are a
+/// compiled-in fact about the SPICE protocol (`allowlist.rs`), not policy.
 ///
 /// `Default` is **enforcing** and permits ALL known channel types. The L0 size
 /// caps are conservative (generous everywhere except the tiny input-event
-/// client directions) and the rate limit is OFF, so the default cannot
-/// false-positive on legitimate traffic before step 4f validates it.
+/// client directions) and the rate limit is OFF, so the default does not
+/// false-positive on legitimate traffic.
 #[derive(Clone, Debug)]
 pub struct FirewallPolicy {
     /// Whether blocking verdicts are applied or merely observed.
@@ -375,7 +373,7 @@ impl Default for FirewallPolicy {
 
 impl FirewallPolicy {
     /// Build the connection's policy from the `FirewallPolicy` delivered in the
-    /// gRPC `AuthorizeConnection` reply (step 4e).
+    /// gRPC `AuthorizeConnection` reply.
     ///
     /// Maps the two deployment-tunable knobs Python delivers — the enforcement
     /// `mode` and the `permitted_channels` set — onto a policy whose OTHER
@@ -411,8 +409,7 @@ impl FirewallPolicy {
     /// Tight only where the messages are known-small and fixed — the
     /// input-event client directions (inputs-client, cursor-client key/mouse
     /// events). Everything else (the display server bulk direction especially,
-    /// and any unmodeled channel) stays generous. Step 4f validates these
-    /// against real captures and tightens the generous default.
+    /// and any unmodeled channel) stays generous.
     pub fn max_message_size(&self, channel: ChannelType, dir: Direction) -> u32 {
         match (channel, dir) {
             (ChannelType::Inputs, Direction::ClientToServer)
@@ -495,13 +492,14 @@ impl VerdictTally {
     }
 }
 
-/// The phase-4 enforcing policy: L1 message-type grammar enforcement.
+/// The enforcing policy: L0 caps plus L1 message-type grammar enforcement.
 ///
 /// One instance per relay direction, all sharing the connection's
-/// `Arc<FirewallPolicy>` config and its `Arc<VerdictTally>` (Design decision 2).
-/// `inspect` consults the compiled-in L1 allowlist ([`crate::allowlist`]) on the
-/// already-parsed message header only; it never inspects the body (L1 is
-/// type-only). L0 (size/rate) enforcement is added in step 4c.
+/// `Arc<FirewallPolicy>` config and its `Arc<VerdictTally>`. `inspect` consults
+/// the compiled-in L1 allowlist ([`crate::allowlist`]) on the already-parsed
+/// message header only; it never inspects the body (L1 is type-only). L0 (size
+/// and rate caps) is enforced separately in `check_header`, before the body is
+/// buffered at all.
 pub struct EnforcingPolicy {
     policy: Arc<FirewallPolicy>,
     dir: Direction,
@@ -608,7 +606,7 @@ impl Policy for EnforcingPolicy {
                 self.policy.disallowed_type_verdict,
             ),
             // Unmodeled channel: L0-only + observe, never a type-based
-            // terminate — even in Enforce mode (Design decision 4).
+            // terminate — even in Enforce mode.
             MsgClass::ChannelUnmodeled => {
                 self.record(Rule::UnmodeledType, channel, Action::Observed);
                 Verdict::Forward

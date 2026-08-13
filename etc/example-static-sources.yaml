@@ -4,7 +4,7 @@
 # -------
 # This file is a copy-paste starter for two use-cases:
 #
-#   1. CI pipelines (phase 5 of the test-harness plan) that boot a
+#   1. CI pipelines that boot a
 #      QEMU guest directly and need kerbside to front it without a
 #      full control plane (Shaken Fist, oVirt, or OpenStack).
 #

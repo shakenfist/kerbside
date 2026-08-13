@@ -7,8 +7,6 @@
 #
 # Expects to find the Sextant qcow2 at tests/fixtures/uncalibrated-sextant.qcow2
 # relative to the repo root (detected from the location of this script).
-#
-# Part of docs/plans/PLAN-test-harness-phase-05-direct-qemu-ci.md step 5b.
 
 set -euo pipefail
 
@@ -218,7 +216,7 @@ ss -tlnp '( sport = :5900 or sport = :5901 )' || true
 # `paste` verb to reach the guest: the Sextant fixture has no vdagent,
 # and without the flag ryll's inputs channel accepts the paste request
 # but silently drops the keystrokes ("paste-as-keystrokes not enabled").
-# The phase 7 scenario test pastes the bootloader payload this way.
+# The Sextant scenario test pastes the bootloader payload this way.
 ryll --verbose --headless --file "${RYLL_VV}" \
     --control-socket "${RYLL_SOCK}" \
     --enable-paste-as-keystrokes \

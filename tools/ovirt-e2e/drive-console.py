@@ -42,8 +42,6 @@ the ``.vv`` body are NEVER printed or logged. The on-timeout diagnostic dump
 deliberately omits the ``.vv`` contents, unlike the direct-qemu lane's
 lane-up.sh, because the proxied ``.vv`` carries a kerbside proxy token.
 Exits non-zero on any failure.
-
-Part of docs/plans/PLAN-two-tier-ci-phase-01-ovirt-kerbside.md.
 """
 
 import argparse

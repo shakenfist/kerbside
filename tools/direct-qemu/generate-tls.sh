@@ -17,8 +17,6 @@
 #                   identifies the server), server-key.pem.
 #
 # Always regenerates; never reuses existing material.
-# Part of docs/plans/PLAN-test-harness-phase-05-direct-qemu-ci.md step 5b and
-# docs/plans/PLAN-host-subject-phase-02-kerbside-adoption.md step 2b.
 
 set -euo pipefail
 

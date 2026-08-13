@@ -5,8 +5,6 @@
 # configures unix_socket auth for the root user, so `sudo mysql` works
 # without a password.  This script (idempotently) creates the kerbside
 # database and a kerbside user with a fixed CI password.
-#
-# Part of docs/plans/PLAN-test-harness-phase-05-direct-qemu-ci.md.
 
 set -euo pipefail
 

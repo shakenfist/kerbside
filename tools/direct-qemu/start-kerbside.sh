@@ -19,8 +19,6 @@
 # setup-mariadb.sh must have been run first to create the kerbside
 # database and user.  The alembic migration is run in-place from
 # KERBSIDE_REPO_ROOT (the repo root that contains alembic.ini).
-#
-# Part of docs/plans/PLAN-test-harness-phase-05-direct-qemu-ci.md step 5b.
 
 set -euo pipefail
 
@@ -86,7 +84,7 @@ export KERBSIDE_API_SOCKET_PATH
 #
 # The daemon supervises the Rust kerbside-proxy binary, which must be
 # resolvable by find_proxy_bin() -- an installed `kerbside-proxy` on PATH (the
-# phase-6 wheel) or a KERBSIDE_PROXY_BIN override. Rather than reimplement that
+# wheel) or a KERBSIDE_PROXY_BIN override. Rather than reimplement that
 # resolution here, call the real find_proxy_bin() so the pre-check matches
 # exactly what the daemon will do, and fail fast with a clear message instead
 # of letting the daemon exit at launch.

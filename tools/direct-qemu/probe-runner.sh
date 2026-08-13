@@ -4,8 +4,6 @@
 # Prints diagnostic information and exits non-zero only if /dev/kvm is
 # absent (the rest is informational; missing OVMF or cargo are handled
 # in later workflow steps).
-#
-# Part of docs/plans/PLAN-test-harness-phase-05-direct-qemu-ci.md step 5c.
 
 set -uo pipefail
 

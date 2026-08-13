@@ -17,7 +17,6 @@ field is expected to remain false in this lane.
 Exits 0 on success, 1 on assertion failure, 2 on socket/RPC error.
 
 References:
-  - Plan: docs/plans/PLAN-test-harness-phase-05-direct-qemu-ci.md
   - Protocol: ryll/docs/control-socket-protocol.md
   - Framing helpers lifted from loadtests/latency/orchestrator.py
 
@@ -91,7 +90,7 @@ def _check_hello(sock: socket.socket, buf: bytearray) -> None:
 
     The control-socket protocol negotiates at the major-version level:
     the server replies with its own version, and a v1.0 client remains
-    valid against any v1.x server (ryll moved to 1.1 in phase 6).
+    valid against any v1.x server (ryll is at 1.1).
     Asserting the exact minor version here would break the lane on
     every compatible minor bump.
     """

@@ -34,15 +34,14 @@ jobs:
   # workflow_dispatch the filter step is skipped and the output
   # defaults to code_changed=true so all selected tests run.
   #
-  # Unlike the sibling smoke workflows, the filter here deliberately
-  # also runs on merge_group: its output is consumed by the merge-tier
-  # jobs, so a review-marks-only queue entry skips two hours of cloud
-  # deployment. dorny/paths-filter on a merge-group ref is production
-  # behaviour in shakenfist/shakenfist, not a guess: in run
-  # 31258644604 (2026-08-08) "Check paths" succeeded on a merge_group
-  # event, the merge-tier collections ran rather than skipping, and
-  # "Can merge" went red when they failed. Re-confirm on this repo's
-  # first queue entries (phase 3 plan, step 5) all the same.
+  # Unlike the sibling smoke workflows, the filter here deliberately also runs
+  # on merge_group: its output is consumed by the merge-tier jobs, so a
+  # review-marks-only queue entry skips two hours of cloud deployment.
+  # dorny/paths-filter on a merge-group ref is production behaviour in
+  # shakenfist/shakenfist, not a guess: in run 31258644604 (2026-08-08) "Check
+  # paths" succeeded on a merge_group event, the merge-tier collections ran
+  # rather than skipping, and "Can merge" went red when they failed. Re-confirm
+  # on this repo's first queue entries all the same.
   #
   # Keep the filter list in sync with its other copies: the
   # check_paths jobs in direct-qemu-functional.yml and
@@ -223,7 +222,7 @@ jobs:
           path: cover.zip
 
   ovirt_matrix:
-    # Merge tier (two-tier CI phase 3): runs in the merge queue and on
+    # Merge tier: runs in the merge queue and on
     # workflow_dispatch, never on pull_request. On a workflow_dispatch
     # run, skip this job cleanly (neutral) when its target was not
     # selected, rather than running a step that calls core.setFailed --
@@ -719,7 +718,7 @@ jobs:
           MINUTES: ${{ inputs.retention }}
 
   openstack_matrix:
-    # Merge tier (two-tier CI phase 3): runs in the merge queue and on
+    # Merge tier: runs in the merge queue and on
     # workflow_dispatch, never on pull_request. On a workflow_dispatch
     # run, skip this job cleanly (neutral) when its target was not
     # selected, rather than running a step that calls core.setFailed --
@@ -806,7 +805,7 @@ jobs:
 
       # The kerbside-proxy Kolla container runs "kerbside daemon run", which
       # supervises the compiled kerbside-proxy binary. That binary ships in the
-      # phase-6 wheel (bindings="bin", binary on PATH); production images
+      # wheel (bindings="bin", binary on PATH); production images
       # install it from PyPI. To exercise THIS PR's proxy instead, build the
       # wheel from the PR source and stage it into the image's build tree, so
       # the kerbside-base Dockerfile installs it in preference to the released
@@ -960,19 +959,17 @@ jobs:
 
   automated_reviewer:
     name: "Automated reviewer"
-    # The needs: list is the "review only once CI has passed" gate:
-    # a job skipped because a dependency failed never starts the
-    # reusable workflow. Since two-tier CI phase 3 that means the
-    # smoke tier only -- the cloud matrices run in the merge queue,
-    # after review, so the review posts in minutes rather than after
-    # the slowest cloud lane. Everything else about the reviewer --
-    # runner, timeout, fork restriction, bot-commit check --
-    # lives in the shared workflow so it stays in step with the
-    # rest of the fleet. The event gate below is technically redundant
-    # with the shared workflow's internal pull_request guard, but
-    # keeping it local means this repo's tier membership does not
-    # depend on a guard in another repository, and merge-group and
-    # dispatch rollups stay free of a no-op reviewer job.
+    # The needs: list is the "review only once CI has passed" gate: a job
+    # skipped because a dependency failed never starts the reusable workflow.
+    # That means the smoke tier only -- the cloud matrices run in the merge
+    # queue, after review, so the review posts in minutes rather than after the
+    # slowest cloud lane. Everything else about the reviewer -- runner,
+    # timeout, fork restriction, bot-commit check -- lives in the shared
+    # workflow so it stays in step with the rest of the fleet. The event gate
+    # below is technically redundant with the shared workflow's internal
+    # pull_request guard, but keeping it local means this repo's tier
+    # membership does not depend on a guard in another repository, and
+    # merge-group and dispatch rollups stay free of a no-op reviewer job.
     if: github.event_name == 'pull_request'
     needs: [sanity_checks]
     # A cross-repository reusable workflow cannot grant itself more
@@ -986,8 +983,7 @@ jobs:
 
   # The merge-queue gate jobs, mirroring shakenfist/shakenfist. Their
   # display names ("Can see status", "Can enqueue", "Can merge") are
-  # the required status checks in the develop ruleset -- see
-  # docs/plans/PLAN-two-tier-ci-phase-03-merge-queue.md. The jq below
+  # the required status checks in the develop ruleset. The jq below
   # treats a skipped need as satisfied, which is what lets
   # check_paths-driven skips (and the cross-tier skip of the other
   # gate) pass a required check. The flip side: a failed dependency

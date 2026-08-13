@@ -1,10 +1,10 @@
 """Assert SPICE connectivity via ryll (the Rust SPICE client).
 
-The Python SpiceClient was removed at the Rust-proxy cutover (phase 8). These
-live-cloud functional tests now assert "a SPICE console is reachable" by
-driving ryll headless against a .vv and confirming it establishes a session --
-its control socket appears and it stays up -- which is the ryll equivalent of
-the old SpiceClient.connect() not raising. ryll must be on PATH.
+The Python SpiceClient was removed at the Rust-proxy cutover. These live-cloud
+functional tests now assert "a SPICE console is reachable" by driving ryll
+headless against a .vv and confirming it establishes a session -- its control
+socket appears and it stays up -- which is the ryll equivalent of the old
+SpiceClient.connect() not raising. ryll must be on PATH.
 
 These are live-cloud tests (not part of the unit gate); the ryll port is
 verified by inspection here and exercised on the operator's cloud / the

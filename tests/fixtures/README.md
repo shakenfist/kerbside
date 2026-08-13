@@ -18,5 +18,3 @@ https://images.shakenfist.com/testimages/uefi-latency-guest.qcow2.
 Used by the direct-qemu CI lane's non-gating latency loadtest
 (`tools/direct-qemu/run-loadtest.sh`).
 Last refreshed: 2026-07-16.
-
-See docs/plans/PLAN-test-harness-phase-05-direct-qemu-ci.md for the broader rationale.

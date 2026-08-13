@@ -11,10 +11,10 @@ re-implementation of the spice-common host-subject grammar (see
 `parse_host_subject` below) and a PARSES/REJECTED verdict is printed.
 
 This is a NON-GATING diagnostic: it always exits 0, including when the
-engine is unreachable. Its only job is to put the real oVirt subject
-string format into CI logs so the phase-2 open question ("does oVirt's
-format already satisfy the spice-common grammar the Rust proxy
-enforces?") can be answered with data.
+engine is unreachable. Its only job is to put the real oVirt subject string
+format into CI logs, so the question "does oVirt's format already satisfy
+the spice-common grammar the Rust proxy enforces?" can be answered with
+data.
 """
 
 import argparse

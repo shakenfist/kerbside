@@ -1,12 +1,11 @@
 //! L1 message-type grammar: is a framed message TYPE structurally valid on
 //! this channel, in this direction?
 //!
-//! This is the compiled-in L1 allowlist table the phase-4 firewall engine
-//! (`policy.rs`, step 4a) consults for every framed SPICE message. Per the
-//! phase-4 plan's **Design decision 4**, which message types are structurally
-//! valid on a channel is a fact about the SPICE *protocol*, not a deployment
-//! policy, so the table is compiled into the proxy (derived from the ryll
-//! `shakenfist-spice-protocol` constants) rather than delivered over gRPC.
+//! This is the compiled-in L1 allowlist table the firewall engine (`policy.rs`)
+//! consults for every framed SPICE message. Which message types are
+//! structurally valid on a channel is a fact about the SPICE *protocol*, not a
+//! deployment policy, so the table is compiled into the proxy (derived from the
+//! ryll `shakenfist-spice-protocol` constants) rather than delivered over gRPC.
 //!
 //! The table is built from two sources, unioned:
 //!
@@ -23,7 +22,7 @@
 //!    -specific opcodes begin at 101, so the base ranges never collide with
 //!    channel-specific types.
 //!
-//! Channel coverage (Design decision 4):
+//! Channel coverage:
 //! - Main, Display, Inputs, Cursor, Playback -> their own name tables.
 //! - Usbredir, Port, Webdav -> the `spicevmc` tables (these three ride the
 //!   SpiceVMC message set, as documented in the ryll `constants.rs`).
@@ -60,10 +59,10 @@ const CLIENT_BASE_LAST: u16 = main_client::DISCONNECTING; // 6
 /// Whether we have a modeled grammar for a (channel, direction), and if so
 /// whether a given message type is in it.
 ///
-/// The engine (step 4a) needs `ChannelUnmodeled` to be distinct from
-/// `Disallowed`: an unmodeled channel gets L0-only enforcement plus observe,
-/// whereas a `Disallowed` type on a modeled channel is a real grammar
-/// violation the engine may terminate on.
+/// The engine needs `ChannelUnmodeled` to be distinct from `Disallowed`: an
+/// unmodeled channel gets L0-only enforcement plus observe, whereas a
+/// `Disallowed` type on a modeled channel is a real grammar violation the
+/// engine may terminate on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MsgClass {
     /// A known/valid message type for this channel+direction (either a
@@ -213,7 +212,7 @@ mod tests {
 
     #[test]
     fn inputs_client_mouse_and_key_allowed() {
-        // The interop-bug guard (master-plan "mouse clicks not working"):
+        // The interop-bug guard ("mouse clicks not working"):
         // the inputs client mouse/key set must be allowed.
         for t in [
             inputs_client::KEY_DOWN,       // 101
