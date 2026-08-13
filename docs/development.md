@@ -8,7 +8,10 @@ for build commands, conventions, and common tasks, and
 ## Database migrations
 
 Kerbside uses Alembic for database schema migrations. The migration
-files are located in the `alembic/versions/` directory.
+files are located in the `kerbside/migrations/versions/` directory.
+They live inside the package so that they ship in the wheel and
+`kerbside db upgrade` can run them from an install with no
+repository checkout present.
 
 ### Creating a new migration
 
@@ -17,7 +20,8 @@ cd /path/to/shakenfist/kerbside
 alembic revision -m "description_of_your_changes"
 ```
 
-This will create a new migration file in `alembic/versions/`. Edit the
+This will create a new migration file in `kerbside/migrations/versions/`.
+Edit the
 generated file to add your schema changes in the `upgrade()` and
 `downgrade()` functions.
 

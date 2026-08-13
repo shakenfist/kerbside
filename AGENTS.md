@@ -62,7 +62,7 @@ background.
 ```bash
 cd /path/to/kerbside
 alembic revision -m "description_of_changes"
-# Edit the generated file in alembic/versions/
+# Edit the generated file in kerbside/migrations/versions/
 alembic upgrade head
 ```
 

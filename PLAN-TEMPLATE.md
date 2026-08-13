@@ -9,7 +9,8 @@ Rust SPICE proxy in `rust/kerbside-proxy/` and the gRPC
 control contract in `kerbside/rpc/`, the source driver
 abstraction in `kerbside/sources/`, the REST API in
 `kerbside/api.py`, the SQLAlchemy/alembic data model in
-`kerbside/db.py` and `alembic/`, Pydantic-based config in
+`kerbside/db.py` and `kerbside/migrations/`, Pydantic-based
+config in
 `kerbside/config.py`, audit logging, and the .vv file
 generation path). Ground your answers in what the code
 actually does today. Do not speculate about the codebase
