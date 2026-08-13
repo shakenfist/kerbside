@@ -17,8 +17,9 @@
 # Database: uses MariaDB to match production (the schema includes
 # MySQL-only DDL such as DATETIME(fsp) and CURRENT_TIMESTAMP(6)).
 # setup-mariadb.sh must have been run first to create the kerbside
-# database and user.  The alembic migration is run in-place from
-# KERBSIDE_REPO_ROOT (the repo root that contains alembic.ini).
+# database and user.  The schema is created with "kerbside db upgrade",
+# which resolves the migrations from the installed package -- so this
+# script no longer needs to locate a repository checkout.
 
 set -euo pipefail
 
@@ -101,25 +102,6 @@ if ! RESOLVED_BIN="$(python3 -c \
 fi
 echo "[start-kerbside] Rust proxy binary: ${RESOLVED_BIN}"
 
-# ── Locate repo root (needed for alembic.ini) ────────────────────────────────
-
-# Walk upward from this script to find alembic.ini
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="${SCRIPT_DIR}"
-while [ "${REPO_ROOT}" != '/' ]; do
-    if [ -f "${REPO_ROOT}/alembic.ini" ]; then
-        break
-    fi
-    REPO_ROOT="$(dirname "${REPO_ROOT}")"
-done
-
-if [ ! -f "${REPO_ROOT}/alembic.ini" ]; then
-    echo "ERROR: could not find alembic.ini from ${SCRIPT_DIR}" >&2
-    exit 1
-fi
-
-echo "[start-kerbside] Using repo root: ${REPO_ROOT}"
-
 # ── Persist the seed so lane-up.sh can mint a JWT ────────────────────────────
 
 SEED_FILE="$(dirname "${PID_FILE}")/kerbside-auth-seed.txt"
@@ -129,8 +111,8 @@ echo "[start-kerbside] Auth seed written to ${SEED_FILE}"
 
 # ── Database migration ────────────────────────────────────────────────────────
 
-echo "[start-kerbside] Running alembic upgrade head"
-(cd "${REPO_ROOT}" && alembic upgrade head)
+echo "[start-kerbside] Running kerbside db upgrade"
+kerbside db upgrade
 
 # ── Start REST API (gunicorn) ─────────────────────────────────────────────────
 

@@ -151,8 +151,9 @@ for attempt in 1 2 3; do
     sleep 10
 done
 
-# start-kerbside.sh invokes gunicorn, alembic, kerbside and python3 bare, so
-# they must resolve from the venv.
+# start-kerbside.sh invokes gunicorn, kerbside and python3 bare, so they must
+# resolve from the venv. (alembic is no longer invoked directly: the schema
+# is created via "kerbside db upgrade".)
 export PATH="${VENV}/bin:${PATH}"
 
 # ── Step 4: Generate proxy TLS material ──────────────────────────────────────
