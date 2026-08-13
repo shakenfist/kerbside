@@ -101,6 +101,14 @@
       "sha": "d7f5bfd56c00f99929ec1727df7eac2d28b73979",
       "date": "2026-08-13"
     },
+    "docs/index.md": {
+      "sha": "a4bdce5e08adda1359f8960661f42a2b2e61a386",
+      "date": "2026-08-14"
+    },
+    "docs/proxy-architecture.md": {
+      "sha": "47b39a8f7ae86d7877bee2f4f2f5c75a0658659c",
+      "date": "2026-08-14"
+    },
     "docs/use-cases/ovirt.md": {
       "sha": "0e0902827c2bbbb08bacc3267ee3c565737a59be",
       "date": "2026-08-13"

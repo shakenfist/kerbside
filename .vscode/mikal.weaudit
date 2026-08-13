@@ -334,6 +334,14 @@
     {
       "path": "docs/console-sources.md",
       "author": "mikal"
+    },
+    {
+      "path": "docs/index.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/proxy-architecture.md",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
