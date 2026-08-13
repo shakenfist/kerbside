@@ -1,30 +1,45 @@
-{% extends "base.html" %}
+{% extends "base-sfui.html" %}
+
+{% block title %}Kerbside console audit{% endblock %}
 
 {% block content %}
+{# The console dict is a raw Console export carrying the secret
+   ticket (and host_subject); only source, name and uuid are
+   rendered here, never iterated. #}
+{# The UUID sits outside the h2 deliberately: .sf-section-header h2
+   applies text-transform: uppercase, and a UUID is an identifier an
+   operator may read back or copy, so it must render in true case. #}
+<div class="sf-section-header">
+    <h2>Audit events for {{ console.source }} {{ console.name }}</h2>
+    <span class="sf-status-line sf-push-right">{{ console.uuid }}</span>
+</div>
 
-<h3>Audit events for {{ console.source }} {{ console.name }} ({{ console.uuid }})</h3>
-<table id="data" class="table table-sm table-striped">
-    <thead>
-        <tr>
-            <th>Timestamp</th>
-            <th>Session ID</th>
-            <th>Channel</th>
-            <th>Node</th>
-            <th>PID</th>
-            <th>Message</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for event in events %}
-        <tr>
-            <td>{{ event.timestamp }}</td>
-            <td>{{ event.session_id }}</td>
-            <td>{{ event.channel }}</td>
-            <td>{{ event.node }}</td>
-            <td>{{ event.pid }}</td>
-            <td>{{ event.message }}</td>
-            </td>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="sf-table-scroll">
+    <table class="sf-table sf-table--striped">
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Session ID</th>
+                <th>Channel</th>
+                <th>Node</th>
+                <th>PID</th>
+                <th>Message</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for event in events %}
+            <tr>
+                <td>{{ event.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td>{{ event.session_id }}</td>
+                <td>{{ event.channel }}</td>
+                <td>{{ event.node }}</td>
+                <td>{{ event.pid }}</td>
+                <td>{{ event.message }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<p class="sf-footnote">Showing the {{ events|length }} most recent of {{ total_events }} events.{% if total_events > events|length %} <a href="?limit=200">See more events</a>.{% endif %}</p>
 {% endblock %}
