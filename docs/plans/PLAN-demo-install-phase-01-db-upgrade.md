@@ -333,11 +333,45 @@ Falsifiable items only:
       reason, for each of: sentinel seed, absent
       `SOURCES_PATH`, unparseable YAML, empty list, any
       non-`static` source.
-- [ ] `grep -rn 'import jwt\|pyjwt' tools/` returns nothing
-      — the duplicated minting snippet is gone.
+- [x] `grep -rn 'import jwt\|pyjwt' tools/direct-qemu/`
+      returns nothing. **Corrected during implementation** —
+      the original wording said `tools/`, on the assumption
+      that `lane-up.sh` held the only copy. It does not:
+      `tools/sf-e2e/drive-happy-path.py`,
+      `tools/ovirt-e2e/drive-console.py` and
+      `tools/sf-e2e/drive-adversarial.py` each carry one
+      too. The first two front a Shaken Fist and an oVirt
+      source, so `kerbside demo token` **refuses** for them
+      by design, and the third deliberately crafts malformed
+      tokens, which is the one thing a shared minting helper
+      must not do. Those three keep their snippets; see the
+      note below.
 - [ ] `tox -eflake8` and `tox -epy3` pass.
 - [ ] The direct-qemu lane is green on the PR.
 - [ ] Issue #301 has the comment from step 1h.
+
+### Note: the static-only guard limits how far this can be shared
+
+Decision 5's guard has a consequence worth recording, found
+while implementing rather than while planning. Four scripts
+in `tools/` mint a JWT by hand, not one:
+
+| Script | Source type | Can adopt the command? |
+|--------|-------------|------------------------|
+| `direct-qemu/lane-up.sh` | static | Yes — done in 1g |
+| `direct-qemu/verify-terminate-live.sh` | static | Yes — done in 1g, by reusing lane-up.sh's token file rather than minting again |
+| `sf-e2e/drive-happy-path.py` | shakenfist | **No** — the guard refuses |
+| `ovirt-e2e/drive-console.py` | ovirt | **No** — the guard refuses |
+| `sf-e2e/drive-adversarial.py` | shakenfist | **No**, and should not — it crafts deliberately malformed tokens |
+
+So "one tested code path for the claim shape" is achieved
+for the static lanes only. That is the guard working as
+specified, not a defect: a command that would mint
+credentials for the oVirt lane is exactly what decision 5
+set out to prevent. The residual duplication is the price,
+and it is the right price — but it means issue #300 remains
+the thing that would actually consolidate these, since a
+real local-auth mechanism would work for every source type.
 
 ## Back brief
 
