@@ -262,7 +262,7 @@ All resolved by the operator on 2026-08-14:
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 1. Dev wheel publish workflow | PLAN-proxy-dev-releases-phase-01-publish-workflow.md | Not started |
+| 1. Dev wheel publish workflow | [PLAN-proxy-dev-releases-phase-01-publish-workflow.md](PLAN-proxy-dev-releases-phase-01-publish-workflow.md) | Planned |
 | 2. Committed dev specifier and release stamping | PLAN-proxy-dev-releases-phase-02-dev-specifier.md | Not started |
 | 3. Contract handshake | PLAN-proxy-dev-releases-phase-03-contract-handshake.md | Not started |
 | 4. Docs, downstream cleanup and verification | PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md | Not started |
