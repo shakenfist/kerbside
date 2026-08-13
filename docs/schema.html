@@ -56,7 +56,7 @@
           integer connection_id
           string channel_type
           integer channel_id
-          string session_id FK
+          string session_id "No FK; dropped in migration f7b2e9c4a1d8"
       }
 
       consoles ||--o{ auditevents: "consoles create auditevents"

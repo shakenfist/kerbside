@@ -15,7 +15,7 @@
 # This is the standalone sibling of lane-up.sh: lane-up.sh exercises the proxy
 # behind the full kerbside daemon + MariaDB; this script exercises the Rust
 # proxy in isolation. The full ryll-based direct-qemu CI integration against
-# the Rust proxy is lane-up.sh (see docs/proxy-architecture.md).
+# the Rust proxy is lane-up.sh (see docs/direct-qemu-harness.md).
 #
 # ── The client step is deliberately pluggable ─────────────────────────────
 #

@@ -57,7 +57,7 @@ erDiagram
         integer connection_id
         string channel_type
         integer channel_id
-        string session_id FK
+        string session_id "No FK; dropped in migration f7b2e9c4a1d8"
     }
 
     consoles ||--o{ auditevents: "consoles create auditevents"
@@ -151,7 +151,7 @@ Active SPICE channel connections being proxied.
 | connection_id | integer | SPICE connection ID |
 | channel_type | string | Channel type name (main, display, etc.) |
 | channel_id | integer | Channel instance ID |
-| session_id | string | Foreign key to consoletokens.session_id |
+| session_id | string | Matches consoletokens.session_id (no FK; dropped in migration f7b2e9c4a1d8) |
 
 ### auditevents
 

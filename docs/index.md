@@ -92,11 +92,16 @@ flowchart TD
     kerbside["Kerbside<br/>SPICE Proxy"]
     hypervisor["Hypervisor<br/>(QEMU/KVM)"]
 
-    broker -- "1. Request .vv file" --> kerbside
-    broker -- "2. Return .vv file" --> client
-    client -- "3. User opens .vv file<br/>4. Connect with access token" --> kerbside
+    broker -- "3. Request .vv file" --> kerbside
+    broker -- "3. Deliver .vv file" --> client
+    client -- "4. Open .vv file, connect<br/>with access token" --> kerbside
     kerbside -- "5. Connect to console" --> hypervisor
 ```
+
+Edge numbers match the steps above. Steps 1, 2, and 6 happen outside
+the components shown, and steps 7 and 8 happen inside Kerbside on the
+established client to hypervisor path, so they have no arrow of their
+own.
 
 ### Implementation in OpenStack
 
@@ -155,15 +160,16 @@ column names the CI lane that exercises the scenario end to end; see
 | Placement topologies | Kerbside instances placed by user population rather than by cloud — one per regional office, close to its users, with the WAN hop as the inspected backend leg | Not covered |
 | Proxmox | Deferred until a Proxmox source driver exists | No source yet |
 | Shaken Fist | Broker embedded in Shaken Fist itself; Ed25519 VDI console tokens exchanged offline at `/sf-console.vv` | `sf-e2e`, smoke tier and nightly |
-| Standalone / static source | The static driver (`kerbside/sources/static.py`) for labs, demos, and direct-qemu style fleets | Unit tests only |
+| Standalone / static source | The static driver (`kerbside/sources/static.py`) for labs, demos, and direct-qemu style fleets | `direct-qemu`, smoke tier and nightly |
 
 Scenarios without a link are planned rather than written; see
 [plans/PLAN-use-case-docs.md](plans/PLAN-use-case-docs.md).
 
-The direct-qemu lane is deliberately absent from the table: it drives
-the Rust proxy against a local qemu SPICE server with a *mock* control
-plane, so it exercises the proxy rather than any console source. See
-[direct-qemu-harness.md](direct-qemu-harness.md).
+The `direct-qemu` lane runs the full daemon + API + MariaDB stack
+against a local qemu SPICE server via the static source, so it is the
+end-to-end exercise of the standalone scenario. See
+[direct-qemu-harness.md](direct-qemu-harness.md) for the lane and its
+standalone mock-control-plane sibling, `verify-rust-proxy.sh`.
 
 ### Operator Documentation
 

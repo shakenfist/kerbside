@@ -365,8 +365,11 @@ flowchart TD
 
     api -- "INSERT session_terminations(S)" --> db
 
-    %% Node B is declared FIRST on purpose: mermaid lays subgraphs out in
-    %% reverse declaration order, so this is what puts node A on the left.
+    %% Node B is declared FIRST on purpose: as of 2026-08, the mermaid
+    %% version GitHub renders lays subgraphs out in reverse declaration
+    %% order, so this is what puts node A on the left. That is observed
+    %% behaviour, not documented -- verify after a mermaid bump. Left
+    %% versus right carries no meaning either way.
     subgraph nodeB["Proxy node B — holds other channels of session S"]
         direction TB
         daemonB["Daemon stream:<br/>ProxyControl TerminateSession(S)"]

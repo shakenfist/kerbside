@@ -71,10 +71,14 @@ The database entity relationship diagram exists twice: in
 `docs/schema.html`. Keep the two in sync -- the `add-database-migration`
 skill says to update both.
 
-To check a diagram before pushing, render it with mermaid-cli:
+No CI lane validates the diagrams -- a syntax error renders as an
+inline error box on GitHub rather than failing a check. To check a
+diagram before pushing, run mermaid-cli over the markdown file that
+contains it; mmdc renders each fenced mermaid block and exits non-zero
+on a syntax error, which is the actual check:
 
 ```shell
-npx @mermaid-js/mermaid-cli mmdc -i diagram.mmd -o diagram.svg
+npx -p @mermaid-js/mermaid-cli mmdc -i docs/index.md -o /tmp/index-rendered.md
 ```
 
 ## Review tracking
