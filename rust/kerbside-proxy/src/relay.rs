@@ -4,9 +4,8 @@
 //! (hypervisor) `SpiceStream`, framing each direction by the 6-byte SPICE
 //! mini-header (`MessageHeader`). Every complete message is passed through a
 //! [`Policy`] before it is forwarded, so this is deliberately NOT an opaque
-//! `copy_bidirectional`: it is the seam phase 4 fills with L0/L1 firewall
-//! enforcement (master-plan design decision 5). Phase 3 ships
-//! [`PermissivePolicy`], which forwards everything unchanged.
+//! `copy_bidirectional`: that [`Policy`] seam is where L0 (size/rate caps) and
+//! L1 (message-type allowlist) firewall enforcement happens.
 //!
 //! One accepted client connection = one backend channel connection = one
 //! relayed SPICE channel (SPICE opens a TCP connection per channel).
@@ -28,11 +27,11 @@ use crate::session::SharedState;
 
 /// Sanity cap on a single framed SPICE message's declared body size.
 ///
-/// A light L0-ish safety even before phase 4: a peer that claims an absurd
-/// `message_size` must not make us buffer gigabytes waiting for a body that
-/// will never arrive. 16 MiB is generous for any legitimate SPICE message
-/// (the largest are image/surface payloads). PLACEHOLDER: phase 4 tightens
-/// this per channel/direction as part of L0 enforcement.
+/// An unconditional backstop underneath the policy's own L0 caps: a peer that
+/// claims an absurd `message_size` must not make us buffer gigabytes waiting
+/// for a body that will never arrive. 16 MiB is generous for any legitimate
+/// SPICE message (the largest are image/surface payloads); `EnforcingPolicy`
+/// caps most channel/direction pairs well below it.
 const MAX_MESSAGE_SIZE: u32 = 16 * 1024 * 1024;
 
 /// How much we read from the socket per `read` call. The reassembly buffer
@@ -44,14 +43,13 @@ const READ_CHUNK_SIZE: usize = 64 * 1024;
 ///
 /// This is a RESOURCE guard, not a firewall verdict: it is not subject to
 /// warn-only and is not recorded in the verdict tally/metrics. Its job is to
-/// stop an authorized-but-silent client (or a wedged hypervisor) from pinning
-/// a concurrency permit indefinitely — the phase-3 deferred permit-pinning
-/// finding. Client-side TCP keepalive (set in `listen.rs`, mirroring the
-/// backend leg) is the PRIMARY dead-peer detector — it tears down a peer that
-/// has vanished within ~75 s; this generous 15-minute backstop only catches a
-/// peer that keeps the TCP connection alive but sends nothing, without killing
-/// a legitimately-idle interactive session. Tunable later (per the phase-4
-/// plan) once real idle patterns are observed.
+/// stop an authorized-but-silent client (or a wedged hypervisor) from pinning a
+/// concurrency permit indefinitely. Client-side TCP keepalive (set in
+/// `listen.rs`, mirroring the backend leg) is the PRIMARY dead-peer detector —
+/// it tears down a peer that has vanished within ~75 s; this generous 15-minute
+/// backstop only catches a peer that keeps the TCP connection alive but sends
+/// nothing, without killing a legitimately-idle interactive session. Tunable
+/// later once real idle patterns are observed.
 const IDLE_READ_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 /// Relay the authorized client connection to the connected backend channel.
@@ -59,11 +57,11 @@ const IDLE_READ_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// Splits both streams into read/write halves and runs two framing pumps
 /// concurrently (client->server and server->client), each with its own
 /// [`EnforcingPolicy`] instance built from the shared `Arc<FirewallPolicy>` and
-/// a single shared [`VerdictTally`] (phase-4 plan, Design decision 2: per-
-/// direction policy instances, shared verdict counters). A SPICE channel is a
-/// single duplex TCP connection: once EITHER direction ends (EOF, an I/O error,
-/// or a policy `Terminate`), the whole session is over, so we `select!` and let
-/// the first pump to finish tear the other down (dropping its future).
+/// a single shared [`VerdictTally`] (per-direction policy instances, shared
+/// verdict counters). A SPICE channel is a single duplex TCP connection: once
+/// EITHER direction ends (EOF, an I/O error, or a policy `Terminate`), the
+/// whole session is over, so we `select!` and let the first pump to finish tear
+/// the other down (dropping its future).
 ///
 /// After the `select!`, the shared tally is read once and — if any firewall
 /// verdict was recorded — a single coalesced summary audit event is emitted for
@@ -130,7 +128,7 @@ pub async fn run(
     let result = tokio::select! {
         r = client_to_server => r,
         r = server_to_client => r,
-        // The control plane terminated this session (phase 5). Ending here
+        // The control plane terminated this session. Ending here
         // drops both pump futures, closing the stream halves and disconnecting
         // the client -- the same teardown as a finishing pump.
         () = cancel.cancelled() => {
@@ -284,7 +282,7 @@ where
             // its body (bounded otherwise only by the absolute guard above).
             // Run exactly once per message via `header_checked`. Only Terminate
             // is actioned here; Forward/Drop both let the relay proceed to
-            // buffer the body and call `inspect` (Design decision 3 / step 4c).
+            // buffer the body and call `inspect`.
             if !header_checked {
                 header_checked = true;
                 if matches!(

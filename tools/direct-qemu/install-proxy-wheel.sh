@@ -1,15 +1,15 @@
 #!/bin/bash
 # Build the kerbside-proxy wheel natively and install it into a venv, so the
 # daemon's find_proxy_bin() resolves it via shutil.which('kerbside-proxy') on
-# PATH -- the real phase-6 production path, exercised in the phase-7
-# direct-qemu Rust lane (and locally).
+# PATH -- the real production install path, exercised in the direct-qemu
+# Rust lane (and locally).
 #
 # Usage:
 #   tools/direct-qemu/install-proxy-wheel.sh --venv /tmp/kerbside-venv
 #   tools/direct-qemu/install-proxy-wheel.sh          # use pip/python3 on PATH
 #
-# Requires `maturin` on PATH (the caller installs it; a native build needs
-# only maturin + a host cargo, not rustup/ziglang). Reuses the phase-6
+# Requires `maturin` on PATH (the caller installs it; a native build needs only
+# maturin + a host cargo, not rustup/ziglang). Reuses the
 # tools/build-proxy-wheel.sh --native fast path so wheel-building logic lives
 # in one place.
 

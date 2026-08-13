@@ -14,7 +14,7 @@ answers with the same Target, built from this script's --hypervisor-ip /
 --insecure-port / --secure-port / --ticket / --source / --uuid /
 --session-id arguments (typically pointed at the qemu SPICE server the
 verification harness also starts). Two behaviours make it a full
-firewall/denial test rig for phase 4:
+firewall/denial test rig:
 
   * --firewall-mode {enforce,warn} + --permitted-channels CSV attach a
     FirewallPolicy to every SUCCESS reply, so the proxy can be launched in
@@ -38,8 +38,6 @@ Because this speaks the identical protobuf/gRPC contract as the real
 servicer, the Rust proxy under test cannot distinguish this mock from the
 production KerbsideProxy service -- it is a faithful stand-in, not a
 special test mode.
-
-Part of docs/plans/PLAN-rust-proxy-phase-03-proxy-skeleton.md step 3h.
 
 Usage:
     mock-grpc-server.py --socket /tmp/kerbside-rust-proxy-verify/mock-grpc.sock \\
@@ -118,7 +116,7 @@ class MockKerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
         self.source = source
         self.uuid = uuid
         self.session_id = session_id
-        # Firewall / denial behaviour (phase 4). firewall_mode is 'enforce' or
+        # Firewall / denial behaviour. firewall_mode is 'enforce' or
         # 'warn'; permitted_channels is a list of ChannelType discriminants
         # (empty => permit all); deny_tokens is a set of decrypted plaintext
         # tokens to reject; deny_all rejects every token.
@@ -126,7 +124,7 @@ class MockKerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
         self.permitted_channels = list(permitted_channels)
         self.deny_tokens = set(deny_tokens)
         self.deny_all = deny_all
-        # Phase 5 (5f): if > 0, the ProxyControl stream emits a one-shot
+        # If > 0, the ProxyControl stream emits a one-shot
         # TerminateSession(session_id) this many seconds AFTER THE FIRST client
         # authorization (so the client is reliably connected when it fires),
         # to drive a live "termination drops the in-flight connection" test.
@@ -221,11 +219,11 @@ class MockKerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
     def ProxyControl(self, request, context):
         """Server-streaming control channel; mirrors servicer.py's stub.
 
-        Opens the stream, emits an immediate Heartbeat so the caller knows
-        the stream is live, then keeps emitting heartbeats until the peer
+        Opens the stream, emits an immediate Heartbeat so the caller knows the
+        stream is live, then keeps emitting heartbeats until the peer
         disconnects (context goes inactive). The Rust proxy's ProxyControl
-        consumer this phase only logs events, so heartbeats are all this
-        needs to send to be indistinguishable from the real service.
+        consumer only logs events, so heartbeats are all this needs to send to
+        be indistinguishable from the real service.
         """
         LOG.info('ProxyControl: stream opened for node=%s', request.node)
         try:
@@ -293,8 +291,7 @@ def _parse_args():
              'plaintext, so the backend leg never needs a CA to verify qemu\'s TLS cert.')
     parser.add_argument(
         '--host-subject', default=os.environ.get('MOCK_GRPC_HOST_SUBJECT', ''),
-        help='Target.host_subject. Left empty by default (see --ca-cert); the ryll crate '
-             'does not enforce it in this phase regardless (see PLAN-rust-proxy-phase-03).')
+        help='Target.host_subject. Left empty by default (see --ca-cert).')
     parser.add_argument(
         '--source', default=os.environ.get('MOCK_GRPC_SOURCE', 'rust-proxy-verify'),
         help='Target.source -- a fixed test source name, used only for audit logging.')

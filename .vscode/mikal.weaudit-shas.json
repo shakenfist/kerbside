@@ -121,6 +121,18 @@
       "sha": "be35c384ab3ce8217a894c1a5861810b95b8cf3d",
       "date": "2026-08-03"
     },
+    "docs/console-sources.md": {
+      "sha": "d7f5bfd56c00f99929ec1727df7eac2d28b73979",
+      "date": "2026-08-13"
+    },
+    "docs/proxy-architecture.md": {
+      "sha": "03b725d0df9a23de7862f5f2b6c5aaa63cb85989",
+      "date": "2026-08-13"
+    },
+    "docs/use-cases/ovirt.md": {
+      "sha": "0e0902827c2bbbb08bacc3267ee3c565737a59be",
+      "date": "2026-08-13"
+    },
     "etc/example-static-sources.yaml": {
       "sha": "99cef6e4ea546d9daad7e5d14d633704223195ab",
       "date": "2026-08-04"

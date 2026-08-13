@@ -12,12 +12,10 @@
 # Full usage documentation (including the firewall warn-only capture and
 # the session-termination check): docs/direct-qemu-harness.md.
 #
-# This is the standalone sibling of lane-up.sh: lane-up.sh exercises the
-# proxy behind the full kerbside daemon + MariaDB; this script
-# exercises the Rust proxy in isolation, per
-# docs/plans/PLAN-rust-proxy-phase-03-proxy-skeleton.md step 3h. The full
-# ryll-based direct-qemu CI integration against the Rust proxy is phase 7
-# (see docs/proxy-architecture.md).
+# This is the standalone sibling of lane-up.sh: lane-up.sh exercises the proxy
+# behind the full kerbside daemon + MariaDB; this script exercises the Rust
+# proxy in isolation. The full ryll-based direct-qemu CI integration against
+# the Rust proxy is lane-up.sh (see docs/direct-qemu-harness.md).
 #
 # ── The client step is deliberately pluggable ─────────────────────────────
 #
@@ -109,9 +107,6 @@
 # BACKEND_HOST_SUBJECT (the pin sent when HOST_SUBJECT_EXPECT=match),
 # MISMATCH_HOST_SUBJECT (the pin sent when HOST_SUBJECT_EXPECT=mismatch),
 # HOST_SUBJECT_EXPECT (match|mismatch, for up and assert-host-subject).
-#
-# Part of docs/plans/PLAN-rust-proxy-phase-03-proxy-skeleton.md step 3h and
-# docs/plans/PLAN-rust-proxy-phase-04-firewall.md step 4f.
 
 set -euo pipefail
 
@@ -131,7 +126,7 @@ SPICE_TICKET="${SPICE_TICKET:-rust-proxy-verify-ticket}"
 QEMU_PID_FILE="${QEMU_PID_FILE:-${WORKDIR}/qemu.pid}"
 QEMU_SERIAL_LOG="${QEMU_SERIAL_LOG:-${WORKDIR}/sextant-serial.log}"
 
-# Backend TLS + host_subject pinning (phase-2 of PLAN-host-subject).
+# Backend TLS + host_subject pinning.
 # BACKEND_TLS=1 opens a SPICE TLS listener on qemu (tls-channel=default, so
 # the plaintext port answers need_secured) using generate-tls.sh's qemu-x509/
 # material, and the mock's Target carries the CA plus a host_subject pin.
@@ -174,9 +169,8 @@ SESSION_ID="${SESSION_ID:-rust-proxy-verify-session}"
 # This script does NOT create that venv for you.
 MOCK_GRPC_PYTHON="${MOCK_GRPC_PYTHON:-python3}"
 
-# Firewall / denial behaviour, threaded into mock-grpc-server.py (phase 4,
-# step 4f). Defaults reproduce the phase-3 behaviour: enforce mode, permit
-# all channels, deny nothing.
+# Firewall / denial behaviour, threaded into mock-grpc-server.py. Defaults
+# are enforce mode, permit all channels, deny nothing.
 #   FIREWALL_MODE      -- enforce | warn. "warn" runs the safe capture session
 #                         (blocking verdicts downgraded to forward+log,
 #                         action=observed) so a full legitimate session can be

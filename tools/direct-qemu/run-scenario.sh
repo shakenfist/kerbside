@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run the phase 7 Sextant scenario tempest test against a live direct-qemu lane.
+# Run the Sextant scenario tempest test against a live direct-qemu lane.
 #
 # This is the final lane step.  It is deliberately destructive: the scenario
 # drives Sextant all the way to the Parked screen and then sends a keypress
@@ -8,12 +8,10 @@
 # usable afterwards, so this MUST be the last step that runs on a lane.
 #
 # Credential-less tempest does not work through the `tempest run` CLI -- it
-# insists on a workspace / cloud config.  The working invocation is stestr
+# insists on a workspace / cloud config. The working invocation is stestr
 # pointed at the plugin's test path with TEMPEST_CONFIG exported (resolved
-# empirically in step 7c).  The plugin is installed NON-editable: `pip install
-# -e` drops a _version.py into the source tree, which pollutes the checkout.
-#
-# Part of docs/plans/PLAN-test-harness-phase-07-scenario-test.md step 7d.
+# empirically). The plugin is installed NON-editable: `pip install -e` drops a
+# _version.py into the source tree, which pollutes the checkout.
 
 set -euo pipefail
 

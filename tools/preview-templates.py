@@ -4,25 +4,25 @@
 reviewer can screenshot it in both palettes without deploying kerbside.
 
 sfui has no CI of its own and nothing in kerbside's tox lanes lints
-templates or CSS, so the only safety net for the chrome a phase of the
-sfui conversion ships is a human looking at rendered pixels. This script
-does the part of that which does not need a browser: it drives the page
-through kerbside.api's own test client (so routing, context and Jinja
-rendering are exactly what a real request would produce), writes the
-body next to a symlink of the real static tree (templates use
-root-relative asset paths like /static/sfui/..., so the output directory
-has to look like the app's document root), and prints the two commands
-that turn that into a screenshot.
+templates or CSS, so the only safety net for a converted page's chrome is
+a human looking at rendered pixels. This script does the part of that
+which does not need a browser: it drives the page through kerbside.api's
+own test client (so routing, context and Jinja rendering are exactly what
+a real request would produce), writes the body next to a symlink of the
+real static tree (templates use root-relative asset paths like
+/static/sfui/..., so the output directory has to look like the app's
+document root), and prints the two commands that turn that into a
+screenshot.
 
 Only pages that have actually been converted onto base-sfui.html are
 listed in PAGES below -- this script must never invent fixtures for a
 page that has not been converted yet. Today that is 'login' and
 'consoles': login is an unauthenticated GET / that renders directly, no
-database and no JWT needed; consoles needs both mocked. Phase 6 converts
-the sessions, sources and audit pages, each of which needs authentication
-and one or more kerbside.db calls mocked; add them as further entries in
-PAGES, each carrying whatever list of (target, patch kwargs) pairs its
-route needs, rather than restructuring this script.
+database and no JWT needed; consoles needs both mocked. The sessions,
+sources and audit pages each need authentication and one or more
+kerbside.db calls mocked; as they are converted, add them as further
+entries in PAGES, each carrying whatever list of (target, patch kwargs)
+pairs its route needs, rather than restructuring this script.
 """
 
 import argparse

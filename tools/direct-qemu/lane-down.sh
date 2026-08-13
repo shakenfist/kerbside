@@ -3,8 +3,6 @@
 #
 # Kills ryll, kerbside (daemon + gunicorn), and QEMU by their pidfiles,
 # then removes the workdir.
-#
-# Part of docs/plans/PLAN-test-harness-phase-05-direct-qemu-ci.md step 5b.
 
 WORKDIR="${WORKDIR:-/tmp/kerbside-ci}"
 

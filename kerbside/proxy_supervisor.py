@@ -19,8 +19,8 @@ from kerbside import util
 
 LOG, _ = logs.setup(__name__, **util.configure_logging())
 
-# Env override for the binary path, and the binary's installed name (on PATH
-# once the maturin wheel from phase 6 is installed).
+# Env override for the binary path, and the binary's installed name (on
+# PATH once the maturin wheel is installed).
 PROXY_BIN_ENV = 'KERBSIDE_PROXY_BIN'
 PROXY_BIN_NAME = 'kerbside-proxy'
 
@@ -28,11 +28,11 @@ PROXY_BIN_NAME = 'kerbside-proxy'
 def find_proxy_bin():
     """Locate the kerbside-proxy binary.
 
-    Resolution order: the KERBSIDE_PROXY_BIN env override, then kerbside-proxy
-    on PATH (the installed-wheel case, phase 6), then the in-repo dev build
-    dirs (release before debug). Raises RuntimeError naming every searched
-    location if none is a usable executable, so a misconfiguration fails fast
-    and loud rather than silently.
+    Resolution order: the KERBSIDE_PROXY_BIN env override, then
+    kerbside-proxy on PATH (the installed-wheel case), then the in-repo dev
+    build dirs (release before debug). Raises RuntimeError naming every
+    searched location if none is a usable executable, so a misconfiguration
+    fails fast and loud rather than silently.
     """
     searched = []
 

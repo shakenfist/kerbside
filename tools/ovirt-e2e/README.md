@@ -2,8 +2,7 @@
 
 This directory holds the runner-side driver scripts for the oVirt half of
 the two-tier CI story (`.github/workflows/functional-tests.yml`'s
-`ovirt_matrix` job). See
-`docs/plans/PLAN-two-tier-ci-phase-01-ovirt-kerbside.md` for the full spec.
+`ovirt_matrix` job).
 
 Unlike the `direct-qemu` lane (which fakes a cloud with a `type: static`
 source and a local qemu) and unlike `sf-e2e` (which co-locates kerbside on
@@ -205,7 +204,3 @@ this file is the well-known loopback MariaDB one
 `tools/direct-qemu/start-kerbside.sh` and already public in this
 repository. Any key added to this file must clear that same bar --
 nothing that is not already public.
-
-See `docs/plans/PLAN-two-tier-ci-phase-01-ovirt-kerbside.md` for the
-architecture decision, the full configuration-trap list, and the risks
-considered before choosing to run kerbside on the runner.

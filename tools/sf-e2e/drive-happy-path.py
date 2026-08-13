@@ -18,8 +18,6 @@ Runs ON the SF primary, with the kerbside venv's python (so both
 
 SECURITY: the raw ``.vv`` text, the SF JWT, the terminate JWT, the auth
 seed, and any key material are NEVER printed. Exits non-zero on any failure.
-
-Part of docs/plans/PLAN-kerbside-vdi-tokens-phase-09-e2e.md.
 """
 
 import os

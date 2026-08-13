@@ -1,8 +1,8 @@
 //! The backend leg + relay handoff.
 //!
-//! This is the seam phase 3e (backend connect) fills and phase 3f (the
-//! inspection-first relay) builds on. `run` receives the authorized client
-//! `SpiceStream` and everything needed to open the matching hypervisor channel:
+//! `run` receives the authorized client `SpiceStream` and everything needed to
+//! open the matching hypervisor channel, then hands off to the inspection-first
+//! relay:
 //!
 //! - `state` for the gRPC client (audit events) and node name,
 //! - `connection_ref` for bookkeeping/audit correlation,
@@ -49,8 +49,7 @@ const BACKEND_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// match here, so we deliberately look only for the distinctive substrings.
 ///
 /// Future work: add a typed `NeedSecured` error (or a dedicated error kind) to
-/// the ryll `shakenfist-spice-protocol` crate and match on that instead. Tracked
-/// alongside the backend items in `docs/plans/PLAN-rust-proxy.md`.
+/// the ryll `shakenfist-spice-protocol` crate and match on that instead.
 fn is_need_secured(err: &Error) -> bool {
     err.chain().any(|cause| {
         let msg = cause.to_string().to_lowercase();

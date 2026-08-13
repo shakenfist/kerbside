@@ -4,7 +4,7 @@
 # Runs ON the SF primary node. Sets the cluster-wide KERBSIDE_URL and
 # KERBSIDE_TOKEN_DURATION, ensures a VDI-token signing key exists, and
 # restarts sf-api so the process-cached KERBSIDE_URL takes effect (SF reads
-# it into config at process start, per the phase 9 plan).
+# it into config at process start).
 #
 # Usage: provision-sf.sh KERBSIDE_URL TOKEN_DURATION
 #
@@ -13,8 +13,6 @@
 #
 # SECURITY: prints the active signing kid and key count for diagnostics, but
 # never any key material.
-#
-# Part of docs/plans/PLAN-kerbside-vdi-tokens-phase-09-e2e.md.
 
 set -euo pipefail
 

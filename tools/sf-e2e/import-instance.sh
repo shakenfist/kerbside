@@ -10,8 +10,6 @@
 #
 # Sextant is a UEFI guest whose assertion oracle needs a working SPICE
 # console, so the instance MUST enable UEFI and a SPICE video device.
-#
-# Part of docs/plans/PLAN-kerbside-vdi-tokens-phase-09-e2e.md.
 
 set -euo pipefail
 

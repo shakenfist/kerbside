@@ -4,8 +4,7 @@
 # for two use-cases:
 #
 #   1. CI pipelines that launch QEMU directly and need kerbside to
-#      front it (see the direct-qemu CI lane, phase 5 of the
-#      test-harness plan).
+#      front it (see the direct-qemu CI lane).
 #   2. Ad-hoc debugging sessions where you want to point kerbside at
 #      a hand-rolled QEMU without spinning up a full control plane
 #      first.

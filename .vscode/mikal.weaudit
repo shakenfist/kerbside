@@ -2,7 +2,30 @@
   "clientRemote": "",
   "gitRemote": "",
   "gitSha": "",
-  "treeEntries": [],
+  "treeEntries": [
+    {
+      "label": "Need to update use cases before proceeding here.",
+      "entryType": 1,
+      "author": "mikal",
+      "details": {
+        "severity": "",
+        "difficulty": "",
+        "type": "",
+        "description": "",
+        "exploit": "",
+        "recommendation": "Short term, \nLong term, \n"
+      },
+      "locations": [
+        {
+          "path": "docs/index.md",
+          "startLine": 142,
+          "endLine": 142,
+          "label": "",
+          "description": ""
+        }
+      ]
+    }
+  ],
   "auditedFiles": [
     {
       "path": "alembic/versions/5c8101ff14d7_sources_can_be_deleted.py",
@@ -590,6 +613,22 @@
     },
     {
       "path": ".pre-commit-config.yaml",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/use-cases/ovirt.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/use-cases",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/console-sources.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/proxy-architecture.md",
       "author": "mikal"
     }
   ],

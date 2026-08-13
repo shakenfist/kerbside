@@ -27,8 +27,6 @@ this VM is absent from kerbside's console list.
 
 Runs on the oVirt target, alongside test-ovirt-console.py, so it can
 use the engine's own CA at /etc/pki/ovirt-engine/ca.pem.
-
-Part of docs/plans/PLAN-two-tier-ci-phase-01-ovirt-kerbside.md.
 """
 
 import argparse

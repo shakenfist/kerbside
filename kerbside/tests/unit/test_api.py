@@ -12,10 +12,10 @@ class GetNavItemsTestCase(testtools.TestCase):
     or database dependency, so it is exercised directly rather than
     through the test client the other classes here use.
 
-    This is the guard for the defect step 4d of the sfui conversion's
-    phase 4 fixed: ConsolesAudit.get() used to pass 'Audit', a name that
-    never appears in base_navitems, so nothing was ever marked active on
-    the audit page. A name that is not in the list must leave every item
+    This is the guard for a defect the sfui conversion fixed:
+    ConsolesAudit.get() used to pass 'Audit', a name that never appears
+    in base_navitems, so nothing was ever marked active on the audit
+    page. A name that is not in the list must leave every item
     inactive rather than silently matching nothing -- these tests would
     have caught that.
     """

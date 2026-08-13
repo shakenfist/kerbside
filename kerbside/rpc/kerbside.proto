@@ -74,7 +74,7 @@ message StatusReply {
 // the time it needs an authorization decision.
 message AuthorizeConnectionRequest {
   // token is the RSA-decrypted plaintext the proxy recovered from the SPICE
-  // client's encrypted password (phase 1, decrypt_password).
+  // client's encrypted password (decrypt_password).
   string token = 1;
   // connection_ref is a proxy-generated per-connection identifier that
   // replaces the per-worker pid identity in proxychannels.

@@ -3,16 +3,13 @@ name: Shaken Fist end-to-end functional test
 permissions:
   contents: read
 
-# A pull_request smoke gate since two-tier CI phase 2
-# (docs/plans/PLAN-two-tier-ci-phase-02-sf-e2e-promotion.md); since
-# phase 3 the "Can enqueue: sf-e2e" gate below is a required status
-# check in the develop ruleset -- the merge_group trigger exists only
-# so the required check reports (as skipped, which satisfies it) on
-# queue entries; the lane itself runs on PRs, nightly, and on
-# dispatch. The nightly schedule survives the promotion:
-# build-smoke-cluster deploys Shaken Fist at develop HEAD, which moves
-# independently of kerbside PRs, so the schedule catches SF-side drift
-# no kerbside PR would surface.
+# A pull_request smoke gate. The "Can enqueue: sf-e2e" gate below is a required
+# status check in the develop ruleset -- the merge_group trigger exists only so
+# the required check reports (as skipped, which satisfies it) on queue entries;
+# the lane itself runs on PRs, nightly, and on dispatch. The nightly schedule
+# survives the promotion: build-smoke-cluster deploys Shaken Fist at develop
+# HEAD, which moves independently of kerbside PRs, so the schedule catches
+# SF-side drift no kerbside PR would surface.
 on:
   merge_group:
   pull_request:

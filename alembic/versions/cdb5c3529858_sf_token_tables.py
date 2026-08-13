@@ -17,9 +17,9 @@ depends_on = None
 
 def upgrade() -> None:
     # Offline verification of Shaken Fist's Ed25519-signed VDI console JWTs
-    # (phase 5 of the VDI console tokens plan) needs two small caches in the
-    # shared DB -- kerbside's DB-only-IPC rule means the API process cannot
-    # reach the ephemeral, maintenance-loop-owned source objects directly.
+    # needs two small caches in the shared DB -- kerbside's DB-only-IPC rule
+    # means the API process cannot reach the ephemeral, maintenance-loop-owned
+    # source objects directly.
     #
     # sf_token_jtis enforces single-use tokens: the jti (a uuid4 hex) is
     # recorded once a token verifies, so a replayed token is rejected.

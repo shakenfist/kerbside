@@ -68,12 +68,11 @@ class LoginPageTestCase(testtools.TestCase):
         self.assertIn('Password', body)
 
     def test_login_page_offers_no_navigation(self):
-        # Root.get() passes navitems=[] for the login branch (design
-        # decision 2 of the phase 4 plan), so base-sfui.html's
-        # {% if navitems %} guard renders neither the nav strip nor the
-        # logout control. '/console' and '/session' would only appear as
-        # navitem hrefs, so their absence is the signal that no navigation
-        # was offered to an unauthenticated user.
+        # Root.get() passes navitems=[] for the login branch, so
+        # base-sfui.html's {% if navitems %} guard renders neither the nav
+        # strip nor the logout control. '/console' and '/session' would only
+        # appear as navitem hrefs, so their absence is the signal that no
+        # navigation was offered to an unauthenticated user.
         #
         # '/source' is deliberately NOT asserted here: it is legitimately
         # present regardless, because login.html's own script redirects
@@ -133,11 +132,10 @@ class HtmlPagesTestCase(testtools.TestCase):
     @mock.patch('kerbside.api.db.get_consoles')
     def test_consoles_page_renders_without_sessions(
             self, mock_get_consoles):
-        # The no-sessions branch (decision 3 of the phase 5 plan) renders
-        # a dim zero badge and no terminate disclosure instead of the
-        # dropdown the sessions case exercises above -- a distinct
-        # fixture proves that branch renders too, not just that it
-        # exists in the template.
+        # The no-sessions branch renders a dim zero badge and no
+        # terminate disclosure instead of the dropdown the sessions case
+        # exercises above -- a distinct fixture proves that branch
+        # renders too, not just that it exists in the template.
         quiet_console = copy.deepcopy(CONSOLE)
         quiet_console.update({
             'name': 'quietvm', 'sessions': [], 'token_count': 0, 'audit': [],
@@ -185,7 +183,7 @@ class HtmlPagesTestCase(testtools.TestCase):
         mock_get_console.return_value = copy.deepcopy(CONSOLE)
         # count_audit_events feeds total_events, which the current template
         # never renders; the value is set here for realism but deliberately
-        # not asserted on. Phase 6 of the master plan will start using it.
+        # not asserted on.
         mock_count_events.return_value = 42
         mock_get_events.return_value = [copy.deepcopy(AUDIT_EVENT)]
 
@@ -198,9 +196,9 @@ class HtmlPagesTestCase(testtools.TestCase):
         self.assertIn('audit-marker-event', body)
         self.assertIn('testvm', body)
 
-    # NOTE(phase 8): the terminate routes below move from GET to POST when
-    # phase 8 of the sfui conversion lands; these two tests will need to
-    # change to issue POSTs at that point.
+    # NOTE: the terminate routes below are still GET. They move to POST as part
+    # of the sfui conversion; these two tests will need to issue POSTs at that
+    # point.
     @mock.patch('kerbside.api.db.request_session_termination')
     @mock.patch('kerbside.api.db.add_audit_event')
     @mock.patch('kerbside.api.db.remove_session')
@@ -217,7 +215,7 @@ class HtmlPagesTestCase(testtools.TestCase):
         self.assertEqual(302, resp.status_code)
         self.assertTrue(resp.headers['Location'].endswith('/console'))
 
-    # NOTE(phase 8): see the note above -- this route also moves to POST.
+    # NOTE: see the note above -- this route also moves to POST.
     @mock.patch('kerbside.api.db.request_session_termination')
     @mock.patch('kerbside.api.db.add_audit_event')
     @mock.patch('kerbside.api.db.remove_session')

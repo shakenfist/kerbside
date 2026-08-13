@@ -54,7 +54,7 @@ The main entry point orchestrates the system lifecycle:
 - Runs a maintenance loop every 60 seconds to:
   - Refresh console listings from configured sources
   - Reap expired authentication tokens
-  - Reap expired `session_terminations` intent rows (phase 5, see below)
+  - Reap expired `session_terminations` intent rows (see below)
   - Handle source configuration changes
 
 ### 2. Control-plane gRPC service (`rpc/`)
@@ -80,7 +80,7 @@ gRPC status codes.
 | `RecordAuditEvent` | `add_audit_event` | Write an audit event |
 | `DeregisterChannel` | `remove_channel_by_ref` | Remove a channel at teardown |
 | `ClearNodeChannels` | `remove_node_channels` | Clear stale channel rows at proxy startup |
-| `ProxyControl` (streaming) | `get_terminations_for_node` | Daemon→proxy control channel: interleaves `Heartbeat`s with real `TerminateSession` events (phase 5) for sessions marked for termination that are live on this node; policy push is future work |
+| `ProxyControl` (streaming) | `get_terminations_for_node` | Daemon→proxy control channel: interleaves `Heartbeat`s with real `TerminateSession` events for sessions marked for termination that are live on this node; policy push is future work |
 
 `ProxyControl` is deliberately **local only** — one stream between a daemon
 and the single proxy it supervises on the same host, over the same UDS as
@@ -170,9 +170,9 @@ daemon's 15-second SIGTERM-to-SIGKILL window so a supervised restart drains
 in-flight sessions rather than abruptly cutting them.
 
 The relay is inspection-first: every framed SPICE message is passed through
-a `Policy` (the `Policy`/`Verdict` seam) before being forwarded, and as of
-phase 4 that seam is a real, **enforcing** application-level SPICE
-firewall, on by default. `EnforcingPolicy` (`policy.rs`) consults:
+a `Policy` (the `Policy`/`Verdict` seam) before being forwarded. That seam
+is a real, **enforcing** application-level SPICE firewall, on by default.
+`EnforcingPolicy` (`policy.rs`) consults:
 
 - **L1 (message grammar)**: a compiled-in per-channel, per-direction
   message-type allowlist (`allowlist.rs`), derived from the ryll
@@ -186,8 +186,7 @@ firewall, on by default. `EnforcingPolicy` (`policy.rs`) consults:
   (tight on the inputs/cursor client directions, generous elsewhere, both
   below the relay's unconditional 16 MiB absolute frame guard), a
   rate/throughput ceiling (disabled by default), a 15-minute idle-read
-  timeout, and client-side TCP keepalive — closing the phase-3 deferred
-  permit-pinning findings.
+  timeout, and client-side TCP keepalive.
 
 Policy is delivered per-connection over gRPC in the `AuthorizeConnection`
 reply (`FirewallPolicy`, in `kerbside.proto`): Python continues to own and
@@ -201,7 +200,7 @@ default `Enforce` mode. Verdicts are exported as the Prometheus metric
 `kerbside_proxy_firewall_verdicts_total{channel,direction,rule,action}` and
 coalesced into a single audit event per connection (never one per
 message). L2 body validation, session recording, and L3 rewriting remain
-future work; see `docs/plans/PLAN-rust-proxy-phase-04-firewall.md`.
+future work.
 
 ### 4. API Layer (`api.py`)
 
@@ -414,7 +413,7 @@ alembic/               # Database migrations
   versions/            # Migration scripts
 etc/                   # Configuration examples
 tools/                 # Utility scripts (incl. run-tempest-tests)
-  direct-qemu/         # Direct-QEMU CI lane glue scripts (phase 5+)
+  direct-qemu/         # Direct-QEMU CI lane glue scripts
     generate-tls.sh    # Mint ephemeral self-signed CA + proxy cert
     start-qemu.sh      # Launch a QEMU guest with SPICE + OVMF
     start-kerbside.sh  # Start gunicorn API + kerbside daemon run
@@ -425,7 +424,7 @@ tools/                 # Utility scripts (incl. run-tempest-tests)
                        #   tempest.conf, run test_sextant_scenario —
                        #   last step in the direct-qemu workflow
     rebuild-sextant-qcow2.sh  # Developer tool: refresh Sextant qcow2
-  sf-e2e/              # Shaken Fist end-to-end CI lane (phase 9): drive a
+  sf-e2e/              # Shaken Fist end-to-end CI lane: drive a
                        #   real SF cluster + co-located kerbside
     provision-sf.sh    # Set KERBSIDE_URL + signing key, restart sf-api
     gen-sources.py     # Write the type: shakenfist sources.yaml
@@ -435,7 +434,7 @@ tools/                 # Utility scripts (incl. run-tempest-tests)
     drive-happy-path.py    # Mint → verify → exchange → proxied session
     drive-adversarial.py   # replay/expired/aud/kid/cross-namespace
     gather-artifacts.sh    # Collect logs from the primary (no token)
-  ovirt-e2e/           # oVirt end-to-end CI lane (two-tier CI phase 1):
+  ovirt-e2e/           # oVirt end-to-end CI lane:
                        #   deploy the PR's kerbside on the runner against
                        #   a live oVirt 4.5 engine, relay a proxied
                        #   SPICE session with host_subject pinning

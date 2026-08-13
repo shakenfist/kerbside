@@ -1,12 +1,11 @@
 # sf-e2e: full Shaken Fist end-to-end lane
 
-This directory holds the primary-side driver scripts for the **phase 9**
-Shaken Fist end-to-end CI lane (`.github/workflows/sf-e2e-functional.yml`).
-See `docs/plans/PLAN-kerbside-vdi-tokens-phase-09-e2e.md` for the full spec.
+This directory holds the primary-side driver scripts for the Shaken Fist
+end-to-end CI lane (`.github/workflows/sf-e2e-functional.yml`).
 
 Unlike the `direct-qemu` lane (which fakes a cloud with a `type: static`
 source and a local qemu), this lane stands up a **real single-node Shaken
-Fist** and drives the joined flow that no earlier phase could:
+Fist** and drives the joined flow end to end:
 
     SF mints an Ed25519 JWT
       -> kerbside verifies it OFFLINE against keys SF actually published

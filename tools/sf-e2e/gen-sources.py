@@ -14,7 +14,6 @@ SECURITY: the source password is the SF system key, so this file is a
 secret. It is written 0600 and its contents are never echoed.
 
 Run with the kerbside venv's python (so ``shakenfist_client`` is importable).
-Part of docs/plans/PLAN-kerbside-vdi-tokens-phase-09-e2e.md.
 """
 
 import argparse

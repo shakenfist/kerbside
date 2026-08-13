@@ -21,11 +21,11 @@ SPICE protocol negotiation, authentication, and bidirectional traffic relay.
 | `kerbside/rpc/servicer.py` | gRPC servicer implementing the contract against db.py |
 | `kerbside/rpc/server.py` | serve()/stop() hosting the servicer over a unix socket in the daemon |
 | `rust/kerbside-proxy/` | The SPICE proxy (start here for connection handling): TLS termination, handshake, gRPC-authorised inspection-first relay that enforces an L0+L1 SPICE firewall. Builds in Docker via its Makefile |
-| `rust/kerbside-proxy/src/policy.rs` | The `Policy`/`Verdict` seam and the phase-4 firewall engine: `FirewallPolicy` (tunable knobs), `EnforcementMode` (Enforce/WarnOnly), `EnforcingPolicy` (L0 size/rate caps + L1 allowlist lookup), `VerdictTally` (coalesced per-connection audit) |
+| `rust/kerbside-proxy/src/policy.rs` | The `Policy`/`Verdict` seam and the firewall engine: `FirewallPolicy` (tunable knobs), `EnforcementMode` (Enforce/WarnOnly), `EnforcingPolicy` (L0 size/rate caps + L1 allowlist lookup), `VerdictTally` (coalesced per-connection audit) |
 | `rust/kerbside-proxy/src/allowlist.rs` | The compiled-in L1 message-type grammar: `classify(channel, dir, msg_type) -> Allowed \| Disallowed \| ChannelUnmodeled`, derived from the ryll `shakenfist-spice-protocol` name tables |
 | `kerbside/proxy_supervisor.py` | Launches/supervises the Rust `kerbside-proxy` binary as the daemon's child — `find_proxy_bin()` (env/PATH/dev-build resolution), `build_proxy_argv()` (config → CLI flags), `terminate_child()` (SIGTERM-then-SIGKILL with a deadline) |
-| `kerbside/db.py` (`SessionTermination`, migration `c4e7a1b9d2f3`) | Phase 5: the `session_terminations` intent table (`request_session_termination`, `get_terminations_for_node`, `reap_session_terminations`) that bridges API-driven termination to each proxy node's local `ProxyControl` push — see "Session termination" below |
-| `rust/kerbside-proxy/src/session.rs` (`SessionRegistry`) | Phase 5: the `session_id -> CancellationToken` registry the relay's `select!` and `ProxyControl`'s `TerminateSession` handler share, plus the shutdown-time `terminate_all()` drain |
+| `kerbside/db.py` (`SessionTermination`, migration `c4e7a1b9d2f3`) | The `session_terminations` intent table (`request_session_termination`, `get_terminations_for_node`, `reap_session_terminations`) that bridges API-driven termination to each proxy node's local `ProxyControl` push — see "Session termination" below |
+| `rust/kerbside-proxy/src/session.rs` (`SessionRegistry`) | The `session_id -> CancellationToken` registry the relay's `select!` and `ProxyControl`'s `TerminateSession` handler share, plus the shutdown-time `terminate_all()` drain |
 | `kerbside/sources/static.py` | Static source driver: reads VM-to-console mapping from an inline list in sources.yaml; designed for CI pipelines and ad-hoc debugging (no control plane required) |
 
 ## Architecture Patterns
@@ -110,13 +110,13 @@ when picking up ryll changes. CI runs fmt/clippy/test/build via
 `.github/workflows/rust.yml`; end-to-end verification against qemu is
 `docs/direct-qemu-harness.md`.
 
-#### Packaging and release (phase 6)
+#### Packaging and release
 
 The crate is published to PyPI as a separate `kerbside-proxy` package —
 a maturin `bindings = "bin"` wheel (`rust/kerbside-proxy/pyproject.toml`)
 that carries the compiled binary in the wheel's `*.data/scripts/` dir, so
-`pip install` puts `kerbside-proxy` on `PATH` and phase 5's
-`find_proxy_bin()` resolves it via `shutil.which`. `kerbside` exact-pins
+`pip install` puts `kerbside-proxy` on `PATH` and `find_proxy_bin()`
+resolves it via `shutil.which`. `kerbside` exact-pins
 `kerbside-proxy`, and both release in lockstep from one `v*` tag:
 
 - `tools/stamp-proxy-version.sh <version>` propagates the tag version into
@@ -132,7 +132,7 @@ that carries the compiled binary in the wheel's `*.data/scripts/` dir, so
   (proxy first); `rust.yml` builds a wheel on PRs as a packaging guard.
   See `RELEASE-SETUP.md` for the two trusted publishers.
 
-#### SPICE firewall (phase 4)
+#### SPICE firewall
 
 The relay enforces L0 (size caps, a disabled-by-default rate ceiling,
 idle-read timeout, TCP keepalive) and L1 (per-channel/direction
@@ -192,9 +192,9 @@ leg so the harness exercises the proxy-side cancellation path live.
 
 `.github/workflows/direct-qemu-functional.yml` runs the smoke + banner +
 Sextant scenario (`run-scenario.sh`) against the real daemon+API+MariaDB
-stack with a headless ryll client through the Rust proxy. Since two-tier
-CI phase 3 its "Can enqueue: direct-qemu" gate job is a required status
-check in the develop ruleset (renaming it without updating the ruleset
+stack with a headless ryll client through the Rust proxy. Its "Can
+enqueue: direct-qemu" gate job is a required status check in the
+develop ruleset (renaming it without updating the ruleset
 blocks all merges), and the lane also runs nightly because the merge
 queue does not re-run it against the merged tree. `start-kerbside.sh`
 pre-checks the proxy binary via `find_proxy_bin()`, and the lane builds and
@@ -209,11 +209,11 @@ The Rust leg additionally:
 - Builds and installs the `kerbside-proxy` wheel into the kerbside venv
   (`install-proxy-wheel.sh` → `build-proxy-wheel.sh --native`), so
   `find_proxy_bin()` resolves it via `shutil.which` on `PATH` — the real
-  phase-6 install path, given CI coverage here.
+  install path, given CI coverage here.
 - Runs `verify-terminate-live.sh` (Rust-only): on an isolated lane, calls
   the REST terminate endpoint and asserts the in-flight connection drops
   via the proxy log `session terminated by control plane`, exercising the
-  phase-5 DB→`ProxyControl` bridge end to end (not the mock).
+  DB→`ProxyControl` bridge end to end (not the mock).
 
 Both legs run `run-loadtest.sh` (non-gating, `continue-on-error`): it
 drives `loadtests/latency/orchestrator.py` to sample keypress-to-screen
@@ -231,14 +231,14 @@ database.
 
 ### Shaken Fist end-to-end lane (`sf-e2e`)
 
-`.github/workflows/sf-e2e-functional.yml` (a pull_request smoke gate since
-two-tier CI phase 2, plus nightly schedule and manual dispatch) is the
-only lane that exercises the `type: shakenfist` console source against a
-real cluster. Since phase 3 its "Can enqueue: sf-e2e" gate job is a
-required status check in the develop ruleset; renaming it without
-updating the ruleset blocks all merges. It stands up a
-single-node Shaken Fist at develop HEAD (`build-smoke-cluster`, topology
-`localhost`), then `shakenfist/actions/deploy-kerbside-on-shakenfist`
+`.github/workflows/sf-e2e-functional.yml` (a pull_request smoke gate, plus
+nightly schedule and manual dispatch) is the only lane that exercises the
+`type: shakenfist` console source against a real cluster. Its "Can
+enqueue: sf-e2e" gate job is a required status check in the develop
+ruleset; renaming it without updating the ruleset blocks all merges. It
+stands up a single-node Shaken Fist at develop HEAD
+(`build-smoke-cluster`, topology `localhost`), then
+`shakenfist/actions/deploy-kerbside-on-shakenfist`
 provisions `KERBSIDE_URL` + a signing key in SF and deploys a co-located
 kerbside (reusing `tools/direct-qemu/start-kerbside.sh`, with the SF token
 audience exported). The primary-side drivers live in `tools/sf-e2e/`:
@@ -250,8 +250,7 @@ then asserts a session audit row and clean teardown), and
 `drive-adversarial.py` (replay, expired, wrong audience, unknown kid,
 cross-namespace mint). `KERBSIDE_URL` and `SF_CONSOLE_TOKEN_AUDIENCE` must
 match byte-for-byte (`http://127.0.0.1:13002`). No script logs the token or
-key material. See `tools/sf-e2e/README.md` and
-`docs/plans/PLAN-kerbside-vdi-tokens-phase-09-e2e.md`.
+key material. See `tools/sf-e2e/README.md`.
 
 ### oVirt end-to-end lane (`ovirt-e2e`)
 
@@ -274,8 +273,7 @@ discover the lane's test VM, mints an API JWT, fetches the proxied `.vv`
 and launches `ryll --headless` against it immediately — oVirt
 graphics-console tickets expire in ~120s — then asserts a real relayed
 SPICE session via `smoke-client.py`, a session and audit row, and clean
-teardown on terminate). See `tools/ovirt-e2e/README.md` and
-`docs/plans/PLAN-two-tier-ci-phase-01-ovirt-kerbside.md`. The
+teardown on terminate). See `tools/ovirt-e2e/README.md`. The
 operator-facing version of what this lane proves — the front-door
 architecture, the engine account, and the network prerequisites — is
 `docs/use-cases/ovirt.md`.
@@ -371,6 +369,10 @@ tox -e bindep
 - Wrap lines at 80 characters
 - Use `LOG.with_fields({...}).info()` for structured logging
 - Add audit events for security-sensitive operations
+- Diagrams in `docs/` are mermaid fenced blocks, not ASCII art, and
+  prefer a vertical flow. See "Diagrams in the documentation" in
+  `docs/development.md` for the conventions and the two deliberate
+  plain-text exceptions.
 
 ## Review tracking
 
