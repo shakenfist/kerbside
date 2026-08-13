@@ -18,8 +18,15 @@ config.set_main_option('sqlalchemy.url', kerbside_config.SQL_URL)
 # alembic CLI and `kerbside db upgrade`) supply an ini, so config_file_name
 # is set in practice; the guard keeps env.py safe to drive programmatically
 # without one, where fileConfig(None) would raise.
+#
+# disable_existing_loggers=False matters. fileConfig() defaults to True,
+# which disables every logger not named in the ini -- including
+# kerbside's own. When alembic is driven in-process by `kerbside db
+# upgrade` that silently kills kerbside logging for the rest of the run,
+# so a migration failure reports nothing at all. Verified by inspecting
+# LOG.logger.disabled either side of the call.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Add your model's MetaData object here
 # for 'autogenerate' support

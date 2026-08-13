@@ -1,4 +1,7 @@
+from alembic import command as alembic_command
+from alembic.config import Config as AlembicConfig
 import click
+import importlib.resources
 from shakenfist_utilities import logs
 import logging
 import os
@@ -280,3 +283,79 @@ def daemon_run(ctx):
 
 
 daemon.add_command(daemon_run)
+
+
+def _fail(message):
+    """Report a fatal CLI error and exit non-zero.
+
+    Written to stderr as well as the log because these commands are run
+    by hand by an operator, and kerbside logs to syslog by default -- so
+    a log-only failure looks like the command silently did nothing.
+    """
+    LOG.error(message)
+    click.echo(message, err=True)
+    sys.exit(1)
+
+
+@click.group(help='Database commands')
+def db():
+    pass
+
+
+cli.add_command(db)
+
+
+def _alembic_config():
+    """Build an alembic Config pointing at the packaged migration tree.
+
+    The migrations live inside the package (kerbside/migrations/) so that
+    they ship in the wheel, which is what lets an installed kerbside
+    migrate its own schema with no repository checkout present.
+
+    script_location is overridden here rather than trusted from the
+    packaged ini, because the ini's relative value only resolves when
+    alembic is invoked from the directory containing it, and this command
+    runs from wherever the operator happens to be.
+
+    The database URL is not set here: kerbside/migrations/env.py already
+    takes it from config.SQL_URL, so upgrade and downgrade inherit the
+    same environment and INI resolution as the rest of kerbside.
+    """
+    migrations = importlib.resources.files('kerbside') / 'migrations'
+    alembic_config = AlembicConfig(str(migrations / 'alembic.ini'))
+    alembic_config.set_main_option('script_location', str(migrations))
+    return alembic_config
+
+
+@db.command(name='upgrade',
+            help='Upgrade the database schema, by default to head')
+@click.option('--revision', default='head', show_default=True,
+              help='Target revision')
+@click.pass_context
+def db_upgrade(ctx, revision):
+    # NOTE(mikal): SQL_URL is deliberately never logged, here or below --
+    # it carries the database password.
+    LOG.with_fields({'revision': revision}).info('Upgrading database schema')
+    try:
+        alembic_command.upgrade(_alembic_config(), revision)
+    except Exception as e:
+        _fail('Database upgrade failed: %s' % e)
+
+
+db.add_command(db_upgrade)
+
+
+@db.command(name='downgrade', help='Downgrade the database schema')
+@click.option('--revision', required=True,
+              help='Target revision. Required: a downgrade with an implied '
+                   'target is too easy to run against the wrong database')
+@click.pass_context
+def db_downgrade(ctx, revision):
+    LOG.with_fields({'revision': revision}).info('Downgrading database schema')
+    try:
+        alembic_command.downgrade(_alembic_config(), revision)
+    except Exception as e:
+        _fail('Database downgrade failed: %s' % e)
+
+
+db.add_command(db_downgrade)
