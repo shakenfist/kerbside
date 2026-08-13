@@ -114,6 +114,55 @@ No configuration needed. Sigstore is a public service that:
 
 Verification can be done by anyone using `cosign` or `gitsign verify`.
 
+### 5. Configure Dev Release Publishing
+
+Dev releases publish unattended on qualifying pushes to `develop` (see
+"Dev releases" below), so they need their own GitHub environment and their
+own PyPI trusted publisher, separate from the approval-gated `release`
+environment used for tagged releases.
+
+#### 5a. Create the `dev-release` GitHub Environment
+
+1. Go to the repository on GitHub: `shakenfist/kerbside`
+2. Click **Settings** > **Environments**
+3. Click **New environment**
+4. Name it: `dev-release`
+5. Click **Configure environment**
+6. Under **Environment protection rules**:
+   - Leave **Required reviewers** unchecked. This is deliberate: the whole
+     point of a dev release is that consumers installing unreleased
+     kerbside from git (notably upstream Kolla image builds) resolve a
+     working proxy wheel from PyPI without anyone in the loop. Gating it
+     on approval would just recreate the tagged-release workflow under a
+     different name.
+7. Under **Deployment branches and tags**:
+   - Select **Selected branches and tags**
+   - Add a rule: `develop`. This is the only thing stopping a feature
+     branch (or a `workflow_dispatch` run against one) from publishing a
+     dev wheel through this environment.
+8. Click **Save protection rules**
+
+#### 5b. Register the Second Trusted Publisher for Dev Releases
+
+`kerbside-proxy` already has a PyPI project from step 1a; add a **second**
+trusted publisher to it (a PyPI project can have multiple trusted
+publishers, one per workflow/environment pair):
+
+1. Log in to [pypi.org](https://pypi.org), navigate to the
+   `kerbside-proxy` project, **Publishing**, **Add a new publisher**
+2. Fill in the form:
+   - **Owner**: `shakenfist`
+   - **Repository name**: `kerbside`
+   - **Workflow name**: `dev-proxy-wheel.yml`
+   - **Environment name**: `dev-release` (must match the workflow)
+3. Click **Add**
+
+This is deliberately a separate publisher entry from the `release.yml` /
+`release` one added in step 1a — the two workflows publish through
+different environments with different trust postures (see "Dev releases"
+below), and PyPI trusted publishers are scoped per workflow+environment,
+not per project.
+
 ## How Releases Work
 
 1. A maintainer pushes a tag matching `v*` (e.g., `v0.1.0`)
@@ -125,6 +174,39 @@ Verification can be done by anyone using `cosign` or `gitsign verify`.
    - Generates Sigstore attestations for the built artifacts
    - Publishes to PyPI using OIDC (no tokens)
    - Creates a GitHub Release with the artifacts
+
+### Dev releases
+
+In addition to tagged releases, `.github/workflows/dev-proxy-wheel.yml`
+publishes unreleased `kerbside-proxy` dev wheels to PyPI:
+
+- **Trigger**: pushes to `develop` that change the proxy binary's inputs
+  (path-filtered on `rust/**`, `kerbside/rpc/kerbside.proto`,
+  `tools/build-proxy-wheel.sh`, `tools/stamp-dev-proxy-version.sh`, and the
+  workflow file itself) — an unrelated change on `develop` does not trigger
+  a new dev release.
+- **Versioning**: the version comes from `setuptools_scm`
+  (`MAJOR.MINOR.PATCH.devN`, e.g. `0.4.1.dev159`, monotonically increasing
+  with commits since the last tag) and is stamped as a static
+  `[project] version` into `rust/kerbside-proxy/pyproject.toml` by
+  `tools/stamp-dev-proxy-version.sh`. `Cargo.toml` is left untouched — dev
+  versions are not valid Cargo semver.
+- **Manual dispatch**: the workflow also accepts `workflow_dispatch`, with
+  a `dry_run` input that defaults to `true`. `dry_run: true` builds the
+  wheel without publishing; `dry_run: false` publishes unconditionally,
+  which is how the PyPI project gets bootstrapped (or a dev release
+  force-published outside the normal path-filtered trigger).
+- **Trust posture**: dev wheels get build provenance attestations, the
+  same as tagged releases, but they are **not** covered by the Sigstore
+  tag-signing tagged releases get — there is no `v*` tag for a dev build to
+  sign. Publishing runs through the `dev-release` environment, which has
+  no required reviewers (see "Configure Dev Release Publishing" above), so
+  consumers of dev wheels are trusting CI provenance, not a human-approved,
+  tag-signed release.
+- The approval-gated `release` environment and the exact lockstep version
+  pins it produces (see "Two-package lockstep release" above) are
+  unaffected — dev releases only ever publish `kerbside-proxy`, never
+  `kerbside` itself, so there is no cross-pinning to worry about.
 
 ## Verifying Releases
 
