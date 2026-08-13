@@ -32,9 +32,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Review-only changes touch no code the lane exercises, and this lane
-  # is an hour of VM time; skip them. This is a filter job rather than
-  # trigger-level paths-ignore because a required check that never
+  # Review-only and docs-only changes touch no code the lane
+  # exercises, and this lane is an hour of VM time; skip them. This
+  # is a filter job rather than trigger-level paths-ignore because a
+  # required check that never
   # reports blocks the merge forever, while a skipped one satisfies
   # it. The filter only runs on pull_request; schedule runs default to
   # code_changed=true. On merge_group the whole job skips -- nothing
@@ -68,6 +69,7 @@ jobs:
               - '!.vscode/*.weaudit'
               - '!.vscode/*.weaudit-shas.json'
               - '!.vscode/review-scope.toml'
+              - '!docs/**'
       # Make the verdict visible in the log rather than inferred from
       # which downstream jobs skipped.
       - name: Report verdict
