@@ -365,20 +365,22 @@ flowchart TD
 
     api -- "INSERT session_terminations(S)" --> db
 
-    subgraph nodeA["Proxy node A — holds channels 1, 2 of session S"]
-        direction TB
-        daemonA["Daemon stream:<br/>ProxyControl TerminateSession(S)"]
-        registryA["Rust proxy:<br/>SessionRegistry.terminate(S)"]
-        relayA["relay::run's select! sees token.cancelled()<br/>→ teardown, once per channel this node<br/>holds — here, 2 relays end"]
-        daemonA --> registryA --> relayA
-    end
-
+    %% Node B is declared FIRST on purpose: mermaid lays subgraphs out in
+    %% reverse declaration order, so this is what puts node A on the left.
     subgraph nodeB["Proxy node B — holds other channels of session S"]
         direction TB
         daemonB["Daemon stream:<br/>ProxyControl TerminateSession(S)"]
         registryB["Rust proxy:<br/>SessionRegistry.terminate(S)"]
         relayB["relay::run's select! sees token.cancelled()<br/>→ teardown, once per channel this node holds"]
         daemonB --> registryB --> relayB
+    end
+
+    subgraph nodeA["Proxy node A — holds channels 1, 2 of session S"]
+        direction TB
+        daemonA["Daemon stream:<br/>ProxyControl TerminateSession(S)"]
+        registryA["Rust proxy:<br/>SessionRegistry.terminate(S)"]
+        relayA["relay::run's select! sees token.cancelled()<br/>→ teardown, once per channel this node<br/>holds — here, 2 relays end"]
+        daemonA --> registryA --> relayA
     end
 
     db -- "polls get_terminations_for_node(A)" --> daemonA
