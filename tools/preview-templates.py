@@ -16,16 +16,17 @@ that turn that into a screenshot.
 
 Only pages that have actually been converted onto base-sfui.html are
 listed in PAGES below -- this script must never invent fixtures for a
-page that has not been converted yet. Today that is only 'login': an
-unauthenticated GET / renders it directly, no database and no JWT
-needed. Phases 5 and 6 convert the consoles, sessions, sources and audit
-pages, each of which needs authentication and one or more kerbside.db
-calls mocked; add them as further entries in PAGES, each carrying
-whatever list of (target, patch kwargs) pairs its route needs, rather
-than restructuring this script.
+page that has not been converted yet. Today that is 'login' and
+'consoles': login is an unauthenticated GET / that renders directly, no
+database and no JWT needed; consoles needs both mocked. Phase 6 converts
+the sessions, sources and audit pages, each of which needs authentication
+and one or more kerbside.db calls mocked; add them as further entries in
+PAGES, each carrying whatever list of (target, patch kwargs) pairs its
+route needs, rather than restructuring this script.
 """
 
 import argparse
+import copy
 import os
 import sys
 from unittest import mock
@@ -36,6 +37,7 @@ sys.path.insert(0, REPO_ROOT)
 
 try:
     from kerbside import api  # noqa: E402
+    from kerbside.tests.unit.test_api_html import CONSOLE  # noqa: E402
 except ImportError as e:
     # kerbside's dependencies are not installed system wide, so a bare
     # system python3 gets a bare ModuleNotFoundError here. Say which
@@ -66,10 +68,30 @@ except ImportError as e:
 #           ('kerbside.api.db.get_sources', {'return_value': [...]}),
 #       ],
 #   },
+#
+# The consoles entry below follows that shape, reusing the smoke test's
+# CONSOLE fixture rather than duplicating it -- a second, no-sessions
+# variant sits alongside it so one screenshot shows both terminate
+# states: the disclosure of two-step buttons, and the dim zero badge.
+QUIET_CONSOLE = copy.deepcopy(CONSOLE)
+QUIET_CONSOLE.update({
+    'name': 'quietvm', 'uuid': 'u-5678', 'sessions': [], 'token_count': 0,
+    'audit': [],
+})
+
 PAGES = {
     'login': {
         'route': '/',
         'patches': [],
+    },
+    'consoles': {
+        'route': '/console',
+        'patches': [
+            ('kerbside.api.verify_jwt_in_request',
+             {'return_value': (None, {})}),
+            ('kerbside.api.db.get_consoles',
+             {'return_value': [copy.deepcopy(CONSOLE), QUIET_CONSOLE]}),
+        ],
     },
 }
 

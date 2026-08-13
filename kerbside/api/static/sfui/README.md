@@ -126,6 +126,12 @@ rules carry comments saying they must stay in step. Size and
 color are separate modifiers -- a form's primary control is
 `.sf-btn .sf-btn--primary .sf-btn--lg`.
 
+`.sf-btn` works on `<a>` as well as `<button>`. Reach for an
+anchor when the action is a real navigation or download -- it
+keeps middle-click, open-in-new-tab and copy-link working, which
+a button can never do. Reach for a button when the action changes
+state instead of going anywhere.
+
 Naming, matching the element and event conventions:
 
 - Component classes are single `.sf-*` classes with BEM-style

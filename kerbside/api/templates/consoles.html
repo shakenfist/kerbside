@@ -1,102 +1,268 @@
-{% extends "base.html" %}
+{% extends "base-sfui.html" %}
+
+{% block title %}Kerbside consoles{% endblock %}
+
+{% block styles %}
+<style>
+    /* Local classes are kb-, never sf-, per the convention set in
+       base-sfui.html. Everything here is spacing and alignment
+       around sfui primitives; no colors, because the primitives
+       already carry them. */
+
+    /* A summary's contents, laid out as a row. The flex box is on
+       an inner span rather than on the <summary> itself: making
+       the summary a flex container takes the native disclosure
+       marker with it, and sf.css keeps that marker on purpose so
+       the open/closed state follows the palette for free. */
+    .kb-summary-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+
+    /* A disclosure body is prose and event sentences, not a
+       column of values to compare, so it steps out of the
+       monospaced face .sf-table gives its cells. The width cap
+       matters structurally as well as typographically: the table
+       is sized to max-content inside its scroll wrapper, so an
+       uncapped paragraph would widen the whole table the moment
+       one row was opened. */
+    .kb-disclosure-body {
+        max-width: 34rem;
+        padding: 0.4rem 0 0.2rem;
+        font-family: var(--sf-font-sans);
+    }
+
+    /* sfui's reset zeroes every margin and padding under
+       .sf-page, so the paragraphs would otherwise run together
+       and the list would lose the indent its markers hang in. */
+    .kb-disclosure-body p {
+        margin-bottom: 0.6rem;
+    }
+
+    .kb-disclosure-body p:last-child {
+        margin-bottom: 0;
+    }
+
+    .kb-disclosure-body ul {
+        margin: 0 0 0.6rem 1.1rem;
+    }
+
+    .kb-disclosure-body li {
+        margin-bottom: 0.25rem;
+    }
+
+    /* The terminate actions stack: one button per row, left
+       aligned, because their labels are sentences of very
+       different lengths and a wrapped inline cluster of those
+       reads as a paragraph of buttons. */
+    .kb-terminate-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.4rem;
+        padding-top: 0.4rem;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<table id="data" class="table table-sm table-striped">
-    <thead>
-        <tr>
-            <th>Name</th>
-            <th>Source</th>
-            <th>UUID</th>
-            <th>Hypervisor</th>
-            <th>Insecure Port</th>
-            <th>Secure Port</th>
-            <th colspan="4">Admin</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for console in consoles %}
-        <tr>
-            <td>{{ console.name }}</td>
-            <td>{{ console.source }}</td>
-            <td>{{ console.uuid }}</td>
-            <td>
-                {% if console.hypervisor %}
-                {{ console.hypervisor }} ({{ console.hypervisor_ip }})
-                {% else %}
-                {{ console.hypervisor_ip }}
-                {% endif %}
-            </td>
-            <td>{{ console.insecure_port }}</td>
-            <td>{{ console.secure_port }}</td>
-            <td>
-                <a tabindex="0" class="btn btn-sm btn-outline-primary text-dark" data-bs-toggle="popover"
-                    title="Recent audit events" data-bs-placement="left" data-bs-html="true"
-                    data-bs-trigger="focus" role="button"
-                    data-bs-content="
-                        <p>
-                            Here are the 20 most recent audit events for this console.
-                        </p>
+{# Ten columns of names, ids, ports and counts: scroll the table
+   rather than squash it. #}
+<div class="sf-table-scroll">
+    <table class="sf-table sf-table--striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Source</th>
+                <th>UUID</th>
+                <th>Hypervisor</th>
+                <th>Insecure Port</th>
+                <th>Secure Port</th>
+                <th colspan="4">Admin</th>
+            </tr>
+        </thead>
+        <tbody>
+            {# Fields are named one by one, never iterated: the
+               view passes db.get_consoles() dicts unfiltered, and
+               they carry the hypervisor ticket alongside what is
+               rendered here. #}
+            {% for console in consoles %}
+            <tr>
+                <td>{{ console.name }}</td>
+                <td>{{ console.source }}</td>
+                <td>{{ console.uuid }}</td>
+                <td>
+                    {% if console.hypervisor %}
+                    {{ console.hypervisor }} ({{ console.hypervisor_ip }})
+                    {% else %}
+                    {{ console.hypervisor_ip }}
+                    {% endif %}
+                </td>
+                <td>{{ console.insecure_port }}</td>
+                <td>{{ console.secure_port }}</td>
 
-                        <ul>
-                            {% for event in console.audit %}
-                            <li>{{ event.timestamp }}:
-                                {% if event.session_id %}{{ event.session_id }}{% endif %}
-                                {% if event.channel %}{{ event.channel }}{% endif %}
-                                {{ event.message }}
+                {# The disclosure ids are derived from the row, not
+                   generated, so a later polling phase can morph the
+                   table and leave an operator's open disclosure
+                   open. #}
+                <td>
+                    <details class="sf-disclosure"
+                             id="audit-{{ console.source }}-{{ console.uuid }}">
+                        <summary>
+                            <span class="kb-summary-label"
+                                  >{% include 'icons/audit.svg' %}Audit</span>
+                        </summary>
+                        <div class="kb-disclosure-body">
+                            <p>
+                                Here are the 20 most recent audit events for
+                                this console.
+                            </p>
+
+                            <ul>
+                                {% for event in console.audit %}
+                                <li>{{ event.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}:
+                                    {% if event.session_id %}{{ event.session_id }}{% endif %}
+                                    {% if event.channel %}{{ event.channel }}{% endif %}
+                                    {{ event.message }}</li>
+                                {% endfor %}
+                            </ul>
+
+                            <p>
+                                <a href="/console/{{ console.source }}/{{ console.uuid }}/audit?limit=200">See more events</a>.
+                            </p>
+                        </div>
+                    </details>
+                </td>
+
+                {# Real anchors: both are GET downloads of a .vv
+                   file, so middle click, "copy link address" and a
+                   page with no JavaScript all keep working. #}
+                <td>
+                    <div class="sf-btn-group">
+                        <a class="sf-btn sf-btn--sm"
+                           href="/console/proxy/{{ console.source }}/{{ console.uuid }}/console.vv">Proxy</a>
+                        <a class="sf-btn sf-btn--sm"
+                           href="/console/direct/{{ console.source }}/{{ console.uuid }}/console.vv">Direct</a>
+                    </div>
+                </td>
+
+                <td>
+                    <details class="sf-disclosure"
+                             id="tokens-{{ console.source }}-{{ console.uuid }}">
+                        {# Labelled because the visible summary is a
+                           bare number and the icon beside it is
+                           aria-hidden, so nothing else says what the
+                           number counts. #}
+                        <summary aria-label="{{ console.token_count }} active authentication tokens">
+                            <span class="kb-summary-label"
+                                  >{{ console.token_count }}{% include 'icons/tokens.svg' %}</span>
+                        </summary>
+                        <div class="kb-disclosure-body">
+                            <p>
+                                There are {{ console.token_count }} active
+                                authentication tokens for this console.
+                            </p>
+
+                            <p>
+                                An active authentication token is an
+                                opportunity to connect to the console.
+                                Sessions which were already open survive the
+                                expiration of their authentication token.
+                            </p>
+                        </div>
+                    </details>
+                </td>
+
+                {# Nothing to disclose when there is nothing to
+                   terminate: a dim zero says so without offering a
+                   control that does nothing. #}
+                <td>
+                    {% if console.sessions %}
+                    <details class="sf-disclosure"
+                             id="terminate-{{ console.source }}-{{ console.uuid }}">
+                        <summary aria-label="Terminate sessions ({{ console.sessions | length }} active)">
+                            <span class="kb-summary-label"
+                                  >{{ console.sessions | length }}{% include 'icons/sessions.svg' %}</span>
+                        </summary>
+                        <div class="kb-terminate-actions">
+                            <button type="button"
+                                    class="sf-btn sf-btn--sm sf-btn--danger"
+                                    data-kb-terminate-url="/console/{{ console.source }}/{{ console.uuid }}/terminate">Terminate all sessions</button>
+                            {% for session_id in console.sessions %}
+                            <button type="button"
+                                    class="sf-btn sf-btn--sm sf-btn--danger"
+                                    data-kb-terminate-url="/session/{{ session_id }}/terminate">Terminate session {{ session_id }}</button>
                             {% endfor %}
-                        </ul>
+                        </div>
+                    </details>
+                    {% else %}
+                    <span class="sf-badge sf-badge--dim">0</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
 
-                        <p>
-                            <a href='/console/{{ console.source }}/{{ console.uuid }}/audit?limit=200'>See more events</a>.
-                        </p>">
-                    <img src="/static/icons/audit.svg" width="21" height="21" class="d-inline-block align-top" alt="Audit events">
-                </a>
-            </td>
-            <td>
-                <div class="btn-group" role="group">
-                    <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle text-dark" data-bs-toggle="dropdown" aria-expanded="false">
-                        <img src="/static/icons/connect.svg" width="21" height="21" class="d-inline-block align-top" alt="Connect">
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="/console/proxy/{{ console.source }}/{{ console.uuid }}/console.vv">Connect via proxy</a></li>
-                        <li><a class="dropdown-item" href="/console/direct/{{ console.source }}/{{ console.uuid }}/console.vv">Connect directly</a></li>
-                    </ul>
-                </div>
-            </td>
-            <td>
-                <a tabindex="0" class="btn btn-sm btn-outline-primary text-dark" data-bs-toggle="popover"
-                    title="Active authentication tokens" data-bs-placement="left" data-bs-html="true"
-                    data-bs-trigger="focus" role="button"
-                    data-bs-content="
-                        <p>
-                            There are {{ console.token_count }} active authentication tokens for this<br/>
-                            console.
-                        </p>
+{% block scripts %}
+<script>
+    // The two-step terminate confirmation. One delegated listener
+    // rather than a listener per button: a later polling phase
+    // replaces the table rows wholesale, and delegation survives
+    // that with no re-wiring. Real <button>s, so the keyboard path
+    // is the click path -- Enter arms, Enter again fires, with no
+    // keydown handler reimplementing what a button already does.
+    var armedTerminate = null;
 
-                        <p><i>
-                            An active authentication token is an opportunity<br/>
-                            to connect to the console. Sessions which were<br/>
-                            already open survive the expiration of their<br/>
-                            authentication token.
-                        </i></p>">
-                    <b>{{ console.token_count }}</b> <img src="/static/icons/tokens.svg" width="21" height="21" class="d-inline-block align-top" alt="Tokens">
-                </a>
-            </td>
-            <td>
-                <div class="btn-group" role="group">
-                    <button type="button" class="btn btn-sm btn-outline-danger dropdown-toggle text-dark" data-bs-toggle="dropdown" aria-expanded="false" {% if console.sessions | length == 0 %}disabled{% endif %}>
-                        <b>{{ console.sessions | length }}</b> <img src="/static/icons/sessions.svg" width="21" height="21" class="d-inline-block align-top" alt="Disconnect">
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="/console/{{ console.source }}/{{ console.uuid }}/terminate">Terminate all sessions</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        {% for session_id in console.sessions %}
-                        <li><a class="dropdown-item" href="/session/{{ session_id }}/terminate">Terminate session {{ session_id }}</a></li>
-                        {% endfor %}
-                    </ul>
-                </div>
-            </td>
-        {% endfor %}
-    </tbody>
-</table>
+    function disarmTerminate() {
+        if (armedTerminate) {
+            armedTerminate.textContent = armedTerminate.dataset.kbLabel;
+            armedTerminate = null;
+        }
+    }
+
+    document.addEventListener('click', function (event) {
+        var button = event.target.closest('[data-kb-terminate-url]');
+        if (!button) {
+            return;
+        }
+
+        if (button === armedTerminate) {
+            // Phase 8 replaces this one line with a fetch POST
+            // carrying the CSRF header; the arming above is
+            // unchanged by that conversion.
+            window.location = button.dataset.kbTerminateUrl;
+            return;
+        }
+
+        // Arming a second button restores the label of the first.
+        disarmTerminate();
+        button.dataset.kbLabel = button.textContent;
+        button.textContent = 'Confirm?';
+        armedTerminate = button;
+    });
+
+    // Leaving the armed button disarms it. Both listeners are
+    // delegated for the same reason as the click one, which is why
+    // they are the bubbling events: focusout and pointerout bubble
+    // where blur and pointerleave do not.
+    document.addEventListener('focusout', function (event) {
+        if (event.target === armedTerminate) {
+            disarmTerminate();
+        }
+    });
+
+    document.addEventListener('pointerout', function (event) {
+        // Mouse only: a touch pointer leaves the button the instant
+        // the tap ends, so disarming on it would make the second
+        // tap impossible.
+        if (event.target === armedTerminate &&
+                event.pointerType === 'mouse') {
+            disarmTerminate();
+        }
+    });
+</script>
 {% endblock %}

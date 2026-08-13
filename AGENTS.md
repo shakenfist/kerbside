@@ -448,9 +448,13 @@ activity is visible in the Prometheus `/metrics` endpoint.
    `.sfui-commit`. Never edit it in place: change canonical sfui and
    re-vendor, or the next sync silently discards the change and the
    consistency audit reports the drift. See "Vendored web assets" in
-   `docs/development.md`. Templates converted to sfui extend
-   `base-sfui.html`; the rest still extend the old `base.html` until
-   the conversion finishes.
+   `docs/development.md`. `login.html` and `consoles.html` are
+   converted onto `base-sfui.html`; `sessions.html`, `sources.html`
+   and `audit.html` still extend the old `base.html` until phase 6.
+   Icons that need to follow the theme (an SVG loaded via `<img>`
+   cannot -- `currentColor` resolves against the SVG's own isolated
+   document, not the page) are inline `{% include %}`s of the SVGs
+   under `kerbside/api/templates/icons/`, not static assets.
 
 ## Dependency Management
 
