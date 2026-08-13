@@ -52,19 +52,11 @@
       "author": "mikal"
     },
     {
-      "path": "alembic/versions/cdb5c3529858_sf_token_tables.py",
-      "author": "mikal"
-    },
-    {
       "path": "alembic/versions/e1a4c7d2f9b6_auditevents_pid_as_string.py",
       "author": "mikal"
     },
     {
       "path": "alembic/versions/f7b2e9c4a1d8_drop_proxychannels_session_id_fk.py",
-      "author": "mikal"
-    },
-    {
-      "path": "alembic/versions",
       "author": "mikal"
     },
     {
@@ -76,19 +68,7 @@
       "author": "mikal"
     },
     {
-      "path": "alembic",
-      "author": "mikal"
-    },
-    {
-      "path": "etc/example-static-sources.yaml",
-      "author": "mikal"
-    },
-    {
       "path": "etc/kolla-ci-globals-overlay.yml",
-      "author": "mikal"
-    },
-    {
-      "path": "etc",
       "author": "mikal"
     },
     {
@@ -108,31 +88,7 @@
       "author": "mikal"
     },
     {
-      "path": "rust/kerbside-proxy/README.md",
-      "author": "mikal"
-    },
-    {
-      "path": "rust/kerbside-proxy/src/allowlist.rs",
-      "author": "mikal"
-    },
-    {
-      "path": "rust/kerbside-proxy/src/listen.rs",
-      "author": "mikal"
-    },
-    {
-      "path": "rust/kerbside-proxy/src/metrics.rs",
-      "author": "mikal"
-    },
-    {
-      "path": "rust/kerbside-proxy/src/policy.rs",
-      "author": "mikal"
-    },
-    {
       "path": "rust/kerbside-proxy/src/rpc.rs",
-      "author": "mikal"
-    },
-    {
-      "path": "rust/kerbside-proxy/src/session.rs",
       "author": "mikal"
     },
     {
@@ -160,14 +116,6 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/proxy_supervisor.py",
-      "author": "mikal"
-    },
-    {
-      "path": "kerbside/sf_token.py",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/util.py",
       "author": "mikal"
     },
@@ -176,15 +124,7 @@
       "author": "mikal"
     },
     {
-      "path": "tools/build-proxy-wheel.sh",
-      "author": "mikal"
-    },
-    {
       "path": "tools/ci-prune-reviews.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/dump-ovirt-host-subject.py",
       "author": "mikal"
     },
     {
@@ -244,31 +184,11 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/sources/static.py",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/rpc/__init__.py",
       "author": "mikal"
     },
     {
-      "path": "kerbside/rpc/kerbside_pb2_grpc.py",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/rpc/kerbside_pb2_grpc.pyi",
-      "author": "mikal"
-    },
-    {
-      "path": "kerbside/rpc/kerbside_pb2.py",
-      "author": "mikal"
-    },
-    {
-      "path": "kerbside/rpc/kerbside_pb2.pyi",
-      "author": "mikal"
-    },
-    {
-      "path": "kerbside/rpc/kerbside.proto",
       "author": "mikal"
     },
     {
@@ -280,15 +200,7 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/rpc",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/tests/functional/__init__.py",
-      "author": "mikal"
-    },
-    {
-      "path": "kerbside/tests/functional/ryll_helper.py",
       "author": "mikal"
     },
     {
@@ -297,10 +209,6 @@
     },
     {
       "path": "kerbside/tests/functional/test_shakenfist.py",
-      "author": "mikal"
-    },
-    {
-      "path": "kerbside/tests/functional",
       "author": "mikal"
     },
     {
@@ -332,19 +240,11 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/tests/unit/test_sources_shakenfist.py",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/tests/unit/test_sources_static.py",
       "author": "mikal"
     },
     {
       "path": "kerbside/tests/__init__.py",
-      "author": "mikal"
-    },
-    {
-      "path": "tests/fixtures/README.md",
       "author": "mikal"
     },
     {
@@ -360,10 +260,6 @@
       "author": "mikal"
     },
     {
-      "path": "tempest-plugin/kerbside_tempest_plugin/ryll_client.py",
-      "author": "mikal"
-    },
-    {
       "path": "loadtests/latency/cleanupconsoles.sh",
       "author": "mikal"
     },
@@ -376,99 +272,11 @@
       "author": "mikal"
     },
     {
-      "path": "loadtests/latency/orchestrator.py",
-      "author": "mikal"
-    },
-    {
-      "path": "loadtests/latency",
-      "author": "mikal"
-    },
-    {
-      "path": "loadtests",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/generate-tls.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/install-proxy-wheel.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/lane-down.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/lane-up.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/mock-grpc-server.py",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/probe-runner.sh",
-      "author": "mikal"
-    },
-    {
       "path": "tools/direct-qemu/rebuild-sextant-qcow2.sh",
       "author": "mikal"
     },
     {
-      "path": "tools/direct-qemu/run-host-subject-checks.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/run-loadtest.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/run-scenario.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/setup-mariadb.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/smoke-client.py",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/start-kerbside.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/start-qemu.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/start-rust-proxy.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/verify-terminate-live.sh",
-      "author": "mikal"
-    },
-    {
       "path": "tools/direct-qemu/wait-for-banner.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "rust/kerbside-proxy/src/backend.rs",
-      "author": "mikal"
-    },
-    {
-      "path": "rust/kerbside-proxy/src/main.rs",
-      "author": "mikal"
-    },
-    {
-      "path": "rust/kerbside-proxy/src/relay.rs",
-      "author": "mikal"
-    },
-    {
-      "path": "rust/kerbside-proxy/src",
       "author": "mikal"
     },
     {
@@ -477,10 +285,6 @@
     },
     {
       "path": ".github/workflows/codeql-analysis.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/direct-qemu-functional.yml",
       "author": "mikal"
     },
     {
@@ -500,10 +304,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/pr-retest.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/prune-reviews.yml",
       "author": "mikal"
     },
@@ -516,99 +316,7 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/rust.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/sf-e2e-functional.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/actionlint.yaml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/functional-tests.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/verify-rust-proxy.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/ovirt-e2e/deploy-kerbside.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/ovirt-e2e/drive-console.py",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/ovirt-e2e/gen-sources.py",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/ovirt-e2e/README.md",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/ovirt-e2e",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/sf-e2e/deploy-kerbside.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/sf-e2e/drive-adversarial.py",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/sf-e2e/drive-happy-path.py",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/sf-e2e/gather-artifacts.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/sf-e2e/gen-sources.py",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/sf-e2e/import-instance.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/sf-e2e/provision-sf.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/sf-e2e/README.md",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/sf-e2e",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/check-required-checks.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/create-ovirt-vnc-vm.py",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/file-nightly-failure-issue.sh",
       "author": "mikal"
     },
     {
@@ -625,10 +333,6 @@
     },
     {
       "path": "docs/console-sources.md",
-      "author": "mikal"
-    },
-    {
-      "path": "docs/proxy-architecture.md",
       "author": "mikal"
     }
   ],

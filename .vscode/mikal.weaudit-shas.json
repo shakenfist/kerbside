@@ -9,17 +9,9 @@
       "sha": "65c6d12908899aa0e4ed65201f45298aa1b68ef3",
       "date": "2026-08-11"
     },
-    ".github/workflows/direct-qemu-functional.yml": {
-      "sha": "c04468910928181af7e62c4ade7f72e84d13a0e2",
-      "date": "2026-08-11"
-    },
     ".github/workflows/export-repo-config.yml": {
       "sha": "53b5d8eb46e89e228dd88d42d7e1b0c3ea6694cd",
       "date": "2026-08-11"
-    },
-    ".github/workflows/functional-tests.yml": {
-      "sha": "af471a9e2f73bd4a89b0d6625f0056b4d725b869",
-      "date": "2026-08-12"
     },
     ".github/workflows/pin-indirect-dependencies.yml": {
       "sha": "0faad202ec3336b3fa8b6ed2787c557fc3172c24",
@@ -33,10 +25,6 @@
       "sha": "066168bcb5b6ccbd0247bc40c74d804fc173b084",
       "date": "2026-08-11"
     },
-    ".github/workflows/pr-retest.yml": {
-      "sha": "a0ea78c49dc0ee483c3d8137efef2987a1a378f6",
-      "date": "2026-08-11"
-    },
     ".github/workflows/prune-reviews.yml": {
       "sha": "27c5c370391a513b7978fe4eb2c0302c3da68ae3",
       "date": "2026-08-11"
@@ -47,14 +35,6 @@
     },
     ".github/workflows/renovate.yml": {
       "sha": "0bdfbcf6f1405d296c40cd561c7619baba5caaa3",
-      "date": "2026-08-11"
-    },
-    ".github/workflows/rust.yml": {
-      "sha": "3f1cdab763fae0f5391c8fc0105b39df9fd22d7e",
-      "date": "2026-08-11"
-    },
-    ".github/workflows/sf-e2e-functional.yml": {
-      "sha": "cc2302723a2d2dfeea4b667deb2c091d0ecab49b",
       "date": "2026-08-11"
     },
     ".pre-commit-config.yaml": {
@@ -109,10 +89,6 @@
       "sha": "34597ad33c7ed39acf11ab025874aacb15775907",
       "date": "2026-08-03"
     },
-    "alembic/versions/cdb5c3529858_sf_token_tables.py": {
-      "sha": "7440adaee1597b780bb37fb8f865810b1ac67f41",
-      "date": "2026-08-03"
-    },
     "alembic/versions/e1a4c7d2f9b6_auditevents_pid_as_string.py": {
       "sha": "d5b53b8aede63d5b1a787cbcc276007c5e0324d4",
       "date": "2026-08-03"
@@ -125,17 +101,9 @@
       "sha": "d7f5bfd56c00f99929ec1727df7eac2d28b73979",
       "date": "2026-08-13"
     },
-    "docs/proxy-architecture.md": {
-      "sha": "03b725d0df9a23de7862f5f2b6c5aaa63cb85989",
-      "date": "2026-08-13"
-    },
     "docs/use-cases/ovirt.md": {
       "sha": "0e0902827c2bbbb08bacc3267ee3c565737a59be",
       "date": "2026-08-13"
-    },
-    "etc/example-static-sources.yaml": {
-      "sha": "99cef6e4ea546d9daad7e5d14d633704223195ab",
-      "date": "2026-08-04"
     },
     "etc/kolla-ci-globals-overlay.yml": {
       "sha": "e11f4d65bca446150d6e2ed32a49a8fccfa0ebbc",
@@ -161,28 +129,8 @@
       "sha": "732eb1092500ae57882563508833c23007ed4760",
       "date": "2026-08-06"
     },
-    "kerbside/proxy_supervisor.py": {
-      "sha": "3c8074acf03b5a1167c08e126cedb9609a2ea941",
-      "date": "2026-08-06"
-    },
     "kerbside/rpc/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
-      "date": "2026-08-07"
-    },
-    "kerbside/rpc/kerbside.proto": {
-      "sha": "92de329653c6be4c5a7f7b3b43909b474a0ed1e3",
-      "date": "2026-08-07"
-    },
-    "kerbside/rpc/kerbside_pb2.py": {
-      "sha": "4b2410772377e6d9310321f922d153c0dcb5fa03",
-      "date": "2026-08-07"
-    },
-    "kerbside/rpc/kerbside_pb2.pyi": {
-      "sha": "c6f988ad7429545df840826b97e028e4d98307b9",
-      "date": "2026-08-07"
-    },
-    "kerbside/rpc/kerbside_pb2_grpc.py": {
-      "sha": "0380b27620ff9d0e3be8f76ab0296ec8e5c2e415",
       "date": "2026-08-07"
     },
     "kerbside/rpc/kerbside_pb2_grpc.pyi": {
@@ -197,10 +145,6 @@
       "sha": "0dcac8b48e8743bd90994187a0b1b65ce5182729",
       "date": "2026-08-07"
     },
-    "kerbside/sf_token.py": {
-      "sha": "377a26c25d7029cff1439039c2237de20e3a437f",
-      "date": "2026-08-06"
-    },
     "kerbside/sources/base.py": {
       "sha": "9508569169800aacfe7745b363175ac241ac6a7c",
       "date": "2026-08-07"
@@ -209,20 +153,12 @@
       "sha": "3c77e7e7dbe0d539bc76feb56f9a31aedeebe5e2",
       "date": "2026-08-07"
     },
-    "kerbside/sources/static.py": {
-      "sha": "87dd7d9c356780bb894b08a7bc01966cf4b00679",
-      "date": "2026-08-07"
-    },
     "kerbside/tests/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-08"
     },
     "kerbside/tests/functional/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
-      "date": "2026-08-08"
-    },
-    "kerbside/tests/functional/ryll_helper.py": {
-      "sha": "890db80ff60fe300ddc654399f0cef62aa1bc1ef",
       "date": "2026-08-08"
     },
     "kerbside/tests/functional/test_openstack.py": {
@@ -261,10 +197,6 @@
       "sha": "2b42aef35cbbaf8d8e7b15047604ba6ccba11776",
       "date": "2026-08-08"
     },
-    "kerbside/tests/unit/test_sources_shakenfist.py": {
-      "sha": "7fec3ddd2006ff5a84cdada07aca5e709cc2170a",
-      "date": "2026-08-08"
-    },
     "kerbside/tests/unit/test_sources_static.py": {
       "sha": "dee99ff7370d039b7b6bc97654de54c1542ff949",
       "date": "2026-08-08"
@@ -285,52 +217,12 @@
       "sha": "291f5057d4b3c808d60ca0e052975c79464e48b8",
       "date": "2026-08-08"
     },
-    "loadtests/latency/orchestrator.py": {
-      "sha": "aa96c2a7768ecd5a483bc806642302c6b46be768",
-      "date": "2026-08-08"
-    },
-    "rust/kerbside-proxy/README.md": {
-      "sha": "7c828f68a2863e42702474ba2b81617a52131dd5",
-      "date": "2026-08-05"
-    },
     "rust/kerbside-proxy/build.rs": {
       "sha": "8f2219aec8c8267d6913aa52ca5ae5656cdb183a",
       "date": "2026-08-10"
     },
-    "rust/kerbside-proxy/src/allowlist.rs": {
-      "sha": "1b3b0819d21b6026b22ab22bf7b3ab3e05fba703",
-      "date": "2026-08-05"
-    },
-    "rust/kerbside-proxy/src/backend.rs": {
-      "sha": "795676bc0318be12170d82da8b09bad5fab3dce2",
-      "date": "2026-08-10"
-    },
-    "rust/kerbside-proxy/src/listen.rs": {
-      "sha": "3962d7ee3569d3d193f927541ed817d812267a44",
-      "date": "2026-08-05"
-    },
-    "rust/kerbside-proxy/src/main.rs": {
-      "sha": "3495e6888a9bbdc39ca8a692bce6f3a5082aeaa9",
-      "date": "2026-08-10"
-    },
-    "rust/kerbside-proxy/src/metrics.rs": {
-      "sha": "8e24d840c061d280a4f68b943c3df3d4b8a370df",
-      "date": "2026-08-05"
-    },
-    "rust/kerbside-proxy/src/policy.rs": {
-      "sha": "123ef48f8014983af93de89561a884ab2b31eadb",
-      "date": "2026-08-05"
-    },
-    "rust/kerbside-proxy/src/relay.rs": {
-      "sha": "45dc6c045313676ac98bd49e9a033e7ac4754e43",
-      "date": "2026-08-10"
-    },
     "rust/kerbside-proxy/src/rpc.rs": {
       "sha": "a50c7c209641787f1aa0bfdeea558820c812537f",
-      "date": "2026-08-05"
-    },
-    "rust/kerbside-proxy/src/session.rs": {
-      "sha": "312782eb098f4ff45b6e8ec146c361432f03b292",
       "date": "2026-08-05"
     },
     "rust/kerbside-proxy/src/tls.rs": {
@@ -349,14 +241,6 @@
       "sha": "38d6e6f49d507181ae616aabf2f06feb35c2e3df",
       "date": "2026-08-08"
     },
-    "tempest-plugin/kerbside_tempest_plugin/ryll_client.py": {
-      "sha": "d27251dcc4b5eb552ded28722079ffa195ac7147",
-      "date": "2026-08-08"
-    },
-    "tests/fixtures/README.md": {
-      "sha": "6be0b5f64dcc9dc7c0316a325ab87c175f8a7c8d",
-      "date": "2026-08-08"
-    },
     "tools/address-comments-with-claude.sh": {
       "sha": "ad0b0df9ee27870b0caa5c3e52b5f91792ce0426",
       "date": "2026-08-06"
@@ -369,101 +253,17 @@
       "sha": "14f673773e8a52d3d6f091a96a0b2a27a2302419",
       "date": "2026-08-06"
     },
-    "tools/build-proxy-wheel.sh": {
-      "sha": "dcf7182d68c4851e2981d5257e1c6f50dd394b6e",
-      "date": "2026-08-06"
-    },
-    "tools/check-required-checks.sh": {
-      "sha": "91101dd29e9e9a033ea8a1af805cce92043122b2",
-      "date": "2026-08-12"
-    },
     "tools/ci-prune-reviews.sh": {
       "sha": "6daef1e07eb05d46b0a13745d5338cf1aea23cd8",
       "date": "2026-08-06"
-    },
-    "tools/create-ovirt-vnc-vm.py": {
-      "sha": "e1be037112c1e615a692a8b78eb6126b8e418a69",
-      "date": "2026-08-12"
-    },
-    "tools/direct-qemu/generate-tls.sh": {
-      "sha": "cd1043f9b384cc21ebd8b9c3e96676030fc820e1",
-      "date": "2026-08-09"
-    },
-    "tools/direct-qemu/install-proxy-wheel.sh": {
-      "sha": "0142059ad9becf10af5af563edced6040ec12530",
-      "date": "2026-08-09"
-    },
-    "tools/direct-qemu/lane-down.sh": {
-      "sha": "7fb533c6e79138f95fd393baa976954fd5a49876",
-      "date": "2026-08-09"
-    },
-    "tools/direct-qemu/lane-up.sh": {
-      "sha": "5c0ace33943667ecf71f12c2dd1bd76cf942067c",
-      "date": "2026-08-09"
-    },
-    "tools/direct-qemu/mock-grpc-server.py": {
-      "sha": "2d00adad02a17de235dea3da7dcb917e3077a439",
-      "date": "2026-08-09"
-    },
-    "tools/direct-qemu/probe-runner.sh": {
-      "sha": "294cdbfec7d1877e977c5dd2e63e2b9a3d9ca9c6",
-      "date": "2026-08-09"
     },
     "tools/direct-qemu/rebuild-sextant-qcow2.sh": {
       "sha": "4cfa3daff656b6df494d362d2b09ccd39ab00079",
       "date": "2026-08-09"
     },
-    "tools/direct-qemu/run-host-subject-checks.sh": {
-      "sha": "77467313b4880d785307fa64032af669f0adbfee",
-      "date": "2026-08-09"
-    },
-    "tools/direct-qemu/run-loadtest.sh": {
-      "sha": "90197ff6ce770b5150317b203a75b9463f0d8b33",
-      "date": "2026-08-09"
-    },
-    "tools/direct-qemu/run-scenario.sh": {
-      "sha": "10c9c97d3ec6423f82b9fc82a256131125a78984",
-      "date": "2026-08-09"
-    },
-    "tools/direct-qemu/setup-mariadb.sh": {
-      "sha": "dd86f21abac53a9e62485ffc3c9927ddeeb88fe5",
-      "date": "2026-08-09"
-    },
-    "tools/direct-qemu/smoke-client.py": {
-      "sha": "67878a440cd6b7799f458f65559e307dc1915bda",
-      "date": "2026-08-09"
-    },
-    "tools/direct-qemu/start-kerbside.sh": {
-      "sha": "10b7545fb6db43161ad561f9951c70f713d5c8d3",
-      "date": "2026-08-09"
-    },
-    "tools/direct-qemu/start-qemu.sh": {
-      "sha": "7c0413e91409ec3381df9d04b6a7be0eade7a81d",
-      "date": "2026-08-09"
-    },
-    "tools/direct-qemu/start-rust-proxy.sh": {
-      "sha": "e0b4408e11acbf05f9c8054036fea35dd71e320d",
-      "date": "2026-08-09"
-    },
-    "tools/direct-qemu/verify-rust-proxy.sh": {
-      "sha": "dc8b8d2724a879727c56a568ba186b850a379c92",
-      "date": "2026-08-12"
-    },
-    "tools/direct-qemu/verify-terminate-live.sh": {
-      "sha": "0ca7535c96892e287d7744c2a159f20fd74929c9",
-      "date": "2026-08-09"
-    },
     "tools/direct-qemu/wait-for-banner.sh": {
       "sha": "17c8a378a6a96c9c359eee505ee473f55a219f61",
       "date": "2026-08-09"
-    },
-    "tools/dump-ovirt-host-subject.py": {
-      "sha": "e6192e0626cdae7afe7f853ad06ad07ac399b604",
-      "date": "2026-08-06"
-    },
-    "tools/file-nightly-failure-issue.sh": {
-      "sha": "23ba46f6ba44a5029054e50aa003aceae3f1907d",
-      "date": "2026-08-12"
     },
     "tools/flake8wrap.sh": {
       "sha": "97ee081c8257372a4de994eba1b9e2b5434da1d2",
@@ -472,22 +272,6 @@
     "tools/gen-protos.sh": {
       "sha": "b886d3a887c6cbe39f454ad13a9271752b61ff9e",
       "date": "2026-08-06"
-    },
-    "tools/ovirt-e2e/README.md": {
-      "sha": "e3fb19693f9a3ae68870d803f857cecc1c5704e4",
-      "date": "2026-08-12"
-    },
-    "tools/ovirt-e2e/deploy-kerbside.sh": {
-      "sha": "4b6b56ef0b72b9da47c705a9840ab00d6a341334",
-      "date": "2026-08-12"
-    },
-    "tools/ovirt-e2e/drive-console.py": {
-      "sha": "3d0ed4e95c6b97810cfbb46f3be1826b49cbdd17",
-      "date": "2026-08-12"
-    },
-    "tools/ovirt-e2e/gen-sources.py": {
-      "sha": "ad320c5516d78e4e2d6ef3b06dff8ce41fe07993",
-      "date": "2026-08-12"
     },
     "tools/pin-indirect-dependencies.sh": {
       "sha": "241b462c281d6e33fa1d4023d15762a95d69112a",
@@ -508,38 +292,6 @@
     "tools/run-tempest-tests": {
       "sha": "b17af445b479f810c2ea4e33eb26231ffeec8604",
       "date": "2026-08-06"
-    },
-    "tools/sf-e2e/README.md": {
-      "sha": "3d2ed4ddb8a51396110594a362900929b61f1230",
-      "date": "2026-08-12"
-    },
-    "tools/sf-e2e/deploy-kerbside.sh": {
-      "sha": "e8e1ff15b8046c103a6575aee00160dcf5a29bdf",
-      "date": "2026-08-12"
-    },
-    "tools/sf-e2e/drive-adversarial.py": {
-      "sha": "872f55647813694fbb0676da8ca93cac5265ccdf",
-      "date": "2026-08-12"
-    },
-    "tools/sf-e2e/drive-happy-path.py": {
-      "sha": "ebc9fbe7c1922bed95af60b0a2510e8d31da2d85",
-      "date": "2026-08-12"
-    },
-    "tools/sf-e2e/gather-artifacts.sh": {
-      "sha": "d69a14d5aededc72e791d089a9f78b4a2a1d42be",
-      "date": "2026-08-12"
-    },
-    "tools/sf-e2e/gen-sources.py": {
-      "sha": "75113490d3dbdb3a6c002125ccfac2097ee2b393",
-      "date": "2026-08-12"
-    },
-    "tools/sf-e2e/import-instance.sh": {
-      "sha": "bcb2bd5d5f9ee620982fae6b5ddf950e1a15c96e",
-      "date": "2026-08-12"
-    },
-    "tools/sf-e2e/provision-sf.sh": {
-      "sha": "66332d85a7081b5cc499f0a1adf7b896e7617e38",
-      "date": "2026-08-12"
     },
     "tools/stamp-proxy-version.sh": {
       "sha": "fa5bc4dc6f461e287cd33f5de76e1d105cd44173",
