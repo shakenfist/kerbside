@@ -14,8 +14,12 @@ config = context.config
 # Set the DB URL from the kerbside config
 config.set_main_option('sqlalchemy.url', kerbside_config.SQL_URL)
 
-# Load other configuration from the ini file
-fileConfig(config.config_file_name)
+# Load other configuration from the ini file. Both entry points (the bare
+# alembic CLI and `kerbside db upgrade`) supply an ini, so config_file_name
+# is set in practice; the guard keeps env.py safe to drive programmatically
+# without one, where fileConfig(None) would raise.
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
 
 # Add your model's MetaData object here
 # for 'autogenerate' support
