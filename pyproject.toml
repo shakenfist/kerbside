@@ -19,13 +19,19 @@ dependencies = [
     "shakenfist-utilities==0.8.6",      # apache2
 
     # The Rust SPICE proxy binary is shipped as a separate maturin bin
-    # wheel (kerbside-proxy) released in lockstep from the same v* tag. Its
-    # exact-version pin is INSERTED here at release time by
-    # tools/stamp-proxy-version.sh, immediately before the marker below --
-    # deliberately absent from the committed tree so dev/CI installs do not
-    # require the sibling package to already exist on PyPI, and because a
-    # dev checkout resolves the proxy from the build tree (or
-    # KERBSIDE_PROXY_BIN) via find_proxy_bin() rather than from this pin.
+    # wheel (kerbside-proxy), released in lockstep from the same v* tag.
+    # The line below is a dev-inclusive FLOOR, not the release pin: naming
+    # a .dev0 version in the specifier is what opts pip into pre-release
+    # resolution, so git/dev installs resolve the newest proxy wheel on
+    # PyPI -- a release or a rolling dev wheel published by
+    # .github/workflows/dev-proxy-wheel.yml when the binary's inputs
+    # change. At release time tools/stamp-proxy-version.sh REPLACES this
+    # line with the exact kerbside-proxy==X.Y.Z lockstep pin (the
+    # KERBSIDE_PROXY_PIN marker below anchors that and marks the line for
+    # readers). A dev checkout can still override resolution entirely via
+    # KERBSIDE_PROXY_BIN or a locally built rust/kerbside-proxy tree
+    # (find_proxy_bin()).
+    "kerbside-proxy>=0.4.0.dev0",       # apache2
     # KERBSIDE_PROXY_PIN
 
     "click==8.4.2",                     # bsd
