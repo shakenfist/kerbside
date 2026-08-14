@@ -61,11 +61,13 @@ exist on PyPI yet.
 Both packages are built and published from one `v*` tag:
 
 - `setuptools_scm` derives the `kerbside` version from the tag.
-- `tools/stamp-proxy-version.sh` stamps that same version into the crate's
-  `Cargo.toml` (which maturin reads for the wheel) and inserts an exact
-  `kerbside-proxy==<version>` pin into `kerbside`'s dependency list, so
-  `pip install kerbside==X.Y.Z` transitively installs
-  `kerbside-proxy==X.Y.Z`.
+- The committed `pyproject.toml` carries a dev-inclusive FLOOR
+  (`kerbside-proxy>=0.4.0.dev0`), not a pin — see "Dev releases" below.
+  `tools/stamp-proxy-version.sh` stamps that same tag version into the
+  crate's `Cargo.toml` (which maturin reads for the wheel) and REPLACES
+  the floor line in `kerbside`'s dependency list with the exact
+  `kerbside-proxy==<version>` pin, so `pip install kerbside==X.Y.Z`
+  transitively installs `kerbside-proxy==X.Y.Z`.
 - `kerbside-proxy` is published **before** `kerbside` (the `publish-pypi`
   job depends on `publish-proxy-pypi`), so `kerbside` is never published
   referencing a proxy version that failed to publish.
