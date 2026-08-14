@@ -328,3 +328,46 @@ is the phase; if its shape needs arguing (the wrapper element,
 the include placement, the hook semantics), argue before it
 runs — the harness in Verification 4 is deliberately specified
 first so the implementation has an executable target.
+
+## Outcome
+
+Executed 2026-08-14. Both steps landed after management-session
+review of the actual files:
+
+- 7a `649f0f6` — the polling implementation, exactly per design
+  decisions 1-6, with two accepted implementer refinements:
+  `window.kbPoll` returns its fetch chain so a harness can await
+  a tick, and a fetched document without `#kb-content` counts as
+  a failed poll rather than a silent no-op.
+- 7b `784257f` — the two behavioural smoke tests (133 tests
+  total) and the docs updates.
+
+### Verification
+
+All items ran clean: `tox -eflake8` and `tox -epy3`;
+`kerbside/api.py` and everything under `kerbside/api/static/`
+byte-identical to `develop`; `http-equiv` remains only in the
+untouched `base.html`; morphdom referenced only from
+`base-sfui.html` and the poll include. The DOM harness against
+the rendered sessions page passed all eleven assertions: morph
+applies a new panel, live node identity is kept, the status
+stamp updates, an operator-closed server-open panel stays
+closed, an operator-opened server-closed panel stays open, the
+armed terminate button survives a morph untouched while a
+neighbouring cell in the same panel updates (proving the morph
+genuinely ran around the skip), unchanged content short-circuits
+(a marker property on a live node survives), and a failed poll
+reports "stale since" while leaving content intact. The audit
+page was screenshotted in both palettes: the UUID status-line
+and the footer stamp coexist without collision, and the stamp
+showed live client-clock time — the poll running for real
+against the static preview and short-circuiting as documented.
+
+One harness note for honesty's sake: the first harness run
+passed its preservation assertions vacuously because a
+management-session bug served the same variant twice and the
+short-circuit skipped the morph; the `neighbour-morphed`
+assertion existed precisely to catch that, failed, and the
+fixed harness then passed everything with a real morph. The
+implementing agent's own independent 13-assertion harness had
+already passed beforehand.
