@@ -171,6 +171,17 @@ flag a failure. Found while verifying the INI path;
 unrelated to writing an example file, so step 2e files it
 rather than fixing it.
 
+Filed as **#313**. Implementation found it is easier to hit
+than first thought: `load_ini_settings()` uses a default
+`ConfigParser`, so interpolation is active on INI *values*
+too, and a lone `%` raises `InterpolationSyntaxError` —
+which is a `configparser.Error` subclass and lands in this
+handler. A percent-encoded database password is the ordinary
+way to reach it, so the silent exit-zero is a likely first
+experience rather than an exotic one. This is the INI-file
+half of the same trap phase 1 fixed on the alembic side, and
+it is the reason the example file documents `%%`.
+
 ## Decisions
 
 1. **The example stays at `etc/kerbside.conf.example`, and
@@ -256,32 +267,55 @@ rather than fixing it.
 
 ## Definition of done
 
-Each item is checkable by running something.
+Each item is checkable by running something. Outcome recorded
+after each.
 
-- [ ] `etc/kerbside.conf.example` exists.
-- [ ] Every one of the 34 `Config` fields appears in it:
-      `.tox/py3/bin/python -c "from kerbside.config import
-      Config; print(len(Config.model_fields))"` returns 34,
-      and the 2b test passes.
-- [ ] No orphan keys — the converse assertion in 2b passes.
-- [ ] The 2b test has been *demonstrated to fail* when a
-      field is added to `Config`, with the failure output
-      quoted in the step report.
-- [ ] `grep -c 'QwwMH-4w\|kerbside.home.stillhq.com'
-      etc/kerbside.conf.example` returns 0, and no
-      64-character hex run appears.
-- [ ] The 2c test proves an existing environment variable
-      survives `load_ini_settings()`.
-- [ ] `git diff --stat develop -- docs/configuration.md
+- [x] `etc/kerbside.conf.example` exists.
+- [x] Every one of the 34 `Config` fields appears in it —
+      8 live, 26 commented, 34 documented, nothing missing.
+- [x] No orphan keys — the converse assertion in 2b passes.
+- [x] The 2b test has been *demonstrated to fail*. Adding a
+      throwaway field yields `[] != ['throwaway_canary']:
+      these settings exist on Config but are absent from
+      etc/kerbside.conf.example: throwaway_canary`, and an
+      unknown key yields `[] != ['renamed_away_setting']:
+      etc/kerbside.conf.example documents keys that are not
+      fields on Config`. Both reverted.
+- [x] No pasteable value: the grep returns 0 and no
+      64-character hex run appears. Implemented more
+      strongly than planned — the forbidden values are read
+      from `Config.model_fields` rather than hardcoded, so
+      changing a default in `config.py` cannot defeat the
+      guard.
+- [x] The 2c test proves an existing environment variable
+      survives `load_ini_settings()`, and fails with
+      `'preset.example.net' != 'kerbside.example.com'` when
+      the guard is replaced by `if False`.
+- [x] `git diff --stat develop -- docs/configuration.md
       ARCHITECTURE.md` is empty.
-- [ ] Dropping the file at `/etc/kerbside/kerbside.ini` with
-      the eight live keys filled in starts kerbside — done
-      once by hand and reported, since no CI lane installs
-      to `/etc`.
-- [ ] `pre-commit run --all-files` passes, and the unit
-      count has risen from 156 by the number of tests added.
-- [ ] A comment exists on #131; a new issue exists for the
-      `sys.exit()` bug, linked from Future work below.
+- [x] Dropping the file at `/etc/kerbside/kerbside.ini`
+      configures kerbside — verified in a `python:3.13-slim`
+      container, installing the example at the real path
+      with the eight live keys edited as an operator would,
+      with no monkeypatching: the live keys arrive, the
+      commented defaults resolve to their defaults
+      (`API_GRPC_WORKERS` 8, `KEYSTONE_ACCESS_GROUP`
+      kerbside), and `KERBSIDE_PUBLIC_FQDN` in the
+      environment still wins.
+
+      **Partial, and deliberately so.** This proves
+      configuration *loading* from the documented path, not
+      a full daemon start, which additionally needs a
+      database and issued TLS material. That is phase 3's
+      deliverable, and standing it up here would have
+      duplicated it. A container was used because `sudo`
+      requires a password on this host and writing to the
+      host's `/etc` for a test is not worth it.
+- [x] `pre-commit run --all-files` passes; unit tests went
+      from 156 to **167** (11 added).
+- [x] A comment exists on #131
+      (`issuecomment-5298199481`), and the `sys.exit()` bug
+      is filed as **#313**.
 
 ## Future work
 
@@ -291,7 +325,10 @@ Each item is checkable by running something.
   recorded because decision 1 is the arguable one.
 - **`configuration.md`'s `AUTH_SECRET_SEED` row** is wrong
   and stays wrong until #131 is fixed, on purpose.
-- **The `sys.exit()` exit-code bug** from step 2e.
+- **The `sys.exit()` exit-code bug**, filed as #313. Worth
+  pairing with a check that the INI file parses at all,
+  since the percent-interpolation cause is common enough to
+  be someone's first experience of kerbside.
 - **Unifying `configuration.md` with the example file** so
   one is generated from the other. Today both are written by
   hand from `config.py`, which is two places to rot instead

@@ -323,7 +323,7 @@ anything to wait on.
 | Phase | Plan | Status |
 |-------|------|--------|
 | 1. Package migrations, `kerbside db upgrade` | [PLAN-demo-install-phase-01-db-upgrade.md](PLAN-demo-install-phase-01-db-upgrade.md) | Complete |
-| 2. `etc/kerbside.conf.example` | [PLAN-demo-install-phase-02-conf-example.md](PLAN-demo-install-phase-02-conf-example.md) | Planned |
+| 2. `etc/kerbside.conf.example` | [PLAN-demo-install-phase-02-conf-example.md](PLAN-demo-install-phase-02-conf-example.md) | Complete |
 | 3. The compose demo | PLAN-demo-install-phase-03-compose-demo.md | Not started |
 | 4. CI lane for the demo | PLAN-demo-install-phase-04-ci-lane.md | Not started |
 | 5. Rewrite installation.md | PLAN-demo-install-phase-05-docs.md | Not started |
