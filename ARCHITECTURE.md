@@ -391,17 +391,21 @@ kerbside/
                        #   stubs, servicer, UDS server)
   sources/             # Cloud source implementations
   api/                 # Web UI assets
-    templates/         # Jinja2 templates: base.html (old Bootstrap base)
-                       #   and base-sfui.html (new sfui base; see AGENTS.md).
-                       #   login.html and consoles.html extend base-sfui.html;
-                       #   sessions.html, sources.html and audit.html still
-                       #   extend base.html until phase 6.
+    templates/         # Jinja2 templates: base-sfui.html (sfui base; see
+                       #   AGENTS.md) is extended by all five pages --
+                       #   login.html, consoles.html, sessions.html,
+                       #   sources.html and audit.html. base.html (the old
+                       #   Bootstrap base) is unreferenced, pending deletion
+                       #   alongside the old static assets.
       icons/           # Theme-following icons, inlined via
                        #   {% include 'icons/....svg' %} rather than served
                        #   as static assets -- an SVG loaded through <img>
                        #   never inherits the page's currentColor, so
                        #   following the theme requires the markup to be
                        #   part of the page.
+      includes/        # Shared page fragments, e.g. the two-step terminate
+                       #   confirmation included by consoles.html and
+                       #   sessions.html.
     static/            # CSS, JS (static/icons/ retired; see templates/icons/
                        #   above)
       sfui/            # Vendored shakenfist/sfui design system (never

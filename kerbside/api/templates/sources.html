@@ -1,35 +1,61 @@
-{% extends "base.html" %}
+{% extends "base-sfui.html" %}
+
+{% block title %}Kerbside sources{% endblock %}
 
 {% block content %}
-<table id="data" class="table table-sm table-striped">
-    <thead>
-        <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Last Seen</th>
-            <th>Seen By</th>
-            <th>Errored</th>
-            <th>CA Certificate</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for source in sources %}
-        <tr>
-            <td>{{ source.name }}</td>
-            <td>{{ source.type }}</td>
-            <td>{{ source.last_seen }}</td>
-            <td>{{ source.seen_by }}</td>
-            <td>{{ source.errored }}</td>
-            <td>
-                <a tabindex="0" class="btn btn-sm btn-outline-primary" data-bs-toggle="popover"
-                    title="CA Certificate" data-bs-placement="left" data-bs-html="true"
-                    data-bs-trigger="focus" role="button"
-                    data-bs-content="<pre>{{ source.ca_cert }}</pre>">
-                    Certificate
-                </a>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+{# Fields are named one by one, never iterated: the view passes
+   db.get_sources() dicts unfiltered, and they carry password, url,
+   username, project_name, user_domain_id and project_domain_id
+   alongside what is rendered here. #}
+<div class="sf-table-scroll">
+    <table class="sf-table sf-table--striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Last Seen</th>
+                <th>Seen By</th>
+                <th>Errored</th>
+                <th>CA Certificate</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for source in sources %}
+            <tr>
+                <td>{{ source.name }}</td>
+                <td>{{ source.type }}</td>
+                <td>
+                    {% if source.last_seen %}
+                    {{ source.last_seen.strftime('%Y-%m-%d %H:%M:%S') }}
+                    {% else %}
+                    <span class="sf-badge sf-badge--dim">never</span>
+                    {% endif %}
+                </td>
+                <td>{{ source.seen_by }}</td>
+                <td>
+                    {% if source.errored %}
+                    <span class="sf-badge sf-badge--red">errored</span>
+                    {% else %}
+                    <span class="sf-badge sf-badge--green">ok</span>
+                    {% endif %}
+                </td>
+                {# The disclosure id is derived from the source name,
+                   a unique db key, so a later polling phase can morph
+                   the table and leave an operator's open disclosure
+                   open. #}
+                <td>
+                    {% if source.ca_cert %}
+                    <details class="sf-disclosure" id="cacert-{{ source.name }}">
+                        <summary>Certificate</summary>
+                        <pre class="sf-code">{{ source.ca_cert }}</pre>
+                    </details>
+                    {% else %}
+                    <span class="sf-badge sf-badge--dim">none</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 {% endblock %}
