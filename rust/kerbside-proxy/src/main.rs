@@ -122,6 +122,10 @@ struct Args {
     /// Enable debug-level logging.
     #[arg(long)]
     verbose: bool,
+
+    /// Print the embedded gRPC contract hash and exit.
+    #[arg(long)]
+    contract_hash: bool,
 }
 
 #[tokio::main]
@@ -131,6 +135,16 @@ async fn main() -> Result<()> {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     let args = Args::parse();
+
+    // The contract handshake probe: the Python daemon runs the binary with
+    // --contract-hash before launching it as a proxy and refuses the launch
+    // unless the printed hash matches kerbside/rpc/contract.py's constant.
+    // Print and exit before logging init so the output is exactly one line of
+    // hex on stdout, with no tracing preamble for the daemon to parse around.
+    if args.contract_hash {
+        println!("{}", env!("KERBSIDE_CONTRACT_HASH"));
+        return Ok(());
+    }
 
     // Default to info, or debug when --verbose, unless RUST_LOG overrides.
     let default_level = if args.verbose { "debug" } else { "info" };
@@ -349,5 +363,22 @@ async fn shutdown_signal() {
     tokio::select! {
         () = ctrl_c => {},
         () = terminate => {},
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// The contract hash build.rs embeds must be a bare lowercase-hex sha256:
+    /// the daemon's handshake compares it verbatim against the Python
+    /// constant, so any stray formatting would be an unconditional mismatch.
+    #[test]
+    fn contract_hash_is_lowercase_hex_sha256() {
+        let hash = env!("KERBSIDE_CONTRACT_HASH");
+        assert_eq!(hash.len(), 64, "unexpected contract hash length: {hash}");
+        assert!(
+            hash.chars()
+                .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)),
+            "contract hash is not lowercase hex: {hash}"
+        );
     }
 }
