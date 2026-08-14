@@ -37,57 +37,9 @@
       "sha": "52747656c9ce3a27509516db50abacb7930c8ca2",
       "date": "2026-08-04"
     },
-    "PLAN-TEMPLATE.md": {
-      "sha": "0c72bdd0fd5912d3667662d0cdc3e546746a36f9",
-      "date": "2026-08-04"
-    },
     "RELEASE-SETUP.md": {
       "sha": "8ceb1bd45684a0fb799eea37b443cb8d5bfa0972",
       "date": "2026-08-04"
-    },
-    "alembic.ini": {
-      "sha": "d90692171501282e14a124736ca319c3494a67af",
-      "date": "2026-08-04"
-    },
-    "alembic/env.py": {
-      "sha": "e6ef69afa69eed66066d634f4350bcb43e67fa58",
-      "date": "2026-08-03"
-    },
-    "alembic/script.py.mako": {
-      "sha": "55df2863d206fa1678abb4c92e90c45d3f85c114",
-      "date": "2026-08-03"
-    },
-    "alembic/versions/5c8101ff14d7_sources_can_be_deleted.py": {
-      "sha": "f6e524d52a9afcba4987ad979aedfe47ec4fb3ec",
-      "date": "2026-08-03"
-    },
-    "alembic/versions/7d1c2f36a7b3_connection_id_as_bigint.py": {
-      "sha": "0d26891fe87c8c55fc7c0126f1aae1e81e0ae20e",
-      "date": "2026-08-03"
-    },
-    "alembic/versions/9a3f1c7b2e40_proxychannels_surrogate_id.py": {
-      "sha": "bf0e6343896a937f9eba2ecc6eb6a82740b6e545",
-      "date": "2026-08-03"
-    },
-    "alembic/versions/ad47e96baff6_initial_schema.py": {
-      "sha": "17858c0fca8c677897223315c2d889b947c2dc70",
-      "date": "2026-08-03"
-    },
-    "alembic/versions/bb26023f0c98_remove_flavor_column.py": {
-      "sha": "9652b3a947dae9e0fa22f1ed8397b96a6db5a343",
-      "date": "2026-08-03"
-    },
-    "alembic/versions/c4e7a1b9d2f3_session_terminations.py": {
-      "sha": "34597ad33c7ed39acf11ab025874aacb15775907",
-      "date": "2026-08-03"
-    },
-    "alembic/versions/e1a4c7d2f9b6_auditevents_pid_as_string.py": {
-      "sha": "d5b53b8aede63d5b1a787cbcc276007c5e0324d4",
-      "date": "2026-08-03"
-    },
-    "alembic/versions/f7b2e9c4a1d8_drop_proxychannels_session_id_fk.py": {
-      "sha": "be35c384ab3ce8217a894c1a5861810b95b8cf3d",
-      "date": "2026-08-03"
     },
     "docs/console-sources.md": {
       "sha": "d7f5bfd56c00f99929ec1727df7eac2d28b73979",
@@ -123,10 +75,6 @@
     },
     "kerbside/db.py": {
       "sha": "c3612a3f570288c42907bec0243701344acbe3a4",
-      "date": "2026-08-06"
-    },
-    "kerbside/main.py": {
-      "sha": "732eb1092500ae57882563508833c23007ed4760",
       "date": "2026-08-06"
     },
     "kerbside/rpc/__init__.py": {
@@ -247,10 +195,6 @@
     },
     "tools/audit/wave1.sh": {
       "sha": "219fca05b9c7cd896827cd1281e841accbe69b9d",
-      "date": "2026-08-06"
-    },
-    "tools/audit/wave2-mechanical.sh": {
-      "sha": "14f673773e8a52d3d6f091a96a0b2a27a2302419",
       "date": "2026-08-06"
     },
     "tools/ci-prune-reviews.sh": {
