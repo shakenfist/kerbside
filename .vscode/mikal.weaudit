@@ -286,6 +286,42 @@
     {
       "path": ".claude/skills",
       "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/allowlist.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/backend.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/listen.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/main.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/metrics.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/policy.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/relay.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/session.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

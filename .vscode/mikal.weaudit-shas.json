@@ -177,9 +177,41 @@
       "sha": "8f2219aec8c8267d6913aa52ca5ae5656cdb183a",
       "date": "2026-08-10"
     },
+    "rust/kerbside-proxy/src/allowlist.rs": {
+      "sha": "f2adab6fb95e5085f48b9b558926b1ff457e1636",
+      "date": "2026-08-15"
+    },
+    "rust/kerbside-proxy/src/backend.rs": {
+      "sha": "2e5cc0e2eb032193457f1af80496b0670092aa7a",
+      "date": "2026-08-15"
+    },
+    "rust/kerbside-proxy/src/listen.rs": {
+      "sha": "93dca4c1400e57b32bff1302231d4d544b191568",
+      "date": "2026-08-15"
+    },
+    "rust/kerbside-proxy/src/main.rs": {
+      "sha": "22405a882ba306173c0b13002f28ec4d3715c1bd",
+      "date": "2026-08-15"
+    },
+    "rust/kerbside-proxy/src/metrics.rs": {
+      "sha": "521fa7d251dc05fbf4d92f440069ae8d73570ddb",
+      "date": "2026-08-15"
+    },
+    "rust/kerbside-proxy/src/policy.rs": {
+      "sha": "e5ec82cc156bc9e03561fafe554fcfe55107fd9a",
+      "date": "2026-08-15"
+    },
+    "rust/kerbside-proxy/src/relay.rs": {
+      "sha": "9f46aa32f6a7919ceb00c2d95f86c672f7e8b92c",
+      "date": "2026-08-15"
+    },
     "rust/kerbside-proxy/src/rpc.rs": {
       "sha": "a50c7c209641787f1aa0bfdeea558820c812537f",
       "date": "2026-08-05"
+    },
+    "rust/kerbside-proxy/src/session.rs": {
+      "sha": "3d5738b24d4db47dff238580d3f9c270ba2506e2",
+      "date": "2026-08-15"
     },
     "rust/kerbside-proxy/src/tls.rs": {
       "sha": "e2be3c864a08747f987880b5205d719f33a15f78",
