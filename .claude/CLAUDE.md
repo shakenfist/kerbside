@@ -64,7 +64,7 @@ tox -e bindep
 
 ```bash
 alembic revision -m "description_of_changes"
-# Edit alembic/versions/<new_file>.py
+# Edit kerbside/migrations/versions/<new_file>.py
 alembic upgrade head
 ```
 

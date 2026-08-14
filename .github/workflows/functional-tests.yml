@@ -185,6 +185,20 @@ jobs:
           . /tmp/venv-test/bin/activate
           tox -epy3
 
+      # The unit tests cannot cover this. .stestr.conf sets top_dir=./, so
+      # importlib.resources resolves 'kerbside' to the checkout rather than
+      # to anything installed, leaving the suite blind to files being
+      # dropped from the built artifact. That is the exact shape of the
+      # defect this phase fixed: the migration tree sat outside the package
+      # for a long time, so every developer saw a working `alembic upgrade
+      # head` from a checkout while no wheel contained the migrations.
+      - name: Verify the wheel contains its runtime files
+        timeout-minutes: 5
+        run: |
+          . /tmp/venv-test/bin/activate
+          uv pip install build
+          python3 tools/check-wheel.py
+
       - name: List failing tests
         if: failure()
         id: failures

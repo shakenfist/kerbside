@@ -49,39 +49,18 @@ trap cleanup EXIT
 echo "[verify-terminate] Bringing up an isolated Rust-proxy lane in ${WORKDIR}"
 "${SCRIPT_DIR}/lane-up.sh"
 
-# ── Mint a JWT the same way lane-up.sh does ───────────────────────────────────
+# ── Reuse the token lane-up.sh already minted ─────────────────────────────────
+#
+# lane-up.sh mints via "kerbside demo token --output" and leaves the token
+# in the workdir, so there is nothing to mint again here. This used to be a
+# second copy of a hand-rolled PyJWT payload.
 
-SEED_FILE="${WORKDIR}/kerbside-auth-seed.txt"
-if [ ! -f "${SEED_FILE}" ]; then
-    echo "ERROR: auth seed file not found: ${SEED_FILE}" >&2
+TOKEN_FILE="${WORKDIR}/kerbside-api-token.txt"
+if [ ! -f "${TOKEN_FILE}" ]; then
+    echo "ERROR: API token not found: ${TOKEN_FILE}" >&2
     exit 1
 fi
-AUTH_SEED="$(cat "${SEED_FILE}")"
-
-JWT_TOKEN="$(python3 - "${AUTH_SEED}" << 'PYEOF'
-import sys
-import time
-import uuid
-
-import jwt as pyjwt
-
-seed = sys.argv[1]
-now = int(time.time())
-payload = {
-    'fresh': False,
-    'iat': now,
-    'jti': str(uuid.uuid4()),
-    'type': 'access',
-    'sub': 'kerbside-ci',
-    'nbf': now,
-    'exp': now + 3600,
-}
-token = pyjwt.encode(payload, seed, algorithm='HS256')
-if isinstance(token, bytes):
-    token = token.decode('utf-8')
-print(token, end='')
-PYEOF
-)"
+JWT_TOKEN="$(cat "${TOKEN_FILE}")"
 
 # ── Confirm the session is live, then terminate the console ───────────────────
 

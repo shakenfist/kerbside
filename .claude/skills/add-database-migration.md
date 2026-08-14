@@ -8,10 +8,11 @@ When creating a new Alembic database migration for Kerbside:
    alembic revision -m "description_of_changes"
    ```
 
-2. Edit the generated file in `alembic/versions/` to implement both
+2. Edit the generated file in `kerbside/migrations/versions/` to implement both
    `upgrade()` and `downgrade()` functions.
 
-3. Follow existing migration patterns in `alembic/versions/` for style.
+3. Follow existing migration patterns in `kerbside/migrations/versions/`
+   for style.
 
 4. Update `kerbside/db.py` with any new models, columns, or queries
    that correspond to the schema change.

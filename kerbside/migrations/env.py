@@ -11,11 +11,32 @@ from kerbside.config import config as kerbside_config
 # access to the values within the .ini file in use.
 config = context.config
 
-# Set the DB URL from the kerbside config
-config.set_main_option('sqlalchemy.url', kerbside_config.SQL_URL)
+# Set the DB URL from the kerbside config.
+#
+# The percent doubling is required, not cosmetic. set_main_option() hands the
+# value to ConfigParser.set() with pyformat interpolation active, so a bare %
+# raises ValueError("invalid interpolation syntax") before the migration even
+# starts. Any percent-encoded character in the DSN triggers it, and an operator
+# who percent-encodes '@', '/', '#' or '!' in a database password gets exactly
+# that -- so mysql+pymysql://user:p%40ss@db/kerbside would fail every migration
+# run with an opaque error. Escaping here keeps SQL_URL a plain URL everywhere
+# else in kerbside.
+config.set_main_option(
+    'sqlalchemy.url', kerbside_config.SQL_URL.replace('%', '%%'))
 
-# Load other configuration from the ini file
-fileConfig(config.config_file_name)
+# Load other configuration from the ini file. Both entry points (the bare
+# alembic CLI and `kerbside db upgrade`) supply an ini, so config_file_name
+# is set in practice; the guard keeps env.py safe to drive programmatically
+# without one, where fileConfig(None) would raise.
+#
+# disable_existing_loggers=False matters. fileConfig() defaults to True,
+# which disables every logger not named in the ini -- including
+# kerbside's own. When alembic is driven in-process by `kerbside db
+# upgrade` that silently kills kerbside logging for the rest of the run,
+# so a migration failure reports nothing at all. Verified by inspecting
+# LOG.logger.disabled either side of the call.
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Add your model's MetaData object here
 # for 'autogenerate' support

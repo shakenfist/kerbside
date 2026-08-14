@@ -390,6 +390,10 @@ kerbside/
   rpc/                 # KerbsideProxy gRPC service (.proto, generated
                        #   stubs, servicer, UDS server)
   sources/             # Cloud source implementations
+  migrations/          # Alembic migration environment and scripts. Inside
+                       #   the package so they ship in the wheel and
+                       #   `kerbside db upgrade` works from an install.
+    versions/          # Migration scripts
   api/                 # Web UI assets
     templates/         # Jinja2 templates: base-sfui.html (sfui base; see
                        #   AGENTS.md) is extended by all five pages --
@@ -413,8 +417,6 @@ kerbside/
 rust/kerbside-proxy/   # The Rust SPICE proxy (binary crate)
   src/                 # listeners, TLS, handshake, backend leg, relay,
                        #   firewall (policy.rs/allowlist.rs), gRPC client
-alembic/               # Database migrations
-  versions/            # Migration scripts
 etc/                   # Configuration examples
 tools/                 # Utility scripts (incl. run-tempest-tests)
   direct-qemu/         # Direct-QEMU CI lane glue scripts

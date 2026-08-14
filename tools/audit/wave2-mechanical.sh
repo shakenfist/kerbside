@@ -75,7 +75,7 @@ git diff "$DIFF_BASE"...HEAD -- pyproject.toml bindep.txt \
 echo
 
 echo "new alembic revisions — surface for migration review:"
-git diff "$DIFF_BASE"...HEAD --name-only -- 'alembic/versions/*.py' \
+git diff "$DIFF_BASE"...HEAD --name-only -- 'kerbside/migrations/versions/*.py' \
     || echo "(none)"
 echo
 
