@@ -262,8 +262,8 @@ All resolved by the operator on 2026-08-14:
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 1. Dev wheel publish workflow | [PLAN-proxy-dev-releases-phase-01-publish-workflow.md](PLAN-proxy-dev-releases-phase-01-publish-workflow.md) | Planned |
-| 2. Committed dev specifier and release stamping | PLAN-proxy-dev-releases-phase-02-dev-specifier.md | Not started |
+| 1. Dev wheel publish workflow | [PLAN-proxy-dev-releases-phase-01-publish-workflow.md](PLAN-proxy-dev-releases-phase-01-publish-workflow.md) | Implemented (on branch; merge deferred to plan completion) |
+| 2. Committed dev specifier and release stamping | [PLAN-proxy-dev-releases-phase-02-dev-specifier.md](PLAN-proxy-dev-releases-phase-02-dev-specifier.md) | Planned |
 | 3. Contract handshake | PLAN-proxy-dev-releases-phase-03-contract-handshake.md | Not started |
 | 4. Docs, downstream cleanup and verification | PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md | Not started |
 | 5. Automated dev release pruning | PLAN-proxy-dev-releases-phase-05-pypi-prune.md | Not started |
@@ -300,13 +300,18 @@ to replace the `>=` specifier with the exact `==X.Y.Z` pin
 at release time (it already handles the replace-existing-
 pin case; the insert-at-marker branch becomes a fallback).
 Verify the pin-indirect-dependencies workflow is
-indifferent to the new line. After this phase merges, a
+indifferent to the new line. Once this phase merges, a
 plain `pip install` of a checkout resolves the newest
 proxy wheel from PyPI — this is the phase that turns the
-upstream scenario jobs green, but it should land after
-phase 1 has published at least one dev wheel so the
-resolved binary is contract-current rather than the last
-release.
+upstream scenario jobs green. (Sequencing note, corrected
+2026-08-14 during phase 2 planning: the phases all land in
+ONE PR when the master plan completes, per the operator's
+CI-cost policy — not one PR per phase as originally
+sketched. The bootstrap dispatch runs immediately after
+that merge; in the window before it completes, fresh git
+installs resolve the 0.4.0 release wheel, and the phase 3
+contract handshake is what makes any resulting skew a loud
+startup refusal rather than a subtle failure.)
 
 **Phase 3 — contract handshake.** `tools/gen-protos.sh`
 additionally writes the sha256 of `kerbside.proto` to a
