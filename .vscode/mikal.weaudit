@@ -386,6 +386,38 @@
     {
       "path": "tools/direct-qemu/verify-terminate-live.sh",
       "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/import-instance.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/deploy-kerbside.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/drive-adversarial.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/drive-happy-path.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/gather-artifacts.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/gen-sources.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/provision-sf.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/README.md",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

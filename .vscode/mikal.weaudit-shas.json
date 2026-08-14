@@ -341,6 +341,38 @@
       "sha": "b17af445b479f810c2ea4e33eb26231ffeec8604",
       "date": "2026-08-06"
     },
+    "tools/sf-e2e/README.md": {
+      "sha": "6b5f0ebcbe1c086ef9de532c3b7e5b57be51d9b8",
+      "date": "2026-08-15"
+    },
+    "tools/sf-e2e/deploy-kerbside.sh": {
+      "sha": "b374194e55859c4c3b8d8dbac368b3d17b299b1d",
+      "date": "2026-08-15"
+    },
+    "tools/sf-e2e/drive-adversarial.py": {
+      "sha": "12ab1f0f45a642ab9a3cd0c5c237e75ae232a1ee",
+      "date": "2026-08-15"
+    },
+    "tools/sf-e2e/drive-happy-path.py": {
+      "sha": "8db8e6aede4dab1bf4a7e66f15d4e2b07bddb313",
+      "date": "2026-08-15"
+    },
+    "tools/sf-e2e/gather-artifacts.sh": {
+      "sha": "b88a9954220263f2a95dee78d6cb42c6b8c9dac6",
+      "date": "2026-08-15"
+    },
+    "tools/sf-e2e/gen-sources.py": {
+      "sha": "ac916339e3b206a5cb2ddbc5c85866f5f69cf5d0",
+      "date": "2026-08-15"
+    },
+    "tools/sf-e2e/import-instance.sh": {
+      "sha": "7037f8372e2ebdd387c9bbd0ee072e90d47013bc",
+      "date": "2026-08-15"
+    },
+    "tools/sf-e2e/provision-sf.sh": {
+      "sha": "e8db5e0a6203e02464c53e3a8ffe74b31ff5b799",
+      "date": "2026-08-15"
+    },
     "tools/stamp-proxy-version.sh": {
       "sha": "fa5bc4dc6f461e287cd33f5de76e1d105cd44173",
       "date": "2026-08-06"
