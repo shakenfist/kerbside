@@ -18,12 +18,12 @@
 # so that `pip install kerbside==X.Y.Z` transitively installs
 # `kerbside-proxy==X.Y.Z` and the gRPC contract matches by construction.
 #
-# COMMITTED-PIN POLICY: the source tree deliberately carries NO
-# kerbside-proxy pin (only the `# KERBSIDE_PROXY_PIN` marker), so that dev
-# and CI installs do not require the sibling package to already exist on
-# PyPI, and because a dev checkout resolves the proxy from the build tree
-# (or KERBSIDE_PROXY_BIN) via find_proxy_bin() rather than from this pin.
-# The release inserts the exact pin before building the kerbside wheel.
+# COMMITTED-PIN POLICY: the source tree commits a dev-inclusive floor,
+# `"kerbside-proxy>=X.Y.Z.dev0"`, so that a plain `pip install` of a git
+# checkout resolves the newest kerbside-proxy wheel on PyPI -- released or
+# rolling dev -- as published by dev-proxy-wheel.yml. This script TIGHTENS
+# that line to the exact `kerbside-proxy==X.Y.Z` lockstep pin at release
+# time, before the kerbside wheel is built.
 #
 # Usage:
 #   tools/stamp-proxy-version.sh 0.2.6        # explicit version
@@ -45,7 +45,7 @@ version="${1:-}"
 if [ -z "${version}" ]; then
     # Derive from the tag the same way the kerbside wheel does. Requires the
     # setuptools_scm module (a build dependency).
-    version="$(cd "${repo_root}" && python3 -m setuptools_scm 2>/dev/null)"
+    version="$( { cd "${repo_root}" && python3 -m setuptools_scm; } 2>/dev/null || true)"
 fi
 
 if [ -z "${version}" ]; then
@@ -79,13 +79,18 @@ if ! grep -Eq '^version = "[^"]*"$' "${cargo_toml}"; then
 fi
 sed -i -E "s/^version = \"[^\"]*\"$/version = \"${version}\"/" "${cargo_toml}"
 
-# 2. The kerbside-proxy pin in the kerbside dependency list. If a pin is
-#    already present (a re-stamped tree) replace its version; otherwise
-#    insert it immediately before the `# KERBSIDE_PROXY_PIN` marker, mirroring
-#    the `# END_OF_INDIRECT_DEPS` insertion pattern the pin-indirect
-#    -dependencies workflow uses.
-if grep -Eq '"kerbside-proxy==[^"]*"' "${py_toml}"; then
-    sed -i -E "s/\"kerbside-proxy==[^\"]*\"/\"kerbside-proxy==${version}\"/" "${py_toml}"
+# 2. The kerbside-proxy requirement in the kerbside dependency list. The
+#    normal case is the committed dev-inclusive floor (`>=X.Y.Z.dev0`) or an
+#    already-stamped exact pin (`==X.Y.Z`) from a prior run of this script;
+#    either way, rewrite the whole quoted requirement -- whatever specifier
+#    operator it uses -- to the exact `==${version}` pin, leaving the
+#    trailing license comment untouched. If no kerbside-proxy requirement is
+#    present at all (a hypothetical old tree), fall back to inserting one
+#    immediately before the `# KERBSIDE_PROXY_PIN` marker, mirroring the
+#    `# END_OF_INDIRECT_DEPS` insertion pattern the pin-indirect-dependencies
+#    workflow uses.
+if grep -Eq '"kerbside-proxy[=><~!][^"]*"' "${py_toml}"; then
+    sed -i -E "s/\"kerbside-proxy[=><~!][^\"]*\"/\"kerbside-proxy==${version}\"/" "${py_toml}"
 elif grep -q '# KERBSIDE_PROXY_PIN' "${py_toml}"; then
     sed -i "s|    # KERBSIDE_PROXY_PIN|    \"kerbside-proxy==${version}\",            # apache2\n    # KERBSIDE_PROXY_PIN|" "${py_toml}"
 else

@@ -43,7 +43,7 @@ if [ -z "${version}" ]; then
     # Derive from the working tree the same way the kerbside wheel does.
     # Requires the setuptools_scm module (a build dependency) and full git
     # history.
-    version="$(cd "${repo_root}" && python3 -m setuptools_scm 2>/dev/null)"
+    version="$( { cd "${repo_root}" && python3 -m setuptools_scm; } 2>/dev/null || true)"
 fi
 
 if [ -z "${version}" ]; then
