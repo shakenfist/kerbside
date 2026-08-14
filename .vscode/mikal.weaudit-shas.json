@@ -5,10 +5,6 @@
       "sha": "ca9be799707e0aefba16e5e594f1b37e4c58c299",
       "date": "2026-08-11"
     },
-    ".github/workflows/codeql-analysis.yml": {
-      "sha": "65c6d12908899aa0e4ed65201f45298aa1b68ef3",
-      "date": "2026-08-11"
-    },
     ".github/workflows/export-repo-config.yml": {
       "sha": "53b5d8eb46e89e228dd88d42d7e1b0c3ea6694cd",
       "date": "2026-08-11"
