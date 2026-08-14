@@ -2,7 +2,8 @@ name: CodeQL
 
 permissions: {}
 
-# Review-only changes cannot affect code analysis; skip them. This
+# Review-only and docs-only changes cannot affect code analysis;
+# skip them. This
 # workflow may keep trigger-level paths-ignore because CodeQL is not a
 # required status check (the check_paths workflows cannot -- see
 # functional-tests.yml). Keep the path list in sync with its other
@@ -17,6 +18,7 @@ on:
       - '.vscode/*.weaudit'
       - '.vscode/*.weaudit-shas.json'
       - '.vscode/review-scope.toml'
+      - 'docs/**'
   pull_request:
     branches: [develop]
     paths-ignore:
@@ -24,6 +26,7 @@ on:
       - '.vscode/*.weaudit'
       - '.vscode/*.weaudit-shas.json'
       - '.vscode/review-scope.toml'
+      - 'docs/**'
   schedule:
     - cron: '0 17 * * 2'
 

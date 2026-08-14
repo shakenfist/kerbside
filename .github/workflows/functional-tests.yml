@@ -24,7 +24,8 @@ on:
       - develop
 
 jobs:
-  # Detect review-tracking-only changes so the heavy jobs can skip.
+  # Detect changes touching only review-tracking files or docs/ so
+  # the heavy jobs can skip.
   # This replaces the old trigger-level paths-ignore, which cannot
   # coexist with required status checks: a required check in a
   # paths-ignore'd workflow never reports on a filtered PR, and a
@@ -36,12 +37,12 @@ jobs:
   #
   # Unlike the sibling smoke workflows, the filter here deliberately also runs
   # on merge_group: its output is consumed by the merge-tier jobs, so a
-  # review-marks-only queue entry skips two hours of cloud deployment.
-  # dorny/paths-filter on a merge-group ref is production behaviour in
-  # shakenfist/shakenfist, not a guess: in run 31258644604 (2026-08-08) "Check
-  # paths" succeeded on a merge_group event, the merge-tier collections ran
-  # rather than skipping, and "Can merge" went red when they failed. Re-confirm
-  # on this repo's first queue entries all the same.
+  # review-marks-only or docs-only queue entry skips two hours of cloud
+  # deployment. dorny/paths-filter on a merge-group ref is production
+  # behaviour, confirmed on this repo: in run 31754489835 (2026-08-13, the
+  # queue entry for review-marks-only PR 304) "Check paths" succeeded on the
+  # merge_group event, both cloud matrices skipped, and "Can merge" passed on
+  # the skips.
   #
   # Keep the filter list in sync with its other copies: the
   # check_paths jobs in direct-qemu-functional.yml and
@@ -75,7 +76,7 @@ jobs:
           # listed pattern, which makes '**' match everything and
           # silently defeats the exclusions. 'every' requires a file
           # to match ALL patterns, which is the correct semantics for
-          # an "everything except review marks" filter.
+          # an "everything except review marks and docs" filter.
           predicate-quantifier: 'every'
           filters: |
             code:
@@ -84,6 +85,7 @@ jobs:
               - '!.vscode/*.weaudit'
               - '!.vscode/*.weaudit-shas.json'
               - '!.vscode/review-scope.toml'
+              - '!docs/**'
       # Make the verdict visible in the log rather than inferred from
       # which downstream jobs skipped.
       - name: Report verdict
