@@ -400,7 +400,10 @@ kerbside/
                        #   login.html, consoles.html, sessions.html,
                        #   sources.html and audit.html. base.html (the old
                        #   Bootstrap base) is unreferenced, pending deletion
-                       #   alongside the old static assets.
+                       #   alongside the old static assets. base-sfui.html
+                       #   wraps the page content in <main id="kb-content">,
+                       #   the morph target every polling page's fetch
+                       #   cycle updates in place.
       icons/           # Theme-following icons, inlined via
                        #   {% include 'icons/....svg' %} rather than served
                        #   as static assets -- an SVG loaded through <img>
@@ -409,7 +412,9 @@ kerbside/
                        #   part of the page.
       includes/        # Shared page fragments, e.g. the two-step terminate
                        #   confirmation included by consoles.html and
-                       #   sessions.html.
+                       #   sessions.html, and poll.html, the 30-second
+                       #   fetch-and-morph poll every refresh=True page
+                       #   includes in place of a meta refresh.
     static/            # CSS, JS (static/icons/ retired; see templates/icons/
                        #   above)
       sfui/            # Vendored shakenfist/sfui design system (never

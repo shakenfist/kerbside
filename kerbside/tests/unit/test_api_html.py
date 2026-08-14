@@ -84,6 +84,20 @@ class LoginPageTestCase(testtools.TestCase):
         self.assertNotIn('/console', body)
         self.assertNotIn('/session', body)
 
+    def test_login_page_does_not_poll(self):
+        # base-sfui.html renders refresh=False for the login branch, so
+        # neither the old meta refresh nor the morphdom poll's status span
+        # appears. These are behavioural absences tied to whether the page
+        # polls, not to markup cosmetics, so they survive a future rewrite
+        # of the login template the same way the fixture-marker assertions
+        # above do.
+        resp = self.client.get('/', headers={'Accept': 'text/html'})
+
+        self.assertEqual(200, resp.status_code)
+        body = resp.get_data(as_text=True)
+        self.assertNotIn('http-equiv="refresh"', body)
+        self.assertNotIn('kb-refresh-status', body)
+
 
 class HtmlPagesTestCase(testtools.TestCase):
     """Smoke tests for the authenticated HTML pages and the HTML-mode
@@ -128,6 +142,23 @@ class HtmlPagesTestCase(testtools.TestCase):
         body = resp.get_data(as_text=True)
         self.assertIn('testvm', body)
         self.assertNotIn('sekrit-hypervisor-ticket', body)
+
+    @mock.patch('kerbside.api.db.get_consoles')
+    def test_polling_page_carries_poll_not_meta_refresh(
+            self, mock_get_consoles):
+        # A behavioural absence/presence pair, not a markup check: this
+        # proves the consoles page (rendered with refresh=True) polls via
+        # the morphdom include rather than the old meta refresh, which
+        # survives a future rewrite of the consoles template the same way
+        # the fixture-marker assertions elsewhere in this file do.
+        mock_get_consoles.return_value = [copy.deepcopy(CONSOLE)]
+
+        resp = self.client.get('/console', headers={'Accept': 'text/html'})
+
+        self.assertEqual(200, resp.status_code)
+        body = resp.get_data(as_text=True)
+        self.assertNotIn('http-equiv="refresh"', body)
+        self.assertIn('kb-refresh-status', body)
 
     @mock.patch('kerbside.api.db.get_consoles')
     def test_consoles_page_renders_without_sessions(
