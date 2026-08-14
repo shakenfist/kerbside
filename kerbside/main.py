@@ -413,6 +413,14 @@ def _demo_sources_or_fail():
               % config.SOURCES_PATH)
 
     for source in sources:
+        # A list of something other than mappings -- "- prod-ovirt" as a
+        # bare string, say -- would otherwise reach .get() and raise
+        # AttributeError, which is still fail-closed but reports a
+        # traceback instead of naming the guard that tripped.
+        if not isinstance(source, dict):
+            _fail('Refusing to mint: %s contains an entry that is not a '
+                  'source mapping: %r' % (config.SOURCES_PATH, source))
+
         source_type = source.get('type')
         if source_type != 'static':
             _fail(
@@ -431,7 +439,7 @@ def _demo_sources_or_fail():
          'Refuses unless every configured source is of type "static".')
 @click.option('--subject', required=True,
               help='The JWT subject (a username) to mint the token for')
-@click.option('--duration', type=int, default=None,
+@click.option('--duration', type=click.IntRange(min=1), default=None,
               help='Token lifetime in minutes [default: API_TOKEN_DURATION]')
 @click.option('--output', type=click.Path(dir_okay=False, writable=True),
               default=None,
@@ -486,11 +494,29 @@ def demo_token(ctx, subject, duration, output):
         '(issue #300). Do not use this pattern in production.', err=True)
 
     if output:
-        # 0600 before anything is written: this is a bearer credential,
-        # and it is worth not racing a wider default umask.
-        fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        # This is a bearer credential written to a predictable path (the
+        # CI lanes use ${WORKDIR}/kerbside-api-token.txt under /tmp), so:
+        #
+        #   O_NOFOLLOW  refuse to follow a symlink at the target, which
+        #               would otherwise redirect the credential somewhere
+        #               an attacker chose.
+        #   fchmod      the mode argument to os.open applies only when
+        #               open() creates the file. On a re-run into an
+        #               existing path the old permissions would survive,
+        #               so a file previously created 0644 would keep
+        #               carrying the token world-readably. Force it.
+        try:
+            fd = os.open(
+                output,
+                os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+                0o600)
+        except OSError as e:
+            _fail('Could not open %s for writing: %s' % (output, e))
+
         with os.fdopen(fd, 'w') as f:
+            os.fchmod(fd, 0o600)
             f.write(token)
+
         click.echo('Token written to %s' % output, err=True)
         return
 

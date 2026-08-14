@@ -1,5 +1,6 @@
 from unittest import mock
 import os
+import shutil
 import tempfile
 import testtools
 import yaml
@@ -45,6 +46,15 @@ class DemoTokenTestCase(testtools.TestCase):
         config_patch = mock.patch('kerbside.main.config', self.fake_config)
         config_patch.start()
         self.addCleanup(config_patch.stop)
+
+        # demo_token assigns JWT_SECRET_KEY on the module-global Flask app,
+        # so restore whatever was there. stestr runs several tests per
+        # process and leaving the fixture seed behind is order-dependent
+        # global state waiting for something else to start reading it.
+        from kerbside import api
+        previous = api.app.config.get('JWT_SECRET_KEY')
+        self.addCleanup(api.app.config.__setitem__,
+                        'JWT_SECRET_KEY', previous)
 
         self.runner = CliRunner()
 
@@ -139,8 +149,9 @@ class DemoTokenTestCase(testtools.TestCase):
         bearer credential.
         """
         self._write_sources([{'source': 'demo', 'type': 'static'}])
-        target = os.path.join(tempfile.mkdtemp(), 'token.txt')
-        self.addCleanup(os.unlink, target)
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory)
+        target = os.path.join(directory, 'token.txt')
 
         result = self.runner.invoke(
             main.demo,
@@ -157,6 +168,77 @@ class DemoTokenTestCase(testtools.TestCase):
 
         # The token must not also land on stdout in this mode.
         self.assertNotIn(written, result.output)
+
+    def test_output_tightens_permissions_on_an_existing_file(self):
+        """The mode argument to os.open only applies on creation.
+
+        A re-run into an existing path -- the normal case in a CI lane
+        workdir -- would otherwise keep whatever permissions were already
+        there, so a file created 0644 earlier would carry a bearer token
+        world-readably. demo_token fchmods unconditionally; this covers
+        the overwrite path the fresh-mkdtemp test above cannot.
+        """
+        self._write_sources([{'source': 'demo', 'type': 'static'}])
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory)
+        target = os.path.join(directory, 'token.txt')
+
+        with open(target, 'w') as f:
+            f.write('stale')
+        os.chmod(target, 0o644)
+
+        result = self.runner.invoke(
+            main.demo,
+            ['token', '--subject', 'demo-admin', '--output', target])
+
+        self.assertEqual(0, result.exit_code, result.output)
+        self.assertEqual(0o600, os.stat(target).st_mode & 0o777)
+        with open(target) as f:
+            self.assertNotIn('stale', f.read())
+
+    def test_output_refuses_to_follow_a_symlink(self):
+        """The target path is predictable, so a planted symlink is a risk.
+
+        tools/direct-qemu/lane-up.sh writes to
+        ${WORKDIR}/kerbside-api-token.txt with WORKDIR defaulting under
+        /tmp, where anyone can pre-create a name. Without O_NOFOLLOW the
+        credential would be written wherever the link pointed.
+        """
+        self._write_sources([{'source': 'demo', 'type': 'static'}])
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory)
+
+        elsewhere = os.path.join(directory, 'attacker-chosen.txt')
+        target = os.path.join(directory, 'token.txt')
+        os.symlink(elsewhere, target)
+
+        result = self.runner.invoke(
+            main.demo,
+            ['token', '--subject', 'demo-admin', '--output', target])
+
+        self.assertNotEqual(0, result.exit_code, result.output)
+        self.assertFalse(
+            os.path.exists(elsewhere),
+            'the token was written through a symlink')
+
+    def test_refuses_a_non_mapping_source_entry(self):
+        """A bare string in the list must name the guard, not traceback."""
+        self._write_sources(['prod-ovirt'])
+
+        result = self._invoke()
+        self._assert_refused(result, 'is not a source mapping')
+        self.assertNotIn('Traceback', result.output)
+
+    def test_refuses_a_non_positive_duration(self):
+        self._write_sources([{'source': 'demo', 'type': 'static'}])
+
+        for duration in ('0', '-5'):
+            result = self.runner.invoke(
+                main.demo,
+                ['token', '--subject', 'demo', '--duration', duration])
+            self.assertNotEqual(
+                0, result.exit_code,
+                'a duration of %s should be rejected' % duration)
 
     def test_minted_token_is_accepted_by_the_api(self):
         """The token must satisfy the same check the API applies.

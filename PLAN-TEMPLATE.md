@@ -10,8 +10,7 @@ control contract in `kerbside/rpc/`, the source driver
 abstraction in `kerbside/sources/`, the REST API in
 `kerbside/api.py`, the SQLAlchemy/alembic data model in
 `kerbside/db.py` and `kerbside/migrations/`, Pydantic-based
-config in
-`kerbside/config.py`, audit logging, and the .vv file
+config in `kerbside/config.py`, audit logging, and the .vv file
 generation path). Ground your answers in what the code
 actually does today. Do not speculate about the codebase
 when you could read it instead. Where a question touches on

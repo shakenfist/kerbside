@@ -11,8 +11,18 @@ from kerbside.config import config as kerbside_config
 # access to the values within the .ini file in use.
 config = context.config
 
-# Set the DB URL from the kerbside config
-config.set_main_option('sqlalchemy.url', kerbside_config.SQL_URL)
+# Set the DB URL from the kerbside config.
+#
+# The percent doubling is required, not cosmetic. set_main_option() hands the
+# value to ConfigParser.set() with pyformat interpolation active, so a bare %
+# raises ValueError("invalid interpolation syntax") before the migration even
+# starts. Any percent-encoded character in the DSN triggers it, and an operator
+# who percent-encodes '@', '/', '#' or '!' in a database password gets exactly
+# that -- so mysql+pymysql://user:p%40ss@db/kerbside would fail every migration
+# run with an opaque error. Escaping here keeps SQL_URL a plain URL everywhere
+# else in kerbside.
+config.set_main_option(
+    'sqlalchemy.url', kerbside_config.SQL_URL.replace('%', '%%'))
 
 # Load other configuration from the ini file. Both entry points (the bare
 # alembic CLI and `kerbside db upgrade`) supply an ini, so config_file_name
