@@ -264,8 +264,8 @@ All resolved by the operator on 2026-08-14:
 |-------|------|--------|
 | 1. Dev wheel publish workflow | [PLAN-proxy-dev-releases-phase-01-publish-workflow.md](PLAN-proxy-dev-releases-phase-01-publish-workflow.md) | Implemented (on branch; merge deferred to plan completion) |
 | 2. Committed dev specifier and release stamping | [PLAN-proxy-dev-releases-phase-02-dev-specifier.md](PLAN-proxy-dev-releases-phase-02-dev-specifier.md) | Implemented (on branch; merge deferred to plan completion) |
-| 3. Contract handshake | [PLAN-proxy-dev-releases-phase-03-contract-handshake.md](PLAN-proxy-dev-releases-phase-03-contract-handshake.md) | Planned |
-| 4. Docs, downstream cleanup and verification | PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md | Not started |
+| 3. Contract handshake | [PLAN-proxy-dev-releases-phase-03-contract-handshake.md](PLAN-proxy-dev-releases-phase-03-contract-handshake.md) | Implemented (on branch; merge deferred to plan completion) |
+| 4. Docs, downstream cleanup and verification | [PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md](PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md) | Planned |
 | 5. Automated dev release pruning | PLAN-proxy-dev-releases-phase-05-pypi-prune.md | Not started |
 
 Phase sketches (to be expanded into per-phase plans):
@@ -328,11 +328,15 @@ stale. Unit tests on both sides.
 Update AGENTS.md / ARCHITECTURE.md / docs for the new
 release semantics ("how do unreleased installs get a
 proxy binary"). In `shakenfist/kerbside-patches`, simplify
-patch175: the PyPI fallback branch becomes redundant for
-master builds once phase 2 lands (the plain install
-resolves the dev wheel), while the `/kerbside/proxy-wheels/`
-local-override branch remains useful and keeps its
-skew-safety role. Confirm upstream kolla needs no change.
+patch175: the PyPI fallback branch becomes redundant once
+phase 2 MERGES and the bootstrap wheel is published (the
+plain install resolves the dev wheel) — simplifying earlier
+would leave master images with no proxy at all, so that
+step is gated on merge + bootstrap (timing correction,
+2026-08-15 during phase 4 planning) — while the
+`/kerbside/proxy-wheels/` local-override branch remains
+useful and keeps its skew-safety role. Confirm upstream
+kolla needs no change.
 Verification: after the next develop merge that triggers a
 publish, recheck one of the Gerrit changes and confirm the
 kerbside scenario jobs go green (the ubuntu-noble-upgrade
