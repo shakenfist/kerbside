@@ -4,6 +4,7 @@ import re
 
 import testtools
 
+from kerbside import config as kerbside_config
 from kerbside.config import Config
 
 
@@ -189,3 +190,91 @@ class ConfExampleSafetyTestCase(testtools.TestCase):
             re.search(r'[0-9a-fA-F]{64}', self.text),
             'the example contains something shaped like a generated '
             'secret')
+
+
+class IniLoadingTestCase(testtools.TestCase):
+    """The mechanism the example demonstrates, which nothing tested.
+
+    docs/configuration.md:3 promises that environment variables take
+    priority over the INI file. That promise is one `if` in
+    load_ini_settings(), it is the reason a container can override a
+    baked-in config file, and until now no test held it. Phase 2 is
+    what turns the INI file into the documented way to configure
+    kerbside, so the precedence stops being incidental.
+
+    These tests drive the real function against the real example file
+    rather than a fixture, so they also prove the shipped example is
+    loadable -- a syntactically broken example would fail here.
+    """
+
+    def setUp(self):
+        super().setUp()
+
+        path = _example_path()
+        if path is None:
+            raise testtools.TestCase.skipException(
+                'no etc/kerbside.conf.example above %s'
+                % os.path.abspath(__file__))
+
+        # Restore INI_PATH first: the getattr is evaluated now, before
+        # the overwrite below, so the cleanup restores the original.
+        self.addCleanup(
+            setattr, kerbside_config, 'INI_PATH',
+            kerbside_config.INI_PATH)
+        kerbside_config.INI_PATH = path
+
+        saved = {k: v for k, v in os.environ.items()
+                 if k.startswith(kerbside_config.ENV_PREFIX)}
+        self.addCleanup(self._restore_environment, saved)
+        self._clear_environment()
+
+    def _clear_environment(self):
+        for key in list(os.environ):
+            if key.startswith(kerbside_config.ENV_PREFIX):
+                del os.environ[key]
+
+    def _restore_environment(self, saved):
+        self._clear_environment()
+        os.environ.update(saved)
+
+    def test_settings_arrive_as_prefixed_environment_variables(self):
+        """Keys are upper-cased and prefixed, so lower case is fine.
+
+        The example is written in lower case deliberately. If this
+        ever stopped holding, every key in the file would be silently
+        ignored while the file still looked correct.
+        """
+        kerbside_config.load_ini_settings()
+
+        self.assertEqual(
+            'kerbside.example.com', os.environ['KERBSIDE_PUBLIC_FQDN'])
+        self.assertIn('KERBSIDE_SQL_URL', os.environ)
+        self.assertIn('KERBSIDE_AUTH_SECRET_SEED', os.environ)
+
+    def test_commented_defaults_are_inert(self):
+        """Documented defaults must not become live settings.
+
+        The 26 commented keys exist to tell the reader what the
+        default is. If configparser ever treated them as values, the
+        example would be quietly imposing defaults rather than
+        documenting them -- and the coverage test above, which counts
+        them as documented, would be masking it.
+        """
+        kerbside_config.load_ini_settings()
+
+        self.assertNotIn('KERBSIDE_API_GRPC_WORKERS', os.environ)
+        self.assertNotIn('KERBSIDE_KEYSTONE_ACCESS_GROUP', os.environ)
+
+    def test_an_existing_environment_variable_wins(self):
+        """The promise in docs/configuration.md:3.
+
+        A deployment that sets KERBSIDE_* in the environment -- a
+        container, a systemd unit, the direct-qemu lane -- must not
+        have those values replaced by whatever is in the file.
+        """
+        os.environ['KERBSIDE_PUBLIC_FQDN'] = 'preset.example.net'
+
+        kerbside_config.load_ini_settings()
+
+        self.assertEqual(
+            'preset.example.net', os.environ['KERBSIDE_PUBLIC_FQDN'])
