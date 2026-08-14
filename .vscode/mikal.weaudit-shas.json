@@ -241,9 +241,73 @@
       "sha": "6daef1e07eb05d46b0a13745d5338cf1aea23cd8",
       "date": "2026-08-06"
     },
+    "tools/direct-qemu/generate-tls.sh": {
+      "sha": "b271b8113594b50f461ce653cca8252fe2270a47",
+      "date": "2026-08-15"
+    },
+    "tools/direct-qemu/install-proxy-wheel.sh": {
+      "sha": "a9bb64b54af5d24f3f954c5e1fd870dbe3d96a5d",
+      "date": "2026-08-15"
+    },
+    "tools/direct-qemu/lane-down.sh": {
+      "sha": "d800366551ac787c228b18f6b20da5e2708f7361",
+      "date": "2026-08-15"
+    },
+    "tools/direct-qemu/lane-up.sh": {
+      "sha": "f130cd95e021d480322784f2538d97459f582f62",
+      "date": "2026-08-15"
+    },
+    "tools/direct-qemu/mock-grpc-server.py": {
+      "sha": "a967113f7730de7d5a1f869f0b27264f9a27175a",
+      "date": "2026-08-15"
+    },
+    "tools/direct-qemu/probe-runner.sh": {
+      "sha": "67882b8dba7a1e0229bb9b4ffe042fc4a6717f64",
+      "date": "2026-08-15"
+    },
     "tools/direct-qemu/rebuild-sextant-qcow2.sh": {
       "sha": "4cfa3daff656b6df494d362d2b09ccd39ab00079",
       "date": "2026-08-09"
+    },
+    "tools/direct-qemu/run-host-subject-checks.sh": {
+      "sha": "aaddc0bf0732e30310bcb0ee2ac852fca7c0d3d2",
+      "date": "2026-08-15"
+    },
+    "tools/direct-qemu/run-loadtest.sh": {
+      "sha": "c1b58cfed5a611187b38bdf780ab5f280b3ed905",
+      "date": "2026-08-15"
+    },
+    "tools/direct-qemu/run-scenario.sh": {
+      "sha": "6b989adb040d27dc9ba49f765c0ae7881ac65f80",
+      "date": "2026-08-15"
+    },
+    "tools/direct-qemu/setup-mariadb.sh": {
+      "sha": "4bb393d94ea62fb20cb8164171fdbebbb54ad30c",
+      "date": "2026-08-15"
+    },
+    "tools/direct-qemu/smoke-client.py": {
+      "sha": "b7fcd8143c85217d21298b5190792abafcf9955c",
+      "date": "2026-08-15"
+    },
+    "tools/direct-qemu/start-kerbside.sh": {
+      "sha": "7b8048db87302f07ce6d81ce006d0c10827e847f",
+      "date": "2026-08-15"
+    },
+    "tools/direct-qemu/start-qemu.sh": {
+      "sha": "51b8f759796a65202812cebdf3cc0d17e208fb5c",
+      "date": "2026-08-15"
+    },
+    "tools/direct-qemu/start-rust-proxy.sh": {
+      "sha": "e768b49f4b9bcc1264f02ee76080b2dce25de373",
+      "date": "2026-08-15"
+    },
+    "tools/direct-qemu/verify-rust-proxy.sh": {
+      "sha": "f8631679d5a7e3c8fb244cedd1da9004768365c0",
+      "date": "2026-08-15"
+    },
+    "tools/direct-qemu/verify-terminate-live.sh": {
+      "sha": "6b5058af0816312cb8061818e2c432c634c2594e",
+      "date": "2026-08-15"
     },
     "tools/direct-qemu/wait-for-banner.sh": {
       "sha": "17c8a378a6a96c9c359eee505ee473f55a219f61",
