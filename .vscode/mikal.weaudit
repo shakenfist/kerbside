@@ -274,6 +274,18 @@
     {
       "path": "docs/proxy-architecture.md",
       "author": "mikal"
+    },
+    {
+      "path": ".claude/skills/add-source-type.md",
+      "author": "mikal"
+    },
+    {
+      "path": ".claude/skills/add-database-migration.md",
+      "author": "mikal"
+    },
+    {
+      "path": ".claude/skills",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
