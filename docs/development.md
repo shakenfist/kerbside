@@ -212,6 +212,30 @@ consistency audit compares `.sfui-commit` against canonical
 feature branch commit -- or an ancestor of a merge commit -- is
 flagged even when every vendored file is byte for byte correct.
 
+### Page polling
+
+Every page rendered with `refresh=True` polls instead of reloading.
+`base-sfui.html` wraps the page body in `<main id="kb-content">` and
+includes `templates/includes/poll.html`, which every 30 seconds
+fetches the current URL, parses that element out of the response and
+morphs it onto the live one with the vendored morphdom. The old
+`base.html` used a `<meta http-equiv="refresh">`; the morph cycle
+exists so that scroll position, selection, focus, an open `<details>`
+disclosure and a half-confirmed terminate all survive a tick instead
+of being reset by a reload.
+
+Two consequences bind anything added to a polled page:
+
+- **Never attach a listener to rendered content.** Morphing keeps
+  live nodes alive across a tick, so a per-node listener added after
+  one accumulates a duplicate on every tick. Delegate from
+  `#kb-content` or above it, which is what every listener on those
+  pages does.
+- **A failed poll reports staleness rather than reloading.** An
+  expired token answers these routes with a JSON 401, so a reload
+  would trade a readable page for an error body. The refresh stamp
+  becomes `stale since <time>` and the next tick retries.
+
 ## Previewing templates
 
 sfui has no CI of its own, and nothing in kerbside's tox lanes lints
@@ -286,3 +310,120 @@ This only covers what renders. The interactive paths -- submitting
 a form, a wrong password, the theme toggle, logout -- still need a
 browser against a running kerbside, or a hand-check of the relevant
 `fetch` calls.
+
+## Building the Rust proxy
+
+The Rust SPICE proxy lives in `rust/kerbside-proxy/` (its own crate;
+`.gitignore`d `target/`). Builds are wrapped in Docker via the crate's
+Makefile, which mounts the repo root so the crate can reach
+`kerbside/rpc/kerbside.proto`:
+
+```bash
+make -C rust/kerbside-proxy build   # cargo build in the kerbside-proxy-dev image
+make -C rust/kerbside-proxy test    # cargo test
+make -C rust/kerbside-proxy lint    # cargo fmt --check + clippy -D warnings
+```
+
+`build.rs` generates the tonic gRPC client from the same
+`kerbside/rpc/kerbside.proto` the Python side uses (vendored protoc, no
+system protobuf needed). The generator is `tonic-prost-build` and the
+generated stubs name types from `tonic` and `tonic-prost`, so those
+three crates (plus `prost`) **must be bumped together** — a runtime
+crate that moves without its code generator emits stubs that will not
+compile. The `tonic-prost-rust` group in `renovate.json` keeps Renovate
+proposing them as one PR.
+
+The crate depends on the ryll `shakenfist-spice-protocol` crate as a
+git dependency pinned to a specific rev in `Cargo.toml`; bump the `rev`
+(and commit the updated `Cargo.lock`) when picking up ryll changes. CI
+runs fmt/clippy/test/build via `.github/workflows/rust.yml`; end-to-end
+verification against qemu is [direct-qemu-harness.md](direct-qemu-harness.md).
+
+### Packaging and release
+
+The crate is published to PyPI as a separate `kerbside-proxy` package —
+a maturin `bindings = "bin"` wheel (`rust/kerbside-proxy/pyproject.toml`)
+that carries the compiled binary in the wheel's `*.data/scripts/` dir, so
+`pip install` puts `kerbside-proxy` on `PATH` and `find_proxy_bin()`
+resolves it via `shutil.which`. `kerbside` exact-pins `kerbside-proxy`,
+and both release in lockstep from one `v*` tag:
+
+- `tools/stamp-proxy-version.sh <version>` propagates the tag version into
+  the crate's `Cargo.toml` `[package] version` (maturin reads it) and
+  inserts the `kerbside-proxy==<version>` pin into `pyproject.toml` before
+  the `# KERBSIDE_PROXY_PIN` marker. The committed tree carries no pin (the
+  sibling is not on PyPI in a dev checkout — `find_proxy_bin()` uses the
+  build tree / `KERBSIDE_PROXY_BIN` there).
+- `tools/build-proxy-wheel.sh <x86_64|aarch64>` builds a manylinux_2_28
+  wheel; aarch64 is cross-compiled from x86_64 with maturin `--zig`. No
+  sdist is published (wheels only).
+- `release.yml` runs the matrix build and publishes both packages
+  (proxy first); `rust.yml` builds a wheel on PRs as a packaging guard.
+  See `RELEASE-SETUP.md` for the two trusted publishers.
+
+### Validating the firewall against a real client
+
+To exercise the L0+L1 firewall without risking a broken session, run
+the warn-only capture in
+[direct-qemu-harness.md](direct-qemu-harness.md): it brings the mock
+gRPC server up delivering a `WARN_ONLY` `FirewallPolicy`, drives a real
+SPICE client (remote-viewer / virt-viewer / ryll headless) through the
+proxy, then asserts `kerbside_proxy_firewall_verdicts_total` is
+entirely zero (a clean capture) via `verify-rust-proxy.sh
+assert-firewall`.
+
+Any non-zero `observed` verdict on legitimate traffic means the
+compiled allowlist or a size cap needs widening — never the verdict
+weakening. The same harness has a deny-token / deny-all mode for
+exercising the `PermissionDenied` denial path end to end.
+
+To validate live session termination without a full API + daemon +
+MariaDB stack, use the termination check in the same harness: the mock
+gRPC server's `ProxyControl` stream emits a one-shot `TerminateSession`
+a configurable number of seconds after the first authorization
+(`MOCK_GRPC_TERMINATE_AFTER`), standing in for the API/DB leg so the
+harness exercises the proxy-side cancellation path live.
+
+## Development configuration
+
+Configuration is loaded from, in priority order: environment variables
+(`KERBSIDE_*`), then the INI file, then the field defaults in
+`kerbside/config.py`. The INI path is the fixed constant
+`/etc/kerbside/kerbside.ini` -- there is no search path and no way to
+override it. Everything lives in one `[kerbside]` section, and each key
+is upper-cased and `KERBSIDE_`-prefixed before it reaches the settings
+model, so a key is only applied when the corresponding environment
+variable is not already set.
+
+`etc/kerbside.conf.example` documents every setting and its default,
+and a unit test fails if the two fall out of step. The full reference
+is [configuration.md](configuration.md); the three settings that matter
+most when developing are:
+
+- `SQL_URL` — database connection string
+- `LOG_OUTPUT_PATH` — set to `stdout` for console logging
+- `LOG_VERBOSE` — enable debug logging
+
+## Debugging
+
+Active sessions:
+
+```sql
+SELECT * FROM proxychannels;
+SELECT * FROM consoletokens WHERE expires > NOW();
+```
+
+The daemon supervises the Rust proxy as a single child process (one
+tokio task per connection, not a worker process per connection), so
+`ps aux | grep kerbside` shows the daemon and its one proxy child. The
+proxy's `tracing` output is inherited by the daemon's stderr;
+per-channel activity is visible on the Prometheus `/metrics` endpoint.
+
+Common traps:
+
+- **Token expiry.** Console tokens have configurable expiry; the
+  maintenance loop must be running to reap expired ones.
+- **TLS certificate paths.** The proxy requires valid certificates —
+  check `PROXY_HOST_CERT_PATH` and `PROXY_HOST_CERT_KEY_PATH`.
+- **Database connections.** SQLAlchemy sessions should be closed
+  properly; use context managers or an explicit `session.close()`.

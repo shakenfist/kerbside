@@ -246,6 +246,110 @@ The lane is a worked example of the deployment described in
 [use-cases/ovirt.md](use-cases/ovirt.md), which is the operator-facing
 version of what it proves.
 
+## Lane mechanics worth knowing
+
+### Required status checks
+
+The direct-qemu and `sf-e2e` lanes each publish a gate job named
+`Can enqueue: <lane>`, and both names are required status checks in
+the develop ruleset. Renaming one without updating the ruleset blocks
+every merge until the ruleset catches up.
+
+The direct-qemu lane also runs nightly, because the merge queue does
+not re-run it against the merged tree.
+
+### The proxy wheel is installed the way a deployment installs it
+
+The direct-qemu Rust leg builds and installs the `kerbside-proxy`
+wheel into the kerbside venv (`install-proxy-wheel.sh` →
+`build-proxy-wheel.sh --native`), so `find_proxy_bin()` resolves it via
+`shutil.which` on `PATH` — the real install path, which is what gives
+this lane its coverage value. `start-kerbside.sh` pre-checks the proxy
+binary through `find_proxy_bin()` for the same reason.
+
+### Live termination
+
+`verify-terminate-live.sh` (Rust leg only) runs on an isolated lane:
+it calls the REST terminate endpoint and asserts the in-flight
+connection drops, via the proxy log line `session terminated by
+control plane`. This exercises the DB→`ProxyControl` bridge end to
+end rather than the mock.
+
+### The latency loadtest
+
+Both legs run `run-loadtest.sh` (non-gating, `continue-on-error`). It
+drives `loadtests/latency/orchestrator.py` to sample keypress-to-screen
+latency — real `send_key` events timed against the `surface_drawn`
+they produce — through the leg's proxy, and records p50/p95 as an
+artifact; the Python-versus-Rust comparison is read off the two legs.
+
+It boots the purpose-built `tests/fixtures/uefi-latency-guest.qcow2`,
+which repaints on every keypress, rather than the Sextant scenario
+fixture, which leaves its Awaiting screen on the first key and freezes
+at the bootloader prompt. Like `verify-terminate-live.sh` it brings up
+its own isolated lane (separate WORKDIR, `QCOW2` overridden) and tears
+it down before the shared scenario lane starts.
+
+This is distinct from the local mock harness
+([direct-qemu-harness.md](direct-qemu-harness.md)), which needs no
+daemon and no database.
+
+### Log-derived oracles
+
+`drive-console.py` asserts against the proxy's log text. It strips
+ANSI before matching, and keeps "the field would not parse" separate
+from "the field was empty" — the first is a harness fault, the second
+is a real unpinned TLS leg. Conflating them (issue #272) reported a
+broken parser as a security failure for two days. Any new
+log-derived oracle should draw the same distinction. Proxy log
+colouring is described in
+[proxy-architecture.md](proxy-architecture.md).
+
+### oVirt object lookups must be cluster-scoped
+
+Anything that looks up an oVirt object by name must scope the lookup
+to the `test` cluster or its datacenter. The lane runs two datacenters
+and both have an `ovirtmgmt` network and vNIC profile of the same
+name, so a bare name match silently picks whichever the engine lists
+first and fails with a 409 only when it guesses wrong (issue #283).
+The merge tier is the only place this code runs, so a smoke-green PR
+proves nothing about it.
+
+## Running the test suite
+
+```bash
+tox -e py3      # unit tests
+tox -e pep8     # style checks
+tox -e bindep   # OS dependency check
+```
+
+Test locations:
+
+- Unit tests: `kerbside/tests/unit/`
+- Functional tests: `kerbside/tests/functional/`
+- Tempest plugin: `tempest-plugin/kerbside_tempest_plugin/` (a separate
+  releasable, driven via `tools/run-tempest-tests` and the
+  `openstack_matrix` job in `.github/workflows/functional-tests.yml`)
+  - `tests/api/test_spice_via_kerbside.py` — OpenStack lane only;
+    requires a live cloud.
+  - `tests/scenario/test_sextant_scenario.py` — direct-qemu lane;
+    drives the full Sextant Awaiting → Parked sequence over Ryll's
+    control socket, asserting the `digest_updated` event stream and
+    the post-mortem serial drain. Skips when
+    `CONF.kerbside.control_socket_path` is unset (OpenStack lane
+    safety). Requires ryll built with `--features digest-decode`.
+    Configured via the `[kerbside]` tempest options:
+    `control_socket_path`, `serial_log_path`,
+    `scenario_artifact_dir`, `scenario_step_timeout`.
+    Run last on the direct-qemu lane, because the final keypress
+    shuts the guest down.
+
+Two behaviours only matter when driving CI by hand: on a
+`workflow_dispatch` run of `functional-tests.yml` an unselected target
+skips cleanly via a job-level `if:` (it does not report red), and
+instance readiness in the `shakenfist/actions` provisioning playbook
+gates on cloud-init completion, not just an open SSH port.
+
 ## Tempest tests against a Kolla-Ansible deployment
 
 The `tempest-plugin/` directory is a separate releasable that
