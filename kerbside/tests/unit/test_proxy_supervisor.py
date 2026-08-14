@@ -82,6 +82,133 @@ class FindProxyBinTestCase(testtools.TestCase):
         self.assertIn(proxy_supervisor.PROXY_BIN_ENV, str(e))
 
 
+OTHER_HASH = 'b' * 64
+
+
+def _completed(returncode, stdout='', stderr=''):
+    """A stand-in for the subprocess.run() result of `--contract-hash`."""
+    return subprocess.CompletedProcess(
+        args=['/bin/kerbside-proxy', '--contract-hash'], returncode=returncode,
+        stdout=stdout, stderr=stderr)
+
+
+def _env_without_skip():
+    """The real environment minus the escape hatch, so a developer who has it
+    set in their shell does not silently pass the refusal tests."""
+    return {k: v for k, v in os.environ.items()
+            if k != proxy_supervisor.SKIP_CONTRACT_CHECK_ENV}
+
+
+class ContractCheckTestCase(testtools.TestCase):
+    def _launch(self, run_result, env=None):
+        """Run launch_rust_proxy() with the binary lookup, the contract probe
+        and Popen all mocked out. Returns the (run, popen) mocks."""
+        if env is None:
+            env = _env_without_skip()
+        with mock.patch.dict(os.environ, env, clear=True), \
+             mock.patch('kerbside.proxy_supervisor.find_proxy_bin',
+                        return_value='/bin/kerbside-proxy'), \
+             mock.patch('kerbside.proxy_supervisor.subprocess.run') as run, \
+             mock.patch('kerbside.proxy_supervisor.subprocess.Popen') as popen, \
+             mock.patch('kerbside.proxy_supervisor.LOG') as log:
+            if isinstance(run_result, BaseException):
+                run.side_effect = run_result
+            else:
+                run.return_value = run_result
+            try:
+                proxy_supervisor.launch_rust_proxy(_fake_config())
+            except RuntimeError as e:
+                self.raised = e
+            else:
+                self.raised = None
+        return run, popen, log
+
+    def test_matching_hash_launches(self):
+        run, popen, _ = self._launch(
+            _completed(0, stdout=proxy_supervisor.CONTRACT_HASH + '\n'))
+        self.assertIsNone(self.raised)
+        run.assert_called_once()
+        self.assertEqual(
+            ['/bin/kerbside-proxy', '--contract-hash'], run.call_args[0][0])
+        popen.assert_called_once()
+
+    def test_mismatched_hash_raises_naming_both_hashes(self):
+        _, popen, _ = self._launch(_completed(0, stdout=OTHER_HASH + '\n'))
+        self.assertIsNotNone(self.raised)
+        self.assertIn(proxy_supervisor.CONTRACT_HASH, str(self.raised))
+        self.assertIn(OTHER_HASH, str(self.raised))
+        self.assertIn(proxy_supervisor.SKIP_CONTRACT_CHECK_ENV, str(self.raised))
+        popen.assert_not_called()
+
+    def test_binary_without_the_flag_raises_predates_message(self):
+        # Every kerbside-proxy release <= 0.4.0 rejects the unknown flag.
+        _, popen, _ = self._launch(
+            _completed(2, stderr='error: unexpected argument \'--contract-hash\' found'))
+        self.assertIsNotNone(self.raised)
+        self.assertIn('predates the contract handshake', str(self.raised))
+        popen.assert_not_called()
+
+    def test_probe_timeout_raises(self):
+        _, popen, _ = self._launch(
+            subprocess.TimeoutExpired(cmd='kerbside-proxy', timeout=10))
+        self.assertIsNotNone(self.raised)
+        self.assertIn('predates the contract handshake', str(self.raised))
+        popen.assert_not_called()
+
+    def test_malformed_probe_output_raises(self):
+        _, popen, _ = self._launch(_completed(0, stdout='not a hash\n'))
+        self.assertIsNotNone(self.raised)
+        self.assertIn('predates the contract handshake', str(self.raised))
+        popen.assert_not_called()
+
+    def test_escape_hatch_launches_despite_mismatch(self):
+        env = _env_without_skip()
+        env[proxy_supervisor.SKIP_CONTRACT_CHECK_ENV] = '1'
+        run, popen, log = self._launch(_completed(0, stdout=OTHER_HASH + '\n'), env=env)
+        self.assertIsNone(self.raised)
+        popen.assert_called_once()
+        # The check is skipped wholesale, so the binary is never even probed.
+        run.assert_not_called()
+        log.warning.assert_called_once()
+        self.assertIn('SKIPPING', log.warning.call_args[0][0])
+
+    def test_explicit_zero_does_not_skip(self):
+        env = _env_without_skip()
+        env[proxy_supervisor.SKIP_CONTRACT_CHECK_ENV] = '0'
+        run, popen, _ = self._launch(_completed(0, stdout=OTHER_HASH + '\n'), env=env)
+        self.assertIsNotNone(self.raised)
+        run.assert_called_once()
+        popen.assert_not_called()
+
+
+class GetBinaryContractHashTestCase(testtools.TestCase):
+    def _probe(self, run_result):
+        with mock.patch('kerbside.proxy_supervisor.subprocess.run') as run, \
+             mock.patch('kerbside.proxy_supervisor.LOG'):
+            if isinstance(run_result, BaseException):
+                run.side_effect = run_result
+            else:
+                run.return_value = run_result
+            return proxy_supervisor.get_binary_contract_hash('/bin/kerbside-proxy')
+
+    def test_returns_stripped_hash_on_success(self):
+        self.assertEqual(
+            OTHER_HASH, self._probe(_completed(0, stdout='  %s \n' % OTHER_HASH)))
+
+    def test_returns_none_on_non_zero_exit(self):
+        self.assertIsNone(self._probe(_completed(2, stdout=OTHER_HASH)))
+
+    def test_returns_none_on_timeout(self):
+        self.assertIsNone(
+            self._probe(subprocess.TimeoutExpired(cmd='kerbside-proxy', timeout=10)))
+
+    def test_returns_none_on_malformed_output(self):
+        self.assertIsNone(self._probe(_completed(0, stdout='')))
+        self.assertIsNone(self._probe(_completed(0, stdout='not a hash')))
+        # Upper case hex is not what the binary emits, so reject it too.
+        self.assertIsNone(self._probe(_completed(0, stdout='B' * 64)))
+
+
 class TerminateChildTestCase(testtools.TestCase):
     def test_clean_exit_after_sigterm_does_not_kill(self):
         proc = mock.Mock()
