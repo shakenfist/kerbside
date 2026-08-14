@@ -308,10 +308,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/renovate.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/actionlint.yaml",
       "author": "mikal"
     },
