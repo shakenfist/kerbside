@@ -263,8 +263,8 @@ All resolved by the operator on 2026-08-14:
 | Phase | Plan | Status |
 |-------|------|--------|
 | 1. Dev wheel publish workflow | [PLAN-proxy-dev-releases-phase-01-publish-workflow.md](PLAN-proxy-dev-releases-phase-01-publish-workflow.md) | Implemented (on branch; merge deferred to plan completion) |
-| 2. Committed dev specifier and release stamping | [PLAN-proxy-dev-releases-phase-02-dev-specifier.md](PLAN-proxy-dev-releases-phase-02-dev-specifier.md) | Planned |
-| 3. Contract handshake | PLAN-proxy-dev-releases-phase-03-contract-handshake.md | Not started |
+| 2. Committed dev specifier and release stamping | [PLAN-proxy-dev-releases-phase-02-dev-specifier.md](PLAN-proxy-dev-releases-phase-02-dev-specifier.md) | Implemented (on branch; merge deferred to plan completion) |
+| 3. Contract handshake | [PLAN-proxy-dev-releases-phase-03-contract-handshake.md](PLAN-proxy-dev-releases-phase-03-contract-handshake.md) | Planned |
 | 4. Docs, downstream cleanup and verification | PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md | Not started |
 | 5. Automated dev release pruning | PLAN-proxy-dev-releases-phase-05-pypi-prune.md | Not started |
 
