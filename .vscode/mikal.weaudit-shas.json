@@ -237,6 +237,10 @@
       "sha": "219fca05b9c7cd896827cd1281e841accbe69b9d",
       "date": "2026-08-06"
     },
+    "tools/audit/wave2-mechanical.sh": {
+      "sha": "893254104cf2f052c3e5ba07993cac6c0242d4ea",
+      "date": "2026-08-15"
+    },
     "tools/ci-prune-reviews.sh": {
       "sha": "6daef1e07eb05d46b0a13745d5338cf1aea23cd8",
       "date": "2026-08-06"

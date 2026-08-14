@@ -418,6 +418,14 @@
     {
       "path": "tools/sf-e2e/README.md",
       "author": "mikal"
+    },
+    {
+      "path": "tools/audit/wave2-mechanical.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/audit",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
