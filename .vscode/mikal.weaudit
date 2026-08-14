@@ -426,6 +426,34 @@
     {
       "path": "tools/audit",
       "author": "mikal"
+    },
+    {
+      "path": "tools/build-proxy-wheel.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/check-required-checks.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/check-wheel.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/create-ovirt-vnc-vm.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/dump-ovirt-host-subject.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/file-nightly-failure-issue.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/preview-templates.py",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
