@@ -41,9 +41,29 @@
       "sha": "48c64c7448876a58734d7960324b755d440c1ed9",
       "date": "2026-08-12"
     },
+    "AGENTS.md": {
+      "sha": "462eb1ad116f0304329be9a1157f437413f7bc2f",
+      "date": "2026-08-15"
+    },
+    "ARCHITECTURE.md": {
+      "sha": "a4247ad956b2bad66f97ba345dee331a269a41b6",
+      "date": "2026-08-15"
+    },
     "AUTHORS": {
       "sha": "52747656c9ce3a27509516db50abacb7930c8ca2",
       "date": "2026-08-04"
+    },
+    "PLAN-TEMPLATE.md": {
+      "sha": "59bbd3ba7b6b8cea35f4ab25a94da0fb5b172a6f",
+      "date": "2026-08-15"
+    },
+    "PUSH-AUDIT.md": {
+      "sha": "05c9d50bfc1192f87b66783c0a118cde3c93b40f",
+      "date": "2026-08-15"
+    },
+    "README.md": {
+      "sha": "a43d42a5940335bf17124199269a68ebb16f2428",
+      "date": "2026-08-15"
     },
     "RELEASE-SETUP.md": {
       "sha": "8ceb1bd45684a0fb799eea37b443cb8d5bfa0972",
