@@ -274,6 +274,206 @@
     {
       "path": "docs/proxy-architecture.md",
       "author": "mikal"
+    },
+    {
+      "path": ".claude/skills/add-source-type.md",
+      "author": "mikal"
+    },
+    {
+      "path": ".claude/skills/add-database-migration.md",
+      "author": "mikal"
+    },
+    {
+      "path": ".claude/skills",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/allowlist.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/backend.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/listen.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/main.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/metrics.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/policy.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/relay.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/session.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/generate-tls.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/install-proxy-wheel.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/lane-down.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/lane-up.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/mock-grpc-server.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/probe-runner.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/run-host-subject-checks.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/run-loadtest.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/run-scenario.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/setup-mariadb.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/smoke-client.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/start-kerbside.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/start-qemu.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/start-rust-proxy.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/verify-rust-proxy.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/verify-terminate-live.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/import-instance.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/deploy-kerbside.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/drive-adversarial.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/drive-happy-path.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/gather-artifacts.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/gen-sources.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/provision-sf.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/sf-e2e/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/audit/wave2-mechanical.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/audit",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/build-proxy-wheel.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/check-required-checks.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/check-wheel.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/create-ovirt-vnc-vm.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/dump-ovirt-host-subject.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/file-nightly-failure-issue.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/preview-templates.py",
+      "author": "mikal"
+    },
+    {
+      "path": "PUSH-AUDIT.md",
+      "author": "mikal"
+    },
+    {
+      "path": "PLAN-TEMPLATE.md",
+      "author": "mikal"
+    },
+    {
+      "path": "README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "AGENTS.md",
+      "author": "mikal"
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
