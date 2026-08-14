@@ -30,15 +30,23 @@ Usage:
 
 With no argument it builds a wheel into a temporary directory. Exits
 non-zero, listing every missing path, if anything required is absent.
+Runnable from any working directory: the tree to build is derived from
+this file's location, not from cwd.
 """
 
 import argparse
 import glob
+import importlib.util
 import os
 import subprocess
 import sys
 import tempfile
 import zipfile
+
+
+# The tree to build, derived from this file rather than from cwd so the
+# script can be run from anywhere.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 # Files that must be present verbatim.
@@ -70,12 +78,58 @@ REQUIRED_TREES = [
 ]
 
 
+def require_build_module():
+    """Exit with an actionable message if `python -m build` is unusable.
+
+    Without this the failure arrives as a CalledProcessError traceback
+    wrapping whatever the subprocess printed, which does not say what to
+    do about it. Debian-based systems enforce PEP 668, so the system
+    interpreter usually will not have `build` and cannot be given it
+    without a virtualenv. CI installs it, so this only fires locally.
+
+    A namespace-package hit does not count as available: `spec.origin`
+    is None for a directory with no __init__.py, which is exactly what a
+    leftover build/ in the source tree looks like.
+    """
+    spec = importlib.util.find_spec('build')
+    if spec is not None and spec.origin is not None:
+        return
+
+    raise SystemExit(
+        'FAIL: the `build` module is not available to %s.\n'
+        '\n'
+        'Install it into a virtualenv and run this with that '
+        'interpreter:\n'
+        '    python3 -m venv /tmp/wheelcheck\n'
+        '    /tmp/wheelcheck/bin/pip install build\n'
+        '    /tmp/wheelcheck/bin/python tools/check-wheel.py\n'
+        % sys.executable)
+
+
 def build_wheel(destination):
-    """Build a wheel into destination and return its path."""
-    print('Building a wheel into %s' % destination, flush=True)
+    """Build a wheel into destination and return its path.
+
+    The tree to build is passed explicitly rather than inherited from
+    cwd, so this works from any directory. It previously built whatever
+    happened to be in the caller's working directory.
+
+    The subprocess also runs in the empty destination directory rather
+    than in REPO_ROOT, because `python -m` prepends cwd to sys.path and
+    setuptools leaves a build/ directory in the source tree as a side
+    effect of the wheel build. That directory does *not* shadow an
+    installed `build` package -- a directory without __init__.py is only
+    a namespace-package candidate, and a regular package found later on
+    sys.path wins -- but when `build` is not installed it turns the
+    honest "No module named build" into the thoroughly misleading "No
+    module named build.__main__; 'build' is a package and cannot be
+    directly executed". Keeping cwd off the import path costs nothing
+    and removes a genuinely confusing failure mode.
+    """
+    print('Building %s into %s' % (REPO_ROOT, destination), flush=True)
     subprocess.run(
-        [sys.executable, '-m', 'build', '--wheel', '--outdir', destination],
-        check=True)
+        [sys.executable, '-m', 'build', '--wheel', '--outdir', destination,
+         REPO_ROOT],
+        cwd=destination, check=True)
 
     wheels = glob.glob(os.path.join(destination, '*.whl'))
     if len(wheels) != 1:
@@ -121,6 +175,8 @@ def main():
     if args.wheel:
         wheel = args.wheel
     else:
+        require_build_module()
+
         # Deliberately not cleaned up on failure: a wheel that failed the
         # check is worth keeping around to look at.
         wheel = build_wheel(tempfile.mkdtemp(prefix='kerbside-wheel-'))
