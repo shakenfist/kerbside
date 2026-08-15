@@ -44,6 +44,7 @@ on:
       - 'kerbside/rpc/kerbside.proto'
       - 'tools/build-proxy-wheel.sh'
       - 'tools/stamp-dev-proxy-version.sh'
+      - 'tools/gen-protos.sh'
       - '.github/workflows/dev-proxy-wheel.yml'
 
   workflow_dispatch:
@@ -63,6 +64,11 @@ concurrency:
 jobs:
   build:
     name: Build kerbside-proxy dev wheels
+    # A hung leg would otherwise hold the no-cancel concurrency group for
+    # GitHub's six-hour default, blocking every later develop merge's dev
+    # publish behind it. A cold build plus the aarch64 zig cross fits well
+    # inside an hour.
+    timeout-minutes: 60
     # The vm/debian-12 runner carries the Rust build environment the crate
     # needs (same runner as rust.yml and release.yml). aarch64 is
     # cross-compiled here with zig, so no aarch64 runner is required. xl: each

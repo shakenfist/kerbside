@@ -70,10 +70,13 @@ cd "${crate_dir}"
 # (kerbside-proxy>=X.Y.Z.dev0) rejects a 0.1.0 wheel, so an unstamped local
 # wheel cannot be co-installed with kerbside. The stamp is reverted on exit
 # so the working tree is left as found. Requires setuptools_scm and full git
-# history (a shallow clone cannot count commits since the last v* tag). To
-# build at an exact release tag, run tools/stamp-proxy-version.sh first (as
-# the release workflow does) -- the dev stamper refuses release versions by
-# design.
+# history (a shallow clone cannot count commits since the last v* tag).
+#
+# This block CANNOT fire on a release build: tools/stamp-proxy-version.sh
+# replaces the `dynamic = ["version"]` declaration with a static release
+# version, so on a release-stamped tree the grep below does not match. The
+# tree state, not call ordering, is what keeps the two stamp modes apart
+# (tools/verify-wheel-stamping.sh asserts both modes in CI).
 if grep -q '^dynamic = \["version"\]' pyproject.toml; then
     echo "Unstamped tree: stamping the setuptools_scm dev version..."
     saved_pyproject="$(mktemp)"

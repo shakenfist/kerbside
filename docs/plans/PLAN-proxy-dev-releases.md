@@ -498,6 +498,14 @@ implemented because the following statements will be true:
   HEAD:rust/kerbside-proxy` compared against the last
   published wheel) as a more robust alternative to path
   filters, if the path list ever bites us.
+* A `sys_platform == 'linux'` environment marker on the
+  committed kerbside-proxy floor would restore `pip install
+  kerbside` on macOS/musl hosts (no proxy wheels exist
+  there), at the cost of teaching both stamp scripts to
+  preserve the marker when rewriting the line. Raised by
+  review on PR #314; declined there because phase 2
+  accepted the platform trade deliberately and no
+  contributor currently needs it.
 * Upstream kolla: consider eventually switching
   `kerbside-base` from git-develop to released tarballs,
   which would make image builds reproducible and reduce
