@@ -73,11 +73,17 @@ sql_url = mysql+pymysql://kerbside:CHANGEME@localhost/kerbside
 # Generate one with:
 #     openssl rand -hex 32
 #
-# The built-in default is the sentinel string "~~unconfigured~~" and
-# nothing currently rejects it at startup, so an unconfigured
-# deployment signs tokens with a value published in the source tree.
-# Set this before exposing Kerbside to a network.
-auth_secret_seed = CHANGEME-generate-with-openssl-rand-hex-32
+# This is deliberately left at the sentinel "~~unconfigured~~", which
+# is also its built-in default, rather than at a friendlier
+# placeholder of our own invention. The sentinel is the one value
+# Kerbside can recognise as "never set": "kerbside demo token"
+# refuses to mint against it instead of signing with a constant that
+# is published in this source tree. A placeholder would read more
+# like an instruction, but it would defeat that check -- an operator
+# who missed this line would be signing with a public constant and
+# nothing would be able to tell. Nothing rejects it at *startup* yet
+# (issue #131), so replace it before exposing Kerbside to a network.
+auth_secret_seed = ~~unconfigured~~
 
 # How long in minutes an API JWT stays valid after being issued.
 # Keystone credentials are only checked when the JWT is created, so a

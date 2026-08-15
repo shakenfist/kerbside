@@ -5,6 +5,7 @@ import re
 import testtools
 
 from kerbside import config as kerbside_config
+from kerbside import main
 from kerbside.config import Config
 
 
@@ -15,8 +16,6 @@ _LIVE = re.compile(r'^([a-z_][a-z0-9_]*) = ?(.*)$')
 # The example file's header tells the reader this form is asserted
 # here, so it cannot be reformatted casually.
 _COMMENTED = re.compile(r'^# ([a-z_][a-z0-9_]*) = ?(.*)$')
-
-_SENTINEL = '~~unconfigured~~'
 
 
 def _example_path():
@@ -136,16 +135,18 @@ class ConfExampleCoverageTestCase(testtools.TestCase):
 class ConfExampleSafetyTestCase(testtools.TestCase):
     """No line of the example may work if pasted.
 
-    Three defaults on Config read as usable values: SQL_URL embeds a
-    plausible password, PUBLIC_FQDN is a host on one person's network,
-    and AUTH_SECRET_SEED is a sentinel that nothing rejects at
-    startup (issue #131). An example file that reproduces them hands
-    the reader something that looks configured and is not, and in the
-    seed's case something that makes session JWTs forgeable.
+    Two defaults on Config read as usable values: SQL_URL embeds a
+    plausible password and PUBLIC_FQDN is a host on one person's
+    network. An example file that reproduces either hands the reader
+    something that looks configured and is not.
 
     The forbidden values are read from Config rather than written
     here, so changing a default in config.py cannot quietly defeat
     this.
+
+    AUTH_SECRET_SEED is the exception, and it runs the other way: it
+    must be shipped at exactly its default, because that default is a
+    sentinel the code recognises. See below.
     """
 
     def setUp(self):
@@ -169,15 +170,32 @@ class ConfExampleSafetyTestCase(testtools.TestCase):
             'the example reproduces PUBLIC_FQDN\'s built-in default, '
             'which is a personal hostname; describe it instead')
 
-    def test_the_seed_is_not_live_at_its_sentinel(self):
-        """The sentinel may be documented, but not offered as a value.
+    def test_the_live_seed_is_one_the_guard_recognises(self):
+        """The shipped seed must be a value kerbside can detect.
 
-        It legitimately appears as the documented default of the four
-        Keystone settings. What it must not be is the live value of
-        auth_secret_seed, which would be a working configuration that
-        signs tokens with a public constant.
+        This inverts what the phase originally asserted, and the
+        original was wrong. The reasoning was that shipping the
+        sentinel would be "a working configuration signed with a
+        public constant", so a distinct placeholder was safer. It is
+        the opposite: any value an operator forgets to replace signs
+        with a constant published in this tree, and the sentinel is
+        the only such value kerbside can tell apart from a deliberate
+        choice (main._UNCONFIGURED, checked before minting a demo
+        token). A bespoke placeholder is a public constant that is
+        also undetectable, which is strictly worse than the state
+        before this file existed.
+
+        _UNCONFIGURED is imported rather than restated so the guard
+        and the example cannot drift apart. Widening the guard to
+        recognise other placeholders is a code change, and would
+        belong with issue #131 rather than here.
         """
-        self.assertNotEqual(_SENTINEL, self.live.get('auth_secret_seed'))
+        self.assertEqual(
+            main._UNCONFIGURED, self.live.get('auth_secret_seed'),
+            'the example ships an auth_secret_seed that main.py '
+            'cannot recognise as unset, so an operator who misses '
+            'that line signs session JWTs with a constant published '
+            'in this repository and nothing detects it')
 
     def test_no_plausible_secret_is_shipped(self):
         """A hex run long enough to be a real key must not appear.

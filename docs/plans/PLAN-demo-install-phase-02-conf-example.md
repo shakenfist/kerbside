@@ -221,6 +221,36 @@ it is the reason the example file documents `%%`.
    asserts the three real values are absent, so this rule is
    enforced rather than requested.
 
+   **Corrected in review: the seed is the exception, and this
+   decision had it exactly backwards.** The rule as written
+   produced `auth_secret_seed =
+   CHANGEME-generate-with-openssl-rand-hex-32`, on the
+   reasoning that shipping the sentinel would be a working
+   configuration signing with a public constant. It is the
+   other way round. *Any* value the operator forgets to
+   replace signs with a constant published in this tree; what
+   distinguishes the sentinel is that it is the only such
+   value the code can *recognise* — `main._UNCONFIGURED`,
+   checked before minting a demo token (the "constant worth
+   reusing" finding above). A placeholder of our own
+   invention is a public constant that is also undetectable,
+   so it is strictly worse than what an operator would have
+   had before this file existed: it defeats the one guard
+   phase 1 added. The file now ships `auth_secret_seed =
+   ~~unconfigured~~`, the test asserts equality with
+   `main._UNCONFIGURED` rather than inequality, and the
+   comment explains why a friendlier-looking placeholder
+   would be a downgrade. Demonstrated to fail: restoring the
+   old placeholder yields `'~~unconfigured~~' !=
+   'CHANGEME-generate-with-openssl-rand-hex-32'`.
+
+   `SQL_URL` and `PUBLIC_FQDN` are unaffected — neither
+   default is a value any code can detect, so for those the
+   original rule stands. The two rules are reconcilable:
+   "nothing that would function if pasted" is the goal, and
+   for the seed the sentinel is the value that most reliably
+   *fails*.
+
 4. **The live-key set is chosen on "has no default that
    could work anywhere", not on what the CI lane exports.**
    That yields the same eight keys the previous draft
