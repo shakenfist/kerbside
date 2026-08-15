@@ -56,7 +56,7 @@ dependencies = [
 
     # These also move as a set
     "alembic==1.19.1",                  # mit
-    "sqlalchemy==2.0.51",               # mit
+    "sqlalchemy==2.0.52",               # mit
     "mysqlclient==2.2.8",               # gpl
 
     # gRPC service (KerbsideProxy) fronting the database for the proxy.
