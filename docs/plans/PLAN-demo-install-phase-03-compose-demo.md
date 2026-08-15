@@ -219,6 +219,55 @@ the demo should cite. All four `.vv` emitters in `api.py`
 embed the CA; the demo uses
 `/console/proxy/<source>/<uuid>/console.vv` (`api.py:849`).
 
+### What implementation found, after the survey
+
+Three more things, none of which the survey could have
+caught by reading:
+
+**8. The released package cannot run this demo, so decision
+4's default is reversed.** `entrypoint.sh` calls
+`kerbside db upgrade`, which phase 1 added and no release
+carries: the newest tag is v0.4.0 and a 0.4.0 image fails
+with `Error: No such command 'db'`. Decision 4 wanted the
+default to be the released package, on the reasoning that a
+demo silently testing unreleased code works for the
+maintainer and fails for everyone else. That reasoning is
+right and the default is still wrong, because the choice is
+between a demo that works and a demo that installs the
+released package. `KERBSIDE_SOURCE` now defaults to `/src`,
+with a Dockerfile comment saying to flip it back in the
+first release carrying `kerbside db upgrade`.
+
+A checkout install brings no `kerbside-proxy`, so the image
+installs the released proxy wheel explicitly. That is safe
+and was checked rather than assumed: the only change to
+`kerbside/rpc/kerbside.proto` between v0.4.0 and develop is
+a comment, so the daemon and the released proxy speak an
+identical contract. Re-check before trusting it again.
+
+**9. Debian trixie does not put SPICE in `qemu-system-x86`.**
+It is in `qemu-system-modules-spice`, a Recommends rather
+than a Depends, so `--no-install-recommends` excludes it and
+qemu dies at startup with `There is no option group 'spice'`
+— after the container has already published its port, so a
+naive TCP check passes while nothing works. The direct-qemu
+lane never hits this because its runner installs qemu from
+an older Debian. Survey finding 2 said the SPICE target was
+new ground; this is what was on it.
+
+**10. `docker compose exec` inherits nothing the entrypoint
+exported.** It starts a fresh process from the image ENV
+plus the compose `environment:` block, so `kerbside demo
+token` run that way saw neither the generated seed nor the
+certificate paths, and refused to mint against the
+unconfigured sentinel — the guard working correctly on a
+container that was in fact configured. Fixed at the cause
+with `demo/demo-env.sh`, sourced by both the entrypoint and
+a `kerbside-demo-env` wrapper on PATH, so one definition
+serves both entry paths. The seed is read from the state
+volume rather than passed on a command line, so it stays out
+of `ps` and `docker inspect`.
+
 ## Decisions
 
 1. **Three services, `db` / `spice-target` / `kerbside`, on
@@ -432,42 +481,67 @@ to one Dockerfile.
 
 ## Definition of done
 
-Each item is checkable by running something.
+Each item is checkable by running something. Outcome
+recorded after each.
 
-- [ ] `docker compose up -d` from a clean checkout, with
+- [x] `docker compose up -d` from a clean checkout, with
       only docker installed, brings all three services to
-      healthy.
-- [ ] `remote-viewer` opens the console **over TLS** with CA
+      healthy. Verified from `docker compose down -v`.
+- [x] `remote-viewer` opens the console **over TLS** with CA
       verification from the `.vv`, and a SPICE display
-      renders. Demonstrated with a screenshot, not asserted.
-- [ ] The `.vv` contains `tls-port=`, `host-subject=` and a
-      `ca=` field holding an escaped PEM.
-- [ ] `KERBSIDE_SOURCE=/src` builds against a local
-      checkout. Phase 4 depends on this, so it is verified
-      here.
-- [ ] `docker compose down -v` leaves nothing behind, and a
-      subsequent `up` regenerates TLS and the seed and still
-      works.
-- [ ] No `/dev/kvm`, no privileged containers, no host
-      package installation:
-      `grep -rn 'privileged\|/dev/kvm' demo/` returns
-      nothing.
-- [ ] The generated seed differs between two clean
-      deployments: `up`, read it, `down -v`, `up`, compare.
-- [ ] `kerbside demo token` refuses when a non-`static`
+      renders. Screenshot captured: iPXE attempts a network
+      boot, then SeaBIOS reports `No bootable device`, in a
+      window titled `demo-console via proxy session ID
+      mPnihdsfZ112`. Every established socket was on 5900
+      and none on 5901, and the relay logged
+      `channel_type="display"`, `"cursor"`, `"main"` and
+      `"inputs"`, so real SPICE channels crossed the TLS
+      leg. Nothing was added to the system trust store.
+- [x] The `.vv` contains `tls-port=`, `host-subject=` and a
+      `ca=` field holding an escaped PEM. `get-console.sh`
+      asserts all three and refuses to write the file
+      otherwise.
+- [x] `KERBSIDE_SOURCE=/src` builds against a local
+      checkout. It is now the default (finding 8), so this
+      is what every build exercises.
+- [x] `docker compose down -v` leaves nothing behind — zero
+      volumes and zero containers matching the project — and
+      a subsequent `up` regenerates TLS and the seed and
+      still works end to end.
+- [x] No `/dev/kvm`, no privileged containers, no host
+      package installation. The only match for
+      `grep -rn 'privileged\|/dev/kvm' demo/` is the comment
+      in spice-target/Dockerfile explaining why neither is
+      used.
+- [x] The generated seed differs between two clean
+      deployments: `59e8ba58187eda20...` then, after
+      `down -v` and `up`, `f924d709a7f941f8...`.
+- [x] `kerbside demo token` refuses when a non-`static`
       source is added to `demo/sources.yaml`, and the
-      refusal names it. Phase 1 unit-tests the guard; this
-      confirms it fires against a real deployment.
-- [ ] Stopping `spice-target` produces a reported failure,
-      not a hang.
-- [ ] `pre-commit run --all-files` passes **with `demo/` in
-      shellcheck's scope** — confirm by checking the hook's
-      `files:` pattern, since a hook that matches nothing
-      also passes.
-- [ ] No fact about the demo is stated differently in
-      `demo/README.md` and the compose file's comments —
-      specifically the ports, the expected BIOS screen, and
-      the two-process caveat.
+      refusal names it: `Refusing to mint: source
+      "pretend-ovirt" is of type "ovirt", not "static"`.
+      Exit status 1. Reverted afterwards, and minting works
+      again.
+- [x] Stopping `spice-target` produces a reported failure,
+      not a hang: `remote-viewer` exited in 9s and the proxy
+      logged `hypervisor connection failed
+      hypervisor=spice-target error=failed to lookup address
+      information`.
+- [x] `pre-commit run --all-files` passes with `demo/` in
+      shellcheck's scope. Checked properly, and the check
+      earned its place: an all-files run passed while
+      `demo/` was still untracked, which is the
+      "matches nothing also passes" failure the criterion
+      warned about. Running shellcheck against the four
+      scripts explicitly found a real defect — `demo-env.sh`
+      has no shebang because it is sourced (SC2148) — fixed
+      with a `shellcheck shell=bash` directive.
+- [x] No fact about the demo is stated differently in
+      `demo/README.md` and the compose file's comments. The
+      ports, the expected BIOS screen and the two-process
+      caveat each have one wording, and README.md defers to
+      `demo/Dockerfile` on the `KERBSIDE_SOURCE` default
+      rather than restating it.
 
 ## Future work
 

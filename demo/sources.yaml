@@ -1,0 +1,38 @@
+# Console sources for the demo stack.
+#
+# Derived from etc/example-static-sources.yaml. One static source with
+# one console: the qemu running in the spice-target container.
+#
+# The static driver reads this list at startup and once per 60-second
+# maintenance cycle. It performs no liveness check, so kerbside will
+# hand out .vv files for a SPICE server that has stopped -- which is
+# why it is not intended for production use.
+
+- source: demo
+  type: static
+  consoles:
+
+    # hypervisor_ip is a compose service name, not an address. Docker's
+    # embedded DNS resolves it on the compose network; the field is a
+    # plain string, so a name works wherever an address would.
+    - uuid: "0d3f6a52-0000-0000-0000-00000000d3m0"
+      name: "demo-console"
+      hypervisor: "spice-target"
+      hypervisor_ip: "spice-target"
+      insecure_port: 5910
+      ticket: "demo-ticket"
+
+      # Deliberately absent: secure_port and host_subject, which would
+      # make kerbside's *backend* leg use TLS as well.
+      #
+      # generate-tls.sh does emit the qemu x509 material for this (in
+      # qemu-x509/), and tools/direct-qemu/start-qemu.sh shows the
+      # matching tls-channel=default form. It is left out here because
+      # a second TLS leg adds a failure mode the evaluator cannot see:
+      # the leg that matters to them, client to proxy, is already TLS
+      # and is verified against the CA embedded in the .vv.
+      #
+      # A real deployment should set both. docs/use-cases/ovirt.md
+      # covers backend certificate pinning properly.
+      # secure_port: 5911
+      # host_subject: "C=US,O=Kerbside CI,CN=qemu-hv"
