@@ -66,11 +66,11 @@ ls "${out_rel}"/kerbside_proxy-9.9.9-*.whl >/dev/null 2>&1 \
     || fail "release-stamped build did not produce a 9.9.9 wheel: $(ls "${out_rel}")"
 
 # Floor-to-pin replacement and idempotence in the kerbside dependency list.
-count="$(grep -c '"kerbside-proxy' pyproject.toml)"
+count="$(grep -c '"kerbside-proxy' pyproject.toml || true)"
 [ "${count}" = "1" ] || fail "expected exactly one kerbside-proxy line after stamping, got ${count}"
 grep -q '"kerbside-proxy==9.9.9"' pyproject.toml || fail "kerbside-proxy line is not the ==9.9.9 pin"
 tools/stamp-proxy-version.sh 9.9.9
-count="$(grep -c '"kerbside-proxy' pyproject.toml)"
+count="$(grep -c '"kerbside-proxy' pyproject.toml || true)"
 [ "${count}" = "1" ] || fail "re-stamping duplicated the kerbside-proxy line (${count} found)"
 
 echo "OK: dev wheel $(basename "$(ls "${out_dev}"/kerbside_proxy-*.whl)"), release wheel $(basename "$(ls "${out_rel}"/kerbside_proxy-*.whl)")"
