@@ -347,6 +347,51 @@ after each.
       (`issuecomment-5298199481`), and the `sys.exit()` bug
       is filed as **#313**.
 
+### Added in review
+
+The automated review raised 11 items against the first push;
+all were addressed. Two changed behaviour rather than prose:
+
+- [x] **The shipped seed is a value the code can recognise.**
+      Decision 3's correction above. `auth_secret_seed` is
+      now `~~unconfigured~~` and
+      `test_the_live_seed_is_one_the_guard_recognises`
+      asserts equality with `main._UNCONFIGURED`, imported
+      rather than restated so the guard and the example
+      cannot drift. Demonstrated to fail: restoring the old
+      placeholder yields `'~~unconfigured~~' !=
+      'CHANGEME-generate-with-openssl-rand-hex-32'`.
+- [x] **The 26 commented values are pinned to the real
+      defaults**, not merely their key names, so the header's
+      promise that they show "that setting's real default"
+      is now held rather than asserted. Demonstrated to fail:
+      changing `API_GRPC_WORKERS` from 8 to 16 in
+      `config.py` yields `[] != ["api_grpc_workers documents
+      '8' but the default is '16'"]`. This goes beyond
+      decision 3's "key presence, not value fidelity", which
+      was the wrong line to draw — a wrong default is worse
+      than a missing one, because the reader will act on it.
+
+The rest were prose and test-legibility: 0600 ownership
+guidance in the header (the file holds a signing key and a
+cleartext password), a header rule that no longer contradicts
+the TLS section, a comment recording *why* the four TLS keys
+are live at their defaults, failure messages that state the
+formatting contract and the live/commented criterion, the
+interpolation probe bound to an assertion so it cannot be
+tidied away as dead code, and the precedence test reading its
+expected value from the file rather than pinning a
+placeholder's text. `AGENTS.md`'s configuration section was
+corrected too: it documented a `KERBSIDE_CONFIG_PATH`
+environment variable that does not exist and a
+`/etc/kerbside/kerbside.conf` path that is not the one
+kerbside reads. Decision 6 protects `docs/configuration.md`
+and `ARCHITECTURE.md` to keep #131's evidence intact; it does
+not extend to a plainly false statement in `AGENTS.md`. The
+`.conf` versus `.ini` filename mismatch is recorded as a
+candidate rename in the phase 5 plan, where both files that
+name it are already being edited.
+
 ## Future work
 
 - **`kerbside config example`** — a subcommand printing a

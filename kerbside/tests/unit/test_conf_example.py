@@ -17,6 +17,14 @@ _LIVE = re.compile(r'^([a-z_][a-z0-9_]*) = ?(.*)$')
 # here, so it cannot be reformatted casually.
 _COMMENTED = re.compile(r'^# ([a-z_][a-z0-9_]*) = ?(.*)$')
 
+# Appended to both coverage failures. The regexes above require
+# exactly "key = value"; "key=value" is valid INI and would load
+# fine, but is invisible here, so the failure would name a setting
+# that is in fact present and working.
+_FORM = (' (keys must be written exactly "key = value", or '
+         '"# key = value" for a documented default -- see note 2 in '
+         'the header of the example file)')
+
 
 def _example_path():
     """Find etc/kerbside.conf.example, or None outside a checkout.
@@ -88,14 +96,49 @@ class ConfExampleCoverageTestCase(testtools.TestCase):
         self.assertEqual(
             [], missing,
             'these settings exist on Config but are absent from '
-            'etc/kerbside.conf.example: %s' % ', '.join(missing))
+            'etc/kerbside.conf.example: %s%s'
+            % (', '.join(missing), _FORM))
 
     def test_no_orphan_keys(self):
         orphans = sorted(self.documented - self.fields)
         self.assertEqual(
             [], orphans,
             'etc/kerbside.conf.example documents keys that are not '
-            'fields on Config: %s' % ', '.join(orphans))
+            'fields on Config: %s%s' % (', '.join(orphans), _FORM))
+
+    def test_commented_values_are_the_real_defaults(self):
+        """The header promises these are real. Hold it to that.
+
+        Key coverage alone lets the values rot: change a default in
+        config.py and the example goes on advertising the old one,
+        with a green test run and a header sentence asserting it is
+        correct. A wrong default is worse than a missing one,
+        because the reader will trust it and act on it.
+
+        Only the commented keys are checked. The live ones are
+        expected to differ -- that is what makes them live -- and
+        ConfExampleSafetyTestCase asserts the opposite for those.
+        """
+        wrong = []
+        for key, documented in sorted(self.commented.items()):
+            default = Config.model_fields[key.upper()].default
+
+            # configparser has no types: everything in the file is a
+            # string. Booleans are written the way pydantic parses
+            # them back, and an empty default is an empty value.
+            if isinstance(default, bool):
+                expected = str(default).lower()
+            else:
+                expected = str(default)
+
+            if documented != expected:
+                wrong.append('%s documents %r but the default is %r'
+                             % (key, documented, expected))
+
+        self.assertEqual(
+            [], wrong,
+            'etc/kerbside.conf.example documents defaults config.py '
+            'does not have: %s' % '; '.join(wrong))
 
     def test_the_file_parses(self):
         """It must parse the way load_ini_settings() parses it.
@@ -112,8 +155,11 @@ class ConfExampleCoverageTestCase(testtools.TestCase):
 
         # Reading each value is what triggers interpolation, so a
         # bare percent sign would not be caught by read_string alone.
+        # Asserted rather than left as a bare expression so that a
+        # later tidy-up does not mistake it for dead code and delete
+        # the only check that the example is free of lone percents.
         for key in parser['kerbside']:
-            parser['kerbside'][key]
+            self.assertIsInstance(parser['kerbside'][key], str)
 
     def test_live_keys_are_the_ones_without_usable_defaults(self):
         """Decision 4: live keys are a judgement, so pin the judgement.
@@ -129,7 +175,12 @@ class ConfExampleCoverageTestCase(testtools.TestCase):
                     'proxy_host_cert_key_path', 'proxy_host_cert_path',
                     'proxy_host_subject', 'public_fqdn', 'sources_path',
                     'sql_url']),
-            sorted(self.live))
+            sorted(self.live),
+            'the live/commented split is a judgement (decision 4 of '
+            'PLAN-demo-install-phase-02-conf-example.md): a key is '
+            'live only if its default is a sentinel, a credential, a '
+            'hostname, or a path into a necessarily-local PKI. If you '
+            'promoted or demoted a key deliberately, update this list')
 
 
 class ConfExampleSafetyTestCase(testtools.TestCase):
@@ -147,6 +198,14 @@ class ConfExampleSafetyTestCase(testtools.TestCase):
     AUTH_SECRET_SEED is the exception, and it runs the other way: it
     must be shipped at exactly its default, because that default is a
     sentinel the code recognises. See below.
+
+    The four TLS keys are deliberately not covered either way. They
+    are live at values identical to config.py's defaults, which is
+    intentional rather than an oversight: a conventional /etc/pki
+    layout is a reasonable thing to show, and they are live because a
+    wrong path fails at connection time rather than at startup, so
+    the reader must confirm them. Nothing about them is unsafe to
+    paste, so there is no forbidden value to assert.
     """
 
     def setUp(self):
@@ -234,6 +293,12 @@ class IniLoadingTestCase(testtools.TestCase):
                 'no etc/kerbside.conf.example above %s'
                 % os.path.abspath(__file__))
 
+        # Kept so the assertions below can compare against what the
+        # file actually says. These tests are about the loading
+        # mechanism, so pinning a placeholder's text here would make
+        # them fail in the wrong place when the example is edited.
+        _, self.live, _ = _read_example()
+
         # Restore INI_PATH first: the getattr is evaluated now, before
         # the overwrite below, so the cleanup restores the original.
         self.addCleanup(
@@ -265,7 +330,7 @@ class IniLoadingTestCase(testtools.TestCase):
         kerbside_config.load_ini_settings()
 
         self.assertEqual(
-            'kerbside.example.com', os.environ['KERBSIDE_PUBLIC_FQDN'])
+            self.live['public_fqdn'], os.environ['KERBSIDE_PUBLIC_FQDN'])
         self.assertIn('KERBSIDE_SQL_URL', os.environ)
         self.assertIn('KERBSIDE_AUTH_SECRET_SEED', os.environ)
 

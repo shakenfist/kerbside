@@ -1,10 +1,13 @@
 ####################################################################
 # Example Kerbside configuration.
 #
-# Install this at /etc/kerbside/kerbside.ini. Kerbside reads exactly
-# that path -- it is a constant (INI_PATH in kerbside/config.py), not
-# a search path and not a command line option. If the file is absent
-# Kerbside starts anyway, using defaults and the environment.
+# Install this at /etc/kerbside/kerbside.ini, owned by the user
+# Kerbside runs as and mode 0600: the finished file holds the JWT
+# signing key and, for Keystone deployments, a cleartext service
+# password. Kerbside reads exactly that path -- it is a constant
+# (INI_PATH in kerbside/config.py), not a search path and not a
+# command line option. If the file is absent Kerbside starts anyway,
+# using defaults and the environment.
 #
 # Everything lives in one [kerbside] section. Keys are case
 # insensitive: each one is upper-cased and prefixed with KERBSIDE_
@@ -34,8 +37,10 @@
 #    same test fails if a setting is added to config.py and not
 #    added here.
 #
-# Uncommented settings have no default that could work on any
-# machine but the author's, so they are live and must be reviewed.
+# Uncommented settings are the ones you must review. Each either has
+# no default that could work on any machine but the author's, or has
+# a default you must confirm matches your deployment before the first
+# connection -- the TLS paths below are live for that second reason.
 # Everything else is commented at its default: uncomment only what
 # you intend to change.
 #
@@ -60,7 +65,9 @@ sources_path = /etc/kerbside/sources.yaml
 # Remember to double any percent sign (see note 1 in the header).
 # The built-in default is a Kolla-flavoured URL with a placeholder
 # password baked in, which is never right outside that one
-# deployment -- so set this explicitly.
+# deployment -- so set this explicitly. The default also leaves the
+# driver implicit ("mysql://", which resolves to mysqlclient); this
+# example names pymysql explicitly, and both are packaged.
 sql_url = mysql+pymysql://kerbside:CHANGEME@localhost/kerbside
 
 # The number of minutes a console access token is valid for.
@@ -135,8 +142,8 @@ proxy_host_cert_key_path = /etc/pki/CA/certs/proxy-key.pem
 # keystone_auth_verify = true
 
 # The service account Kerbside authenticates itself as, and its
-# password. The password is read from this file in clear text, so
-# restrict the file's permissions accordingly.
+# password. The password is read from this file in clear text, which
+# is the second reason for the 0600 in the header.
 # keystone_service_auth_user = ~~unconfigured~~
 # keystone_service_auth_password = ~~unconfigured~~
 
