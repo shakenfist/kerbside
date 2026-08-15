@@ -1,0 +1,250 @@
+####################################################################
+# Example Kerbside configuration.
+#
+# Install this at /etc/kerbside/kerbside.ini, owned by the user
+# Kerbside runs as and mode 0600: the finished file holds the JWT
+# signing key and, for Keystone deployments, a cleartext service
+# password. Kerbside reads exactly that path -- it is a constant
+# (INI_PATH in kerbside/config.py), not a search path and not a
+# command line option. If the file is absent Kerbside starts anyway,
+# using defaults and the environment.
+#
+# Everything lives in one [kerbside] section. Keys are case
+# insensitive: each one is upper-cased and prefixed with KERBSIDE_
+# before being handed to the settings model, so "sql_url" here is
+# the KERBSIDE_SQL_URL environment variable.
+#
+# Environment variables win. A key in this file is only applied if
+# the corresponding KERBSIDE_ variable is not already set, so an
+# environment variable overrides the file rather than the other way
+# around.
+#
+# Two things to know before editing:
+#
+# 1. A literal percent sign must be doubled. Values in this file go
+#    through Python's configparser with interpolation enabled, so a
+#    lone "%" is a syntax error -- and Kerbside currently exits
+#    *successfully* when this file fails to parse, so the daemon will
+#    disappear without an error. If your database password contains
+#    percent-encoded characters, write them as %% here. For example a
+#    password of "p@ss" percent-encodes to "p%40ss" and must be
+#    written "p%%40ss".
+#
+# 2. Commented-out settings below show that setting's real default,
+#    in the exact form "# key = value". A unit test parses this file
+#    and treats those lines as documenting a setting, so keep the
+#    formatting -- one "# ", the key, " = ", then the default. The
+#    same test fails if a setting is added to config.py and not
+#    added here.
+#
+# Uncommented settings are the ones you must review. Each either has
+# no default that could work on any machine but the author's, or has
+# a default you must confirm matches your deployment before the first
+# connection -- the TLS paths below are live for that second reason.
+# Everything else is commented at its default: uncomment only what
+# you intend to change.
+#
+# The authoritative reference is kerbside/config.py. Prose
+# descriptions of every setting are in docs/configuration.md.
+####################################################################
+
+[kerbside]
+
+####################################################################
+# Basic Settings
+####################################################################
+
+# The path to the console sources file listing VDI console sources.
+# See etc/example-static-sources.yaml for a starting point.
+sources_path = /etc/kerbside/sources.yaml
+
+# The SQLAlchemy connection string for the MySQL/MariaDB database.
+# Kerbside does not create the database or the user; it does create
+# its own schema, with "kerbside db upgrade".
+#
+# Remember to double any percent sign (see note 1 in the header).
+# The built-in default is a Kolla-flavoured URL with a placeholder
+# password baked in, which is never right outside that one
+# deployment -- so set this explicitly. The default also leaves the
+# driver implicit ("mysql://", which resolves to mysqlclient); this
+# example names pymysql explicitly, and both are packaged.
+sql_url = mysql+pymysql://kerbside:CHANGEME@localhost/kerbside
+
+# The number of minutes a console access token is valid for.
+# console_token_duration = 1
+
+# A random string used to seed auth secrets, and used directly as the
+# signing key for session JWTs (HS256, symmetric). Anyone who knows
+# it can forge a token for any user, so treat it as a private key.
+#
+# Generate one with:
+#     openssl rand -hex 32
+#
+# This is deliberately left at the sentinel "~~unconfigured~~", which
+# is also its built-in default, rather than at a friendlier
+# placeholder of our own invention. The sentinel is the one value
+# Kerbside can recognise as "never set": "kerbside demo token"
+# refuses to mint against it instead of signing with a constant that
+# is published in this source tree. A placeholder would read more
+# like an instruction, but it would defeat that check -- an operator
+# who missed this line would be signing with a public constant and
+# nothing would be able to tell. Nothing rejects it at *startup* yet
+# (issue #131), so replace it before exposing Kerbside to a network.
+auth_secret_seed = ~~unconfigured~~
+
+# How long in minutes an API JWT stays valid after being issued.
+# Keystone credentials are only checked when the JWT is created, so a
+# JWT can outlive the Keystone token it was minted from.
+# api_token_duration = 60
+
+####################################################################
+# TLS Settings
+####################################################################
+#
+# These four must agree with the certificates you actually issued,
+# and with the host subject configured on the hypervisors' SPICE
+# consoles. The defaults describe a conventional /etc/pki layout;
+# they are live here because a wrong path fails at connection time
+# rather than at startup.
+
+# The CA certificate for this proxy.
+cacert_path = /etc/pki/CA/ca-cert.pem
+
+# The TLS host subject that matches the one set for VDI proxies.
+# This must match the subject in the certificate below, and the
+# host-subject the SPICE client is told to expect.
+proxy_host_subject = C=US,O=Shaken Fist,CN=Kerbside Proxy
+
+# The TLS host certificate for the VDI proxy, and its key. The key
+# must be readable by the user Kerbside runs as, and by nobody else.
+proxy_host_cert_path = /etc/pki/CA/certs/proxy.pem
+proxy_host_cert_key_path = /etc/pki/CA/certs/proxy-key.pem
+
+####################################################################
+# Keystone Settings
+####################################################################
+#
+# Keystone integration for OpenStack deployments, and today the only
+# way a human can log in to the admin interface. Leave these at their
+# defaults for static, oVirt or Shaken Fist deployments, where there
+# is currently no interactive login path at all (issue #300).
+#
+# The first four default to the sentinel "~~unconfigured~~" rather
+# than to nothing, so an unset value is not distinguishable from a
+# deliberate one.
+
+# The URL of the Keystone service to authenticate against.
+# keystone_auth_url = ~~unconfigured~~
+
+# Whether to verify TLS sessions to Keystone: false to skip
+# verification, true to use the system CA bundle, or a path to a CA
+# certificate or bundle.
+# keystone_auth_verify = true
+
+# The service account Kerbside authenticates itself as, and its
+# password. The password is read from this file in clear text, which
+# is the second reason for the 0600 in the header.
+# keystone_service_auth_user = ~~unconfigured~~
+# keystone_service_auth_password = ~~unconfigured~~
+
+# Where the service account lives.
+# keystone_service_auth_user_domain_id = default
+# keystone_service_auth_project = admin
+# keystone_service_auth_project_domain_id = default
+
+# The Keystone group a user must belong to in order to reach the
+# administrative interface or the REST API.
+# keystone_access_group = kerbside
+
+####################################################################
+# Network Settings
+####################################################################
+
+# The public fully qualified domain name for Kerbside, which may be
+# a load balancer with backend affinity. This must match the DNS name
+# in the proxy's TLS certificate or clients will reject it.
+#
+# The built-in default is a host on the author's own network, so it
+# is wrong for every real deployment.
+public_fqdn = kerbside.example.com
+
+# The ports clients are told to connect to on public_fqdn. These can
+# differ from the vdi_* ports below when a load balancer sits in
+# front of Kerbside.
+# public_secure_port = 5900
+# public_insecure_port = 5901
+
+# A unique name for this machine or container, used in logs and for
+# tracking which node owns a session.
+# node_name = kerbside
+
+# The address and ports the SPICE proxy itself binds. The insecure
+# port exists only to redirect clients to the secure one.
+# vdi_address = 0.0.0.0
+# vdi_secure_port = 5900
+# vdi_insecure_port = 5901
+
+####################################################################
+# Shaken Fist console tokens
+####################################################################
+
+# The expected "aud" claim for Shaken Fist VDI console tokens
+# exchanged at /sf-console.vv. Empty means derive it as
+# https://<public_fqdn>. This must equal Shaken Fist's KERBSIDE_URL
+# exactly -- it is both the token audience and the base of the
+# exchange URL -- so set it explicitly when the public URL differs in
+# scheme, port or path.
+# sf_console_token_audience =
+
+####################################################################
+# Control-plane gRPC service
+####################################################################
+
+# The unix domain socket for the KerbsideProxy gRPC service, which
+# the SPICE proxy consults for authorization and channel bookkeeping.
+# Keep this path short: AF_UNIX paths are limited to about 108 bytes
+# (SUN_LEN) and an over-long path fails to bind or connect. A path
+# under /run is safe. The proxy must be co-located with the daemon to
+# share the socket.
+# api_socket_path = /run/kerbside/api.sock
+
+# Thread pool size for the gRPC server.
+# api_grpc_workers = 8
+
+####################################################################
+# SPICE firewall
+####################################################################
+
+# Enforcement mode delivered to the proxy. "enforce" applies blocking
+# verdicts; "warn" downgrades them to forward-and-log so you can see
+# what enforcement would trip against real traffic first.
+# Case insensitive, and an unrecognised value falls back to enforce.
+# firewall_mode = enforce
+
+# Comma-separated SPICE channel names the proxy may relay: main,
+# display, inputs, cursor, playback, record, tunnel, smartcard,
+# usbredir, port, webdav. Empty permits all channels; a channel not
+# listed is denied before relay.
+# firewall_permitted_channels =
+
+####################################################################
+# Logging and Monitoring Settings
+####################################################################
+
+# Where to write logs. Blank means syslog; the special value
+# "stdout" logs to the console, which is what you want in a
+# container.
+# log_output_path =
+
+# Emit one JSON object per log line.
+# log_output_json = false
+
+# Include debug logging.
+# log_verbose = false
+
+# The Prometheus metrics endpoint exposed by the Rust proxy. It is
+# unauthenticated, so the address defaults to loopback and must not
+# be exposed on the public VDI interface. Set a management address,
+# or 0.0.0.0 behind a firewall, to scrape from another host.
+# prometheus_metrics_port = 13003
+# prometheus_metrics_address = 127.0.0.1

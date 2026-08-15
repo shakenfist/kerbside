@@ -404,10 +404,18 @@ for the session workflow.
 
 ## Configuration
 
-Configuration is loaded from:
-1. Environment variables (`KERBSIDE_*`)
-2. INI file (path from `KERBSIDE_CONFIG_PATH` or `/etc/kerbside/kerbside.conf`)
-3. Default values
+Configuration is loaded from, in priority order: environment
+variables (`KERBSIDE_*`), then the INI file, then the field defaults
+in `kerbside/config.py`. The INI path is the fixed constant
+`/etc/kerbside/kerbside.ini` -- there is no search path and no way to
+override it. Everything lives in one `[kerbside]` section, and each
+key is upper-cased and `KERBSIDE_`-prefixed before it reaches the
+settings model, so a key is only applied when the corresponding
+environment variable is not already set.
+
+`etc/kerbside.conf.example` documents every setting and its default,
+and a unit test fails if the two fall out of step. Prose descriptions
+are in [docs/configuration.md](docs/configuration.md).
 
 Key configuration for development:
 - `SQL_URL` - Database connection string
