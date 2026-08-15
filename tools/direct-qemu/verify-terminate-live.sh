@@ -72,11 +72,12 @@ else
 fi
 
 TERMINATE_URL="http://127.0.0.1:${API_PORT}/console/${CONSOLE_SOURCE}/${CONSOLE_UUID}/terminate"
-echo "[verify-terminate] GET ${TERMINATE_URL}"
+echo "[verify-terminate] POST ${TERMINATE_URL}"
 HTTP_STATUS="$(curl \
     --silent \
     --output /dev/null \
     --write-out '%{http_code}' \
+    --request POST \
     --header "Authorization: Bearer ${JWT_TOKEN}" \
     --header 'Accept: application/json' \
     "${TERMINATE_URL}")"

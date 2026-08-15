@@ -250,7 +250,7 @@ def main():
     jwt_token = _mint_auth_jwt(seed_path)
     url = 'http://127.0.0.1:%s/console/%s/%s/terminate' % (
         api_port, source, instance_uuid)
-    resp = requests.get(
+    resp = requests.post(
         url, headers={'Authorization': 'Bearer %s' % jwt_token,
                       'Accept': 'application/json'}, timeout=15)
     if resp.status_code != 200:
