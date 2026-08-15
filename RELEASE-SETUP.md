@@ -184,8 +184,8 @@ publishes unreleased `kerbside-proxy` dev wheels to PyPI:
 
 - **Trigger**: pushes to `develop` that change the proxy binary's inputs
   (path-filtered on `rust/**`, `kerbside/rpc/kerbside.proto`,
-  `tools/build-proxy-wheel.sh`, `tools/stamp-dev-proxy-version.sh`, and the
-  workflow file itself) — an unrelated change on `develop` does not trigger
+  `tools/build-proxy-wheel.sh`, `tools/stamp-dev-proxy-version.sh`,
+  `tools/gen-protos.sh`, and the workflow file itself) — an unrelated change on `develop` does not trigger
   a new dev release.
 - **Versioning**: the version comes from `setuptools_scm`
   (`MAJOR.MINOR.PATCH.devN`, e.g. `0.4.1.dev159`, monotonically increasing

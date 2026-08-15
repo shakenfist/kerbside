@@ -136,9 +136,10 @@ section or `index.md` description were needed.
    `skip-existing: true` makes any replay idempotent.
 7. **Path filter** (push trigger): `rust/**`,
    `kerbside/rpc/kerbside.proto`, `tools/build-proxy-wheel.sh`,
-   `tools/stamp-dev-proxy-version.sh`,
+   `tools/stamp-dev-proxy-version.sh`, `tools/gen-protos.sh`
+   (added for symmetry during PR #314 review),
    `.github/workflows/dev-proxy-wheel.yml`. This is the master
-   plan's list plus the two scripts whose changes alter the built
+   plan's list plus the scripts whose changes alter the built
    artifact or the publish behaviour.
 8. **Operator setup happens before merge**: the `dev-release`
    environment (no reviewers, develop-branch-restricted) and the

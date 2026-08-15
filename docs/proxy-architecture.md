@@ -337,7 +337,8 @@ publishes a PEP 440 dev wheel of `kerbside-proxy` (e.g. `0.4.1.dev163`,
 versioned by `setuptools_scm`) to PyPI, unattended, on pushes to
 `develop` that are path-filtered to the binary's inputs (`rust/**`,
 `kerbside/rpc/kerbside.proto`, `tools/build-proxy-wheel.sh`,
-`tools/stamp-dev-proxy-version.sh`, and the workflow file itself). Dev
+`tools/stamp-dev-proxy-version.sh`, `tools/gen-protos.sh`, and the
+workflow file itself). Dev
 wheels carry build provenance attestations, the same as tagged releases,
 but they are **not** Sigstore tag-signed — there is no `v*` tag for a
 dev build to sign. See "Configure Dev Release Publishing" and "Dev
