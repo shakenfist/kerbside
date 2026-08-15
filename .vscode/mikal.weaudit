@@ -466,14 +466,6 @@
     {
       "path": "README.md",
       "author": "mikal"
-    },
-    {
-      "path": "AGENTS.md",
-      "author": "mikal"
-    },
-    {
-      "path": "ARCHITECTURE.md",
-      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
