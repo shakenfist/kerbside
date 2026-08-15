@@ -17,8 +17,10 @@ SPICE protocol negotiation, authentication, and bidirectional traffic relay.
 | How do the components fit together? | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
 | How does the proxy work internally? | [`docs/proxy-architecture.md`](docs/proxy-architecture.md) |
 | How do I build, debug and package it? | [`docs/development.md`](docs/development.md) |
-| What runs in CI, and what gates a PR? | [`docs/testing.md`](docs/testing.md) |
+| How do I run the tests, and what gates a PR? | [`docs/testing.md`](docs/testing.md) |
 | What are the configuration settings? | [`docs/configuration.md`](docs/configuration.md) |
+| How do I install and deploy it? | [`docs/installation.md`](docs/installation.md) |
+| How is it deployed against a specific cloud? | [`docs/use-cases/`](docs/use-cases/) |
 | How do I exercise the proxy against real qemu? | [`docs/direct-qemu-harness.md`](docs/direct-qemu-harness.md) |
 | What are the database tables? | [`docs/schema.md`](docs/schema.md) |
 | How do console sources work? | [`docs/console-sources.md`](docs/console-sources.md) |

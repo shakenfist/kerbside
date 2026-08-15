@@ -422,12 +422,12 @@ Renovate moved the two out of lockstep (PR #198).
 
 ## Development configuration
 
-Configuration is loaded from, in priority order: environment variables
-(`KERBSIDE_*`), then the INI file, then the field defaults in
-`kerbside/config.py`. The INI path is the fixed constant
-`/etc/kerbside/kerbside.ini` -- there is no search path and no way to
-override it. Everything lives in one `[kerbside]` section, and each key
-is upper-cased and `KERBSIDE_`-prefixed before it reaches the settings
+Configuration is loaded from environment variables (`KERBSIDE_*`), then
+an INI file at `/etc/kerbside/kerbside.ini`, then the field defaults in
+`kerbside/config.py`. That path is hardcoded as `INI_PATH` in
+`kerbside/config.py` and there is no setting that relocates it.
+Everything lives in one `[kerbside]` section, and each key is
+upper-cased and `KERBSIDE_`-prefixed before it reaches the settings
 model, so a key is only applied when the corresponding environment
 variable is not already set.
 

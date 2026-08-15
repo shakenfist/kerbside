@@ -46,7 +46,7 @@ directory:
 - [Database Schema](https://github.com/shakenfist/kerbside/blob/develop/docs/schema.md) - Tables, columns, and relationships
 - [SPICE Protocol Documentation](https://github.com/shakenfist/kerbside/blob/develop/docs/index.md#spice-protocol-documentation) - Protocol fundamentals, link handshake, per-channel message formats, compression, capabilities, USB redirection, and the VD agent protocol (under `docs/spice/`)
 - [Development](https://github.com/shakenfist/kerbside/blob/develop/docs/development.md) - Migrations, building and packaging the Rust proxy, dependency pinning, vendored web assets, and debugging
-- [Testing](https://github.com/shakenfist/kerbside/blob/develop/docs/testing.md) - CI tiers and lane mechanics, running the test suite, Ryll harnesses, the oVirt console probe, Tempest, and load-test images
+- [Testing](https://github.com/shakenfist/kerbside/blob/develop/docs/testing.md) - Running the test suite, CI tiers and lane mechanics, Ryll harnesses, the oVirt console probe, Tempest, and load-test images
 
 Project reference files:
 

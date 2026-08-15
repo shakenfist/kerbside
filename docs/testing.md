@@ -1,8 +1,32 @@
 # Testing
 
-How Kerbside is tested: the CI lanes, the Ryll-based harnesses, the
-oVirt console probe, the Tempest plugin, and the load-test container
-images.
+How Kerbside is tested: running the suite locally, the CI lanes, the
+Ryll-based harnesses, the oVirt console probe, the Tempest plugin, and
+the load-test container images.
+
+## Running the test suite
+
+```bash
+tox -e py3      # unit tests
+tox -e flake8   # style checks
+tox -e cover    # coverage report into cover/
+tox -e bindep   # OS dependency check
+```
+
+`py3`, `flake8` and `cover` are the default `envlist`, so a bare `tox`
+runs all three.
+
+Test locations:
+
+- Unit tests: `kerbside/tests/unit/`
+- Functional tests: `kerbside/tests/functional/`
+- Tempest plugin: `tempest-plugin/kerbside_tempest_plugin/` (a separate
+  releasable, driven via `tools/run-tempest-tests` and the
+  `openstack_matrix` job in `.github/workflows/functional-tests.yml`)
+  - `tests/api/test_spice_via_kerbside.py` — OpenStack lane only;
+    requires a live cloud.
+  - `tests/scenario/test_sextant_scenario.py` — direct-qemu lane; see
+    [Sextant scenario test](#sextant-scenario-test-direct-qemu-lane).
 
 ## CI tiers
 
@@ -59,6 +83,12 @@ tier; what never runs against the merged tree is `clippy` and
 
 The direct-qemu lane also runs nightly, because the merge queue
 does not re-run it against the merged tree.
+
+Two behaviours only matter when driving CI by hand: on a
+`workflow_dispatch` run of `functional-tests.yml` an unselected target
+skips cleanly via a job-level `if:` (it does not report red), and
+instance readiness in the `shakenfist/actions` provisioning playbook
+gates on cloud-init completion, not just an open SSH port.
 
 ### Gate jobs and required checks
 
@@ -252,10 +282,21 @@ The lane is a worked example of the deployment described in
 [use-cases/ovirt.md](use-cases/ovirt.md), which is the operator-facing
 version of what it proves.
 
-## Lane mechanics worth knowing
+### Log-derived oracles
 
-Both lanes below publish a `Can enqueue: <lane>` gate job; those names
-are required status checks, described in
+`drive-console.py` asserts against the proxy's log text. It strips
+ANSI before matching, and keeps "the field would not parse" separate
+from "the field was empty" — the first is a harness fault, the second
+is a real unpinned TLS leg. Conflating them (issue #272) reported a
+broken parser as a security failure for two days. Any new
+log-derived oracle should draw the same distinction. Proxy log
+colouring is described in
+[proxy-architecture.md](proxy-architecture.md).
+
+## Direct-qemu lane mechanics worth knowing
+
+The direct-qemu lane publishes a `Can enqueue: direct-qemu` gate job,
+which is a required status check; see
 [Gate jobs and required checks](#gate-jobs-and-required-checks).
 
 ### The proxy wheel is installed the way a deployment installs it
@@ -293,47 +334,6 @@ it down before the shared scenario lane starts.
 This is distinct from the local mock harness
 ([direct-qemu-harness.md](direct-qemu-harness.md)), which needs no
 daemon and no database.
-
-### Log-derived oracles
-
-`drive-console.py` asserts against the proxy's log text. It strips
-ANSI before matching, and keeps "the field would not parse" separate
-from "the field was empty" — the first is a harness fault, the second
-is a real unpinned TLS leg. Conflating them (issue #272) reported a
-broken parser as a security failure for two days. Any new
-log-derived oracle should draw the same distinction. Proxy log
-colouring is described in
-[proxy-architecture.md](proxy-architecture.md).
-
-## Running the test suite
-
-```bash
-tox -e py3      # unit tests
-tox -e flake8   # style checks
-tox -e cover    # coverage report into cover/
-tox -e bindep   # OS dependency check
-```
-
-`py3`, `flake8` and `cover` are the default `envlist`, so a bare `tox`
-runs all three.
-
-Test locations:
-
-- Unit tests: `kerbside/tests/unit/`
-- Functional tests: `kerbside/tests/functional/`
-- Tempest plugin: `tempest-plugin/kerbside_tempest_plugin/` (a separate
-  releasable, driven via `tools/run-tempest-tests` and the
-  `openstack_matrix` job in `.github/workflows/functional-tests.yml`)
-  - `tests/api/test_spice_via_kerbside.py` — OpenStack lane only;
-    requires a live cloud.
-  - `tests/scenario/test_sextant_scenario.py` — direct-qemu lane; see
-    [Sextant scenario test](#sextant-scenario-test-direct-qemu-lane).
-
-Two behaviours only matter when driving CI by hand: on a
-`workflow_dispatch` run of `functional-tests.yml` an unselected target
-skips cleanly via a job-level `if:` (it does not report red), and
-instance readiness in the `shakenfist/actions` provisioning playbook
-gates on cloud-init completion, not just an open SSH port.
 
 ## Tempest tests against a Kolla-Ansible deployment
 

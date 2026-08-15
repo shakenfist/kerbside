@@ -195,9 +195,9 @@ Guides for working on Kerbside itself:
   packaging the Rust proxy, dependency pinning, review tracking,
   vendored web assets, and debugging
 
-- [Testing](testing.md) - CI tiers and lane mechanics, running the test
-  suite, the Ryll-based harnesses, the oVirt console probe, the Tempest
-  plugin, and the load-test container images
+- [Testing](testing.md) - Running the test suite, the CI tiers and lane
+  mechanics, the Ryll-based harnesses, the oVirt console probe, the
+  Tempest plugin, and the load-test container images
 
 - [Direct-qemu Harness](direct-qemu-harness.md) - Exercising the Rust
   proxy locally against qemu with a mock control plane: end-to-end
