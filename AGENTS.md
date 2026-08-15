@@ -51,6 +51,9 @@ SPICE protocol negotiation, authentication, and bidirectional traffic relay.
 1. Create a new file in `kerbside/sources/`
 2. Inherit from `BaseSource` (see `sources/base.py`)
 3. Implement `__call__()` to yield console entries
+4. Register the type in `kerbside/main.py:_parse_sources()` — it
+   dispatches on `source['type']` through a hardcoded chain, so a
+   source class that is not added there is never instantiated
 
 The `add-source-type` Claude skill walks the full workflow.
 
@@ -122,7 +125,8 @@ https://www.spice-space.org/spice-protocol.html.
   must never be pinned carry a `# never-pin: <name>` comment — the
   canonical case is pydantic-core, which each pydantic release
   exact-pins itself, and which broke every CI install when Renovate
-  moved the two out of lockstep (PR #198).
+  moved the two out of lockstep (PR #198). See "Dependency pinning" in
+  [`docs/development.md`](docs/development.md).
 
 - **Never edit `kerbside/api/static/sfui/` in place.** It is a verbatim
   copy of shakenfist/sfui stamped with its source commit in

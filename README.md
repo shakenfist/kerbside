@@ -45,8 +45,8 @@ directory:
 - [Proxy Architecture](https://github.com/shakenfist/kerbside/blob/develop/docs/proxy-architecture.md) - Internal proxy design, state machine, and firewall
 - [Database Schema](https://github.com/shakenfist/kerbside/blob/develop/docs/schema.md) - Tables, columns, and relationships
 - [SPICE Protocol Documentation](https://github.com/shakenfist/kerbside/blob/develop/docs/index.md#spice-protocol-documentation) - Protocol fundamentals, link handshake, per-channel message formats, compression, capabilities, USB redirection, and the VD agent protocol (under `docs/spice/`)
-- [Development](https://github.com/shakenfist/kerbside/blob/develop/docs/development.md) - Database migrations and vendored web assets
-- [Testing](https://github.com/shakenfist/kerbside/blob/develop/docs/testing.md) - CI lanes, Ryll harnesses, the oVirt console probe, Tempest, and load-test images
+- [Development](https://github.com/shakenfist/kerbside/blob/develop/docs/development.md) - Migrations, building and packaging the Rust proxy, dependency pinning, vendored web assets, and debugging
+- [Testing](https://github.com/shakenfist/kerbside/blob/develop/docs/testing.md) - CI tiers and lane mechanics, running the test suite, Ryll harnesses, the oVirt console probe, Tempest, and load-test images
 
 Project reference files:
 

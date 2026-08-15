@@ -341,25 +341,24 @@ verification against qemu is [direct-qemu-harness.md](direct-qemu-harness.md).
 
 ### Packaging and release
 
-The crate is published to PyPI as a separate `kerbside-proxy` package —
-a maturin `bindings = "bin"` wheel (`rust/kerbside-proxy/pyproject.toml`)
-that carries the compiled binary in the wheel's `*.data/scripts/` dir, so
-`pip install` puts `kerbside-proxy` on `PATH` and `find_proxy_bin()`
-resolves it via `shutil.which`. `kerbside` exact-pins `kerbside-proxy`,
-and both release in lockstep from one `v*` tag:
+How the wheel is built and how it reaches `PATH` in a deployment is
+described in
+[How the binary gets there: packaging](proxy-architecture.md#how-the-binary-gets-there-packaging).
+Three things about it only matter while developing:
 
-- `tools/stamp-proxy-version.sh <version>` propagates the tag version into
-  the crate's `Cargo.toml` `[package] version` (maturin reads it) and
-  inserts the `kerbside-proxy==<version>` pin into `pyproject.toml` before
-  the `# KERBSIDE_PROXY_PIN` marker. The committed tree carries no pin (the
-  sibling is not on PyPI in a dev checkout — `find_proxy_bin()` uses the
-  build tree / `KERBSIDE_PROXY_BIN` there).
-- `tools/build-proxy-wheel.sh <x86_64|aarch64>` builds a manylinux_2_28
-  wheel; aarch64 is cross-compiled from x86_64 with maturin `--zig`. No
-  sdist is published (wheels only).
-- `release.yml` runs the matrix build and publishes both packages
-  (proxy first); `rust.yml` builds a wheel on PRs as a packaging guard.
-  See `RELEASE-SETUP.md` for the two trusted publishers.
+- **A dev checkout deliberately carries no `kerbside-proxy` pin.** The
+  sibling package is not on PyPI at a dev version, so pinning it would
+  make the tree uninstallable. `tools/stamp-proxy-version.sh <version>`
+  inserts the `kerbside-proxy==<version>` pin before the
+  `# KERBSIDE_PROXY_PIN` marker in `pyproject.toml` at release time
+  only; `find_proxy_bin()` uses the cargo build tree or
+  `KERBSIDE_PROXY_BIN` in the meantime.
+- **`rust.yml` builds a wheel on pull requests as a packaging guard**,
+  so a change that breaks the maturin build is caught before the
+  release tag rather than during it.
+- `release.yml` runs the cross-compiled matrix build and publishes both
+  packages, proxy first, from a single `v*` tag. See `RELEASE-SETUP.md`
+  for the two trusted publishers.
 
 ### Validating the firewall against a real client
 
@@ -383,6 +382,43 @@ gRPC server's `ProxyControl` stream emits a one-shot `TerminateSession`
 a configurable number of seconds after the first authorization
 (`MOCK_GRPC_TERMINATE_AFTER`), standing in for the API/DB leg so the
 harness exercises the proxy-side cancellation path live.
+
+## Dependency pinning
+
+Indirect (transitive) dependencies are pinned in `pyproject.toml`
+between the `# START_OF_INDIRECT_DEPS` and `# END_OF_INDIRECT_DEPS`
+marker comments. `tools/pin-indirect-dependencies.sh` regenerates that
+block wholesale, nightly, via `pin-indirect-dependencies.yml`. **Never
+hand-edit between the markers** — the next run deletes whatever it
+finds there. New *direct* dependencies go above the start marker,
+preferring an exact version.
+
+Four things about the script are not obvious from the block it
+produces:
+
+- **Both markers are load-bearing.** The script hard-fails unless each
+  appears exactly once, and unless START comes before END. Transposed
+  markers are not a syntax error to the `sed` ranges or the `awk` state
+  machine — `/START/,/END/` would then match to end of file and the
+  rewrite would silently discard the tail of `pyproject.toml`.
+- **The reconcile never moves a version by itself.** Existing pins are
+  demoted to pip *constraints* and the direct dependencies are
+  re-resolved under them, so the job only adds pins nothing had yet and
+  reaps pins nothing requires any more. Renovate stays the only thing
+  that raises a version. If the resolve fails with the pins applied as
+  constraints, a direct dependency now needs something above its
+  current pin.
+- **Only `[project] dependencies` are resolved.** The `test` extra's
+  transitive dependencies are therefore neither pinned nor reaped.
+- **A local dry run rewrites `pyproject.toml` in place.** Discard it
+  with `git checkout -- pyproject.toml`. The sort collation is pinned
+  to `LC_ALL=C` so a workstation run does not produce a diff made
+  entirely of reordering noise.
+
+Packages that must never be pinned carry a `# never-pin: <name>`
+comment. The canonical case is pydantic-core, which each pydantic
+release exact-pins itself, and which broke every CI install when
+Renovate moved the two out of lockstep (PR #198).
 
 ## Development configuration
 

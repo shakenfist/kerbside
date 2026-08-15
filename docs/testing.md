@@ -240,6 +240,12 @@ cluster that will host the VM, which is the constraint the engine
 actually enforces; `_resolve_vnic_profile` is covered by
 `kerbside/tests/unit/test_create_ovirt_vnc_vm.py`.
 
+That generalises: **anything that looks up an oVirt object by name must
+scope the lookup to the `test` cluster or its datacenter** (issue #283).
+A bare name match fails only when the engine happens to list the wrong
+one first, and this code runs in the merge tier only — so a smoke-green
+PR proves nothing about it.
+
 The runner-side scripts live in `tools/ovirt-e2e/` and are
 documented in `tools/ovirt-e2e/README.md`.
 The lane is a worked example of the deployment described in
@@ -248,15 +254,9 @@ version of what it proves.
 
 ## Lane mechanics worth knowing
 
-### Required status checks
-
-The direct-qemu and `sf-e2e` lanes each publish a gate job named
-`Can enqueue: <lane>`, and both names are required status checks in
-the develop ruleset. Renaming one without updating the ruleset blocks
-every merge until the ruleset catches up.
-
-The direct-qemu lane also runs nightly, because the merge queue does
-not re-run it against the merged tree.
+Both lanes below publish a `Can enqueue: <lane>` gate job; those names
+are required status checks, described in
+[Gate jobs and required checks](#gate-jobs-and-required-checks).
 
 ### The proxy wheel is installed the way a deployment installs it
 
@@ -305,23 +305,17 @@ log-derived oracle should draw the same distinction. Proxy log
 colouring is described in
 [proxy-architecture.md](proxy-architecture.md).
 
-### oVirt object lookups must be cluster-scoped
-
-Anything that looks up an oVirt object by name must scope the lookup
-to the `test` cluster or its datacenter. The lane runs two datacenters
-and both have an `ovirtmgmt` network and vNIC profile of the same
-name, so a bare name match silently picks whichever the engine lists
-first and fails with a 409 only when it guesses wrong (issue #283).
-The merge tier is the only place this code runs, so a smoke-green PR
-proves nothing about it.
-
 ## Running the test suite
 
 ```bash
 tox -e py3      # unit tests
-tox -e pep8     # style checks
+tox -e flake8   # style checks
+tox -e cover    # coverage report into cover/
 tox -e bindep   # OS dependency check
 ```
+
+`py3`, `flake8` and `cover` are the default `envlist`, so a bare `tox`
+runs all three.
 
 Test locations:
 
@@ -332,17 +326,8 @@ Test locations:
   `openstack_matrix` job in `.github/workflows/functional-tests.yml`)
   - `tests/api/test_spice_via_kerbside.py` — OpenStack lane only;
     requires a live cloud.
-  - `tests/scenario/test_sextant_scenario.py` — direct-qemu lane;
-    drives the full Sextant Awaiting → Parked sequence over Ryll's
-    control socket, asserting the `digest_updated` event stream and
-    the post-mortem serial drain. Skips when
-    `CONF.kerbside.control_socket_path` is unset (OpenStack lane
-    safety). Requires ryll built with `--features digest-decode`.
-    Configured via the `[kerbside]` tempest options:
-    `control_socket_path`, `serial_log_path`,
-    `scenario_artifact_dir`, `scenario_step_timeout`.
-    Run last on the direct-qemu lane, because the final keypress
-    shuts the guest down.
+  - `tests/scenario/test_sextant_scenario.py` — direct-qemu lane; see
+    [Sextant scenario test](#sextant-scenario-test-direct-qemu-lane).
 
 Two behaviours only matter when driving CI by hand: on a
 `workflow_dispatch` run of `functional-tests.yml` an unselected target
