@@ -1,0 +1,136 @@
+<script>
+    // The content poll, replacing the meta refresh these pages used
+    // to carry. Same 30 second cadence, but the page is never
+    // reloaded: the fetched document's #kb-content is morphed onto
+    // the live one, so scroll, selection, focus, open disclosures
+    // and a half-confirmed terminate all survive a tick.
+    //
+    // Nothing here attaches a listener to rendered content. Morphing
+    // keeps live nodes alive, so a per-node listener added after a
+    // tick would accumulate one duplicate per tick; every listener
+    // on this page is delegated above #kb-content instead.
+    var POLL_INTERVAL_MS = 30000;
+
+    // The last content the server sent, not the last content on
+    // screen: the two differ by design (see the hook below), and it
+    // is the server's answer we are asking about.
+    var lastContentHtml = document.getElementById(
+        'kb-content').innerHTML;
+    var lastSuccessTime = document.getElementById(
+        'kb-refresh-status').textContent;
+
+    function padTwo(value) {
+        if (value < 10) {
+            return '0' + value;
+        }
+        return String(value);
+    }
+
+    // Matches the server's %H:%M:%S rather than the locale's idea of
+    // a time, so the stamp does not change shape on the first tick.
+    function clockTime() {
+        var now = new Date();
+        return padTwo(now.getHours()) + ':'
+            + padTwo(now.getMinutes()) + ':'
+            + padTwo(now.getSeconds());
+    }
+
+    function noteSuccess() {
+        lastSuccessTime = clockTime();
+        document.getElementById('kb-refresh-status').textContent =
+            lastSuccessTime;
+    }
+
+    // A failed poll reports staleness and returns: the next tick
+    // retries. Deliberately no reload -- an expired token answers
+    // these routes with a JSON 401, so reloading would trade a
+    // readable page for an error body. The pinned time is what tells
+    // an operator how far behind the numbers they are reading are.
+    function noteFailure() {
+        document.getElementById('kb-refresh-status').textContent =
+            'stale since ' + lastSuccessTime;
+    }
+
+    // Two preservations, both of live state the server cannot know
+    // about. morphdom calls this before it syncs attributes, so
+    // mutating toEl here is what lands on the live node.
+    function preserveOperatorState(fromEl, toEl) {
+        if (fromEl === window.armedTerminate) {
+            // Never repaint a half-confirmed button: restoring its
+            // idle label while armedTerminate still points at it
+            // would leave a button that looks unarmed and fires on
+            // the next click. Undefined on pages without the
+            // terminate include, where this is simply never true.
+            return false;
+        }
+        if (fromEl.tagName === 'DETAILS') {
+            // The live open state wins in both directions, so an
+            // operator's opened disclosure stays open and one they
+            // closed stays closed whatever the server's default is
+            // (the sessions page renders its first panel open on
+            // every response).
+            if (fromEl.open) {
+                toEl.setAttribute('open', '');
+            } else {
+                toEl.removeAttribute('open');
+            }
+        }
+        return true;
+    }
+
+    function applyContent(text) {
+        var live = document.getElementById('kb-content');
+        var fresh = new DOMParser()
+            .parseFromString(text, 'text/html')
+            .getElementById('kb-content');
+        if (!fresh) {
+            // Not one of our pages -- treat it as a failed poll.
+            throw new Error('response carried no kb-content');
+        }
+
+        // Read before morphing: morphdom moves nodes out of the
+        // incoming element, emptying it.
+        var freshHtml = fresh.innerHTML;
+
+        // Most ticks change nothing, and an unchanged page is left
+        // entirely alone rather than morphed to the same result.
+        // childrenOnly keeps the wrapper itself, and everything
+        // delegated on it, out of the diff.
+        if (freshHtml !== lastContentHtml) {
+            lastContentHtml = freshHtml;
+            morphdom(live, fresh, {
+                childrenOnly: true,
+                onBeforeElUpdated: preserveOperatorState
+            });
+        }
+
+        // Even a short-circuited tick stamps the clock: the page is
+        // confirmed fresh, which is exactly what the stamp claims.
+        noteSuccess();
+    }
+
+    // Exposed so the DOM test harness can drive a tick immediately
+    // instead of waiting 30 seconds for the interval. Returns the
+    // fetch chain for the same reason.
+    window.kbPoll = function () {
+        if (document.hidden) {
+            // A hidden tab has nobody reading it; the tick after it
+            // becomes visible again refreshes it.
+            return;
+        }
+
+        return fetch(window.location.href,
+                     {headers: {'Accept': 'text/html'}})
+            .then(function (resp) {
+                var ctype = resp.headers.get('content-type') || '';
+                if (!resp.ok || ctype.indexOf('text/html') === -1) {
+                    throw new Error('not an HTML page');
+                }
+                return resp.text();
+            })
+            .then(applyContent)
+            .catch(noteFailure);
+    };
+
+    setInterval(window.kbPoll, POLL_INTERVAL_MS);
+</script>

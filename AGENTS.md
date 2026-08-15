@@ -454,8 +454,11 @@ activity is visible in the Prometheus `/metrics` endpoint.
    `consoles.html`, `sessions.html`, `sources.html` and `audit.html`)
    are converted onto `base-sfui.html`; the old `base.html` is
    unreferenced and stays until a teardown phase deletes it along
-   with the old Bootstrap/axios static assets. Icons that need to
-   follow the theme (an SVG loaded via `<img>`
+   with the old Bootstrap/axios static assets. Every `refresh=True`
+   page now polls via a morphdom fetch-and-morph cycle instead of a
+   meta refresh, so an open disclosure or a half-confirmed terminate
+   survives a poll tick instead of being reset by a reload. Icons
+   that need to follow the theme (an SVG loaded via `<img>`
    cannot -- `currentColor` resolves against the SVG's own isolated
    document, not the page) are inline `{% include %}`s of the SVGs
    under `kerbside/api/templates/icons/`, not static assets.

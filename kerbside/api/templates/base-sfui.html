@@ -16,7 +16,10 @@
     <script type="module"
             src="/static/sfui/components/sf-theme-toggle.js"></script>
     {% if refresh %}
-    <meta http-equiv="refresh" content="30">
+    <!-- Only the polling pages pay for morphdom. It is UMD, so a
+         classic script tag defines the global the poll include
+         below calls; there is no module loader involved. -->
+    <script src="/static/sfui/morphdom-umd.js"></script>
     {% endif %}
 
     <style>
@@ -94,15 +97,24 @@
         </nav>
         {% endif %}
 
-        {% block content %}{% endblock %}
+        {# The one landmark the poll morphs, with childrenOnly, so
+           this element and anything delegated above it survives
+           every tick. The login page carries the wrapper too for
+           consistent markup; it never polls. #}
+        <main id="kb-content">{% block content %}{% endblock %}</main>
 
         {# Rendered only when there is something to say, so a page
            that does not refresh gets no empty bordered footer.
-           .sf-status-line is deliberately left unused: it is the
-           home for the polling status line a later phase adds. #}
+           .sf-status-line has two users: the audit page's console
+           UUID and this timestamp. Both want the same thing from
+           it -- monospace digits that do not jitter as their
+           value changes, which is what the poll does to the stamp
+           below every 30 seconds. #}
         {% if refresh %}
         <footer class="sf-footer">
-            Content refreshed at {{ when.strftime('%H:%M:%S') }}.
+            Content refreshed at
+            <span class="sf-status-line"
+                  id="kb-refresh-status">{{ when.strftime('%H:%M:%S') }}</span>.
         </footer>
         {% endif %}
     </div>
@@ -140,6 +152,8 @@
             });
     </script>
     {% endif %}
+
+    {% if refresh %}{% include 'includes/poll.html' %}{% endif %}
 </body>
 
 </html>
