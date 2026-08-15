@@ -67,7 +67,7 @@ class TerminateApiTestCase(testtools.TestCase):
             'token': 'tok', 'session_id': 'sess-1', 'source': 'src',
             'uuid': 'u'}]
 
-        resp = self.client.get(
+        resp = self.client.post(
             '/console/src/u/terminate',
             headers={'Accept': 'application/json'})
 
@@ -88,13 +88,53 @@ class TerminateApiTestCase(testtools.TestCase):
             'token': 'tok', 'session_id': 'sess-2', 'source': 'src',
             'uuid': 'u'}
 
-        resp = self.client.get(
+        resp = self.client.post(
             '/session/sess-2/terminate',
             headers={'Accept': 'application/json'})
 
         self.assertEqual(200, resp.status_code)
         mock_remove.assert_called_once_with('sess-2')
         mock_request.assert_called_once_with('sess-2', reason=mock.ANY)
+
+    # These two are the falsifiable proof that the terminate verbs actually
+    # moved. A GET carrying a cookie borne JWT is not covered by
+    # flask-jwt-extended's CSRF check, which is the blind CSRF of issue #133,
+    # so the routes must refuse GET outright rather than merely also accepting
+    # POST. The db calls are mocked so that a regression fails as 200 != 405
+    # rather than as a database error.
+    @mock.patch('kerbside.db.request_session_termination')
+    @mock.patch('kerbside.db.add_audit_event')
+    @mock.patch('kerbside.db.remove_session')
+    @mock.patch('kerbside.db.get_tokens_by_console')
+    def test_consoles_terminate_rejects_get(
+            self, mock_get_tokens, mock_remove, mock_audit, mock_request):
+        mock_get_tokens.return_value = [{
+            'token': 'tok', 'session_id': 'sess-1', 'source': 'src',
+            'uuid': 'u'}]
+
+        resp = self.client.get(
+            '/console/src/u/terminate',
+            headers={'Accept': 'application/json'})
+
+        self.assertEqual(405, resp.status_code)
+        mock_request.assert_not_called()
+
+    @mock.patch('kerbside.db.request_session_termination')
+    @mock.patch('kerbside.db.add_audit_event')
+    @mock.patch('kerbside.db.remove_session')
+    @mock.patch('kerbside.db.get_token_by_session_id')
+    def test_session_terminate_rejects_get(
+            self, mock_get_token, mock_remove, mock_audit, mock_request):
+        mock_get_token.return_value = {
+            'token': 'tok', 'session_id': 'sess-2', 'source': 'src',
+            'uuid': 'u'}
+
+        resp = self.client.get(
+            '/session/sess-2/terminate',
+            headers={'Accept': 'application/json'})
+
+        self.assertEqual(405, resp.status_code)
+        mock_request.assert_not_called()
 
 
 class SfTokenApiTestCase(testtools.TestCase):

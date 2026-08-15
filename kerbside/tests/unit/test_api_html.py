@@ -270,9 +270,6 @@ class HtmlPagesTestCase(testtools.TestCase):
         self.assertIn('4242', body)
         self.assertNotIn('sekrit-hypervisor-ticket', body)
 
-    # NOTE: the terminate routes below are still GET. They move to POST as part
-    # of the sfui conversion; these two tests will need to issue POSTs at that
-    # point.
     @mock.patch('kerbside.api.db.request_session_termination')
     @mock.patch('kerbside.api.db.add_audit_event')
     @mock.patch('kerbside.api.db.remove_session')
@@ -283,13 +280,12 @@ class HtmlPagesTestCase(testtools.TestCase):
             'token': 'tok', 'session_id': 'sess-1', 'source': 'src',
             'uuid': 'u'}]
 
-        resp = self.client.get(
+        resp = self.client.post(
             '/console/src/u/terminate', headers={'Accept': 'text/html'})
 
         self.assertEqual(302, resp.status_code)
         self.assertTrue(resp.headers['Location'].endswith('/console'))
 
-    # NOTE: see the note above -- this route also moves to POST.
     @mock.patch('kerbside.api.db.request_session_termination')
     @mock.patch('kerbside.api.db.add_audit_event')
     @mock.patch('kerbside.api.db.remove_session')
@@ -300,7 +296,7 @@ class HtmlPagesTestCase(testtools.TestCase):
             'token': 'tok', 'session_id': 'sess-2', 'source': 'src',
             'uuid': 'u'}
 
-        resp = self.client.get(
+        resp = self.client.post(
             '/session/sess-2/terminate', headers={'Accept': 'text/html'})
 
         self.assertEqual(302, resp.status_code)
