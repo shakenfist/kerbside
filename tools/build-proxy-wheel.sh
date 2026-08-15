@@ -64,6 +64,28 @@ command -v maturin >/dev/null || { echo "ERROR: maturin not found on PATH" >&2; 
 mkdir -p "${wheel_out}"
 cd "${crate_dir}"
 
+# If the tree is unstamped (pyproject.toml still declares a dynamic version,
+# which maturin resolves from Cargo.toml's 0.1.0 placeholder), stamp the
+# setuptools_scm dev version first. kerbside's committed dependency floor
+# (kerbside-proxy>=X.Y.Z.dev0) rejects a 0.1.0 wheel, so an unstamped local
+# wheel cannot be co-installed with kerbside. The stamp is reverted on exit
+# so the working tree is left as found. Requires setuptools_scm and full git
+# history (a shallow clone cannot count commits since the last v* tag). To
+# build at an exact release tag, run tools/stamp-proxy-version.sh first (as
+# the release workflow does) -- the dev stamper refuses release versions by
+# design.
+if grep -q '^dynamic = \["version"\]' pyproject.toml; then
+    echo "Unstamped tree: stamping the setuptools_scm dev version..."
+    saved_pyproject="$(mktemp)"
+    cp pyproject.toml "${saved_pyproject}"
+    restore_pyproject() {
+        cat "${saved_pyproject}" > pyproject.toml
+        rm -f "${saved_pyproject}"
+    }
+    trap restore_pyproject EXIT
+    "${repo_root}/tools/stamp-dev-proxy-version.sh"
+fi
+
 if [ "${native}" = 1 ]; then
     echo "Building kerbside-proxy wheel for the host (native, no zig/manylinux)..."
     maturin build --release --out "${wheel_out}"
