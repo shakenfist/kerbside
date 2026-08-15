@@ -257,7 +257,7 @@ locally-running kerbside.
 | 5. Consoles page | PLAN-sfui-conversion-phase-05-consoles.md | Done |
 | 6. Sessions, sources and audit pages | PLAN-sfui-conversion-phase-06-remaining-pages.md | Done |
 | 7. morphdom polling | PLAN-sfui-conversion-phase-07-polling.md | Done |
-| 8. Terminate actions to POST (#133) | PLAN-sfui-conversion-phase-08-terminate-post.md | Planned |
+| 8. Terminate actions to POST (#133) | PLAN-sfui-conversion-phase-08-terminate-post.md | Done |
 | 9. Teardown, docs and issue closure | PLAN-sfui-conversion-phase-09-teardown.md | Not started |
 
 Phase notes, dependencies and recommended planning effort:
@@ -632,7 +632,13 @@ issues going in:
 * #244 — the admin UI rewrite/style pass: resolved by this
   plan as a whole.
 * #133 — destructive admin actions on GET (blind CSRF):
-  fixed by phase 8.
+  fixed by phase 8 for both terminate routes, which are now
+  POST behind the `X-CSRF-TOKEN` double submit. The third
+  destructive GET it names, the `.vv` ticket write, cannot
+  become a POST without replacing a browser-native download
+  on the console handoff path; it is mitigated by the
+  `SameSite=Lax` cookie phase 8 sets, and its residual is
+  #319.
 * The markup defect catalogue in the Situation section
   (unclosed `<tr>`s, `</span>` closing a `<p>`, `<font>`,
   duplicate `id="data"`, dead Bootstrap 4 utilities, the

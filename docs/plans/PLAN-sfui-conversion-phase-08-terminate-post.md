@@ -371,3 +371,69 @@ if its shape needs arguing — POST versus DELETE, leaving the
 `.vv` handler on GET, the SameSite change, the `Failed` label —
 argue before it runs, because the harness in Verification 3 and
 the tests in 8a are written against those decisions.
+
+## Outcome
+
+Four commits on `sfui-conversion-phase-08`, cut from `aa7e5da`:
+
+- `d28853c` — this plan, plus the four master-plan corrections
+  from *What the survey found* applied at their source.
+- `9b9bc4a` — 8a: both handlers to POST, the cookie config, the
+  browser fetch, the four migrated tests and the two new
+  405 tests.
+- `2c07218` — 8b: the three out-of-browser callers.
+- `cbec8f1` — 8c: `ARCHITECTURE.md`, `AGENTS.md` and
+  `docs/development.md`.
+
+**One accepted deviation, in 8a.** The brief said the arming and
+disarming logic was to be left exactly as it was, and the
+implementer changed the fire path anyway: it now calls
+`disarmTerminate()` before issuing the fetch. That is correct and
+the brief was wrong. `window.location` used to make the question
+moot by navigating away; a `fetch` does not, so without the
+disarm `armedTerminate` would still point at the button while the
+request is in flight — a second click would fire a second POST,
+decision 6 could not "leave `armedTerminate` null", and phase 7's
+`onBeforeElUpdated` hook would protect the button from repaint
+forever. The management session had reached the same conclusion
+independently: `disarmed-after-success` was already an assertion
+in the harness before the implementer reported.
+
+**Verification results.**
+
+- The DOM harness grew from the five assertions specified in
+  Verification 3 to sixteen, and all sixteen pass — against both
+  the consoles page *and* the sessions page, since the include is
+  shared and phase 6 taught that per-page differences bite.
+  Non-vacuity is structural here: `arm-issues-no-fetch` asserts
+  zero requests and `posts-once` asserts one, so the transition
+  is real, and `csrf-header` compares against a value obtainable
+  only through the stubbed `document.cookie`, so it cannot pass
+  unless the token reader actually runs.
+- The flask-jwt-extended matrix in *Key facts* was re-measured on
+  4.7.4 and holds.
+- The config keys were checked for the silent-typo failure mode
+  the Risks section worries about: with both lines applied,
+  `Set-Cookie` really does carry `SameSite=Lax`. A misspelled
+  config key would have been ignored without complaint.
+- Mechanical greps: both classes define `post` and neither
+  defines `get`; no `window.location` remains in the include;
+  exactly two `app.config['JWT_COOKIE...']` assignments; no
+  caller anywhere in `tools/` still issues a GET; and
+  `kerbside/api/static/` is byte-identical to develop, so the
+  daily `sfui-vendor` audit stays green.
+- 160 tests pass, including the two new 405 tests.
+
+**Considered and found harmless.** A poll tick can land between
+the fetch starting and failing. morphdom updates matched nodes in
+place rather than replacing them (phase 7's `identity-kept`
+assertion), so the `Failed` label is written to the live node
+either way; if the tick lands after the label is set, that is the
+self-healing repaint decision 6 intends.
+
+**Not done, deliberately.** `ConsolesProxyVirtViewer` remains a
+GET that mints a token and writes a ticket. Decision 3 explains
+why, the `SameSite=Lax` cookie removes the vector #133 actually
+describes, and #319 carries the residual with its three options.
+#133 is closed by this phase on that basis rather than on a claim
+that every destructive GET is gone.
