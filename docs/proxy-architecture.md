@@ -381,10 +381,10 @@ versions by hand):
   than a hash — raises `RuntimeError` naming both hashes and four
   remediations (upgrade the wheel, rebuild the local Rust tree, point
   `KERBSIDE_PROXY_BIN` at a matching binary, or bypass the check).
-- `KERBSIDE_SKIP_CONTRACT_CHECK` is that bypass: set it to any
-  non-empty value other than `0` and the mismatch is logged as a
-  warning instead of refused. It exists for debugging only and is not a
-  supported deployment posture.
+- `KERBSIDE_SKIP_CONTRACT_CHECK` is that bypass: set it to a
+  recognised truthy value (`1`, `true`, `yes`, or `on`, case-insensitively)
+  and the mismatch is logged as a warning instead of refused. It exists
+  for debugging only and is not a supported deployment posture.
 
 ### Session termination: dropping in-flight connections
 

@@ -30,11 +30,17 @@ PROXY_BIN_NAME = 'kerbside-proxy'
 
 # Env escape hatch which bypasses the contract handshake below. For debugging
 # only: it lets an operator who knows better launch a binary whose gRPC
-# contract this package cannot confirm matches its own.
+# contract this package cannot confirm matches its own. Skips only for a
+# recognised truthy value (case-insensitively): '1', 'true', 'yes', 'on'.
 SKIP_CONTRACT_CHECK_ENV = 'KERBSIDE_SKIP_CONTRACT_CHECK'
+_SKIP_CONTRACT_CHECK_TRUE_VALUES = ('1', 'true', 'yes', 'on')
+_SKIP_CONTRACT_CHECK_FALSE_VALUES = ('0', 'false', 'no', 'off')
 
 # A contract hash is a sha256 hex digest, lower case.
 CONTRACT_HASH_RE = re.compile(r'^[0-9a-f]{64}$')
+
+# How long to wait for `<bin_path> --contract-hash` before giving up.
+CONTRACT_HASH_PROBE_TIMEOUT = 10
 
 
 def find_proxy_bin():
@@ -81,29 +87,43 @@ def get_binary_contract_hash(bin_path):
     """Ask the proxy binary for its embedded gRPC contract hash.
 
     Runs `<bin_path> --contract-hash`, which prints the sha256 of the
-    kerbside.proto the binary was compiled against and exits zero. Returns
-    that hash, or None if it could not be determined -- a non-zero exit
-    (every release <= 0.4.0 predates the flag and so rejects it), a timeout,
-    or output which is not a 64 character lower case hex digest.
+    kerbside.proto the binary was compiled against and exits zero.
 
-    None means "unknown contract": either the binary predates the handshake
-    or it is broken. check_contract() treats both as a mismatch, because
-    neither can be shown to speak this package's contract.
+    Returns a (reported_hash, failure_reason) tuple where exactly one
+    element is not None: reported_hash on success, or else failure_reason,
+    a short human-readable string describing why the hash could not be
+    determined -- a non-zero exit (every release <= 0.4.0 predates the flag
+    and so rejects it), a timeout, output which is not a 64 character lower
+    case hex digest, or an OSError raised trying to execute the binary at
+    all (wrong architecture, missing permissions, missing file).
+
+    check_contract() treats every failure_reason as a mismatch, because none
+    of them can be shown to speak this package's contract.
     """
     try:
         result = subprocess.run(
-            [bin_path, '--contract-hash'], capture_output=True, text=True, timeout=10)
+            [bin_path, '--contract-hash'], capture_output=True, text=True,
+            timeout=CONTRACT_HASH_PROBE_TIMEOUT)
     except subprocess.TimeoutExpired:
         LOG.warning('%s --contract-hash timed out' % bin_path)
-        return None
+        return None, (
+            'the binary did not respond to --contract-hash within %ds'
+            % CONTRACT_HASH_PROBE_TIMEOUT)
+    except OSError as e:
+        LOG.warning('%s --contract-hash could not be executed: %s' % (bin_path, e))
+        return None, 'the binary could not be executed: %s' % e
 
     if result.returncode != 0:
-        return None
+        LOG.warning(
+            '%s --contract-hash exited %d' % (bin_path, result.returncode))
+        return None, 'the binary does not support --contract-hash; it predates the contract handshake'
 
     reported = result.stdout.strip()
     if not CONTRACT_HASH_RE.match(reported):
-        return None
-    return reported
+        trimmed = reported[:80]
+        LOG.warning('%s --contract-hash printed unexpected output: %r' % (bin_path, trimmed))
+        return None, 'the binary printed %r, which is not a sha256 digest' % trimmed
+    return reported, None
 
 
 def check_contract(bin_path):
@@ -115,14 +135,13 @@ def check_contract(bin_path):
     raise rather than launch something which would fail subtly at connection
     time instead.
     """
-    reported = get_binary_contract_hash(bin_path)
+    reported, failure_reason = get_binary_contract_hash(bin_path)
     if reported == CONTRACT_HASH:
         LOG.info('Proxy binary contract hash matches: %s' % CONTRACT_HASH)
         return
 
     if reported is None:
-        found = ('unknown (the binary does not support --contract-hash; it '
-                 'predates the contract handshake)')
+        found = 'unknown (%s)' % failure_reason
     else:
         found = reported
 
@@ -169,16 +188,28 @@ def launch_rust_proxy(cfg):
     tracing output lands in the daemon's log stream. Returns the Popen."""
     bin_path = find_proxy_bin()
 
-    # Any non-empty value other than '0' means "skip", so both
-    # KERBSIDE_SKIP_CONTRACT_CHECK=1 and =yes work, while an explicit =0 (or
-    # an unset variable) keeps the check.
-    skip = os.environ.get(SKIP_CONTRACT_CHECK_ENV, '')
-    if skip and skip != '0':
+    # The escape hatch only takes effect for a recognised truthy value
+    # ('1', 'true', 'yes', 'on', case-insensitively). An unset or empty
+    # variable, or an explicit falsy value ('0', 'false', 'no', 'off'),
+    # keeps the check; anything else is not recognised, so the check is
+    # kept and a warning names the unrecognised value.
+    skip_raw = os.environ.get(SKIP_CONTRACT_CHECK_ENV, '')
+    skip_value = skip_raw.strip().lower()
+    if skip_value in _SKIP_CONTRACT_CHECK_TRUE_VALUES:
+        # Still probe the binary so the operator gets data to debug with,
+        # even though a mismatch (or probe failure) will not block launch.
+        reported, failure_reason = get_binary_contract_hash(bin_path)
+        found = reported if reported is not None else 'unknown (%s)' % failure_reason
         LOG.warning(
-            'SKIPPING the proxy contract check by operator request (%s=%s). The '
-            'proxy binary at %s may not speak this kerbside version\'s gRPC contract.'
-            % (SKIP_CONTRACT_CHECK_ENV, skip, bin_path))
+            'SKIPPING the proxy contract check by operator request (%s=%s). Expected '
+            'contract hash: %s. Binary contract hash: %s. The proxy binary at %s may '
+            'not speak this kerbside version\'s gRPC contract.'
+            % (SKIP_CONTRACT_CHECK_ENV, skip_raw, CONTRACT_HASH, found, bin_path))
     else:
+        if skip_raw != '' and skip_value not in _SKIP_CONTRACT_CHECK_FALSE_VALUES:
+            LOG.warning(
+                '%s=%r is not a recognised value; keeping the contract check. Set it to '
+                "one of '1', 'true', 'yes', 'on' to skip." % (SKIP_CONTRACT_CHECK_ENV, skip_raw))
         check_contract(bin_path)
 
     argv = build_proxy_argv(bin_path, cfg)

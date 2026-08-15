@@ -152,13 +152,24 @@ class ContractCheckTestCase(testtools.TestCase):
         _, popen, _ = self._launch(
             subprocess.TimeoutExpired(cmd='kerbside-proxy', timeout=10))
         self.assertIsNotNone(self.raised)
-        self.assertIn('predates the contract handshake', str(self.raised))
+        self.assertIn('did not respond', str(self.raised))
+        self.assertNotIn('predates the contract handshake', str(self.raised))
         popen.assert_not_called()
 
     def test_malformed_probe_output_raises(self):
         _, popen, _ = self._launch(_completed(0, stdout='not a hash\n'))
         self.assertIsNotNone(self.raised)
-        self.assertIn('predates the contract handshake', str(self.raised))
+        self.assertIn('is not a sha256 digest', str(self.raised))
+        self.assertNotIn('predates the contract handshake', str(self.raised))
+        popen.assert_not_called()
+
+    def test_binary_exec_failure_raises_could_not_be_executed_message(self):
+        # subprocess.run() raises an OSError subclass (not TimeoutExpired)
+        # before the child even runs for things like a wrong-architecture
+        # binary or a permissions problem.
+        _, popen, _ = self._launch(OSError(8, 'Exec format error'))
+        self.assertIsNotNone(self.raised)
+        self.assertIn('could not be executed', str(self.raised))
         popen.assert_not_called()
 
     def test_escape_hatch_launches_despite_mismatch(self):
@@ -167,10 +178,31 @@ class ContractCheckTestCase(testtools.TestCase):
         run, popen, log = self._launch(_completed(0, stdout=OTHER_HASH + '\n'), env=env)
         self.assertIsNone(self.raised)
         popen.assert_called_once()
-        # The check is skipped wholesale, so the binary is never even probed.
-        run.assert_not_called()
+        # The check is skipped, but the binary is still probed so the
+        # warning below carries real data rather than launching blind.
+        run.assert_called_once()
         log.warning.assert_called_once()
-        self.assertIn('SKIPPING', log.warning.call_args[0][0])
+        warning_message = log.warning.call_args[0][0]
+        self.assertIn('SKIPPING', warning_message)
+        self.assertIn(proxy_supervisor.CONTRACT_HASH, warning_message)
+        self.assertIn(OTHER_HASH, warning_message)
+
+    def test_truthy_skip_values_launch_despite_mismatch(self):
+        for value in ('1', 'true', 'YES '):
+            env = _env_without_skip()
+            env[proxy_supervisor.SKIP_CONTRACT_CHECK_ENV] = value
+            _, popen, _ = self._launch(_completed(0, stdout=OTHER_HASH + '\n'), env=env)
+            self.assertIsNone(self.raised, 'value %r should have skipped' % value)
+            popen.assert_called_once()
+
+    def test_falsy_skip_values_do_not_skip(self):
+        for value in ('0', 'false', 'no', ''):
+            env = _env_without_skip()
+            env[proxy_supervisor.SKIP_CONTRACT_CHECK_ENV] = value
+            run, popen, _ = self._launch(_completed(0, stdout=OTHER_HASH + '\n'), env=env)
+            self.assertIsNotNone(self.raised, 'value %r should not have skipped' % value)
+            run.assert_called_once()
+            popen.assert_not_called()
 
     def test_explicit_zero_does_not_skip(self):
         env = _env_without_skip()
@@ -179,6 +211,17 @@ class ContractCheckTestCase(testtools.TestCase):
         self.assertIsNotNone(self.raised)
         run.assert_called_once()
         popen.assert_not_called()
+
+    def test_unrecognized_skip_value_does_not_skip_and_warns(self):
+        env = _env_without_skip()
+        env[proxy_supervisor.SKIP_CONTRACT_CHECK_ENV] = 'maybe'
+        run, popen, log = self._launch(_completed(0, stdout=OTHER_HASH + '\n'), env=env)
+        self.assertIsNotNone(self.raised)
+        run.assert_called_once()
+        popen.assert_not_called()
+        warned_maybe = any(
+            'maybe' in call.args[0] for call in log.warning.call_args_list)
+        self.assertTrue(warned_maybe, log.warning.call_args_list)
 
 
 class GetBinaryContractHashTestCase(testtools.TestCase):
@@ -192,21 +235,35 @@ class GetBinaryContractHashTestCase(testtools.TestCase):
             return proxy_supervisor.get_binary_contract_hash('/bin/kerbside-proxy')
 
     def test_returns_stripped_hash_on_success(self):
-        self.assertEqual(
-            OTHER_HASH, self._probe(_completed(0, stdout='  %s \n' % OTHER_HASH)))
+        reported, failure_reason = self._probe(_completed(0, stdout='  %s \n' % OTHER_HASH))
+        self.assertEqual(OTHER_HASH, reported)
+        self.assertIsNone(failure_reason)
 
-    def test_returns_none_on_non_zero_exit(self):
-        self.assertIsNone(self._probe(_completed(2, stdout=OTHER_HASH)))
+    def test_returns_predates_reason_on_non_zero_exit(self):
+        reported, failure_reason = self._probe(_completed(2, stdout=OTHER_HASH))
+        self.assertIsNone(reported)
+        self.assertIn('predates the contract handshake', failure_reason)
 
-    def test_returns_none_on_timeout(self):
-        self.assertIsNone(
-            self._probe(subprocess.TimeoutExpired(cmd='kerbside-proxy', timeout=10)))
+    def test_returns_timeout_reason_on_timeout(self):
+        reported, failure_reason = self._probe(subprocess.TimeoutExpired(
+            cmd='kerbside-proxy', timeout=proxy_supervisor.CONTRACT_HASH_PROBE_TIMEOUT))
+        self.assertIsNone(reported)
+        self.assertIn('did not respond', failure_reason)
+        self.assertIn(str(proxy_supervisor.CONTRACT_HASH_PROBE_TIMEOUT), failure_reason)
+        self.assertNotIn('predates', failure_reason)
 
-    def test_returns_none_on_malformed_output(self):
-        self.assertIsNone(self._probe(_completed(0, stdout='')))
-        self.assertIsNone(self._probe(_completed(0, stdout='not a hash')))
-        # Upper case hex is not what the binary emits, so reject it too.
-        self.assertIsNone(self._probe(_completed(0, stdout='B' * 64)))
+    def test_returns_malformed_reason_on_malformed_output(self):
+        for stdout in ('', 'not a hash', 'B' * 64):
+            reported, failure_reason = self._probe(_completed(0, stdout=stdout))
+            self.assertIsNone(reported)
+            self.assertIn('is not a sha256 digest', failure_reason)
+            self.assertNotIn('predates', failure_reason)
+
+    def test_returns_oserror_reason_on_exec_failure(self):
+        reported, failure_reason = self._probe(OSError(8, 'Exec format error'))
+        self.assertIsNone(reported)
+        self.assertIn('could not be executed', failure_reason)
+        self.assertIn('Exec format error', failure_reason)
 
 
 class TerminateChildTestCase(testtools.TestCase):
