@@ -25,9 +25,12 @@ pip install maturin
 maturin build --release   # run from rust/kerbside-proxy/
 ```
 
-See the "Packaging and release" section of the repo-root `AGENTS.md`
-for the packaging and release design, and `../../RELEASE-SETUP.md` for
-the release infrastructure setup (PyPI trusted publishing and signing).
+See [How the binary gets there:
+packaging](../../docs/proxy-architecture.md#how-the-binary-gets-there-packaging)
+for the packaging and release design, [Packaging and
+release](../../docs/development.md#packaging-and-release) for what
+matters while developing, and `../../RELEASE-SETUP.md` for the release
+infrastructure setup (PyPI trusted publishing and signing).
 
 ## Licence
 

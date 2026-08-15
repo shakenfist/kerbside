@@ -8,7 +8,7 @@ the load-test container images.
 
 ```bash
 tox -e py3      # unit tests
-tox -e flake8   # style checks
+tox -e flake8   # style checks on changes since HEAD~
 tox -e cover    # coverage report into cover/
 tox -e bindep   # OS dependency check
 ```
@@ -215,6 +215,48 @@ which CI checks out alongside this one:
 - `tools/ovirt-gather-artifacts.sh` — collects RPM lists and logs for
   CI artifacts
 
+## The direct-qemu lane
+
+The direct-qemu lane publishes a `Can enqueue: direct-qemu` gate job,
+which is a required status check; see
+[Gate jobs and required checks](#gate-jobs-and-required-checks).
+
+### The proxy wheel is installed the way a deployment installs it
+
+The direct-qemu Rust leg builds and installs the `kerbside-proxy`
+wheel into the kerbside venv (`install-proxy-wheel.sh` →
+`build-proxy-wheel.sh --native`), so `find_proxy_bin()` resolves it via
+`shutil.which` on `PATH` — the real install path, which is what gives
+this lane its coverage value. `start-kerbside.sh` pre-checks the proxy
+binary through `find_proxy_bin()` for the same reason.
+
+### Live termination
+
+`verify-terminate-live.sh` (Rust leg only) runs on an isolated lane:
+it calls the REST terminate endpoint and asserts the in-flight
+connection drops, via the proxy log line `session terminated by
+control plane`. This exercises the DB→`ProxyControl` bridge end to
+end rather than the mock.
+
+### The latency loadtest
+
+Both legs run `run-loadtest.sh` (non-gating, `continue-on-error`). It
+drives `loadtests/latency/orchestrator.py` to sample keypress-to-screen
+latency — real `send_key` events timed against the `surface_drawn`
+they produce — through the leg's proxy, and records p50/p95 as an
+artifact; the Python-versus-Rust comparison is read off the two legs.
+
+It boots the purpose-built `tests/fixtures/uefi-latency-guest.qcow2`,
+which repaints on every keypress, rather than the Sextant scenario
+fixture, which leaves its Awaiting screen on the first key and freezes
+at the bootloader prompt. Like `verify-terminate-live.sh` it brings up
+its own isolated lane (separate WORKDIR, `QCOW2` overridden) and tears
+it down before the shared scenario lane starts.
+
+This is distinct from the local mock harness
+([direct-qemu-harness.md](direct-qemu-harness.md)), which needs no
+daemon and no database.
+
 ## The Shaken Fist end-to-end lane (`sf-e2e`)
 
 `.github/workflows/sf-e2e-functional.yml` is the only lane that
@@ -292,48 +334,6 @@ broken parser as a security failure for two days. Any new
 log-derived oracle should draw the same distinction. Proxy log
 colouring is described in
 [proxy-architecture.md](proxy-architecture.md).
-
-## Direct-qemu lane mechanics worth knowing
-
-The direct-qemu lane publishes a `Can enqueue: direct-qemu` gate job,
-which is a required status check; see
-[Gate jobs and required checks](#gate-jobs-and-required-checks).
-
-### The proxy wheel is installed the way a deployment installs it
-
-The direct-qemu Rust leg builds and installs the `kerbside-proxy`
-wheel into the kerbside venv (`install-proxy-wheel.sh` →
-`build-proxy-wheel.sh --native`), so `find_proxy_bin()` resolves it via
-`shutil.which` on `PATH` — the real install path, which is what gives
-this lane its coverage value. `start-kerbside.sh` pre-checks the proxy
-binary through `find_proxy_bin()` for the same reason.
-
-### Live termination
-
-`verify-terminate-live.sh` (Rust leg only) runs on an isolated lane:
-it calls the REST terminate endpoint and asserts the in-flight
-connection drops, via the proxy log line `session terminated by
-control plane`. This exercises the DB→`ProxyControl` bridge end to
-end rather than the mock.
-
-### The latency loadtest
-
-Both legs run `run-loadtest.sh` (non-gating, `continue-on-error`). It
-drives `loadtests/latency/orchestrator.py` to sample keypress-to-screen
-latency — real `send_key` events timed against the `surface_drawn`
-they produce — through the leg's proxy, and records p50/p95 as an
-artifact; the Python-versus-Rust comparison is read off the two legs.
-
-It boots the purpose-built `tests/fixtures/uefi-latency-guest.qcow2`,
-which repaints on every keypress, rather than the Sextant scenario
-fixture, which leaves its Awaiting screen on the first key and freezes
-at the bootloader prompt. Like `verify-terminate-live.sh` it brings up
-its own isolated lane (separate WORKDIR, `QCOW2` overridden) and tears
-it down before the shared scenario lane starts.
-
-This is distinct from the local mock harness
-([direct-qemu-harness.md](direct-qemu-harness.md)), which needs no
-daemon and no database.
 
 ## Tempest tests against a Kolla-Ansible deployment
 

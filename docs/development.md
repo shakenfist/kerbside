@@ -2,8 +2,9 @@
 
 Developer-facing notes for working on Kerbside itself. See
 [AGENTS.md](https://github.com/shakenfist/kerbside/blob/develop/AGENTS.md)
-for build commands, conventions, and common tasks, and
-[testing.md](testing.md) for the test harnesses and CI lanes.
+for the conventions and common-task recipes, and
+[testing.md](testing.md) for running the test suite, the test
+harnesses, and the CI lanes.
 
 ## Database migrations
 

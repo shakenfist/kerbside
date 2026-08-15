@@ -333,7 +333,8 @@ Bidirectional proxy relay begins
 Configuration uses Pydantic settings with INI file and environment variable
 support. Environment variables (prefixed `KERBSIDE_`) take priority, then the
 INI file at `/etc/kerbside/kerbside.ini`, then defaults. Every setting is
-documented in [docs/configuration.md](docs/configuration.md).
+documented in [docs/configuration.md](docs/configuration.md), with a complete
+worked example in `etc/kerbside.conf.example`.
 
 ## Security Model
 
