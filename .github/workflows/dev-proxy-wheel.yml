@@ -123,6 +123,9 @@ jobs:
   publish:
     name: Publish kerbside-proxy dev wheels to PyPI
     needs: build
+    # Same rationale as the build job's timeout: a wedged upload would
+    # otherwise hold the no-cancel concurrency group for six hours.
+    timeout-minutes: 10
     # Every push to develop that touches the binary's inputs publishes; a
     # manual dispatch publishes only when the operator opts out of the dry
     # run. `dry_run` is a typed boolean, so `inputs.dry_run` is a real boolean
