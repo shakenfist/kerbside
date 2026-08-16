@@ -36,10 +36,6 @@
       "author": "mikal"
     },
     {
-      "path": "RELEASE-SETUP.md",
-      "author": "mikal"
-    },
-    {
       "path": "rust/kerbside-proxy/src/rpc.rs",
       "author": "mikal"
     },
@@ -80,10 +76,6 @@
       "author": "mikal"
     },
     {
-      "path": "tools/gen-protos.sh",
-      "author": "mikal"
-    },
-    {
       "path": "tools/pin-indirect-dependencies.sh",
       "author": "mikal"
     },
@@ -101,10 +93,6 @@
     },
     {
       "path": "tools/run-tempest-tests",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/stamp-proxy-version.sh",
       "author": "mikal"
     },
     {
@@ -164,10 +152,6 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/tests/unit/test_proxy_supervisor.py",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/tests/unit/test_render_review.py",
       "author": "mikal"
     },
@@ -220,10 +204,6 @@
       "author": "mikal"
     },
     {
-      "path": "rust/kerbside-proxy/build.rs",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/export-repo-config.yml",
       "author": "mikal"
     },
@@ -244,10 +224,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/release.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/actionlint.yaml",
       "author": "mikal"
     },
@@ -265,10 +241,6 @@
     },
     {
       "path": "docs/console-sources.md",
-      "author": "mikal"
-    },
-    {
-      "path": "docs/proxy-architecture.md",
       "author": "mikal"
     },
     {
@@ -296,10 +268,6 @@
       "author": "mikal"
     },
     {
-      "path": "rust/kerbside-proxy/src/main.rs",
-      "author": "mikal"
-    },
-    {
       "path": "rust/kerbside-proxy/src/metrics.rs",
       "author": "mikal"
     },
@@ -316,15 +284,7 @@
       "author": "mikal"
     },
     {
-      "path": "rust/kerbside-proxy/src",
-      "author": "mikal"
-    },
-    {
       "path": "tools/direct-qemu/generate-tls.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/install-proxy-wheel.sh",
       "author": "mikal"
     },
     {
@@ -421,10 +381,6 @@
     },
     {
       "path": "tools/audit",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/build-proxy-wheel.sh",
       "author": "mikal"
     },
     {
