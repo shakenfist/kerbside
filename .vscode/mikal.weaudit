@@ -336,10 +336,6 @@
       "author": "mikal"
     },
     {
-      "path": "tools/direct-qemu/verify-terminate-live.sh",
-      "author": "mikal"
-    },
-    {
       "path": "tools/sf-e2e/import-instance.sh",
       "author": "mikal"
     },
@@ -349,10 +345,6 @@
     },
     {
       "path": "tools/sf-e2e/drive-adversarial.py",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/sf-e2e/drive-happy-path.py",
       "author": "mikal"
     },
     {

@@ -289,10 +289,6 @@
       "sha": "f8631679d5a7e3c8fb244cedd1da9004768365c0",
       "date": "2026-08-15"
     },
-    "tools/direct-qemu/verify-terminate-live.sh": {
-      "sha": "6b5058af0816312cb8061818e2c432c634c2594e",
-      "date": "2026-08-15"
-    },
     "tools/direct-qemu/wait-for-banner.sh": {
       "sha": "17c8a378a6a96c9c359eee505ee473f55a219f61",
       "date": "2026-08-09"
@@ -343,10 +339,6 @@
     },
     "tools/sf-e2e/drive-adversarial.py": {
       "sha": "12ab1f0f45a642ab9a3cd0c5c237e75ae232a1ee",
-      "date": "2026-08-15"
-    },
-    "tools/sf-e2e/drive-happy-path.py": {
-      "sha": "8db8e6aede4dab1bf4a7e66f15d4e2b07bddb313",
       "date": "2026-08-15"
     },
     "tools/sf-e2e/gather-artifacts.sh": {
