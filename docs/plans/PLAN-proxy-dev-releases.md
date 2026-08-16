@@ -262,11 +262,11 @@ All resolved by the operator on 2026-08-14:
 
 | Phase | Plan | Status |
 |-------|------|--------|
-| 1. Dev wheel publish workflow | [PLAN-proxy-dev-releases-phase-01-publish-workflow.md](PLAN-proxy-dev-releases-phase-01-publish-workflow.md) | Implemented (on branch; merge deferred to plan completion) |
-| 2. Committed dev specifier and release stamping | [PLAN-proxy-dev-releases-phase-02-dev-specifier.md](PLAN-proxy-dev-releases-phase-02-dev-specifier.md) | Implemented (on branch; merge deferred to plan completion) |
-| 3. Contract handshake | [PLAN-proxy-dev-releases-phase-03-contract-handshake.md](PLAN-proxy-dev-releases-phase-03-contract-handshake.md) | Implemented (on branch; merge deferred to plan completion) |
-| 4. Docs, downstream cleanup and verification | [PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md](PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md) | Planned |
-| 5. Automated dev release pruning | PLAN-proxy-dev-releases-phase-05-pypi-prune.md | Not started |
+| 1. Dev wheel publish workflow | [PLAN-proxy-dev-releases-phase-01-publish-workflow.md](PLAN-proxy-dev-releases-phase-01-publish-workflow.md) | Complete (merged in PR #314, 2026-08-16) |
+| 2. Committed dev specifier and release stamping | [PLAN-proxy-dev-releases-phase-02-dev-specifier.md](PLAN-proxy-dev-releases-phase-02-dev-specifier.md) | Complete (merged in PR #314, 2026-08-16) |
+| 3. Contract handshake | [PLAN-proxy-dev-releases-phase-03-contract-handshake.md](PLAN-proxy-dev-releases-phase-03-contract-handshake.md) | Complete (merged in PR #314, 2026-08-16) |
+| 4. Docs, downstream cleanup and verification | [PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md](PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md) | Docs (4a) complete in PR #314. Post-merge tail outstanding: patch175 simplification (4b) is committed in a kerbside-patches worktree awaiting its own PR; the Gerrit recheck (4c) has not run |
+| 5. Automated dev release pruning | [PLAN-proxy-dev-releases-phase-05-pypi-prune.md](PLAN-proxy-dev-releases-phase-05-pypi-prune.md) | Planned |
 
 Phase sketches (to be expanded into per-phase plans):
 
@@ -359,10 +359,29 @@ release count and files a GitHub issue when a threshold is
 crossed, making the manual chore impossible to forget.
 The phase plan should research (a) properly — including
 whether a second PyPI account with maintainer rights on
-kerbside-proxy is acceptable — and pick. Quota headroom is
-years even without pruning (two ~single-digit-MB wheels
-per triggering merge, 10 GB default quota), so this phase
-is about hygiene, not urgency, and lands last.
+kerbside-proxy is acceptable — and pick.
+
+(Volume correction, 2026-08-17 during phase 5 planning:
+this sketch assumed publishing would be sparse. Measured
+against the merged workflow's actual path filter, 77 of
+the 217 first-parent develop merges in the 42 days since
+the Rust tree was created would have triggered a publish —
+about 56/month, or 670/year at 5.80 MB per publish, which
+is ~3.9 GB/year against PyPI's 10 GB default project
+limit: roughly 2.6 years of headroom, not the open-ended
+"years" assumed here. 61 of those 77 touch only
+`rust/kerbside-proxy/Cargo.lock` and/or `Cargo.toml` —
+Renovate dependency bumps, none of which can change the
+gRPC contract hash. Reducing that inflow is therefore a
+lever the phase plan must weigh alongside deletion, and
+it interacts with the success criterion below that every
+`rust/**` merge publishes.)
+
+(Sequencing note: phases 1-4a landed together in PR #314
+under the operator's CI-cost policy. Phase 5 lands as its
+own, separate PR — the single-PR batching applied to the
+phases that had to merge together to turn the scenario
+jobs green, and phase 5 depends on none of that.)
 
 ## Agent guidance
 
@@ -506,6 +525,16 @@ implemented because the following statements will be true:
   review on PR #314; declined there because phase 2
   accepted the platform trade deliberately and no
   contributor currently needs it.
+* Revisit automated dev-release pruning if PyPI ever ships a
+  management API. Warehouse issue #12810 ("Warehouse API to
+  delete old .dev wheels (nightly builds)") is precisely
+  this use case and was open and labelled "Blocked" when
+  phase 5 was planned on 2026-08-17; phase 5 declined to
+  automate deletion around that gap because the only
+  available mechanism drives PyPI's web login form with an
+  account password and TOTP seed. If #12810 lands, the
+  monitor phase 5 builds becomes the trigger for a real
+  pruning job.
 * Upstream kolla: consider eventually switching
   `kerbside-base` from git-develop to released tarballs,
   which would make image builds reproducible and reduce
