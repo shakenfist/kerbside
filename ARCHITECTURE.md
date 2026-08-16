@@ -214,10 +214,12 @@ OpenStack environments).
 | `POST /auth` | Authentication (Keystone) |
 | `GET /source` | List configured sources |
 | `GET /console` | List all discovered consoles |
-| `GET /console/<source>/<uuid>/console.vv` | Generate virt-viewer config |
+| `GET /console/direct/<source>/<uuid>/console.vv` | Generate a direct-connection virt-viewer config |
+| `GET /console/proxy/<source>/<uuid>/console.vv` | Generate a proxied virt-viewer config, minting a console token |
+| `POST /console/<source>/<uuid>/terminate` | Terminate every session for a console |
 | `GET /sf-console.vv?token=<jwt>` | Exchange a Shaken Fist Ed25519 JWT (verified offline) for a console token and virt-viewer config |
 | `GET /session` | List active proxy sessions |
-| `GET /session/<id>/terminate` | Kill specific session |
+| `POST /session/<id>/terminate` | Kill specific session |
 
 ### 5. SPICE Protocol Handling
 
