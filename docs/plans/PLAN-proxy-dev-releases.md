@@ -266,7 +266,7 @@ All resolved by the operator on 2026-08-14:
 | 2. Committed dev specifier and release stamping | [PLAN-proxy-dev-releases-phase-02-dev-specifier.md](PLAN-proxy-dev-releases-phase-02-dev-specifier.md) | Complete (merged in PR #314, 2026-08-16) |
 | 3. Contract handshake | [PLAN-proxy-dev-releases-phase-03-contract-handshake.md](PLAN-proxy-dev-releases-phase-03-contract-handshake.md) | Complete (merged in PR #314, 2026-08-16) |
 | 4. Docs, downstream cleanup and verification | [PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md](PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md) | Docs (4a) complete in PR #314. Post-merge tail outstanding: patch175 simplification (4b) is committed in a kerbside-patches worktree awaiting its own PR; the Gerrit recheck (4c) has not run |
-| 5. Automated dev release pruning | [PLAN-proxy-dev-releases-phase-05-pypi-prune.md](PLAN-proxy-dev-releases-phase-05-pypi-prune.md) | Planned |
+| 5. Automated dev release pruning | [PLAN-proxy-dev-releases-phase-05-pypi-prune.md](PLAN-proxy-dev-releases-phase-05-pypi-prune.md) | Implemented (on branch) — storage monitor, lockfile-only merges no longer publish, pruning runbook |
 
 Phase sketches (to be expanded into per-phase plans):
 
