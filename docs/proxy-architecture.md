@@ -343,7 +343,9 @@ lockfile-only bump cannot change the binary's interface or contract
 hash. Dev wheels carry build provenance attestations, the same as
 tagged releases, but they are **not** Sigstore tag-signed — there is no
 `v*` tag for a dev build to sign. See "Configure Dev Release Publishing"
-and "Dev releases" in `RELEASE-SETUP.md`.
+and "Dev releases" in `RELEASE-SETUP.md`. These dev releases accumulate
+on PyPI over time and are pruned manually; see "Pruning dev releases"
+in `RELEASE-SETUP.md`.
 
 At release time the two packages release in lockstep from a single `v*`
 tag: `setuptools_scm` gives `kerbside` its version, and

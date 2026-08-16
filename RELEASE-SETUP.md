@@ -213,6 +213,84 @@ publishes unreleased `kerbside-proxy` dev wheels to PyPI:
   unaffected — dev releases only ever publish `kerbside-proxy`, never
   `kerbside` itself, so there is no cross-pinning to worry about.
 
+## Pruning dev releases
+
+The rolling dev releases described above accumulate on PyPI forever
+unless someone prunes them. This section is the runbook for that, and
+the most important thing in it is the warning in the next paragraph.
+
+**Deletion is irreversible — read this before deleting anything.**
+Per [PyPI's file name reuse policy](https://pypi.org/help/#file-name-reuse),
+a filename can never be reused, "even once a project has been deleted
+and recreated," and deleting a release does not free its version number
+either. Because `kerbside-proxy` dev versions are `setuptools_scm`
+commit counts (`0.4.1.devN`), a pruned `0.4.1.devN` can **never** be
+republished from that commit — a later `workflow_dispatch` re-run
+against that same old commit (see "Manual dispatch" above) would fail
+permanently, not just resolve to a different wheel. **Never delete a
+dev version that a running CI job might still be resolving.**
+
+**PyPI has no API for this.** Index, JSON, Upload, Integrity, Stats,
+BigQuery, RSS and Secret-Reporting are the documented PyPI APIs
+(`docs.pypi.org/api/`), and none of them has a delete or yank verb, for
+any credential — trusted publishing included, since the OIDC exchange
+just mints a normal project-scoped API token and no delete endpoint
+exists for any token to call. Warehouse issue
+[#12810, "Warehouse API to delete old .dev wheels (nightly builds)"](https://github.com/pypi/warehouse/issues/12810)
+asks for exactly this use case and is open and labelled "Blocked", so
+this is a known platform gap, not something a different credential
+would work around. Pruning is therefore a manual action in the web UI,
+at `https://pypi.org/manage/project/kerbside-proxy/releases/`.
+
+**Yanking is not used.** PEP 592 yanking makes resolvers skip a
+release, but it frees no storage, so it does not address the
+constraint that actually binds here (the project's storage budget); it
+is also a UI-only action, same as deletion, so it buys no automation
+either.
+
+**What tells you pruning is due.** The weekly
+`.github/workflows/pypi-storage-check.yml` workflow runs
+`tools/check-pypi-storage.py` against the public PyPI JSON API (no
+credential needed) and files or updates a tracking GitHub issue when
+the `kerbside-proxy` project reaches 50% of its 10 GB storage limit, or
+300 dev releases, whichever comes first. The same script can be run by
+hand at any time, with no credentials, to check current usage:
+
+```bash
+tools/check-pypi-storage.py
+```
+
+**Procedure.**
+
+1. Run `tools/check-pypi-storage.py` (or read the report attached to
+   the tracking issue) to see current totals and the oldest/newest dev
+   versions.
+2. Go to `https://pypi.org/manage/project/kerbside-proxy/releases/`.
+3. Keep every final (non-`.dev`) release — never delete one of those.
+4. Keep the newest ~20 dev releases.
+5. Delete older dev releases one at a time, **oldest first**, checking
+   as you go that you are not touching anything a running or scheduled
+   CI job might still need.
+6. Re-run `tools/check-pypi-storage.py` and confirm the project is back
+   under both thresholds.
+
+**Why this is not automated.** The only maintained tool that can
+delete PyPI releases at all, `pypi-cleanup`, works by driving PyPI's
+web login form, and its own README leads with a warning that it is
+destructive. Because there is no delete API, it needs the account
+**password** and, for 2FA, the **TOTP seed itself** — not a token
+derived from it — as environment variables, which in this repo would
+mean storing both as secrets on **self-hosted** runners. That trades
+this project's current zero-credential OIDC publishing posture for a
+single account-wide credential capable of deleting the final releases
+too, in order to automate reclaiming storage that, at the measured
+growth rate, is years away from being needed. That trade was declined
+deliberately, not overlooked — see the phase 5 decisions in
+`docs/plans/PLAN-proxy-dev-releases-phase-05-pypi-prune.md` for the
+full reasoning. Revisit this if Warehouse issue #12810 ever ships: a
+real delete API would remove the password/TOTP requirement and change
+the calculus.
+
 ## Verifying Releases
 
 ### Verify Git Tag Signature
