@@ -268,10 +268,6 @@
       "author": "mikal"
     },
     {
-      "path": "docs/index.md",
-      "author": "mikal"
-    },
-    {
       "path": "docs/proxy-architecture.md",
       "author": "mikal"
     },
@@ -461,10 +457,6 @@
     },
     {
       "path": "PLAN-TEMPLATE.md",
-      "author": "mikal"
-    },
-    {
-      "path": "README.md",
       "author": "mikal"
     }
   ],

@@ -53,10 +53,6 @@
       "sha": "05c9d50bfc1192f87b66783c0a118cde3c93b40f",
       "date": "2026-08-15"
     },
-    "README.md": {
-      "sha": "a43d42a5940335bf17124199269a68ebb16f2428",
-      "date": "2026-08-15"
-    },
     "RELEASE-SETUP.md": {
       "sha": "8ceb1bd45684a0fb799eea37b443cb8d5bfa0972",
       "date": "2026-08-04"
@@ -64,10 +60,6 @@
     "docs/console-sources.md": {
       "sha": "d7f5bfd56c00f99929ec1727df7eac2d28b73979",
       "date": "2026-08-13"
-    },
-    "docs/index.md": {
-      "sha": "a4bdce5e08adda1359f8960661f42a2b2e61a386",
-      "date": "2026-08-14"
     },
     "docs/proxy-architecture.md": {
       "sha": "47b39a8f7ae86d7877bee2f4f2f5c75a0658659c",
