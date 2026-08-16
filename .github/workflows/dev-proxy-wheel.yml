@@ -1,0 +1,159 @@
+# Rolling dev releases of the kerbside-proxy wheel
+#
+# Publishes a PEP 440 dev release of the `kerbside-proxy` maturin bin wheel
+# to PyPI whenever the binary's inputs change on develop (the Rust crate, the
+# gRPC proto it generates from, or the scripts that build and version it), so
+# consumers can always resolve a proxy wheel matching current develop without
+# waiting for a `v*` release.
+#
+# NO pull_request TRIGGER, DELIBERATELY. A pull request from an untrusted fork
+# must never execute in a workflow identity that a PyPI trusted publisher
+# accepts. The publish job's `dev-release` environment (restricted to develop)
+# is a second line of defence, but simply not having the trigger is the
+# simpler invariant. Workflow changes are exercised with a workflow_dispatch
+# dry run, which builds both wheels and skips publishing; `dry_run` defaults
+# to true so testing can never publish by accident.
+#
+# ATTESTED BUT NOT TAG-SIGNED. Released wheels are covered by the Sigstore
+# signature on their `v*` tag (see release.yml's sign-tag job). A dev build has
+# no tag to sign, so provenance here is the GitHub build attestation over the
+# wheels alone -- that is the whole of the dev wheel's provenance story, and it
+# is why dev wheels are a convenience channel rather than a release channel.
+#
+# VERSIONS are PEP 440 dev versions (e.g. 0.4.1.dev159) derived from
+# setuptools_scm by tools/stamp-dev-proxy-version.sh, which stamps them as a
+# static [project] version in rust/kerbside-proxy/pyproject.toml. Cargo.toml is
+# deliberately untouched: a PEP 440 dev version is not valid Cargo semver. The
+# release-time stamper (tools/stamp-proxy-version.sh, which does stamp
+# Cargo.toml) is not used here and its behaviour is unchanged.
+#
+# ONE-TIME SETUP -- the `dev-release` GitHub environment (no required
+# reviewers, deployment branches restricted to develop) and the second PyPI
+# trusted publisher on the kerbside-proxy project (this workflow file plus the
+# `dev-release` environment) -- is documented in RELEASE-SETUP.md.
+
+name: Dev proxy wheel
+
+permissions: {}
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - 'rust/**'
+      - 'kerbside/rpc/kerbside.proto'
+      - 'tools/build-proxy-wheel.sh'
+      - 'tools/stamp-dev-proxy-version.sh'
+      - 'tools/gen-protos.sh'
+      - '.github/workflows/dev-proxy-wheel.yml'
+
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: build the wheels but skip publishing to PyPI'
+        type: boolean
+        default: true
+
+# Serialise racing merges rather than cancelling them: each commit produces a
+# distinct (commit-count-based) version, so an in-flight run is publishing a
+# wheel no later run will produce.
+concurrency:
+  group: dev-proxy-wheel
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build kerbside-proxy dev wheels
+    # A hung leg would otherwise hold the no-cancel concurrency group for
+    # GitHub's six-hour default, blocking every later develop merge's dev
+    # publish behind it. A cold build plus the aarch64 zig cross fits well
+    # inside an hour.
+    timeout-minutes: 60
+    # The vm/debian-12 runner carries the Rust build environment the crate
+    # needs (same runner as rust.yml and release.yml). aarch64 is
+    # cross-compiled here with zig, so no aarch64 runner is required. xl: each
+    # matrix leg is a full cold release build, which is CPU-bound; be
+    # explicit, since an unsized vm label defaults to xs (1 core / 2 GB).
+    runs-on: [self-hosted, vm, debian-12, xl]
+    strategy:
+      # Do not let one architecture's flake (or a runner dying mid-build)
+      # cancel the other leg -- each arch is independent.
+      fail-fast: false
+      matrix:
+        target: [x86_64, aarch64]
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history: setuptools_scm counts commits since the last v* tag
+          # to derive the dev version, and a shallow clone would silently
+          # produce a different (dishonest) count.
+          fetch-depth: 0
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config git python3-venv
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install maturin, ziglang and setuptools_scm
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/wheelvenv"
+          "${RUNNER_TEMP}/wheelvenv/bin/pip" install --quiet --upgrade pip maturin ziglang setuptools_scm
+          echo "${RUNNER_TEMP}/wheelvenv/bin" >> "$GITHUB_PATH"
+
+      # Replaces the crate pyproject.toml's `dynamic = ["version"]` with the
+      # derived static dev version, so the wheel filename carries it.
+      - name: Stamp dev version
+        run: tools/stamp-dev-proxy-version.sh
+
+      - name: Build wheel
+        run: tools/build-proxy-wheel.sh ${{ matrix.target }}
+
+      - name: Upload proxy wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: proxy-wheel-${{ matrix.target }}
+          path: dist/proxy-wheels/*.whl
+
+  publish:
+    name: Publish kerbside-proxy dev wheels to PyPI
+    needs: build
+    # Same rationale as the build job's timeout: a wedged upload would
+    # otherwise hold the no-cancel concurrency group for six hours.
+    timeout-minutes: 10
+    # Every push to develop that touches the binary's inputs publishes; a
+    # manual dispatch publishes only when the operator opts out of the dry
+    # run. `dry_run` is a typed boolean, so `inputs.dry_run` is a real boolean
+    # here and needs no string comparison.
+    if: github.event_name == 'push' || inputs.dry_run == false
+    runs-on: [self-hosted, static]
+    environment: dev-release
+
+    permissions:
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Download proxy wheel artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: proxy-wheel-*
+          merge-multiple: true
+          path: dist/
+
+      - name: Generate attestations for artifacts
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: 'dist/*'
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Idempotent republish: a re-run (or a replayed dispatch) of a
+          # commit whose wheels PyPI already has must not hard-error.
+          skip-existing: true

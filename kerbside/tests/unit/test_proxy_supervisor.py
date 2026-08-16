@@ -82,6 +82,190 @@ class FindProxyBinTestCase(testtools.TestCase):
         self.assertIn(proxy_supervisor.PROXY_BIN_ENV, str(e))
 
 
+OTHER_HASH = 'b' * 64
+
+
+def _completed(returncode, stdout='', stderr=''):
+    """A stand-in for the subprocess.run() result of `--contract-hash`."""
+    return subprocess.CompletedProcess(
+        args=['/bin/kerbside-proxy', '--contract-hash'], returncode=returncode,
+        stdout=stdout, stderr=stderr)
+
+
+def _env_without_skip():
+    """The real environment minus the escape hatch, so a developer who has it
+    set in their shell does not silently pass the refusal tests."""
+    return {k: v for k, v in os.environ.items()
+            if k != proxy_supervisor.SKIP_CONTRACT_CHECK_ENV}
+
+
+class ContractCheckTestCase(testtools.TestCase):
+    def _launch(self, run_result, env=None):
+        """Run launch_rust_proxy() with the binary lookup, the contract probe
+        and Popen all mocked out. Returns the (run, popen) mocks."""
+        if env is None:
+            env = _env_without_skip()
+        with mock.patch.dict(os.environ, env, clear=True), \
+             mock.patch('kerbside.proxy_supervisor.find_proxy_bin',
+                        return_value='/bin/kerbside-proxy'), \
+             mock.patch('kerbside.proxy_supervisor.subprocess.run') as run, \
+             mock.patch('kerbside.proxy_supervisor.subprocess.Popen') as popen, \
+             mock.patch('kerbside.proxy_supervisor.LOG') as log:
+            if isinstance(run_result, BaseException):
+                run.side_effect = run_result
+            else:
+                run.return_value = run_result
+            try:
+                proxy_supervisor.launch_rust_proxy(_fake_config())
+            except RuntimeError as e:
+                self.raised = e
+            else:
+                self.raised = None
+        return run, popen, log
+
+    def test_matching_hash_launches(self):
+        run, popen, _ = self._launch(
+            _completed(0, stdout=proxy_supervisor.CONTRACT_HASH + '\n'))
+        self.assertIsNone(self.raised)
+        run.assert_called_once()
+        self.assertEqual(
+            ['/bin/kerbside-proxy', '--contract-hash'], run.call_args[0][0])
+        popen.assert_called_once()
+
+    def test_mismatched_hash_raises_naming_both_hashes(self):
+        _, popen, _ = self._launch(_completed(0, stdout=OTHER_HASH + '\n'))
+        self.assertIsNotNone(self.raised)
+        self.assertIn(proxy_supervisor.CONTRACT_HASH, str(self.raised))
+        self.assertIn(OTHER_HASH, str(self.raised))
+        self.assertIn(proxy_supervisor.SKIP_CONTRACT_CHECK_ENV, str(self.raised))
+        popen.assert_not_called()
+
+    def test_binary_without_the_flag_raises_predates_message(self):
+        # Every kerbside-proxy release <= 0.4.0 rejects the unknown flag.
+        _, popen, _ = self._launch(
+            _completed(2, stderr='error: unexpected argument \'--contract-hash\' found'))
+        self.assertIsNotNone(self.raised)
+        self.assertIn('predates the contract handshake', str(self.raised))
+        popen.assert_not_called()
+
+    def test_probe_timeout_raises(self):
+        _, popen, _ = self._launch(
+            subprocess.TimeoutExpired(cmd='kerbside-proxy', timeout=10))
+        self.assertIsNotNone(self.raised)
+        self.assertIn('did not respond', str(self.raised))
+        self.assertNotIn('predates the contract handshake', str(self.raised))
+        popen.assert_not_called()
+
+    def test_malformed_probe_output_raises(self):
+        _, popen, _ = self._launch(_completed(0, stdout='not a hash\n'))
+        self.assertIsNotNone(self.raised)
+        self.assertIn('is not a sha256 digest', str(self.raised))
+        self.assertNotIn('predates the contract handshake', str(self.raised))
+        popen.assert_not_called()
+
+    def test_binary_exec_failure_raises_could_not_be_executed_message(self):
+        # subprocess.run() raises an OSError subclass (not TimeoutExpired)
+        # before the child even runs for things like a wrong-architecture
+        # binary or a permissions problem.
+        _, popen, _ = self._launch(OSError(8, 'Exec format error'))
+        self.assertIsNotNone(self.raised)
+        self.assertIn('could not be executed', str(self.raised))
+        popen.assert_not_called()
+
+    def test_escape_hatch_launches_despite_mismatch(self):
+        env = _env_without_skip()
+        env[proxy_supervisor.SKIP_CONTRACT_CHECK_ENV] = '1'
+        run, popen, log = self._launch(_completed(0, stdout=OTHER_HASH + '\n'), env=env)
+        self.assertIsNone(self.raised)
+        popen.assert_called_once()
+        # The check is skipped, but the binary is still probed so the
+        # warning below carries real data rather than launching blind.
+        run.assert_called_once()
+        log.warning.assert_called_once()
+        warning_message = log.warning.call_args[0][0]
+        self.assertIn('SKIPPING', warning_message)
+        self.assertIn(proxy_supervisor.CONTRACT_HASH, warning_message)
+        self.assertIn(OTHER_HASH, warning_message)
+
+    def test_truthy_skip_values_launch_despite_mismatch(self):
+        for value in ('1', 'true', 'YES '):
+            env = _env_without_skip()
+            env[proxy_supervisor.SKIP_CONTRACT_CHECK_ENV] = value
+            _, popen, _ = self._launch(_completed(0, stdout=OTHER_HASH + '\n'), env=env)
+            self.assertIsNone(self.raised, 'value %r should have skipped' % value)
+            popen.assert_called_once()
+
+    def test_falsy_skip_values_do_not_skip(self):
+        for value in ('0', 'false', 'no', ''):
+            env = _env_without_skip()
+            env[proxy_supervisor.SKIP_CONTRACT_CHECK_ENV] = value
+            run, popen, _ = self._launch(_completed(0, stdout=OTHER_HASH + '\n'), env=env)
+            self.assertIsNotNone(self.raised, 'value %r should not have skipped' % value)
+            run.assert_called_once()
+            popen.assert_not_called()
+
+    def test_explicit_zero_does_not_skip(self):
+        env = _env_without_skip()
+        env[proxy_supervisor.SKIP_CONTRACT_CHECK_ENV] = '0'
+        run, popen, _ = self._launch(_completed(0, stdout=OTHER_HASH + '\n'), env=env)
+        self.assertIsNotNone(self.raised)
+        run.assert_called_once()
+        popen.assert_not_called()
+
+    def test_unrecognized_skip_value_does_not_skip_and_warns(self):
+        env = _env_without_skip()
+        env[proxy_supervisor.SKIP_CONTRACT_CHECK_ENV] = 'maybe'
+        run, popen, log = self._launch(_completed(0, stdout=OTHER_HASH + '\n'), env=env)
+        self.assertIsNotNone(self.raised)
+        run.assert_called_once()
+        popen.assert_not_called()
+        warned_maybe = any(
+            'maybe' in call.args[0] for call in log.warning.call_args_list)
+        self.assertTrue(warned_maybe, log.warning.call_args_list)
+
+
+class GetBinaryContractHashTestCase(testtools.TestCase):
+    def _probe(self, run_result):
+        with mock.patch('kerbside.proxy_supervisor.subprocess.run') as run, \
+             mock.patch('kerbside.proxy_supervisor.LOG'):
+            if isinstance(run_result, BaseException):
+                run.side_effect = run_result
+            else:
+                run.return_value = run_result
+            return proxy_supervisor.get_binary_contract_hash('/bin/kerbside-proxy')
+
+    def test_returns_stripped_hash_on_success(self):
+        reported, failure_reason = self._probe(_completed(0, stdout='  %s \n' % OTHER_HASH))
+        self.assertEqual(OTHER_HASH, reported)
+        self.assertIsNone(failure_reason)
+
+    def test_returns_predates_reason_on_non_zero_exit(self):
+        reported, failure_reason = self._probe(_completed(2, stdout=OTHER_HASH))
+        self.assertIsNone(reported)
+        self.assertIn('predates the contract handshake', failure_reason)
+
+    def test_returns_timeout_reason_on_timeout(self):
+        reported, failure_reason = self._probe(subprocess.TimeoutExpired(
+            cmd='kerbside-proxy', timeout=proxy_supervisor.CONTRACT_HASH_PROBE_TIMEOUT))
+        self.assertIsNone(reported)
+        self.assertIn('did not respond', failure_reason)
+        self.assertIn(str(proxy_supervisor.CONTRACT_HASH_PROBE_TIMEOUT), failure_reason)
+        self.assertNotIn('predates', failure_reason)
+
+    def test_returns_malformed_reason_on_malformed_output(self):
+        for stdout in ('', 'not a hash', 'B' * 64):
+            reported, failure_reason = self._probe(_completed(0, stdout=stdout))
+            self.assertIsNone(reported)
+            self.assertIn('is not a sha256 digest', failure_reason)
+            self.assertNotIn('predates', failure_reason)
+
+    def test_returns_oserror_reason_on_exec_failure(self):
+        reported, failure_reason = self._probe(OSError(8, 'Exec format error'))
+        self.assertIsNone(reported)
+        self.assertIn('could not be executed', failure_reason)
+        self.assertIn('Exec format error', failure_reason)
+
+
 class TerminateChildTestCase(testtools.TestCase):
     def test_clean_exit_after_sigterm_does_not_kill(self):
         proc = mock.Mock()

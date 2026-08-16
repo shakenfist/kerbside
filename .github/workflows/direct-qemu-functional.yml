@@ -94,6 +94,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          # Full history: the proxy-wheel build dev-stamps with
+          # setuptools_scm, which counts commits since the last v* tag.
+          fetch-depth: 0
 
       - name: Probe runner for KVM / qemu / OVMF
         run: bash tools/direct-qemu/probe-runner.sh
@@ -153,7 +157,7 @@ jobs:
       - name: Build and install the Rust proxy wheel
         run: |
           python3 -m venv "${RUNNER_TEMP}/maturin-venv"
-          "${RUNNER_TEMP}/maturin-venv/bin/pip" install --quiet maturin
+          "${RUNNER_TEMP}/maturin-venv/bin/pip" install --quiet maturin setuptools_scm
           PATH="${RUNNER_TEMP}/maturin-venv/bin:$PATH" tools/direct-qemu/install-proxy-wheel.sh --venv /tmp/kerbside-venv
 
       - name: Initialize MariaDB

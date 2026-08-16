@@ -605,7 +605,7 @@ jobs:
       - name: Install maturin and ziglang
         run: |
           python3 -m venv "${RUNNER_TEMP}/wheelvenv"
-          "${RUNNER_TEMP}/wheelvenv/bin/pip" install --quiet --upgrade pip maturin ziglang
+          "${RUNNER_TEMP}/wheelvenv/bin/pip" install --quiet --upgrade pip maturin ziglang setuptools_scm
           echo "${RUNNER_TEMP}/wheelvenv/bin" >> "$GITHUB_PATH"
 
       - name: Build the PR's proxy wheel (manylinux, matches the PyPI artifact)
@@ -839,7 +839,7 @@ jobs:
       - name: Install maturin and ziglang
         run: |
           python3 -m venv "${RUNNER_TEMP}/wheelvenv"
-          "${RUNNER_TEMP}/wheelvenv/bin/pip" install --quiet --upgrade pip maturin ziglang
+          "${RUNNER_TEMP}/wheelvenv/bin/pip" install --quiet --upgrade pip maturin ziglang setuptools_scm
           echo "${RUNNER_TEMP}/wheelvenv/bin" >> "$GITHUB_PATH"
 
       - name: Build the PR's proxy wheel (manylinux, matches the PyPI artifact)

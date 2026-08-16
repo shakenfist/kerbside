@@ -13,12 +13,20 @@ on:
     paths:
       - 'rust/**'
       - 'kerbside/rpc/kerbside.proto'
+      - 'tools/build-proxy-wheel.sh'
+      - 'tools/stamp-proxy-version.sh'
+      - 'tools/stamp-dev-proxy-version.sh'
+      - 'tools/verify-wheel-stamping.sh'
       - '.github/workflows/rust.yml'
   pull_request:
     branches: [develop]
     paths:
       - 'rust/**'
       - 'kerbside/rpc/kerbside.proto'
+      - 'tools/build-proxy-wheel.sh'
+      - 'tools/stamp-proxy-version.sh'
+      - 'tools/stamp-dev-proxy-version.sh'
+      - 'tools/verify-wheel-stamping.sh'
       - '.github/workflows/rust.yml'
   workflow_dispatch:
 
@@ -39,6 +47,10 @@ jobs:
         working-directory: rust/kerbside-proxy
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history: the wheel-stamping guard dev-stamps with
+          # setuptools_scm, which counts commits since the last v* tag.
+          fetch-depth: 0
 
       - name: Install build prerequisites
         run: |
@@ -65,16 +77,19 @@ jobs:
       - name: Build (release)
         run: cargo build --release
 
-      # Packaging guard: prove the maturin bin-wheel project still builds a
-      # wheel on every rust/** PR, so packaging regressions surface here and
-      # not only at release. A plain maturin build (no zig/manylinux, which
-      # are release-time concerns) is enough to catch pyproject/bindings
-      # breakage cheaply.
-      - name: Install maturin
+      # Packaging guard: build the wheel through tools/build-proxy-wheel.sh in
+      # BOTH stamp modes (unstamped tree -> dev auto-stamp; release-stamped
+      # tree -> exact version) and assert the produced filenames, so a
+      # stamping regression surfaces on PRs and not at release time when the
+      # tag already exists. Subsumes the old plain-maturin smoke build (the
+      # native mode is the same maturin invocation; zig/manylinux stay
+      # release-time concerns).
+      - name: Install maturin and setuptools_scm
         run: |
           python3 -m venv "${RUNNER_TEMP}/wheelvenv"
-          "${RUNNER_TEMP}/wheelvenv/bin/pip" install --quiet --upgrade pip maturin
+          "${RUNNER_TEMP}/wheelvenv/bin/pip" install --quiet --upgrade pip maturin setuptools_scm
           echo "${RUNNER_TEMP}/wheelvenv/bin" >> "$GITHUB_PATH"
 
-      - name: Build wheel (smoke)
-        run: maturin build --release --out "${RUNNER_TEMP}/wheels"
+      - name: Verify wheel stamping (dev + release modes)
+        working-directory: .
+        run: tools/verify-wheel-stamping.sh

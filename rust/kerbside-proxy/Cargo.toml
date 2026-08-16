@@ -94,3 +94,10 @@ rcgen = "0.14"
 # the build needs no system protoc package.
 tonic-prost-build = "0.14"
 protoc-bin-vendored = "3"
+# sha2 computes the sha256 of kerbside.proto that build.rs embeds as the
+# KERBSIDE_CONTRACT_HASH compile-time env (the daemon compares it against the
+# Python side's generated kerbside/rpc/contract.py constant before launching
+# this binary). Deliberately a build-dependency only: the hashing happens at
+# compile time, so there is no reason to pull sha2 into the runtime dependency
+# tree alongside ring/rustls.
+sha2 = "0.10"
