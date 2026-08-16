@@ -1,4 +1,7 @@
+use std::fmt::Write as _;
 use std::path::Path;
+
+use sha2::{Digest, Sha256};
 
 fn main() {
     // Use the vendored protoc so the build needs no system protoc package.
@@ -36,6 +39,25 @@ fn main() {
         .build_client(true)
         .compile_protos(&[proto], &[proto_dir])
         .expect("compile kerbside.proto");
+
+    // The gRPC contract handshake: embed the sha256 of the proto's raw bytes
+    // as a compile-time env so the binary can print it via --contract-hash.
+    // The Python daemon compares that output against the constant in
+    // kerbside/rpc/contract.py (written by tools/gen-protos.sh from the same
+    // bytes) and refuses to launch a proxy built against a different contract.
+    // Hashing the raw bytes -- no canonicalisation, no comment stripping --
+    // is what keeps the two implementations trivially in agreement; a
+    // comment-only proto edit therefore also changes the hash, which is an
+    // accepted false positive. The rerun-if-changed below already covers the
+    // proto, so this re-derives whenever the contract moves.
+    let proto_bytes = std::fs::read(proto).expect("read kerbside.proto for the contract hash");
+    let digest = Sha256::digest(&proto_bytes);
+    let mut contract_hash = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        // Lowercase hex by hand rather than adding a `hex` build-dependency.
+        write!(contract_hash, "{byte:02x}").expect("format the contract hash");
+    }
+    println!("cargo:rustc-env=KERBSIDE_CONTRACT_HASH={contract_hash}");
 
     println!("cargo:rerun-if-changed={proto}");
 }

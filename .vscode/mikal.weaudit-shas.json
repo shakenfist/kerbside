@@ -33,10 +33,6 @@
       "sha": "27c5c370391a513b7978fe4eb2c0302c3da68ae3",
       "date": "2026-08-11"
     },
-    ".github/workflows/release.yml": {
-      "sha": "c4fccccf43b2e178d081da1cc2774ddb064c5bca",
-      "date": "2026-08-11"
-    },
     ".pre-commit-config.yaml": {
       "sha": "48c64c7448876a58734d7960324b755d440c1ed9",
       "date": "2026-08-12"
@@ -45,25 +41,13 @@
       "sha": "52747656c9ce3a27509516db50abacb7930c8ca2",
       "date": "2026-08-04"
     },
-    "PLAN-TEMPLATE.md": {
-      "sha": "59bbd3ba7b6b8cea35f4ab25a94da0fb5b172a6f",
-      "date": "2026-08-15"
-    },
     "PUSH-AUDIT.md": {
       "sha": "05c9d50bfc1192f87b66783c0a118cde3c93b40f",
       "date": "2026-08-15"
     },
-    "RELEASE-SETUP.md": {
-      "sha": "8ceb1bd45684a0fb799eea37b443cb8d5bfa0972",
-      "date": "2026-08-04"
-    },
     "docs/console-sources.md": {
       "sha": "d7f5bfd56c00f99929ec1727df7eac2d28b73979",
       "date": "2026-08-13"
-    },
-    "docs/proxy-architecture.md": {
-      "sha": "47b39a8f7ae86d7877bee2f4f2f5c75a0658659c",
-      "date": "2026-08-14"
     },
     "docs/use-cases/ovirt.md": {
       "sha": "0e0902827c2bbbb08bacc3267ee3c565737a59be",
@@ -141,10 +125,6 @@
       "sha": "63a0fe30a432130d990e5d6ca37c430b6c3cc76e",
       "date": "2026-08-08"
     },
-    "kerbside/tests/unit/test_proxy_supervisor.py": {
-      "sha": "e2ab89c1beeb5379797f4f8c7435cca715c4e160",
-      "date": "2026-08-08"
-    },
     "kerbside/tests/unit/test_render_review.py": {
       "sha": "b8a713a5d434be11aa694685789070c1a8cb5546",
       "date": "2026-08-08"
@@ -177,10 +157,6 @@
       "sha": "291f5057d4b3c808d60ca0e052975c79464e48b8",
       "date": "2026-08-08"
     },
-    "rust/kerbside-proxy/build.rs": {
-      "sha": "8f2219aec8c8267d6913aa52ca5ae5656cdb183a",
-      "date": "2026-08-10"
-    },
     "rust/kerbside-proxy/src/allowlist.rs": {
       "sha": "f2adab6fb95e5085f48b9b558926b1ff457e1636",
       "date": "2026-08-15"
@@ -191,10 +167,6 @@
     },
     "rust/kerbside-proxy/src/listen.rs": {
       "sha": "93dca4c1400e57b32bff1302231d4d544b191568",
-      "date": "2026-08-15"
-    },
-    "rust/kerbside-proxy/src/main.rs": {
-      "sha": "22405a882ba306173c0b13002f28ec4d3715c1bd",
       "date": "2026-08-15"
     },
     "rust/kerbside-proxy/src/metrics.rs": {
@@ -245,10 +217,6 @@
       "sha": "893254104cf2f052c3e5ba07993cac6c0242d4ea",
       "date": "2026-08-15"
     },
-    "tools/build-proxy-wheel.sh": {
-      "sha": "2a17e94713948f7946cb704754b621cd579cfe1d",
-      "date": "2026-08-15"
-    },
     "tools/check-required-checks.sh": {
       "sha": "dc86bff62d2de280a5da40d61385de27367b775d",
       "date": "2026-08-15"
@@ -267,10 +235,6 @@
     },
     "tools/direct-qemu/generate-tls.sh": {
       "sha": "b271b8113594b50f461ce653cca8252fe2270a47",
-      "date": "2026-08-15"
-    },
-    "tools/direct-qemu/install-proxy-wheel.sh": {
-      "sha": "a9bb64b54af5d24f3f954c5e1fd870dbe3d96a5d",
       "date": "2026-08-15"
     },
     "tools/direct-qemu/lane-down.sh": {
@@ -349,10 +313,6 @@
       "sha": "97ee081c8257372a4de994eba1b9e2b5434da1d2",
       "date": "2026-08-06"
     },
-    "tools/gen-protos.sh": {
-      "sha": "b886d3a887c6cbe39f454ad13a9271752b61ff9e",
-      "date": "2026-08-06"
-    },
     "tools/pin-indirect-dependencies.sh": {
       "sha": "241b462c281d6e33fa1d4023d15762a95d69112a",
       "date": "2026-08-06"
@@ -408,10 +368,6 @@
     "tools/sf-e2e/provision-sf.sh": {
       "sha": "e8db5e0a6203e02464c53e3a8ffe74b31ff5b799",
       "date": "2026-08-15"
-    },
-    "tools/stamp-proxy-version.sh": {
-      "sha": "fa5bc4dc6f461e287cd33f5de76e1d105cd44173",
-      "date": "2026-08-06"
     },
     "tools/test-ovirt-console.py": {
       "sha": "c3ee796b2c44079bcacd21fa166e104e9a3930b1",

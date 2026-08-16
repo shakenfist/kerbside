@@ -8,10 +8,14 @@
 #   tools/direct-qemu/install-proxy-wheel.sh --venv /tmp/kerbside-venv
 #   tools/direct-qemu/install-proxy-wheel.sh          # use pip/python3 on PATH
 #
-# Requires `maturin` on PATH (the caller installs it; a native build needs only
-# maturin + a host cargo, not rustup/ziglang). Reuses the
-# tools/build-proxy-wheel.sh --native fast path so wheel-building logic lives
-# in one place.
+# Requires `maturin` on PATH plus, on an unstamped tree, `setuptools_scm`
+# importable by python3 and FULL git history -- build-proxy-wheel.sh
+# dev-stamps the wheel version from setuptools_scm so it satisfies
+# kerbside's committed dependency floor, and a shallow clone cannot count
+# commits since the last v* tag (see the dev-stamp block in
+# tools/build-proxy-wheel.sh). A native build still needs only a host
+# cargo, not rustup/ziglang. Reuses the tools/build-proxy-wheel.sh
+# --native fast path so wheel-building logic lives in one place.
 
 set -euo pipefail
 

@@ -4,8 +4,9 @@
 # pure-Python `kerbside` package, built with maturin using
 # `bindings = "bin"` (the uv/astral pattern). The compiled `kerbside-proxy`
 # binary is laid into the wheel's `*.data/scripts/` directory, which pip
-# installs onto PATH -- so `pip install kerbside`, which exact-pins
-# `kerbside-proxy`, makes the binary discoverable via
+# installs onto PATH -- so installing kerbside, whose committed dependency
+# list carries a dev-inclusive floor on `kerbside-proxy` (tightened to an
+# exact `==` pin at release time), makes the binary discoverable via
 # `shutil.which('kerbside-proxy')`, the resolution leg used by
 # `kerbside/proxy_supervisor.py::find_proxy_bin()`.
 #
@@ -13,10 +14,14 @@
 # a manylinux wheel per architecture (x86_64 and aarch64). No sdist is
 # published.
 #
-# The package VERSION is read from Cargo.toml `[package] version` (via
-# `dynamic = ["version"]`), which the release stamps from the `v*` tag so
-# it matches the `kerbside` version in lockstep -- see
-# tools/stamp-proxy-version.sh.
+# The package VERSION is read from Cargo.toml `[package] version` via the
+# committed `dynamic = ["version"]` declaration below -- UNLESS a stamper
+# has replaced that declaration with a static `[project] version`, which
+# maturin prefers: tools/stamp-proxy-version.sh writes the release version
+# at tag time, and tools/stamp-dev-proxy-version.sh (run automatically by
+# tools/build-proxy-wheel.sh on an unstamped tree) writes the
+# setuptools_scm dev version so local/CI wheels satisfy kerbside's
+# committed floor.
 
 [build-system]
 requires = ["maturin>=1.7,<2"]

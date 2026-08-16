@@ -9,8 +9,13 @@
 # version to:
 #
 #   1. rust/kerbside-proxy/Cargo.toml   -- [package] version = "X.Y.Z"
-#      (maturin reads the wheel version from here via `dynamic = ["version"]`)
-#   2. pyproject.toml                   -- the "kerbside-proxy==X.Y.Z" pin,
+#   2. rust/kerbside-proxy/pyproject.toml -- `dynamic = ["version"]` is
+#      REPLACED with a static `version = "X.Y.Z"`. maturin prefers the
+#      static [project] version, and removing the dynamic declaration is
+#      also what tells tools/build-proxy-wheel.sh the tree is
+#      release-stamped, so its dev auto-stamp cannot fire on a release
+#      build.
+#   3. pyproject.toml                   -- the "kerbside-proxy==X.Y.Z" pin,
 #      INSERTED into the `kerbside` dependency list immediately before the
 #      `# KERBSIDE_PROXY_PIN` marker (or its version replaced if already
 #      present)
@@ -18,12 +23,12 @@
 # so that `pip install kerbside==X.Y.Z` transitively installs
 # `kerbside-proxy==X.Y.Z` and the gRPC contract matches by construction.
 #
-# COMMITTED-PIN POLICY: the source tree deliberately carries NO
-# kerbside-proxy pin (only the `# KERBSIDE_PROXY_PIN` marker), so that dev
-# and CI installs do not require the sibling package to already exist on
-# PyPI, and because a dev checkout resolves the proxy from the build tree
-# (or KERBSIDE_PROXY_BIN) via find_proxy_bin() rather than from this pin.
-# The release inserts the exact pin before building the kerbside wheel.
+# COMMITTED-PIN POLICY: the source tree commits a dev-inclusive floor,
+# `"kerbside-proxy>=X.Y.Z.dev0"`, so that a plain `pip install` of a git
+# checkout resolves the newest kerbside-proxy wheel on PyPI -- released or
+# rolling dev -- as published by dev-proxy-wheel.yml. This script TIGHTENS
+# that line to the exact `kerbside-proxy==X.Y.Z` lockstep pin at release
+# time, before the kerbside wheel is built.
 #
 # Usage:
 #   tools/stamp-proxy-version.sh 0.2.6        # explicit version
@@ -39,13 +44,14 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cargo_toml="${repo_root}/rust/kerbside-proxy/Cargo.toml"
+proxy_py_toml="${repo_root}/rust/kerbside-proxy/pyproject.toml"
 py_toml="${repo_root}/pyproject.toml"
 
 version="${1:-}"
 if [ -z "${version}" ]; then
     # Derive from the tag the same way the kerbside wheel does. Requires the
     # setuptools_scm module (a build dependency).
-    version="$(cd "${repo_root}" && python3 -m setuptools_scm 2>/dev/null)"
+    version="$( { cd "${repo_root}" && python3 -m setuptools_scm; } 2>/dev/null || true)"
 fi
 
 if [ -z "${version}" ]; then
@@ -63,7 +69,7 @@ if ! [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     exit 1
 fi
 
-for f in "${cargo_toml}" "${py_toml}"; do
+for f in "${cargo_toml}" "${proxy_py_toml}" "${py_toml}"; do
     if [ ! -f "${f}" ]; then
         echo "ERROR: expected file not found: ${f}" >&2
         exit 1
@@ -79,13 +85,33 @@ if ! grep -Eq '^version = "[^"]*"$' "${cargo_toml}"; then
 fi
 sed -i -E "s/^version = \"[^\"]*\"$/version = \"${version}\"/" "${cargo_toml}"
 
-# 2. The kerbside-proxy pin in the kerbside dependency list. If a pin is
-#    already present (a re-stamped tree) replace its version; otherwise
-#    insert it immediately before the `# KERBSIDE_PROXY_PIN` marker, mirroring
-#    the `# END_OF_INDIRECT_DEPS` insertion pattern the pin-indirect
-#    -dependencies workflow uses.
-if grep -Eq '"kerbside-proxy==[^"]*"' "${py_toml}"; then
-    sed -i -E "s/\"kerbside-proxy==[^\"]*\"/\"kerbside-proxy==${version}\"/" "${py_toml}"
+# 2. The crate's pyproject.toml. Replace the `dynamic = ["version"]`
+#    declaration with a static `[project] version` (maturin prefers the
+#    static version, and its absence is what marks the tree as stamped for
+#    build-proxy-wheel.sh's dev auto-stamp guard). Re-stamping a tree that
+#    already carries a static version just rewrites it, mirroring the
+#    Cargo.toml behaviour above.
+if grep -q '^dynamic = \["version"\]$' "${proxy_py_toml}"; then
+    sed -i "s/^dynamic = \[\"version\"\]$/version = \"${version}\"/" "${proxy_py_toml}"
+elif grep -Eq '^version = "[^"]*"$' "${proxy_py_toml}"; then
+    sed -i -E "s/^version = \"[^\"]*\"$/version = \"${version}\"/" "${proxy_py_toml}"
+else
+    echo "ERROR: neither 'dynamic = [\"version\"]' nor a static version line found in ${proxy_py_toml}" >&2
+    exit 1
+fi
+
+# 3. The kerbside-proxy requirement in the kerbside dependency list. The
+#    normal case is the committed dev-inclusive floor (`>=X.Y.Z.dev0`) or an
+#    already-stamped exact pin (`==X.Y.Z`) from a prior run of this script;
+#    either way, rewrite the whole quoted requirement -- whatever specifier
+#    operator it uses -- to the exact `==${version}` pin, leaving the
+#    trailing license comment untouched. If no kerbside-proxy requirement is
+#    present at all (a hypothetical old tree), fall back to inserting one
+#    immediately before the `# KERBSIDE_PROXY_PIN` marker, mirroring the
+#    `# END_OF_INDIRECT_DEPS` insertion pattern the pin-indirect-dependencies
+#    workflow uses.
+if grep -Eq '"kerbside-proxy[=><~!][^"]*"' "${py_toml}"; then
+    sed -i -E "s/\"kerbside-proxy[=><~!][^\"]*\"/\"kerbside-proxy==${version}\"/" "${py_toml}"
 elif grep -q '# KERBSIDE_PROXY_PIN' "${py_toml}"; then
     sed -i "s|    # KERBSIDE_PROXY_PIN|    \"kerbside-proxy==${version}\",            # apache2\n    # KERBSIDE_PROXY_PIN|" "${py_toml}"
 else
@@ -95,4 +121,5 @@ fi
 
 echo "Stamped version ${version} into:"
 echo "  ${cargo_toml} ([package] version)"
+echo "  ${proxy_py_toml} (static [project] version)"
 echo "  ${py_toml} (kerbside-proxy pin)"
