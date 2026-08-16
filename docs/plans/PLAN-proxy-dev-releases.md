@@ -546,7 +546,40 @@ implemented because the following statements will be true:
 
 ### Bugs fixed during this work
 
-(none yet)
+* Dev wheels built outside the release lane carried the
+  placeholder version 0.1.0, which could not satisfy the
+  committed floor; a joint `pip install` failed with
+  ResolutionImpossible. `tools/build-proxy-wheel.sh` now
+  dev-stamps an unstamped tree itself. Found by the sf-e2e
+  lane on PR #314.
+* That auto-stamp then fired on release-stamped trees too,
+  because `tools/stamp-proxy-version.sh` never removed the
+  crate pyproject's `dynamic = ["version"]`. Left alone it
+  would have failed the release lane or, worse, published a
+  release wheel carrying a dev version. The release stamper
+  now writes a static version, so tree state distinguishes
+  the two modes, and `tools/verify-wheel-stamping.sh` is a
+  CI guard so the class is caught on PRs rather than at tag
+  time. Found by review on PR #314.
+* `tools/verify-wheel-stamping.sh` armed its restore trap
+  before its clean-tree check, so a dirty tree would have
+  had uncommitted work discarded by the trap's `git
+  checkout`. It also omitted `Cargo.lock` from the files it
+  restored, which a container run caught.
+* `grep -c` under `set -e` exits non-zero on no matches and
+  silently killed the enclosing script; fixed in the stamp
+  scripts and then again in the new guard.
+* `tools/check-pypi-storage.py` (phase 5) first used exit 1
+  for both "threshold crossed" and "the check could not
+  run", so a transient network failure would have filed a
+  threshold issue carrying an empty report. The status is
+  now three-way.
+* The phase 5 survey mis-measured how often the publish
+  workflow fires, by passing both `-m` and `--first-parent`
+  to `git diff-tree`, which counts each merge's diff against
+  its second parent too. Corrected to 42 triggering merges
+  in 42 days rather than 77, and the corrected method was
+  checked against the workflow's observed runs.
 
 Known related issues at planning time:
 
