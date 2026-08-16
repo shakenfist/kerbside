@@ -52,6 +52,25 @@ app.logger.handlers = [HANDLER]
 
 # Configure JWT authentication
 app.config['JWT_SECRET_KEY'] = config.AUTH_SECRET_SEED
+
+# NOTE(mikal): JWT_COOKIE_CSRF_PROTECT is already the flask-jwt-extended
+# default, so setting it changes nothing today. It is pinned here anyway
+# because the CSRF protection of every state changing endpoint rests on that
+# default, and dependency upgrades land automatically -- a future flip of the
+# library's default must not silently unprotect these routes.
+#
+# JWT_COOKIE_SAMESITE stops the browser sending the JWT cookie on cross-site
+# subrequests, which is the <img src=...> vector described by issue #133. That
+# matters for the one destructive GET which remains, ConsolesProxyVirtViewer,
+# tracked as issue #319. Lax rather than Strict because kerbside is linked to
+# from other console UIs, and under Strict following such a link would land
+# the operator on the login page.
+#
+# JWT_COOKIE_SECURE is deliberately not set: it would break the plain HTTP CI
+# lanes and local development, and is recorded as future work instead.
+app.config['JWT_COOKIE_CSRF_PROTECT'] = True
+app.config['JWT_COOKIE_SAMESITE'] = 'Lax'
+
 jwt = JWTManager(app)
 
 
@@ -492,7 +511,7 @@ class ConsolesProxyVirtViewer(sf_api.Resource):
 
 class ConsolesTerminate(sf_api.Resource):
     @verify_token
-    def get(self, source=None, uuid=None):
+    def post(self, source=None, uuid=None):
         tokens = []
         for token in db.get_tokens_by_console(source, uuid):
             db.terminate_session(
@@ -780,7 +799,7 @@ class Sessions(sf_api.Resource):
 
 class SessionTerminate(sf_api.Resource):
     @verify_token
-    def get(self, session=None):
+    def post(self, session=None):
         token = db.get_token_by_session_id(session)
         if not token:
             return sf_api.error(404, 'session not found')

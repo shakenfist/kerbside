@@ -491,7 +491,7 @@ def main():
         _log('terminating the console via the kerbside REST API')
         url = 'http://127.0.0.1:%s/console/%s/%s/terminate' % (
             api_port, source, console_uuid)
-        resp = requests.get(url, headers=headers, timeout=15)
+        resp = requests.post(url, headers=headers, timeout=15)
         if resp.status_code != 200:
             raise SystemExit(
                 'terminate returned HTTP %d (expected 200)'

@@ -7,6 +7,25 @@
     // keydown handler reimplementing what a button already does.
     var armedTerminate = null;
 
+    // The terminate routes are POST, so flask-jwt-extended demands the
+    // double submit CSRF token. set_access_cookies writes it as the
+    // csrf_access_token cookie, deliberately not HttpOnly and with Path=/
+    // so that this is readable here; echoing it in X-CSRF-TOKEN is the
+    // intended mechanism. If it is missing we still send the request and
+    // let the server answer 401, because a silent no-op would look
+    // identical to a click that did not register.
+    function terminateCsrfToken() {
+        var cookies = document.cookie.split(';');
+        for (var i = 0; i < cookies.length; i++) {
+            var cookie = cookies[i].trim();
+            if (cookie.indexOf('csrf_access_token=') === 0) {
+                return decodeURIComponent(
+                    cookie.substring('csrf_access_token='.length));
+            }
+        }
+        return '';
+    }
+
     function disarmTerminate() {
         if (armedTerminate) {
             armedTerminate.textContent = armedTerminate.dataset.kbLabel;
@@ -21,10 +40,34 @@
         }
 
         if (button === armedTerminate) {
-            // Phase 8 replaces this one line with a fetch POST
-            // carrying the CSRF header; the arming above is
-            // unchanged by that conversion.
-            window.location = button.dataset.kbTerminateUrl;
+            // Asking for JSON keeps the handler's text/html 302 branch
+            // out of the way, so there is no redirect for fetch to
+            // follow and no full page load.
+            var url = button.dataset.kbTerminateUrl;
+            disarmTerminate();
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': terminateCsrfToken()
+                }
+            }).then(function (response) {
+                if (!response.ok) {
+                    button.textContent = 'Failed';
+                    return;
+                }
+                // Repaint now rather than waiting up to a polling
+                // interval for the row to catch up.
+                if (window.kbPoll) {
+                    window.kbPoll();
+                }
+            }).catch(function () {
+                // Silence after a destructive click is the worst
+                // outcome. The button is no longer armedTerminate, so
+                // the next poll tick repaints it with the server's
+                // label and this self-heals.
+                button.textContent = 'Failed';
+            });
             return;
         }
 
