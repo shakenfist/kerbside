@@ -1,0 +1,117 @@
+# The kerbside demo stack: a database, a real SPICE server, and
+# kerbside proxying between them.
+#
+#   docker compose up -d      bring it up
+#   ./get-console.sh          mint a token and fetch a .vv
+#   docker compose down -v    remove everything, including the CA
+#
+# See README.md. The expected result is a black screen with BIOS text:
+# that is a real SPICE session to a disk-less qemu, not a failure.
+
+name: kerbside-demo
+
+services:
+  db:
+    image: mariadb:11
+    environment:
+      MARIADB_RANDOM_ROOT_PASSWORD: 'yes'
+      MARIADB_DATABASE: kerbside
+      MARIADB_USER: kerbside
+      MARIADB_PASSWORD: kerbside
+    volumes:
+      - db-data:/var/lib/mysql
+    # The port is deliberately not published: nothing outside the
+    # compose network has any business reaching the database.
+    healthcheck:
+      test: ['CMD', 'mariadb-admin', 'ping', '-h', '127.0.0.1', '--silent']
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  spice-target:
+    build: ./spice-target
+    # Not published either. kerbside reaches it by service name on the
+    # compose network, which is what demo/sources.yaml points at.
+
+  kerbside:
+    build:
+      # The build context is the repository root, because the image
+      # needs tools/direct-qemu/generate-tls.sh and, for CI, the
+      # checkout itself.
+      context: ..
+      dockerfile: demo/Dockerfile
+      args:
+        # Defaults to the checkout, because the newest release
+        # (0.4.0) predates `kerbside db upgrade` and the entrypoint
+        # needs it. See the long note in demo/Dockerfile: this should
+        # become `kerbside` once a release carries that command.
+        #   KERBSIDE_SOURCE=kerbside docker compose build kerbside
+        KERBSIDE_SOURCE: ${KERBSIDE_SOURCE:-/src}
+    depends_on:
+      db:
+        # "healthy" rather than "started": the entrypoint runs
+        # `kerbside db upgrade` almost immediately.
+        condition: service_healthy
+      spice-target:
+        condition: service_started
+    environment:
+      # mysqlclient, the same driver production uses.
+      KERBSIDE_SQL_URL: mysql://kerbside:kerbside@db/kerbside
+      KERBSIDE_SOURCES_PATH: /etc/kerbside/sources.yaml
+      # The host clients are told to connect to, and it must match the
+      # certificate. generate-tls.sh gives the proxy certificate
+      # subjectAltName = IP:127.0.0.1, DNS:localhost, which is exactly
+      # the loopback publishing below.
+      KERBSIDE_PUBLIC_FQDN: 127.0.0.1
+      # Must match the subject generate-tls.sh puts in proxy-cert.pem
+      # ('/C=US/O=Kerbside CI/CN=kerbside-ci'). Pinned as a literal
+      # rather than derived from the certificate at runtime: this is
+      # the string the *client* checks, so a mismatch should fail
+      # loudly instead of being papered over. The "Kerbside CI"
+      # organisation name is inherited from the CI script; renaming it
+      # means editing both.
+      KERBSIDE_PROXY_HOST_SUBJECT: 'C=US,O=Kerbside CI,CN=kerbside-ci'
+      # This is a container: log where `docker compose logs` will find
+      # it.
+      KERBSIDE_LOG_OUTPUT_PATH: stdout
+    volumes:
+      # Generated TLS material and the JWT signing seed. Survives
+      # `compose restart`, removed by `compose down -v`.
+      - state:/var/lib/kerbside-demo
+      - ./sources.yaml:/etc/kerbside/sources.yaml:ro
+      # The INI form phase 2 documented, at the one path kerbside
+      # reads. Environment variables above override anything set here.
+      - ./kerbside.ini:/etc/kerbside/kerbside.ini:ro
+    # The daemon is exec'd as PID 1, so its death exits the container.
+    # gunicorn is not: it is backgrounded by the entrypoint, and if it
+    # dies afterwards nothing notices -- the SPICE proxy keeps serving
+    # while the REST API, which get-console.sh and the web UI both
+    # need, is simply gone. This healthcheck is what makes that visible
+    # in `docker compose ps`, and it is also the readiness signal
+    # get-console.sh waits on rather than racing the startup sequence.
+    #
+    # start_period covers the slow part of first boot: TLS generation,
+    # the database wait and `kerbside db upgrade`.
+    healthcheck:
+      test: ['CMD', 'curl', '-sf', '-H', 'Accept: application/json',
+             'http://127.0.0.1:13002/']
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 120s
+    ports:
+      # Loopback only, deliberately.
+      #
+      # This demo has no real authentication: `kerbside demo token`
+      # mints a bearer token for anyone who can run it, because
+      # interactive login is Keystone-only today (issues #300 and
+      # #301). Binding these to 0.0.0.0 would put an unauthenticated
+      # console proxy on the network. If you change it, that is what
+      # you are accepting.
+      - '127.0.0.1:13002:13002'   # REST API and web UI
+      - '127.0.0.1:5900:5900'     # SPICE, TLS
+      - '127.0.0.1:5901:5901'     # SPICE, redirects to the TLS port
+
+volumes:
+  db-data:
+  state:

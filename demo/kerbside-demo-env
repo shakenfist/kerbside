@@ -1,0 +1,16 @@
+#!/bin/bash
+# Run a command inside the demo container with the generated
+# configuration in its environment.
+#
+#   docker compose exec kerbside kerbside-demo-env kerbside demo token ...
+#
+# `docker compose exec` does not inherit what the entrypoint exported,
+# so anything run that way needs this wrapper to see the generated
+# signing seed and certificate paths. See demo-env.sh for the detail.
+
+set -euo pipefail
+
+# shellcheck source=demo/demo-env.sh
+. /usr/local/lib/kerbside-demo/demo-env.sh
+
+exec "$@"

@@ -1,0 +1,37 @@
+# Build context exclusions for demo/Dockerfile, which uses the
+# repository root as its context (it needs tools/direct-qemu/
+# generate-tls.sh and, by default, the checkout itself).
+#
+# Two reasons to keep this tight. The context is transferred on every
+# build, and it participates in the BuildKit cache key for the bind
+# mount, so a stray build artefact causes a spurious cache miss on the
+# expensive pip layer.
+#
+# .git is deliberately NOT excluded, and the build fails without it.
+# setuptools_scm's git file finder is what puts kerbside/sources/ and
+# kerbside/migrations/ into the install at all: neither has an
+# __init__.py, so they are not in pyproject.toml's `packages` list and
+# normal setuptools discovery does not see them. Excluding .git
+# produces an install that imports and then dies with
+# "No module named 'kerbside.sources'".
+
+.tox/
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+**/__pycache__/
+*.py[cod]
+
+# Rust build output, which is large and irrelevant to the Python image.
+rust/target/
+
+# Test fixtures, including guest disk images.
+tests/fixtures/*.qcow2
+tests/fixtures/*.img
+
+# Written by demo/get-console.sh. Note that demo/ itself must stay in
+# the context: the Dockerfile COPYs entrypoint.sh, demo-env.sh and
+# kerbside-demo-env out of it.
+demo/demo-console.vv

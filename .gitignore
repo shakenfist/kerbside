@@ -156,3 +156,6 @@ tempest-plugin/kerbside_tempest_plugin/_version.py
 
 # Claude Code per-session state
 /.claude/scheduled_tasks.lock
+
+# Written by demo/get-console.sh
+demo/demo-console.vv
