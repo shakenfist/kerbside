@@ -33,10 +33,6 @@
       "sha": "27c5c370391a513b7978fe4eb2c0302c3da68ae3",
       "date": "2026-08-11"
     },
-    ".pre-commit-config.yaml": {
-      "sha": "48c64c7448876a58734d7960324b755d440c1ed9",
-      "date": "2026-08-12"
-    },
     "AUTHORS": {
       "sha": "52747656c9ce3a27509516db50abacb7930c8ca2",
       "date": "2026-08-04"
