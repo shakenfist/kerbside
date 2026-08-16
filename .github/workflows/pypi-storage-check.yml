@@ -1,0 +1,98 @@
+# Watch the kerbside-proxy PyPI project's storage budget.
+#
+# PyPI enforces a default 10 GB per-project storage limit and offers no
+# API to delete or yank a release -- Warehouse issue #12810 ("Warehouse
+# API to delete old .dev wheels (nightly builds)") is open and labelled
+# "Blocked", so pruning is a manual web-UI action (see RELEASE-SETUP.md).
+# dev-proxy-wheel.yml publishes a fresh dev release on most develop
+# merges that touch the Rust proxy, so both the byte total and the dev
+# release count grow slowly over time even when nothing is wrong. An
+# unautomated pruning chore would be forgotten until something breaks,
+# so this workflow is what remembers to ask for it: a weekly,
+# credential-free check of the public PyPI JSON API
+# (tools/check-pypi-storage.py) that files or updates a tracking issue
+# when either threshold is crossed. No PyPI credential exists anywhere
+# in this repo, and this workflow does not change that -- the JSON API
+# needs no authentication.
+
+name: PyPI storage check
+
+permissions: {}
+
+on:
+  schedule:
+    # Weekly on Monday at 06:00 UTC. Nothing here is time-critical: the
+    # measured growth rate leaves years of runway before either
+    # threshold is first crossed, so a week's latency in noticing costs
+    # nothing.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Check PyPI storage budget
+    runs-on: [self-hosted, static]
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      crossed: ${{ steps.run_check.outputs.crossed }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run the storage check
+        id: run_check
+        run: |
+          # Steps default to -eo pipefail, which would abort on the
+          # script's deliberate exit 1 before the status could be read.
+          set +e
+          tools/check-pypi-storage.py | tee pypi-storage-report.txt
+          status=${PIPESTATUS[0]}
+          set -e
+
+          # 0 = clear, 1 = a threshold really was crossed, anything else
+          # = the check could not run (network, parse). Only 1 should
+          # file an issue; a broken monitor must fail this job loudly
+          # instead of filing a "threshold crossed" issue with an empty
+          # report.
+          case "${status}" in
+            0) echo "crossed=false" >> "${GITHUB_OUTPUT}" ;;
+            1) echo "crossed=true" >> "${GITHUB_OUTPUT}" ;;
+            *) echo "check-pypi-storage.py could not run (exit ${status})" >&2
+               exit "${status}" ;;
+          esac
+        shell: bash
+
+      - name: Upload report
+        uses: actions/upload-artifact@v7
+        with:
+          name: pypi-storage-report
+          path: pypi-storage-report.txt
+
+  # A separate job so issues: write is never granted to the job that
+  # runs the check itself -- the established pattern in this repo (see
+  # direct-qemu-functional.yml's nightly_failure_issue job and
+  # sf-e2e-functional.yml's equivalent).
+  threshold_issue:
+    name: File PyPI storage threshold issue
+    needs: check
+    if: needs.check.outputs.crossed == 'true'
+    permissions:
+      contents: read
+      issues: write
+    runs-on: [self-hosted, static]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download report
+        uses: actions/download-artifact@v8
+        with:
+          name: pypi-storage-report
+
+      - name: File or update the tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tools/file-pypi-storage-issue.sh pypi-storage-report.txt \
+              "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
