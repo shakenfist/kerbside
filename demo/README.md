@@ -1,7 +1,12 @@
 # The kerbside demo stack
 
 A working kerbside in three containers, so you can see what it does
-before deciding whether to deploy it. Nothing but docker is needed.
+before deciding whether to deploy it.
+
+Nothing but docker is needed — specifically Docker Engine 23.0 or
+newer with the Compose v2 plugin, so `docker compose` rather than
+`docker-compose`. The image build uses `RUN --mount`, which needs
+BuildKit, and BuildKit is the default builder from 23.0 on.
 
 ```bash
 docker compose up -d      # build and start; the first build takes a few minutes
@@ -49,13 +54,21 @@ one entrypoint is the shortest way to get there for a demo. A real
 deployment runs them as separate units or containers sharing that
 socket. `docs/configuration.md` covers the constraint.
 
-**The TLS is genuine.** The proxy leg uses TLS on port 5900 with a
-self-signed CA generated into a volume at first start. You do not
-install that CA anywhere: kerbside embeds it in the `.vv` file, along
-with the certificate subject to check, and `remote-viewer` verifies
-against it. `get-console.sh` refuses to write a `.vv` that is missing
-any of those fields, because a demo that quietly falls back to the
-plaintext port would look identical to one that works.
+**The TLS is genuine, and `get-console.sh` proves it rather than
+assuming it.** The proxy leg uses TLS on port 5900 with a self-signed
+CA generated into a volume at first start. You do not install that CA
+anywhere: kerbside embeds it in the `.vv`, along with the certificate
+subject to expect, and `remote-viewer` verifies against it.
+
+Before printing the `remote-viewer` command, the script connects to
+the port the `.vv` advertises, verifies the presented certificate
+against the CA embedded in that same `.vv`, and checks the subject
+matches. That is deliberately stronger than checking the `.vv` has the
+right fields in it: kerbside writes `tls-port=` and `ca=`
+unconditionally, so their presence says nothing about whether the TLS
+listener works. A session quietly running over the plaintext port
+while the TLS leg is broken looks identical to one that works, which
+is the failure worth catching.
 
 **The backend leg is not TLS**, deliberately. Kerbside talks plaintext
 SPICE to the qemu container on the compose network. A second TLS leg
@@ -83,10 +96,12 @@ wrong.
 
 ## Building against a checkout
 
-The image installs kerbside from the checkout you are sitting in:
+The image installs kerbside from the checkout you are sitting in.
+That is the default and needs no arguments. To build against the
+released PyPI package instead:
 
 ```bash
-KERBSIDE_SOURCE=kerbside docker compose build kerbside   # released package
+KERBSIDE_SOURCE=kerbside docker compose build kerbside
 ```
 
 The default *should* be the released package — a demo that silently

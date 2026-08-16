@@ -15,7 +15,12 @@
     # hypervisor_ip is a compose service name, not an address. Docker's
     # embedded DNS resolves it on the compose network; the field is a
     # plain string, so a name works wherever an address would.
-    - uuid: "0d3f6a52-0000-0000-0000-00000000d3m0"
+    # An arbitrary but *valid* UUID. The static driver treats this
+    # as an opaque string and never parses it, so a cute non-hex
+    # value would work today and break the demo specifically the
+    # moment anything downstream -- a stricter column, the proxy, a
+    # future source validator -- starts parsing it properly.
+    - uuid: "0d3f6a52-0000-0000-0000-0000000dec01"
       name: "demo-console"
       hypervisor: "spice-target"
       hypervisor_ip: "spice-target"

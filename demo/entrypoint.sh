@@ -30,9 +30,23 @@ mkdir -p "${STATE_DIR}"
 # generate-tls.sh always regenerates and never reuses, so the skip has
 # to happen out here. Regenerating on every restart would invalidate
 # the CA embedded in any .vv file already fetched.
-if [ -f "${TLS_DIR}/proxy-cert.pem" ]; then
+#
+# The certificates are issued for 30 days and the state volume outlives
+# `compose restart`, `stop`/`start` and host reboots, so a stack left up
+# long enough would go on serving an expired certificate and fail CA
+# verification with no hint that `down -v` is the fix. -checkend gives
+# the skip an expiry escape hatch: reuse only while the certificate has
+# more than a day left.
+if [ -f "${TLS_DIR}/proxy-cert.pem" ] \
+        && openssl x509 -checkend 86400 -noout \
+            -in "${TLS_DIR}/proxy-cert.pem" 2> /dev/null; then
     echo "[demo] Reusing TLS material in ${TLS_DIR}"
 else
+    if [ -f "${TLS_DIR}/proxy-cert.pem" ]; then
+        echo "[demo] TLS material has expired or is about to; regenerating."
+        echo "[demo] Any .vv file fetched earlier will stop working: run"
+        echo "[demo] ./get-console.sh again to get one with the new CA."
+    fi
     echo "[demo] Generating TLS material in ${TLS_DIR}"
     /usr/local/lib/kerbside-demo/generate-tls.sh "${TLS_DIR}"
 fi

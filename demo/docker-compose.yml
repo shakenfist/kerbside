@@ -82,6 +82,23 @@ services:
       # The INI form phase 2 documented, at the one path kerbside
       # reads. Environment variables above override anything set here.
       - ./kerbside.ini:/etc/kerbside/kerbside.ini:ro
+    # The daemon is exec'd as PID 1, so its death exits the container.
+    # gunicorn is not: it is backgrounded by the entrypoint, and if it
+    # dies afterwards nothing notices -- the SPICE proxy keeps serving
+    # while the REST API, which get-console.sh and the web UI both
+    # need, is simply gone. This healthcheck is what makes that visible
+    # in `docker compose ps`, and it is also the readiness signal
+    # get-console.sh waits on rather than racing the startup sequence.
+    #
+    # start_period covers the slow part of first boot: TLS generation,
+    # the database wait and `kerbside db upgrade`.
+    healthcheck:
+      test: ['CMD', 'curl', '-sf', '-H', 'Accept: application/json',
+             'http://127.0.0.1:13002/']
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 120s
     ports:
       # Loopback only, deliberately.
       #

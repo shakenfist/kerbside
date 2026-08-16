@@ -214,7 +214,7 @@ should be `127.0.0.1` as at `start-kerbside.sh:72`.
 `etc/example-static-sources.yaml` documents the required
 console fields the demo needs (`uuid`, `name`, `hypervisor`,
 `hypervisor_ip`, `insecure_port`, `ticket`).
-`docs/configuration.md:74` does carry the co-location note
+`docs/configuration.md`'s `API_SOCKET_PATH` row does carry the co-location note
 the demo should cite. All four `.vv` emitters in `api.py`
 embed the CA; the demo uses
 `/console/proxy/<source>/<uuid>/console.vv` (`api.py:849`).
@@ -350,7 +350,7 @@ of `ps` and `docker inspect`.
 
 5. **Both processes run in the `kerbside` container, with
    `kerbside daemon run` as the foreground child.** They
-   share `API_SOCKET_PATH` and `docs/configuration.md:74`
+   share `API_SOCKET_PATH` and `docs/configuration.md`'s `API_SOCKET_PATH` row
    requires co-location, so splitting them would mean a
    shared volume for a unix socket — more moving parts for a
    demo, and still not the production shape. `exec` the
@@ -476,7 +476,7 @@ to one Dockerfile.
 | qemu-in-a-container is new ground (finding 2) and fails in a way that eats the phase | Step 3b verifies the SPICE target standalone, before compose exists, so a qemu problem cannot masquerade as a networking or kerbside problem. |
 | The inline `password=` form gets reintroduced from muscle memory or from an LLM's priors | Called out in finding 1, decision 2 and the 3b brief, with the failing QEMU version named. |
 | `mysqlclient` fails to build in the image | The Debian package set is taken from `bindep.txt` (finding 5), which exists precisely because `mysqlclient` ships no wheel and needs `pkg-config`. 3a stops on a failed build rather than proceeding. |
-| Two processes in one container gets copied into a real deployment | A comment in the entrypoint, a paragraph in `demo/README.md`, and the co-location reference at `docs/configuration.md:74`. |
+| Two processes in one container gets copied into a real deployment | A comment in the entrypoint, a paragraph in `demo/README.md`, and the co-location reference at `docs/configuration.md`'s `API_SOCKET_PATH` row. |
 | The demo image drifts from the released package it claims to install | Decision 4 keeps the default `KERBSIDE_SOURCE=kerbside`; phase 4's lane exercises `/src`, so both paths stay live. |
 
 ## Definition of done
@@ -542,6 +542,80 @@ recorded after each.
       caveat each have one wording, and README.md defers to
       `demo/Dockerfile` on the `KERBSIDE_SOURCE` default
       rather than restating it.
+
+### Added in review
+
+The automated review raised 15 items; all were addressed or
+recorded. Four changed behaviour, and one of them exposed a
+packaging bug that had nothing to do with the demo.
+
+**The `.vv` check could not detect the failure it claimed
+to.** Grepping the file for `tls-port=`, `host-subject=` and
+`ca=` proved almost nothing: kerbside emits the first and
+third unconditionally (`api.py:481,483`), so they are
+present whether or not the TLS listener works and whatever
+port the client uses. The README promised a transport-level
+assurance the code did not provide — the exact false
+confidence this phase's risk table warns about.
+`get-console.sh` now connects to the port the `.vv`
+advertises, verifies the presented certificate against the
+CA embedded in that same `.vv`, and checks the subject
+matches, printing `TLSv1.3, certificate verified against the
+CA in the .vv`. The README says what is actually proven.
+
+**The demo raced its own startup.** `docker compose up -d`
+returns once containers exist, and the only precondition
+check was `docker compose ps --status running`, which passes
+immediately. Three misleading first-run failures were
+reachable, including "no consoles: is spice-target running?"
+blaming an innocent service. The `kerbside` service now has
+a healthcheck — which also makes a dead gunicorn visible,
+since only the daemon is exec'd — and `get-console.sh` waits
+on it, then waits for the console list after minting,
+because that call needs a token.
+
+**Item 5 exposed issue #326, which is not the demo's bug.**
+Adding a `.dockerignore` that excluded `.git` produced an
+install that died at import with `No module named
+'kerbside.sources'`. `kerbside/sources/` and
+`kerbside/migrations/` have no `__init__.py` and are not in
+`pyproject.toml`'s `packages`; they reach an install *only*
+through setuptools_scm's git file finder. Worse, the build
+had been succeeding by accident — a stray untracked
+`kerbside.egg-info/` was supplying the file list, so the
+"clean checkout" criterion had been verified on a tree that
+was not clean. The image now installs `git` (setuptools_scm
+shells out to it, and the earlier build never had it),
+`.git` stays in the context, and both facts are documented
+where someone will trip over them. Verification moved to a
+real clone, since a git worktree cannot build the image at
+all.
+
+**Values from the API are no longer spliced into remote
+shell strings.** Not exploitable as shipped — the only input
+is `demo/sources.yaml` — but this is the file most likely to
+be copied as the basis for a real one, and passing
+positional arguments is easier to read than the escaping it
+replaced.
+
+Smaller: certificates are regenerated when they expire
+rather than served past 30 days; the bearer token goes to a
+per-run `/tmp` path and is removed on exit instead of living
+on the state volume beside the CA key; qemu runs as
+`nobody`; the demo UUID is now valid hex; the README states
+a minimum Docker version and no longer contradicts its own
+code block. Three new unit tests pin the couplings the
+review noted were advisory-only — the certificate subject
+shared between `generate-tls.sh` and the compose file, the
+SPICE ticket shared between the target image and
+`sources.yaml`, and the UUID — each demonstrated to fail
+before being trusted.
+
+Deferred with a home rather than dropped: CI enforcement of
+shellcheck over `demo/` is recorded in the phase 4 plan,
+which owns the demo lane, and the missing inbound links from
+`README.md` and `docs/index.md` are now explicitly in phase
+5's scope rather than implied by "rewrite installation.md".
 
 ## Future work
 

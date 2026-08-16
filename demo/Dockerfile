@@ -3,6 +3,15 @@
 # The build context is the REPOSITORY ROOT, not demo/. The image needs
 # tools/direct-qemu/generate-tls.sh, and KERBSIDE_SOURCE=/src needs the
 # checkout; docker-compose.yml sets `context: ..` accordingly.
+# .dockerignore keeps build artefacts out of that context.
+#
+# Requires Docker Engine 23.0 or newer, where BuildKit is the default
+# builder: the pip step below uses `RUN --mount=type=bind`, which the
+# classic builder cannot parse. There is deliberately no
+# `# syntax=docker/dockerfile:1` directive -- it would work, but it
+# makes every build fetch an external frontend image from Docker Hub,
+# and the built-in frontend in Docker 23+ already supports everything
+# used here. demo/README.md states the version requirement.
 
 FROM python:3.13-slim
 
@@ -13,6 +22,11 @@ FROM python:3.13-slim
 # client headers both have to be here. openssl and curl are runtime
 # needs of entrypoint.sh and get-console.sh.
 #
+# git is a *build* requirement, not an obvious one: setuptools_scm
+# shells out to git for both the version and the file list, so without
+# the binary the install fails with "setuptools-scm was unable to
+# detect version" even when .git is right there in the context.
+#
 # Everything stays in one stage, build dependencies included. A
 # multi-stage build would be smaller, but mysqlclient links against
 # libmariadb at runtime, so the split has to be done carefully to stay
@@ -21,6 +35,7 @@ FROM python:3.13-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         curl \
+        git \
         libmariadb-dev-compat \
         libxml2-dev \
         libxslt1-dev \
@@ -73,6 +88,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # checkout needing to be writable on the host; the overlay is discarded
 # when the step finishes, so nothing is written back and no copy of the
 # source is baked into the image.
+# This build needs real git metadata in the context, and that is a
+# sharper requirement than it looks.
+#
+# setuptools_scm does two jobs here. It derives the version, and -- via
+# its git file finder -- it is the only reason kerbside/sources/ and
+# kerbside/migrations/ end up installed at all: neither directory has
+# an __init__.py, so neither appears in pyproject.toml's `packages`
+# list, and setuptools' own discovery never sees them. Without git the
+# install succeeds and then dies at import with "No module named
+# 'kerbside.sources'".
+#
+# Two consequences worth knowing before editing this:
+#
+#   * .dockerignore must not exclude .git.
+#   * Building from a git *worktree* does not work, because there .git
+#     is a file pointing at a directory outside the build context.
+#     Build the demo from an ordinary clone.
+#
+# This fragility is not the demo's, it is the packaging's; the demo is
+# simply the first thing in the tree that builds outside a git
+# context. Filed as issue #326.
 ARG KERBSIDE_SOURCE=/src
 RUN --mount=type=bind,source=.,target=/src,rw \
     pip install --no-cache-dir kerbside-proxy "${KERBSIDE_SOURCE}"

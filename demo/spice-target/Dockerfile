@@ -40,6 +40,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #
 # -vga qxl matches start-qemu.sh: it is the conventional SPICE display
 # device, rather than relying on the q35 default.
+# qemu needs nothing privileged here: no KVM, no tap devices, no
+# filesystem it does not own. Running it as root would be a demo of a
+# security proxy showing the wrong thing, and "runs as root" is exactly
+# the sort of line readers copy. 65534:65534 is nobody:nogroup, which
+# exists in the base image, so no user needs creating.
+USER 65534:65534
+
 CMD ["qemu-system-x86_64", \
      "-machine", "q35", \
      "-m", "256", \
