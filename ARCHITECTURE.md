@@ -328,21 +328,13 @@ SpiceClient.connect() establishes server connection
 Bidirectional proxy relay begins
 ```
 
-## Configuration
+## Configuration model
 
 Configuration uses Pydantic settings with INI file and environment variable
-support. Environment variables (prefixed `KERBSIDE_`) take priority.
-
-**Key Configuration Categories:**
-
-- **Authentication**: Keystone integration, JWT secrets, token duration
-- **Network**: Public FQDN, bind addresses, ports
-- **Security**: TLS certificates, CA certificates
-- **Database**: SQLAlchemy connection string
-- **Monitoring**: Prometheus metrics port
-- **Traffic Inspection**: Optional packet logging
-
-See `etc/kerbside.conf.example` for a complete configuration reference.
+support. Environment variables (prefixed `KERBSIDE_`) take priority, then the
+INI file at `/etc/kerbside/kerbside.ini`, then defaults. Every setting is
+documented in [docs/configuration.md](docs/configuration.md), with a complete
+worked example in `etc/kerbside.conf.example`.
 
 ## Security Model
 
