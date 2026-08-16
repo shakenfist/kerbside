@@ -363,13 +363,13 @@ kerbside-proxy is acceptable — and pick.
 
 (Volume correction, 2026-08-17 during phase 5 planning:
 this sketch assumed publishing would be sparse. Measured
-against the merged workflow's actual path filter, 77 of
+against the merged workflow's actual path filter, 42 of
 the 217 first-parent develop merges in the 42 days since
 the Rust tree was created would have triggered a publish —
-about 56/month, or 670/year at 5.80 MB per publish, which
-is ~3.9 GB/year against PyPI's 10 GB default project
-limit: roughly 2.6 years of headroom, not the open-ended
-"years" assumed here. 61 of those 77 touch only
+about 30/month, or 365/year at 5.80 MB per publish, which
+is ~2.1 GB/year against PyPI's 10 GB default project
+limit: roughly 4.7 years of headroom, rather than the
+open-ended "years" assumed here. 32 of those 42 touch only
 `rust/kerbside-proxy/Cargo.lock` and/or `Cargo.toml` —
 Renovate dependency bumps, none of which can change the
 gRPC contract hash. Reducing that inflow is therefore a

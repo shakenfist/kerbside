@@ -34,26 +34,26 @@ release (`v*` tag) lane in any way; the phase 4 post-merge tail
 Verified 2026-08-17 against `develop` at `eb14012`, the live PyPI JSON
 API, and PyPI/Warehouse documentation.
 
-**The master plan's volume assumption was wrong, by roughly an order of
-magnitude.** The sketch said "Quota headroom is years even without
+**The master plan's volume assumption was optimistic.** The sketch said "Quota headroom is years even without
 pruning … this phase is about hygiene, not urgency". Measured against
 the *merged* workflow's actual path filter (`rust/**`,
 `kerbside/rpc/kerbside.proto`, `tools/build-proxy-wheel.sh`,
 `tools/stamp-dev-proxy-version.sh`, `tools/gen-protos.sh`, and the
-workflow file), **77 of the 217 first-parent `develop` merges in the 42
+workflow file), **42 of the 217 first-parent `develop` merges in the 42
 days since the Rust tree was created (2026-07-06 … 2026-08-17) would
-have triggered a publish** — about 56/month, 670/year. At 5.80 MB per
+have triggered a publish** — about 30/month, 365/year. At 5.80 MB per
 publish (two wheels: 2.82 MB aarch64 + 2.97 MB x86_64) that is
-**~3.9 GB/year against a 10 GB project limit: about 2.6 years of
-headroom.** Still years, but a finite and forecastable runway rather
-than the open-ended one assumed. Corrected at source in the master
+**~2.1 GB/year against a 10 GB project limit: about 4.7 years of
+headroom.** Still years, as the sketch said — but a finite and
+forecastable runway rather than an open-ended one, and one worth
+knowing the size of before choosing what to build. Corrected at source in the master
 plan's phase 5 sketch as part of this planning commit.
 
-**79% of that inflow is dependency bumps that cannot change anything
-the handshake protects.** Of the 77 triggering merges, **61 touch only
+**76% of that inflow is dependency bumps that cannot change anything
+the handshake protects.** Of the 42 triggering merges, **32 touch only
 `rust/kerbside-proxy/Cargo.lock` and/or `Cargo.toml`** (Renovate), and
-**25 touch `Cargo.lock` alone**. Only 16 touch proxy source, `build.rs`,
-the proto, or the build tooling. None of the 61 can alter the gRPC
+**18 touch `Cargo.lock` alone**. Only 10 touch proxy source, `build.rs`,
+the proto, or the build tooling. None of the 32 can alter the gRPC
 contract hash, so none of them can cause the phase 3 startup refusal
 that promptness exists to avoid.
 
@@ -149,12 +149,12 @@ that publishing runs on **self-hosted** runners.
    it cannot change the proto, the contract hash, or the binary's
    interface, so a dev wheel that lags one lockfile bump is still a
    correct, contract-compatible binary — which is all a dev wheel
-   promises. This removes 25 of 77 measured triggers (~33%), taking the
-   runway from ~2.6 to ~3.8 years, and it costs nothing but a two-line
+   promises. This removes 18 of 42 measured triggers (43%), taking the
+   runway from ~4.7 to ~8.3 years, and it costs nothing but a two-line
    path filter. **`Cargo.toml` deliberately stays a trigger**: it carries
    direct dependency versions and crate features, which can change
    behaviour in ways the contract hash would not catch. Excluding it too
-   would remove 61 of 77 and buy ~12 years, and is the obvious "why not
+   would remove 32 of 42 and buy ~20 years, and is the obvious "why not
    go further?" — declined because the saving is not needed and the
    safety argument is materially weaker.
 4. **Automate the *watching*, not the deleting.** A weekly workflow runs
@@ -163,10 +163,13 @@ that publishing runs on **self-hosted** runners.
    ≥ 50% of 10 GB**, or **dev release count ≥ 300**. This is what
    discharges open question 6's actual concern ("an unautomated pruning
    chore would be forgotten until something breaks") — the chore is
-   remembered by automation even though its execution is manual. At the
-   measured rate the first alarm is years away and arrives with roughly
-   2.5 years of remaining runway, which is ample for a manual afternoon
-   in the PyPI UI, or for Warehouse to have shipped #12810.
+   remembered by automation even though its execution is manual. The two
+   thresholds fire on very different timescales at the measured rate: the
+   300-release count arrives first, after roughly 17 months of
+   accumulation, while storage is still only about a sixth of the limit,
+   and the 50%-of-quota alarm is around four years out. That ordering is
+   intended — the count is the tidiness axis and the bytes are the axis
+   that actually binds, and neither is urgent when it fires.
 5. **The runbook lives in `RELEASE-SETUP.md`.** That file already owns
    release infrastructure operations end to end (setup, how releases
    work, verifying, troubleshooting), so a "Pruning dev releases" section
@@ -185,7 +188,7 @@ that publishing runs on **self-hosted** runners.
 | Step | Effort | Model | Isolation | Brief for sub-agent |
 |------|--------|-------|-----------|---------------------|
 | 5a | medium | sonnet | none | Build the credential-free PyPI storage monitor. (1) `tools/check-pypi-storage.py`: follow the conventions of `tools/check-wheel.py` — `#!/usr/bin/env python3`, module docstring explaining rationale, `argparse`, `REPO_ROOT` via `os.path.dirname(os.path.dirname(os.path.abspath(__file__)))`, `if __name__ == '__main__': sys.exit(main())`. It fetches `https://pypi.org/pypi/<project>/json` (default project `kerbside-proxy`) with `urllib.request` (stdlib only — no venv, no third-party deps; the endpoint needs no auth), sums every file's `size`, counts releases whose version contains `.dev` separately from final releases, and compares against `--max-bytes-pct` (default 50, of a `--limit-bytes` default of 10 GB) and `--max-dev-releases` (default 300). Print a short human-readable report to stdout always (totals, percentages, counts, oldest/newest dev version). Exit 0 when under both thresholds, 1 when either is crossed. Add `--input-file PATH` to read the JSON from a file instead of the network — this is what makes it testable. Wrap lines at 120 chars, single quotes except docstrings (repo style; `flake8` runs on `tools/` via pre-commit). (2) `tools/file-pypi-storage-issue.sh`: copy the structure of `tools/file-nightly-failure-issue.sh` exactly — `#!/bin/bash`, `set -e`, usage header comment, fixed title (use `kerbside-proxy PyPI storage threshold crossed`), dedupe via `gh issue list --state open --search "in:title \"${title}\"" --json number,title --jq` exact-title filter, `gh issue comment` if found else `gh issue create`. Take the report text file and the run URL as positional args. (3) `.github/workflows/pypi-storage-check.yml`: `schedule: - cron: '0 6 * * 1'` (weekly Monday) plus `workflow_dispatch`; top-level `permissions: {}`; a `check` job (`runs-on: [self-hosted, static]`, `permissions: contents: read`) that checks out and runs the script, capturing stdout to a file and its exit status; and a **separate** `threshold_issue` job holding `permissions: contents: read, issues: write` with `GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}` that runs only when the check reported a crossing — this job separation is the established pattern (see `direct-qemu-functional.yml:294-310`), do not merge the two jobs. Falsifiable verification to run and record before finishing: craft two fixture JSON files and run the script against both with `--input-file`, proving exit 1 with the expected message when over threshold and exit 0 when under; then run it for real against live PyPI and confirm it reports ~17.8 MB / 0.18% / 1 dev release and exits 0. `pre-commit run --all-files` (actionlint + shellcheck + flake8) passes. Commit subject: "Watch the kerbside-proxy PyPI storage budget." |
-| 5b | medium | sonnet | none | Reduce publish inflow. In `.github/workflows/dev-proxy-wheel.yml`, add `- '!rust/kerbside-proxy/Cargo.lock'` to the `push:` `paths:` list, immediately after `- 'rust/**'` (GitHub evaluates include/exclude patterns in order, so the negation must follow the inclusion it narrows; a merge touching the lockfile *and* any other matching path still publishes, which is the intent). Extend the workflow's header comment with a short paragraph explaining why: a lockfile-only bump moves transitive pins and cannot change the proto, the contract hash, or the binary's interface, so the dev wheel may lag one such bump without breaking the promise a dev wheel makes; this measurably removes about a third of triggers (77 measured in 42 days, 25 of them lockfile-only). State explicitly that `Cargo.toml` is deliberately still a trigger because it carries direct dependency versions and crate features. Then sync every prose copy of the path list: `docs/proxy-architecture.md` (the "How the binary gets there: packaging" section lists the filter), `RELEASE-SETUP.md`'s "Dev releases" section, and `docs/plans/PLAN-proxy-dev-releases-phase-01-publish-workflow.md` if it restates it — find them with `grep -rn 'stamp-dev-proxy-version.sh' --include='*.md' .`. Finally, in `PLAN-proxy-dev-releases.md`, amend the first success criterion (currently "A merge to develop that touches `rust/**` or `kerbside/rpc/kerbside.proto` publishes a `kerbside-proxy` dev wheel … and a Python-only merge publishes nothing") to exclude lockfile-only merges, and note the phase 5 decision that narrowed it. Do not touch the `workflow_dispatch` escape hatch — a forced publish must still be possible. `pre-commit run --all-files` passes. Commit subject: "Stop lockfile bumps from publishing dev wheels." |
+| 5b | medium | sonnet | none | Reduce publish inflow. In `.github/workflows/dev-proxy-wheel.yml`, add `- '!rust/kerbside-proxy/Cargo.lock'` to the `push:` `paths:` list, immediately after `- 'rust/**'` (GitHub evaluates include/exclude patterns in order, so the negation must follow the inclusion it narrows; a merge touching the lockfile *and* any other matching path still publishes, which is the intent). Extend the workflow's header comment with a short paragraph explaining why: a lockfile-only bump moves transitive pins and cannot change the proto, the contract hash, or the binary's interface, so the dev wheel may lag one such bump without breaking the promise a dev wheel makes; this measurably removes over 40% of triggers (42 measured in 42 days, 18 of them lockfile-only). State explicitly that `Cargo.toml` is deliberately still a trigger because it carries direct dependency versions and crate features. Then sync every prose copy of the path list: `docs/proxy-architecture.md` (the "How the binary gets there: packaging" section lists the filter), `RELEASE-SETUP.md`'s "Dev releases" section, and `docs/plans/PLAN-proxy-dev-releases-phase-01-publish-workflow.md` if it restates it — find them with `grep -rn 'stamp-dev-proxy-version.sh' --include='*.md' .`. Finally, in `PLAN-proxy-dev-releases.md`, amend the first success criterion (currently "A merge to develop that touches `rust/**` or `kerbside/rpc/kerbside.proto` publishes a `kerbside-proxy` dev wheel … and a Python-only merge publishes nothing") to exclude lockfile-only merges, and note the phase 5 decision that narrowed it. Do not touch the `workflow_dispatch` escape hatch — a forced publish must still be possible. `pre-commit run --all-files` passes. Commit subject: "Stop lockfile bumps from publishing dev wheels." |
 | 5c | medium | sonnet | none | Document the pruning position. In `RELEASE-SETUP.md`, add a `## Pruning dev releases` section after "Dev releases". It must say: (i) PyPI has **no API** for deleting or yanking — Warehouse issue #12810 requests exactly this for nightly/dev wheels and is open and blocked, so deletion is a manual web-UI action at `pypi.org/manage/project/kerbside-proxy/releases/`; (ii) **deletion is irreversible** — `pypi.org/help/#file-name-reuse` says a filename can never be reused "even once a project has been deleted and recreated", and because dev versions are setuptools_scm commit counts a pruned `0.4.1.devN` can never be republished from that commit, so never prune a version a running CI job might still resolve; (iii) yanking is not used, because it frees no storage; (iv) the monitor (`tools/check-pypi-storage.py`, run weekly by `pypi-storage-check.yml`) is what tells you pruning is due, and the thresholds are 50% of the 10 GB project limit or 300 dev releases; (v) the manual procedure: keep all final releases and the newest ~20 dev releases, delete older dev releases oldest-first, and re-run the monitor afterwards to confirm. Also record why automation was declined (an account password plus TOTP seed as repository secrets on self-hosted runners, to drive a login form, for space not needed for years). Then add ONE sentence plus a link in `docs/proxy-architecture.md`'s "How the binary gets there: packaging" section noting that dev releases accumulate and are pruned manually per `RELEASE-SETUP.md` — do not restate the mechanism there. Falsifiable check: `grep -rn 'pypi-cleanup' --include='*.md' .` returns hits only in `docs/plans/`, since the tool is discussed as a rejected option in planning, not recommended in operator docs. `pre-commit run --all-files` passes. Commit subject: "Document how and when to prune dev releases." |
 
 ## Risks and mitigations
@@ -197,7 +200,8 @@ that publishing runs on **self-hosted** runners.
   normal failed-workflow path rather than being swallowed; step 5a's
   brief requires the fixture tests that prove the alarm fires at all.
 * **Thresholds chosen once and never revisited.** 50% of quota at the
-  measured rate leaves ~2.5 years of runway when it first fires; the
+  measured rate is reached after roughly 17 months, with storage still
+  far from binding; the
   issue body includes the current numbers so whoever reads it can judge
   urgency rather than trusting the threshold.
 * **Inflow reduction hides a needed rebuild.** A Rust dependency security

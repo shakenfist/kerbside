@@ -38,8 +38,8 @@
 # or the binary's interface, so a dev wheel that lags one such bump is still
 # a correct, contract-compatible binary -- which is all a dev wheel promises.
 # Measured against 217 first-parent develop merges over the 42 days from
-# 2026-07-06 to 2026-08-17, 77 would have triggered a publish under the old
-# filter, and 25 of those touched only Cargo.lock. `Cargo.toml` is
+# 2026-07-06 to 2026-08-17, 42 would have triggered a publish under the old
+# filter, and 18 of those touched only Cargo.lock. `Cargo.toml` is
 # deliberately still a trigger: it carries direct dependency versions and
 # crate features, which can change behaviour in ways the contract hash would
 # not catch.
