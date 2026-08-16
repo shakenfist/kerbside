@@ -476,6 +476,10 @@ implemented because the following statements will be true:
   `kerbside/rpc/kerbside.proto` publishes a
   `kerbside-proxy` dev wheel to PyPI within one workflow
   run, and a Python-only merge publishes nothing.
+  Phase 5 deliberately narrowed this: a merge touching
+  only `rust/kerbside-proxy/Cargo.lock` also publishes
+  nothing, since a lockfile-only bump cannot change the
+  proto, the contract hash, or the binary's interface.
 * `pip install .` from a clean develop checkout on a
   machine with no Rust toolchain yields a `kerbside daemon
   run` that launches the proxy binary successfully.

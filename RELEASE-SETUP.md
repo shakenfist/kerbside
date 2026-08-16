@@ -186,7 +186,10 @@ publishes unreleased `kerbside-proxy` dev wheels to PyPI:
   (path-filtered on `rust/**`, `kerbside/rpc/kerbside.proto`,
   `tools/build-proxy-wheel.sh`, `tools/stamp-dev-proxy-version.sh`,
   `tools/gen-protos.sh`, and the workflow file itself) — an unrelated change on `develop` does not trigger
-  a new dev release.
+  a new dev release. `rust/kerbside-proxy/Cargo.lock` is excluded from
+  the `rust/**` filter, so a merge that only bumps the lockfile does not
+  publish; a merge that also touches `Cargo.toml` or any other matching
+  path still does.
 - **Versioning**: the version comes from `setuptools_scm`
   (`MAJOR.MINOR.PATCH.devN`, e.g. `0.4.1.dev159`, monotonically increasing
   with commits since the last tag) and is stamped as a static
