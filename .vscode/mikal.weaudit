@@ -454,10 +454,6 @@
     {
       "path": "PUSH-AUDIT.md",
       "author": "mikal"
-    },
-    {
-      "path": "PLAN-TEMPLATE.md",
-      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
