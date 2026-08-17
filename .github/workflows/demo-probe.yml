@@ -27,6 +27,7 @@ on:
     branches: [develop]
     paths:
       - 'tools/demo/probe-runner.sh'
+      - 'tools/demo/install-docker.sh'
       - '.github/workflows/demo-probe.yml'
   workflow_dispatch:
 
@@ -52,6 +53,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+
+      # The first run of this probe answered a question that had not been
+      # asked: the runner image has no docker at all. So install it, then
+      # probe -- the probe still decides whether the result is usable,
+      # and it is deliberately not softened to tolerate a missing daemon.
+      - name: Install docker
+        run: tools/demo/install-docker.sh
 
       - name: Probe
         run: tools/demo/probe-runner.sh

@@ -104,6 +104,14 @@ jobs:
           # and sf-e2e-functional.yml:113 do this.
           fetch-depth: 0
 
+      # The runner image ships no docker, and Debian 12 cannot supply a
+      # usable one either -- the script explains both halves and
+      # configures the daemon and builds for the runner's proxy.
+      # Idempotent, so if the image ever grows a new enough docker this
+      # stops costing anything.
+      - name: Install docker
+        run: tools/demo/install-docker.sh
+
       # Answers "can this runner build containers at all" before
       # anything slow. Also names whatever holds 5900, which the Docker
       # daemon's own bind error never does.

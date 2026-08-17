@@ -84,20 +84,26 @@ echo "[lane-assert] Checking the .vv fields"
 # without anything being added to a system trust store; host-subject is
 # what it checks the certificate against, since SPICE identifies a
 # server by subject rather than by SAN.
-grep -q '^tls-port=' "${VV}" \
-    && ok 'the .vv carries tls-port=' \
-    || bad 'the .vv has no tls-port=, so no client can use the TLS leg'
+if grep -q '^tls-port=' "${VV}"; then
+    ok 'the .vv carries tls-port='
+else
+    bad 'the .vv has no tls-port=, so no client can use the TLS leg'
+fi
 
-grep -q '^host-subject=' "${VV}" \
-    && ok 'the .vv carries host-subject=' \
-    || bad 'the .vv has no host-subject=, so a client cannot verify the proxy identity'
+if grep -q '^host-subject=' "${VV}"; then
+    ok 'the .vv carries host-subject='
+else
+    bad 'the .vv has no host-subject=, so a client cannot verify the proxy identity'
+fi
 
 # An escaped PEM, not merely a non-empty field: kerbside writes the CA
 # with literal \n escapes, and a ca= line holding anything else would
 # pass a presence check and fail in the client.
-grep -q '^ca=.*BEGIN CERTIFICATE' "${VV}" \
-    && ok 'the .vv carries a ca= field holding an escaped PEM' \
-    || bad 'the .vv has no ca= field with a certificate in it'
+if grep -q '^ca=.*BEGIN CERTIFICATE' "${VV}"; then
+    ok 'the .vv carries a ca= field holding an escaped PEM'
+else
+    bad 'the .vv has no ca= field with a certificate in it'
+fi
 
 # ── 2. Drive a real SPICE session with ryll ──────────────────────────
 #
@@ -164,9 +170,11 @@ else
     # this whole demo is arranged to make visible.
     TLS_CONNS="$(docker compose logs --no-color kerbside 2>&1 \
         | grep -c 'secure SPICE listener bound' || true)"
-    [ "${TLS_CONNS}" -ge 1 ] \
-        && ok 'the proxy bound its TLS listener' \
-        || bad 'the proxy never reported binding a TLS listener'
+    if [ "${TLS_CONNS}" -ge 1 ]; then
+        ok 'the proxy bound its TLS listener'
+    else
+        bad 'the proxy never reported binding a TLS listener'
+    fi
 
     kill "$(cat "${WORKDIR}/ryll.pid")" 2> /dev/null || true
     rm -f "${WORKDIR}/ryll.pid"

@@ -24,8 +24,16 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "${REPO_ROOT}"
 
+# --others --exclude-standard so a new script that is not `git add`ed yet
+# is still checked. pre-commit sees staged files, so this cannot disagree
+# with the hook about a file being committed -- it only makes the tox
+# environment stricter for work in progress, which is the direction a
+# developer wants. Writing a new script and having it silently not
+# linted is otherwise a standing trap; see the empty-list guard below
+# for the last time this class of bug got through.
 mapfile -t FILES < <(
-    git ls-files tools demo | while read -r f; do
+    git ls-files --cached --others --exclude-standard tools demo \
+            | while read -r f; do
         [ -f "${f}" ] || continue
         case "${f}" in
             *.sh)

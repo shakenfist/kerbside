@@ -254,6 +254,57 @@ setuptools-scm was unable to detect version for /src`.
 is recorded here because every local verification of this
 phase had to be done from a throwaway clone instead.
 
+## What the first CI run found
+
+**16. The runner image has no docker at all**, which is a
+stronger result than finding 5 anticipated. Finding 5 asked
+whether the daemon was usable, new enough, and able to reach an
+index; the probe never got as far as any of those. Its entire
+output on `[self-hosted, vm, debian-12, l]` was:
+
+```
+ERROR: docker is not installed on this runner
+=== docker client and daemon ===
+
+=== probe-runner cannot continue without docker ===
+```
+
+Debian 12 cannot close the gap either, so this is not a matter
+of adding `docker.io` to the existing apt step. Bookworm ships
+`docker.io` 20.10.24, below the 23.0 `demo/Dockerfile` needs
+from the built-in BuildKit frontend, and bookworm has **no**
+`docker-compose-v2` package at all — its only compose is
+1.29.2, the end-of-life python implementation, which does not
+provide the `docker compose` subcommand the demo documents.
+Verified against `sources.debian.org`, not assumed. Resolved by
+decision 9.
+
+Note that findings 5's other two questions are therefore still
+open: nothing yet establishes that the daemon can pull an image
+or that a build can reach an index on these runners. The gate in
+the back brief stays closed until a probe run answers them.
+
+**17. The four SC2015 findings in `lane-assert.sh` were never
+linted locally**, despite step 4d's own definition of done
+recording a clean `tox -e shellcheck`. That run covered 40
+scripts; CI covered 44. The local run predated the last round of
+edits to `lane-assert.sh`, so the `A && ok ... || bad ...` lines
+it introduced were added after the only check that would have
+caught them. Rewritten as explicit `if`/`else`, which is what
+SC2015 asks for and is clearer anyway, since `bad` running
+because `ok` failed is a genuine (if unlikely) misreport.
+
+A second, more durable version of the same trap: the wrapper
+selected files with plain `git ls-files`, so a newly written and
+not-yet-added script was silently unchecked —
+`install-docker.sh` was invisible to it on first run. Now
+`git ls-files --cached --others --exclude-standard`. This cannot
+diverge from the pre-commit hook for a file being committed,
+because pre-commit sees staged files; it only makes the tox
+environment stricter for work in progress. The empty-list guard
+in that script already records an earlier member of this same
+family of bug.
+
 ## Decisions
 
 **1. Advisory, path-filtered — not a required check.** Carried
@@ -372,6 +423,39 @@ and `:30-32`. Loopback traffic to the published demo ports must
 bypass the squid or it returns 503 `ERR_CONNECT_FAIL`. This has
 bitten two lanes already; assume it bites here.
 
+**9. Install docker in the lane, from Docker's own apt
+repository, rather than waiting on the runner image.** Forced by
+finding 16, and chosen over the two alternatives:
+
+- *baking it into the private-ci debian-12 image* would keep the
+  lane shorter and would benefit any future container lane, but
+  it is outside this repository, so the phase would block on an
+  image change, and the lane's dependency on it would be
+  invisible to anyone reading the workflow;
+- *pointing at some other runner label* was not available:
+  nothing in `.github/workflows/` uses docker, so no label is
+  known to have it, and `gh api .../actions/runners` returns
+  nothing at this permission level.
+
+Installing in the lane keeps the phase self-contained and
+reviewable in one pull request, and it exercises the same
+install path `demo/README.md` gives a human. It costs about a
+minute per run. `tools/demo/install-docker.sh` is idempotent
+against a server 23.0+ with the compose plugin, so if the image
+ever grows one the cost disappears without anyone having to
+remember to remove the step.
+
+The script also configures two proxy paths that the runner's own
+environment does not cover, because neither is inherited: a
+systemd drop-in, without which the daemon cannot pull a base
+image through the squid, and `~/.docker/config.json` `proxies`,
+without which a build cannot reach PyPI. Both are conditional on
+`http_proxy` being set, both are printed, and `probe-runner.sh`
+still tests reachability independently rather than assuming the
+configuration worked — so if a runner turns out to have direct
+egress, the evidence to delete that block will be in the probe
+output.
+
 ## Execution
 
 | Step | Effort | Model | Isolation | Brief for sub-agent |
@@ -465,8 +549,8 @@ the host's Rust toolchains untouched.
       - broken compose schema: `ERROR:
         demo/docker-compose.yml is not valid`, in seconds,
         before any image build.
-- [x] `tox -e shellcheck` passes on a clean tree — 40 scripts
-      in 2.4s — and was demonstrated to fail (`FAIL code 1`) on
+- [x] `tox -e shellcheck` passes on a clean tree — 45 scripts
+      in 1.3s — and was demonstrated to fail (`FAIL code 1`) on
       a real violation in `demo/demo-env.sh`. Worth recording
       how the first attempt at that demonstration went: a
       deliberate `echo $foo` after `foo="bar"` did **not**
@@ -480,7 +564,13 @@ the host's Rust toolchains untouched.
       shebang, because `demo/kerbside-demo-env` and
       `tools/run-tempest-tests` are shell without a `.sh`
       suffix and an extension-only match would skip them
-      silently.
+      silently. Selection also includes untracked-but-not-ignored
+      files, per finding 17, so a script written and not yet
+      added is still checked.
+- [x] The lane installs its own docker (decision 9), the script
+      is idempotent against an already-usable daemon, and the
+      `~/.docker/config.json` merge was tested to preserve a
+      pre-existing `auths` block rather than overwrite it.
 - [x] No change to any gate job name; only a step added inside
       `sanity_checks`.
 - [x] `docs/testing.md` and `.claude/CLAUDE.md` both list the
@@ -496,7 +586,19 @@ own:
       and its output is recorded here, including the Docker
       server version and whether a build reached an index.
       Locally it passes and correctly reported the real 5900
-      collision on the development host.
+      collision on the development host. **Partially done**: one
+      run has happened and is recorded as finding 16, but it
+      stopped at a missing daemon, so the two questions this
+      item exists to answer — server version and index
+      reachability from inside a build — are still unanswered.
+      Decision 9 is the attempt to make the next run answer
+      them.
+- [ ] `tools/demo/install-docker.sh` succeeds on a private-CI
+      runner — which is also the only test that the squid in
+      front of these runners permits `download.docker.com`.
+      Untestable locally: this host already has docker, so the
+      script's own idempotence check short-circuits it, and that
+      path is the one thing about it that *is* verified here.
 - [ ] `.github/workflows/demo-probe.yml` deleted once that
       output is recorded. **Deliberately still present**: the
       back brief gates 4b on reading the probe output, and
