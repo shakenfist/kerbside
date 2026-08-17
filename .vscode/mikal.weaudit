@@ -442,6 +442,30 @@
     {
       "path": "kerbside/migrations/env.py",
       "author": "mikal"
+    },
+    {
+      "path": ".claude/CLAUDE.md",
+      "author": "mikal"
+    },
+    {
+      "path": ".claude",
+      "author": "mikal"
+    },
+    {
+      "path": "AGENTS.md",
+      "author": "mikal"
+    },
+    {
+      "path": "PLAN-TEMPLATE.md",
+      "author": "mikal"
+    },
+    {
+      "path": "README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "RELEASE-SETUP.md",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
