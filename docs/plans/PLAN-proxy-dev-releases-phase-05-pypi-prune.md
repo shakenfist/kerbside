@@ -207,11 +207,14 @@ that publishing runs on **self-hosted** runners.
   one. Actually mitigated by a `broken_monitor` job that files a
   separately-titled tracking issue whenever a scheduled run fails, and
   by the committed tests that prove the alarm fires at all.
-* **Thresholds chosen once and never revisited.** 50% of quota at the
-  measured rate is reached after roughly 17 months, with storage still
-  far from binding; the
-  issue body includes the current numbers so whoever reads it can judge
-  urgency rather than trusting the threshold.
+* **Thresholds chosen once and never revisited.** 300 dev releases at
+  the measured rate is reached after roughly 17 months, with storage
+  still around a sixth of the limit; the 50%-of-quota alarm is roughly
+  four years out. (This bullet previously said 50% of quota arrived at
+  17 months, contradicting decision 4 — the count threshold is the one
+  that fires first, and by a wide margin.) The issue body includes the
+  current numbers so whoever reads it can judge urgency rather than
+  trusting the threshold.
 * **Inflow reduction hides a needed rebuild.** A Rust dependency security
   fix landing as a lockfile-only bump will not reach dev wheels until the
   next substantive change. Accepted: dev wheels are CI artifacts, releases

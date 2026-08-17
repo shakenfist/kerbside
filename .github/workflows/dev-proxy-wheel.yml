@@ -44,6 +44,15 @@
 # crate features, which can change behaviour in ways the contract hash would
 # not catch.
 #
+# THIS EXCLUSION ASSUMES EVERY GIT DEPENDENCY IS REV-PINNED IN Cargo.toml.
+# `shakenfist-spice-protocol` is pinned by exact rev today, so moving to a
+# newer ryll is a `Cargo.toml` change and still publishes. Were any git
+# dependency switched to a branch or tag pin, the resolved commit would live
+# only in `Cargo.lock` and a ryll update would become a lockfile-only change
+# -- the case this exclusion is least safe for, since that crate supplies the
+# L1 firewall grammar, the link handshake, ticket decryption and mini-header
+# framing. If a git dependency ever loses its rev pin, revisit this filter.
+#
 # The cost of that exclusion, stated here because the paragraph above
 # otherwise reads as pure reassurance: Renovate lands transitive Rust
 # dependency updates as lockfile-only changes, advisory-driven ones among

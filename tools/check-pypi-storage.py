@@ -310,13 +310,15 @@ def main():
     # meaning "threshold crossed", and the workflow would file an alarm
     # carrying an empty report. Anything unexpected is a broken monitor,
     # so it exits EXIT_BROKEN.
+    #
+    # fail()'s own SystemExit passes through untouched: it derives from
+    # BaseException rather than Exception, so the clause below never sees
+    # it and its message survives.
     try:
         data = load_data(args)
         report, ok = build_report(
             args.project, data, args.limit_bytes, args.max_bytes_pct,
             args.max_dev_releases)
-    except SystemExit:
-        raise
     except Exception as exc:
         fail('FAIL: unexpected error producing the report: %r' % exc)
 
