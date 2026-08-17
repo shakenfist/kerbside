@@ -171,6 +171,22 @@ jobs:
           . /tmp/venv-test/bin/activate
           tox -eflake8
 
+      # shellcheck over tools/ and demo/. This lives here rather than in
+      # the demo-compose lane deliberately: that lane is path-filtered to
+      # demo/, so a change to tools/ -- most of the shell in the
+      # repository -- would not trigger it, which would look like
+      # coverage while checking almost nothing. sanity_checks runs
+      # whenever check_paths says code changed, and its `code` filter is
+      # '**' minus review marks and docs/, so both directories qualify.
+      #
+      # Adding a step does not rename this job, which is the thing the
+      # develop ruleset binds -- see .claude/CLAUDE.md on gate jobs.
+      - name: Lint shell with shellcheck
+        timeout-minutes: 5
+        run: |
+          . /tmp/venv-test/bin/activate
+          tox -eshellcheck
+
       - name: Attempt to install requirements
         timeout-minutes: 5
         run: |

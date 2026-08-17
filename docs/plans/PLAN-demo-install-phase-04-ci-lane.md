@@ -207,6 +207,53 @@ decision, the artifact redaction, the negative-case assertions
 and the "do not test the PyPI path" argument all survive
 scrutiny and are carried forward.
 
+## What implementation found, after the survey
+
+**12. A `workflow_dispatch`-only probe cannot be run before it
+merges.** GitHub only offers `workflow_dispatch` for workflows
+that exist on the *default* branch, so the shape decision 2
+specifies — a throwaway dispatch-only workflow — is
+untriggerable on a feature branch, which would have made the
+gating step impossible to execute before merge. Resolved by
+giving `demo-probe.yml` a `pull_request` trigger as well,
+path-filtered to itself and the probe script so it costs a
+runner only on the pull request that introduces it. The
+`workflow_dispatch` trigger is kept for re-running it later.
+
+**13. Asserting the backend-failure case on `get-console.sh`
+does not work, and passes when it should fail.** Fetching a
+`.vv` never touches the hypervisor: `get-console.sh` mints a
+token, reads the console list and verifies the TLS leg to the
+*proxy*, all of which keep working with the SPICE target
+stopped, because the proxy only dials the backend once a client
+opens a session. The first draft of `lane-assert.sh` asserted
+on `get-console.sh` here and reported a stopped backend as
+success. Phase 3's own evidence says why — it verified this
+case with `remote-viewer`, not with `get-console.sh` — so the
+assertion now drives ryll and additionally requires the proxy
+to have logged `hypervisor connection failed`.
+
+**14. Appending a non-static source to `demo/sources.yaml`
+needs zero indentation, or it crashes the daemon instead of
+tripping the guard.** The file is a list of *sources*, each
+with `source:`, `type:` and `consoles:`. An indented entry
+lands inside the demo source's `consoles:` list, which is
+malformed enough that the daemon dies at startup; the container
+never returns, `docker compose exec` fails, and the refusal
+under test never happens. The first draft did exactly that and
+reported the crash as a missing refusal. `lane-assert.sh` now
+appends a top-level source and separately checks that kerbside
+came back healthy, so a crash is reported as a crash.
+
+**15. `KERBSIDE_SOURCE=/src` cannot be built from a git
+worktree**, which matters because that is where this plan was
+written. `.git` is a file in a worktree, pointing outside the
+build context, so setuptools_scm fails with `LookupError:
+setuptools-scm was unable to detect version for /src`.
+`demo/Dockerfile` documents this and issue #326 tracks it; it
+is recorded here because every local verification of this
+phase had to be done from a throwaway clone instead.
+
 ## Decisions
 
 **1. Advisory, path-filtered — not a required check.** Carried
@@ -373,38 +420,96 @@ weakening the scope, and say so.
 
 ## Definition of done
 
-Falsifiable, each checkable by running something:
+Falsifiable, each checkable by running something. Outcome
+recorded after each.
+
+Everything that can be verified without a CI runner was
+verified against a real stack, from a throwaway clone (a
+`git worktree` cannot build `KERBSIDE_SOURCE=/src` — `.git` is
+a file there, and setuptools_scm fails with
+`LookupError: setuptools-scm was unable to detect version for
+/src`, exactly as `demo/Dockerfile` warns). ryll was built in
+Docker, `--no-default-features` and no `digest-decode`, to keep
+the host's Rust toolchains untouched.
+
+- [x] `tools/demo/lane-up.sh` brings the stack to healthy
+      against the checkout, with **no cargo step**. Verified,
+      and it confirms decision 3 directly: the image installs
+      `kerbside 0.5.1.dev4+g7e1f2fc` from the checkout and
+      `kerbside-proxy 0.5.1.dev1` from PyPI, so the daemon and
+      the binary both track develop with nothing built locally.
+- [x] `tools/demo/lane-assert.sh` passes all 8 assertions:
+      the three `.vv` fields, a ryll SPICE session over the TLS
+      port, the proxy's TLS listener, a bounded backend failure
+      (8s, matching phase 3's ~9s by hand), the proxy logging
+      that failure, and the mint guard refusing and naming the
+      offending source.
+- [x] `smoke-client.py` works against a ryll built without
+      `digest-decode` — it uses only `hello`, `status` and
+      `screenshot`, no digest verbs. Confirmed by reading it
+      and then by running it.
+- [x] The lane is red, with a message naming the actual cause,
+      for each of 4f's four deliberate breakages:
+      - wrong `insecure_port`: `ryll never created its control
+        socket`, plus the proxy's own reason —
+        `hypervisor connection failed ... error=Connection
+        refused (os error 111)`.
+      - mismatched host subject: `the certificate subject is
+        {'C': 'US', 'O': 'Kerbside CI', 'CN': 'kerbside-ci'},
+        but the .vv says to expect 'C=US,O=Wrong
+        Org,CN=wrong-cn'` — and it did not fall back to
+        plaintext.
+      - migrations hidden from the build: `Database upgrade
+        failed: Path doesn't exist:
+        /usr/local/lib/python3.13/site-packages/kerbside/migrations`.
+      - broken compose schema: `ERROR:
+        demo/docker-compose.yml is not valid`, in seconds,
+        before any image build.
+- [x] `tox -e shellcheck` passes on a clean tree — 40 scripts
+      in 2.4s — and was demonstrated to fail (`FAIL code 1`) on
+      a real violation in `demo/demo-env.sh`. Worth recording
+      how the first attempt at that demonstration went: a
+      deliberate `echo $foo` after `foo="bar"` did **not**
+      fail, because shellcheck suppresses SC2086 for provably
+      safe literals. The tool was right and the test was
+      wrong; the violation used is an unquoted command
+      substitution.
+- [x] `tox -e shellcheck`'s scope matches the
+      `.pre-commit-config.yaml` hook: `tools/` and `demo/`,
+      shell only, `-x`. Selection is by extension **or**
+      shebang, because `demo/kerbside-demo-env` and
+      `tools/run-tempest-tests` are shell without a `.sh`
+      suffix and an extension-only match would skip them
+      silently.
+- [x] No change to any gate job name; only a step added inside
+      `sanity_checks`.
+- [x] `docs/testing.md` and `.claude/CLAUDE.md` both list the
+      lane.
+- [x] No cargo or Rust step in the workflow, and the residual
+      contract-skew case is explained in a comment.
+
+Outstanding, and **not** completable without a push and a pull
+request — these are the items the phase cannot close on its
+own:
 
 - [ ] `tools/demo/probe-runner.sh` runs on a private-CI runner
-      and its output is recorded in this file, including the
-      Docker server version and whether a build reached an
-      index.
-- [ ] `.github/workflows/demo-probe.yml` does not exist at the
-      end of the phase (`test ! -e`).
+      and its output is recorded here, including the Docker
+      server version and whether a build reached an index.
+      Locally it passes and correctly reported the real 5900
+      collision on the development host.
+- [ ] `.github/workflows/demo-probe.yml` deleted once that
+      output is recorded. **Deliberately still present**: the
+      back brief gates 4b on reading the probe output, and
+      that gate has not been satisfied.
 - [ ] The lane is green on a pull request touching `demo/`.
-- [ ] The lane is red, with a message naming the actual cause,
-      for each of 4f's four deliberate breakages. The four
-      messages are quoted in this file.
-- [ ] The lane does not run on a pull request that touches
-      only `docs/` outside `installation.md` — demonstrated,
-      not assumed.
-- [ ] `git diff` shows no change to the develop ruleset and no
-      new required check, and
-      `tools/check-required-checks.sh` still passes.
-- [ ] `tox -e shellcheck` passes on a clean tree, and was
-      demonstrated to fail on a deliberate violation in
-      `demo/`.
-- [ ] `tox -e shellcheck`'s file scope and the
-      `.pre-commit-config.yaml` shellcheck hook's scope are
-      the same string.
-- [ ] `docs/testing.md` and `.claude/CLAUDE.md` both list the
-      lane.
-- [ ] A failure artifact from a real red run has been
-      downloaded and inspected: it contains the three
-      services' logs and **no live console token**
-      (`grep -c '^password='` on the uploaded `.vv` is 0).
-- [ ] No cargo or Rust step in the workflow, and the residual
-      contract-skew case is explained in a comment.
+- [ ] The lane does not run on a pull request touching only
+      `docs/` outside `installation.md` — demonstrated, not
+      assumed.
+- [ ] A failure artifact from a real red run inspected for a
+      live console token (`grep -c '^password='` is 0 after the
+      redaction step).
+- [ ] `tools/check-required-checks.sh` passes against the live
+      ruleset.
 
 ## Registration
 
