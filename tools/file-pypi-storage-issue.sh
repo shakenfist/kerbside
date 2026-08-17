@@ -23,8 +23,13 @@ if [ -z "${report_file}" ] || [ -z "${run_url}" ]; then
     exit 1
 fi
 
-if [ ! -f "${report_file}" ]; then
-    echo "report file not found: ${report_file}" >&2
+# -s rather than -f: tee creates the file even when the check produced no
+# stdout, so an existence test would happily file an alarm containing an
+# empty code fence. A contentless alarm is worse than none, because it
+# trains the reader to ignore the issue -- so refuse to file it, loudly,
+# where the failure surfaces in the Actions tab instead.
+if [ ! -s "${report_file}" ]; then
+    echo "report file missing or empty: ${report_file}" >&2
     exit 1
 fi
 

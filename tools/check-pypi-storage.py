@@ -27,6 +27,14 @@ for each, every uploaded file with its size. Summing those sizes is the
 normal client-side way to approximate project storage: PyPI does not
 publish a usage total anywhere else.
 
+That is the legacy per-project JSON endpoint, and its 'releases' key is
+the least-committed part of PyPI's API surface -- Warehouse has signalled
+an intent to slim the response down. If it goes, parse_project_data fails
+loudly rather than silently reporting zero, and the PEP 691/700 Simple
+API JSON view (GET https://pypi.org/simple/<project>/ with Accept:
+application/vnd.pypi.simple.v1+json) carries the same per-file size and
+upload-time fields under slightly different names.
+
 Usage:
     tools/check-pypi-storage.py [--project NAME] [--limit-bytes N]
         [--max-bytes-pct PCT] [--max-dev-releases N] [--input-file PATH]
@@ -56,7 +64,8 @@ DEFAULT_MAX_BYTES_PCT = 50
 DEFAULT_MAX_DEV_RELEASES = 300
 
 REQUEST_TIMEOUT_SECONDS = 30
-USER_AGENT = 'kerbside/check-pypi-storage.py (+https://github.com/shakenfist/kerbside)'
+USER_AGENT = ('kerbside/check-pypi-storage.py '
+              '(+https://github.com/shakenfist/kerbside)')
 
 # Reserved for "the check could not run", as distinct from exit 1, which
 # means the check ran and found a threshold crossed. See the module
@@ -81,7 +90,8 @@ def fetch_project_data(project):
     request = urllib.request.Request(url, headers={'User-Agent': USER_AGENT})
 
     try:
-        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+        with urllib.request.urlopen(
+                request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
             body = response.read()
     except urllib.error.HTTPError as exc:
         fail('FAIL: fetching %s returned HTTP %s' % (url, exc.code))
@@ -96,8 +106,11 @@ def fetch_project_data(project):
 def parse_project_data(body):
     """Parse the PyPI JSON API response body (bytes or str) into a dict.
 
-    Aborts via fail() if the body is not valid JSON
-    or is missing the 'releases' key the rest of this script depends on.
+    Aborts via fail() if the body is not valid JSON, or is missing the
+    'releases' key the rest of this script depends on, or if that key is
+    not the version-to-files mapping it is documented to be. The last
+    check is what turns a PyPI schema change into a legible message
+    rather than a traceback.
     """
     try:
         data = json.loads(body)
@@ -107,11 +120,15 @@ def parse_project_data(body):
     if not isinstance(data, dict) or 'releases' not in data:
         fail('FAIL: PyPI JSON response is missing the "releases" key')
 
+    if not isinstance(data['releases'], dict):
+        fail('FAIL: PyPI JSON "releases" is %s, expected an object'
+             % type(data['releases']).__name__)
+
     return data
 
 
 def summarise(data):
-    """Reduce a parsed PyPI JSON API response to the numbers this check needs.
+    """Reduce a parsed PyPI response to the numbers this check needs.
 
     Returns a dict with total_bytes, final_versions and dev_versions
     (both lists of version strings, unsorted -- sorting dev versions by
@@ -144,11 +161,13 @@ def summarise(data):
 
 
 def oldest_and_newest_dev_upload(data, dev_versions):
-    """Return (oldest, newest) dev version strings by earliest upload_time.
+    """Return (oldest, newest) dev versions by earliest upload_time.
 
-    Falls back to string sort if a version has no files (and so no
-    upload_time) at all. Returns (None, None) if there are no dev
-    versions.
+    A version whose files have all been removed has no upload_time and
+    so sorts first, making it the reported oldest. That is harmless
+    here: such a version is exactly one a previous prune already
+    emptied, and so is exactly the one a reader should see first.
+    Returns (None, None) if there are no dev versions.
     """
     if not dev_versions:
         return None, None
@@ -163,19 +182,21 @@ def oldest_and_newest_dev_upload(data, dev_versions):
 
 
 def format_bytes(num_bytes):
-    """Format a byte count as both MB and GB for a human-readable report."""
+    """Format a byte count as both MB and GB, for a human-readable report."""
     mb = num_bytes / 1000 ** 2
     gb = num_bytes / 1000 ** 3
     return '%.1f MB (%.3f GB)' % (mb, gb)
 
 
-def build_report(project, data, limit_bytes, max_bytes_pct, max_dev_releases):
-    """Return (report_text, ok) where ok is False if either threshold is crossed."""
+def build_report(project, data, limit_bytes, max_bytes_pct,
+                 max_dev_releases):
+    """Return (report_text, ok); ok is False if a threshold is crossed."""
     summary = summarise(data)
     total_bytes = summary['total_bytes']
     final_count = len(summary['final_versions'])
     dev_count = len(summary['dev_versions'])
-    oldest_dev, newest_dev = oldest_and_newest_dev_upload(data, summary['dev_versions'])
+    oldest_dev, newest_dev = oldest_and_newest_dev_upload(
+        data, summary['dev_versions'])
 
     pct_of_limit = (total_bytes / limit_bytes) * 100 if limit_bytes else 0.0
 
@@ -185,28 +206,34 @@ def build_report(project, data, limit_bytes, max_bytes_pct, max_dev_releases):
     lines.append('')
     lines.append('Total size: %s' % format_bytes(total_bytes))
     lines.append('Limit:      %s' % format_bytes(limit_bytes))
-    lines.append('Usage:      %.2f%% of the limit (threshold: %s%%)' % (pct_of_limit, max_bytes_pct))
+    lines.append('Usage:      %.2f%% of the limit (threshold: %s%%)'
+                 % (pct_of_limit, max_bytes_pct))
     lines.append('')
     lines.append('Final releases: %d' % final_count)
-    lines.append('Dev releases:   %d (threshold: %d)' % (dev_count, max_dev_releases))
+    lines.append('Dev releases:   %d (threshold: %d)'
+                 % (dev_count, max_dev_releases))
     if oldest_dev is not None:
         lines.append('Oldest dev version: %s' % oldest_dev)
         lines.append('Newest dev version: %s' % newest_dev)
     else:
         lines.append('No dev releases found.')
 
+    # These two strings are the body of the GitHub issue an operator
+    # reads months from now to decide whether to spend an evening
+    # pruning by hand, so they state the total, the limit and the
+    # threshold once each rather than restating the percentage.
     problems = []
     if pct_of_limit >= max_bytes_pct:
         threshold_bytes = limit_bytes * max_bytes_pct / 100
         problems.append(
-            'storage is %.2f%% of the limit, %.2f points at or above the %s%% threshold '
-            '(%s at or above the %s threshold amount)'
-            % (pct_of_limit, pct_of_limit - max_bytes_pct, max_bytes_pct,
-               format_bytes(total_bytes), format_bytes(threshold_bytes)))
+            'storage: %s of %s used (%.2f%%), at or above the %s%% '
+            'threshold (%s)'
+            % (format_bytes(total_bytes), format_bytes(limit_bytes),
+               pct_of_limit, max_bytes_pct, format_bytes(threshold_bytes)))
     if dev_count >= max_dev_releases:
         problems.append(
-            'dev release count is %d, %d at or above the %d threshold'
-            % (dev_count, dev_count - max_dev_releases, max_dev_releases))
+            'dev release count is %d, at or above the %d threshold'
+            % (dev_count, max_dev_releases))
 
     lines.append('')
     if problems:
@@ -219,39 +246,68 @@ def build_report(project, data, limit_bytes, max_bytes_pct, max_dev_releases):
     return '\n'.join(lines), not problems
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+def build_parser():
+    """Return the argument parser for this script."""
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         '--project', default=DEFAULT_PROJECT,
         help='PyPI project name to check (default: %s)' % DEFAULT_PROJECT)
     parser.add_argument(
         '--limit-bytes', type=int, default=DEFAULT_LIMIT_BYTES,
-        help='PyPI project storage limit in bytes (default: %d, i.e. 10 GB)' % DEFAULT_LIMIT_BYTES)
+        help='PyPI project storage limit in bytes (default: %d, i.e. 10 GB)'
+        % DEFAULT_LIMIT_BYTES)
     parser.add_argument(
         '--max-bytes-pct', type=float, default=DEFAULT_MAX_BYTES_PCT,
-        help='Alarm when usage reaches this percentage of --limit-bytes (default: %s)'
-        % DEFAULT_MAX_BYTES_PCT)
+        help='Alarm when usage reaches this percentage of --limit-bytes '
+             '(default: %s)' % DEFAULT_MAX_BYTES_PCT)
     parser.add_argument(
         '--max-dev-releases', type=int, default=DEFAULT_MAX_DEV_RELEASES,
-        help='Alarm when the dev release count reaches this many (default: %d)' % DEFAULT_MAX_DEV_RELEASES)
+        help='Alarm when the dev release count reaches this many '
+             '(default: %d)' % DEFAULT_MAX_DEV_RELEASES)
     parser.add_argument(
         '--input-file', metavar='PATH',
-        help='Read the PyPI JSON API response from this file instead of the network '
-             '(bypasses the network entirely; exists so the thresholds can be tested)')
-    args = parser.parse_args()
+        help='Read the PyPI JSON API response from this file instead of '
+             'the network (bypasses the network entirely; exists so the '
+             'thresholds can be tested)')
+    return parser
 
-    if args.input_file:
-        try:
-            with open(args.input_file, 'rb') as handle:
-                body = handle.read()
-        except OSError as exc:
-            fail('FAIL: could not read %s: %s' % (args.input_file, exc))
-        data = parse_project_data(body)
-    else:
-        data = fetch_project_data(args.project)
 
-    report, ok = build_report(
-        args.project, data, args.limit_bytes, args.max_bytes_pct, args.max_dev_releases)
+def load_data(args):
+    """Return the parsed PyPI response, from --input-file or the network."""
+    if not args.input_file:
+        return fetch_project_data(args.project)
+
+    try:
+        with open(args.input_file, 'rb') as handle:
+            body = handle.read()
+    except OSError as exc:
+        fail('FAIL: could not read %s: %s' % (args.input_file, exc))
+
+    return parse_project_data(body)
+
+
+def main():
+    args = build_parser().parse_args()
+
+    # The three-way exit contract is enforced structurally here, not
+    # only at the call sites that use fail(). An exception nobody
+    # anticipated -- a PyPI schema surprise, a null size -- would
+    # otherwise reach the interpreter and exit 1, which is the code
+    # meaning "threshold crossed", and the workflow would file an alarm
+    # carrying an empty report. Anything unexpected is a broken monitor,
+    # so it exits EXIT_BROKEN.
+    try:
+        data = load_data(args)
+        report, ok = build_report(
+            args.project, data, args.limit_bytes, args.max_bytes_pct,
+            args.max_dev_releases)
+    except SystemExit:
+        raise
+    except Exception as exc:
+        fail('FAIL: unexpected error producing the report: %r' % exc)
+
     print(report)
 
     return 0 if ok else 1

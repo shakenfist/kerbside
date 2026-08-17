@@ -220,8 +220,22 @@ that publishing runs on **self-hosted** runners.
 ## Definition of done
 
 * `tools/check-pypi-storage.py` exits 1 on a fixture that crosses each
-  threshold and 0 on one that does not, with both runs recorded at
-  review; run live against PyPI it reports the real numbers and exits 0.
+  threshold and 0 on one that does not; run live against PyPI it reports
+  the real numbers and exits 0. Pinned by
+  `kerbside/tests/unit/test_check_pypi_storage.py` rather than left as
+  one-time manual fixture runs — a run recorded at review proves the
+  code worked once, which is not what a watchdog needs. The suite covers
+  both boundaries in both directions (the comparison is `>=`), the
+  dev/final split, ordering by `upload_time` rather than version string,
+  and the three-way exit contract end to end through `main()`.
+* Exit 1 is reachable only by a genuine threshold crossing. That is
+  enforced structurally, by a guard around `main()`'s body rather than
+  only at the call sites that use `fail()`: an exception nobody
+  anticipated otherwise reaches the interpreter and exits 1, which is
+  the code the workflow reads as "file an alarm", and the alarm would
+  carry an empty report. Two such cases were found in review and are
+  pinned as regression tests — a `releases` value that is not a mapping,
+  and a file entry with a null `size`.
 * `pypi-storage-check.yml` grants `issues: write` only to the job that
   files the issue, and no job in it holds any PyPI credential — there is
   still no PyPI password or token anywhere in the repo

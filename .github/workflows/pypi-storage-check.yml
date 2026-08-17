@@ -63,7 +63,13 @@ jobs:
           esac
         shell: bash
 
+      # always(), so the one run a human is asked to investigate -- the
+      # exit-2 broken-monitor path -- is not the one run with no
+      # attachment. The report file may be empty in that case;
+      # file-pypi-storage-issue.sh refuses an empty report, and this job
+      # never reaches it anyway.
       - name: Upload report
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: pypi-storage-report
