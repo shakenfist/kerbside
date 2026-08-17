@@ -96,19 +96,19 @@ wrong.
 
 ## Building against a checkout
 
-The image installs kerbside from the checkout you are sitting in.
-That is the default and needs no arguments. To build against the
-released PyPI package instead:
+The image installs the released `kerbside` from PyPI, so what you
+evaluate is what you can install. That is the default and needs no
+arguments. To build the checkout you are sitting in instead:
 
 ```bash
-KERBSIDE_SOURCE=kerbside docker compose build kerbside
+KERBSIDE_SOURCE=/src docker compose build kerbside
 ```
 
-The default *should* be the released package — a demo that silently
-tests unreleased code works for the maintainer and fails for everyone
-else. It is not, yet, because `kerbside db upgrade` is newer than the
-current release and the entrypoint needs it. `demo/Dockerfile` has the
-detail and says when to flip it back.
+That form is what the CI lane uses, and it asks more of your
+environment than the default does: it needs the repository's git
+metadata in the build context, so it must be run from an ordinary
+clone rather than a `git worktree`. `demo/Dockerfile` explains why,
+and issue #326 tracks the underlying packaging fragility.
 
 ## Where to go next
 
