@@ -43,6 +43,14 @@
 # deliberately still a trigger: it carries direct dependency versions and
 # crate features, which can change behaviour in ways the contract hash would
 # not catch.
+#
+# The cost of that exclusion, stated here because the paragraph above
+# otherwise reads as pure reassurance: Renovate lands transitive Rust
+# dependency updates as lockfile-only changes, advisory-driven ones among
+# them, and after this exclusion those do not reach published dev wheels
+# until some other substantive change to `rust/**` happens. To push one out
+# immediately, run this workflow via `workflow_dispatch` on develop with the
+# dry-run input turned off.
 
 name: Dev proxy wheel
 

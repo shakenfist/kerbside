@@ -195,10 +195,18 @@ that publishing runs on **self-hosted** runners.
 
 * **The monitor silently stops working** (PyPI changes the JSON schema,
   the network fails) and the alarm never fires — the classic failure of
-  a watchdog nobody watches. Mitigated by the script exiting non-zero on
-  fetch or parse failure, which fails the workflow and so surfaces in the
-  normal failed-workflow path rather than being swallowed; step 5a's
-  brief requires the fixture tests that prove the alarm fires at all.
+  a watchdog nobody watches. The original mitigation claimed here — that
+  the script exits non-zero and so "surfaces in the normal
+  failed-workflow path" — was wrong, and review caught it: the normal
+  failed-workflow path is a red entry in the Actions tab, which is
+  precisely the alerting mechanism this workflow's own header says
+  alerts nobody. It bites harder here than for the nightly lanes,
+  because those are expected green daily and a week of red gets noticed,
+  whereas this check is designed to report nothing for years, so silence
+  from a broken monitor is indistinguishable from silence from a healthy
+  one. Actually mitigated by a `broken_monitor` job that files a
+  separately-titled tracking issue whenever a scheduled run fails, and
+  by the committed tests that prove the alarm fires at all.
 * **Thresholds chosen once and never revisited.** 50% of quota at the
   measured rate is reached after roughly 17 months, with storage still
   far from binding; the

@@ -198,7 +198,7 @@ def build_report(project, data, limit_bytes, max_bytes_pct,
     oldest_dev, newest_dev = oldest_and_newest_dev_upload(
         data, summary['dev_versions'])
 
-    pct_of_limit = (total_bytes / limit_bytes) * 100 if limit_bytes else 0.0
+    pct_of_limit = (total_bytes / limit_bytes) * 100
 
     lines = []
     lines.append('PyPI storage report for %s' % project)
@@ -206,7 +206,11 @@ def build_report(project, data, limit_bytes, max_bytes_pct,
     lines.append('')
     lines.append('Total size: %s' % format_bytes(total_bytes))
     lines.append('Limit:      %s' % format_bytes(limit_bytes))
-    lines.append('Usage:      %.2f%% of the limit (threshold: %s%%)'
+    # %g rather than %s for the threshold: argparse hands us a float, so
+    # %s renders the default as "50" but an explicitly passed
+    # --max-bytes-pct 50 as "50.0", which reads like two different
+    # settings in two different reports.
+    lines.append('Usage:      %.2f%% of the limit (threshold: %g%%)'
                  % (pct_of_limit, max_bytes_pct))
     lines.append('')
     lines.append('Final releases: %d' % final_count)
@@ -226,7 +230,7 @@ def build_report(project, data, limit_bytes, max_bytes_pct,
     if pct_of_limit >= max_bytes_pct:
         threshold_bytes = limit_bytes * max_bytes_pct / 100
         problems.append(
-            'storage: %s of %s used (%.2f%%), at or above the %s%% '
+            'storage: %s of %s used (%.2f%%), at or above the %g%% '
             'threshold (%s)'
             % (format_bytes(total_bytes), format_bytes(limit_bytes),
                pct_of_limit, max_bytes_pct, format_bytes(threshold_bytes)))
@@ -290,6 +294,14 @@ def load_data(args):
 
 def main():
     args = build_parser().parse_args()
+
+    # A zero or negative limit is not a way to disable the byte alarm --
+    # it is a typo or a bad workflow edit. Silently reporting 0% and
+    # "both thresholds are clear" would be a watchdog answering a
+    # question it never actually asked, so refuse it as a broken check.
+    if args.limit_bytes <= 0:
+        fail('FAIL: --limit-bytes must be positive, got %d'
+             % args.limit_bytes)
 
     # The three-way exit contract is enforced structurally here, not
     # only at the call sites that use fail(). An exception nobody

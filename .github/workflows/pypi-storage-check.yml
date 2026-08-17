@@ -100,5 +100,36 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          tools/file-pypi-storage-issue.sh pypi-storage-report.txt \
+          tools/file-pypi-storage-issue.sh threshold pypi-storage-report.txt \
+              "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  # A broken monitor needs its own alarm. The check job failing turns the
+  # Actions tab red, and this whole workflow exists on the premise that a
+  # red entry in the Actions tab alerts nobody -- a premise that bites
+  # harder here than for the nightly lanes, because those are expected to
+  # be green daily and a week of red gets noticed, whereas this check is
+  # designed to say nothing at all for years. Without this job, a PyPI
+  # schema change would break every weekly run and the resulting silence
+  # would be indistinguishable from "the budget is fine".
+  #
+  # Gated on schedule, unlike threshold_issue: a workflow_dispatch run
+  # has a human watching it who can already see the failure, whereas a
+  # crossed threshold is worth recording whenever it is discovered.
+  broken_monitor:
+    name: File PyPI storage check broken issue
+    needs: check
+    if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
+    runs-on: [self-hosted, static]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: File or update the broken-monitor issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tools/file-pypi-storage-issue.sh broken \
               "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

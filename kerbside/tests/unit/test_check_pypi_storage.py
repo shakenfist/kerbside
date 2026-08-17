@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import tempfile
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -258,6 +259,68 @@ class ParseProjectDataTestCase(testtools.TestCase):
         self.assertEqual({'0.4.0': []}, data['releases'])
 
 
+class FetchProjectDataTestCase(testtools.TestCase):
+    """Every network failure must be EXIT_BROKEN, never exit 1.
+
+    This is the branch that runs in production every week, and it is the
+    one that cannot be exercised by --input-file, so it is mocked here
+    rather than left to the first real PyPI outage.
+    """
+
+    def _assert_broken(self, exception):
+        with mock.patch.object(check_pypi_storage.urllib.request,
+                               'urlopen', side_effect=exception):
+            exc = self.assertRaises(
+                SystemExit, check_pypi_storage.fetch_project_data,
+                'kerbside-proxy')
+        self.assertEqual(check_pypi_storage.EXIT_BROKEN, exc.code)
+
+    def test_http_error(self):
+        self._assert_broken(urllib.error.HTTPError(
+            'https://pypi.org/pypi/kerbside-proxy/json', 503,
+            'Service Unavailable', {}, None))
+
+    def test_url_error(self):
+        self._assert_broken(urllib.error.URLError('name resolution failed'))
+
+    def test_timeout(self):
+        self._assert_broken(TimeoutError('timed out'))
+
+    def test_generic_os_error(self):
+        self._assert_broken(OSError('connection reset'))
+
+    def test_success_is_parsed(self):
+        body = json.dumps(_data({'0.4.0': []})).encode('utf-8')
+        response = mock.MagicMock()
+        response.read.return_value = body
+        response.__enter__.return_value = response
+
+        with mock.patch.object(check_pypi_storage.urllib.request,
+                               'urlopen', return_value=response):
+            data = check_pypi_storage.fetch_project_data('kerbside-proxy')
+
+        self.assertEqual({'0.4.0': []}, data['releases'])
+
+
+class ReportFormattingTestCase(testtools.TestCase):
+    """The threshold renders the same whether defaulted or passed."""
+
+    def _usage_line(self, max_bytes_pct):
+        report, _ = check_pypi_storage.build_report(
+            'kerbside-proxy',
+            _data({'0.4.1.dev1': [_release(1, '2026-01-01T00:00:00')]}),
+            limit_bytes=1000, max_bytes_pct=max_bytes_pct,
+            max_dev_releases=300)
+        return [line for line in report.splitlines()
+                if line.startswith('Usage:')][0]
+
+    def test_integer_and_float_thresholds_render_alike(self):
+        self.assertEqual(self._usage_line(50), self._usage_line(50.0))
+
+    def test_threshold_has_no_trailing_zero(self):
+        self.assertIn('threshold: 50%', self._usage_line(50.0))
+
+
 class MainExitCodeTestCase(testtools.TestCase):
     """The three-way exit contract, exercised end to end through main().
 
@@ -327,6 +390,23 @@ class MainExitCodeTestCase(testtools.TestCase):
                             'upload_time': '2026-01-01T00:00:00'}]}))
 
         self.assertEqual(check_pypi_storage.EXIT_BROKEN, self._run(body))
+
+    def test_zero_limit_bytes_exits_broken(self):
+        """A zero limit must be refused, not silently reported as 0%."""
+        body = json.dumps(_data({
+            '0.4.1.dev1': [_release(1, '2026-01-01T00:00:00')]}))
+
+        self.assertEqual(
+            check_pypi_storage.EXIT_BROKEN,
+            self._run(body, ['--limit-bytes', '0']))
+
+    def test_negative_limit_bytes_exits_broken(self):
+        body = json.dumps(_data({
+            '0.4.1.dev1': [_release(1, '2026-01-01T00:00:00')]}))
+
+        self.assertEqual(
+            check_pypi_storage.EXIT_BROKEN,
+            self._run(body, ['--limit-bytes', '-1']))
 
     def test_unreadable_input_file_exits_broken(self):
         self._set_argv(
