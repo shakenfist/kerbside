@@ -69,6 +69,46 @@
       "sha": "c3612a3f570288c42907bec0243701344acbe3a4",
       "date": "2026-08-06"
     },
+    "kerbside/migrations/env.py": {
+      "sha": "be576fb0b1e8709138b6d01074f657fc36edb76b",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/5c8101ff14d7_sources_can_be_deleted.py": {
+      "sha": "f6e524d52a9afcba4987ad979aedfe47ec4fb3ec",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/7d1c2f36a7b3_connection_id_as_bigint.py": {
+      "sha": "0d26891fe87c8c55fc7c0126f1aae1e81e0ae20e",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/9a3f1c7b2e40_proxychannels_surrogate_id.py": {
+      "sha": "bf0e6343896a937f9eba2ecc6eb6a82740b6e545",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/ad47e96baff6_initial_schema.py": {
+      "sha": "17858c0fca8c677897223315c2d889b947c2dc70",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/bb26023f0c98_remove_flavor_column.py": {
+      "sha": "9652b3a947dae9e0fa22f1ed8397b96a6db5a343",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/c4e7a1b9d2f3_session_terminations.py": {
+      "sha": "34597ad33c7ed39acf11ab025874aacb15775907",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/cdb5c3529858_sf_token_tables.py": {
+      "sha": "8c28ea4b9a7d85a9fa80557ace4a865d2976cf9f",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/e1a4c7d2f9b6_auditevents_pid_as_string.py": {
+      "sha": "d5b53b8aede63d5b1a787cbcc276007c5e0324d4",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/f7b2e9c4a1d8_drop_proxychannels_session_id_fk.py": {
+      "sha": "be35c384ab3ce8217a894c1a5861810b95b8cf3d",
+      "date": "2026-08-18"
+    },
     "kerbside/rpc/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-07"
