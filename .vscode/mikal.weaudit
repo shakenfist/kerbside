@@ -558,6 +558,18 @@
     {
       "path": "demo",
       "author": "mikal"
+    },
+    {
+      "path": "etc/example-static-sources.yaml",
+      "author": "mikal"
+    },
+    {
+      "path": "etc/kerbside.conf.example",
+      "author": "mikal"
+    },
+    {
+      "path": "etc",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

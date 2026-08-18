@@ -149,6 +149,14 @@
       "sha": "0e0902827c2bbbb08bacc3267ee3c565737a59be",
       "date": "2026-08-13"
     },
+    "etc/example-static-sources.yaml": {
+      "sha": "558621b0e5ee59b1a61c784a96ea9f7281d3dcd1",
+      "date": "2026-08-18"
+    },
+    "etc/kerbside.conf.example": {
+      "sha": "60dad322b15b80e9d03c8918becd308fcf93e82f",
+      "date": "2026-08-18"
+    },
     "etc/kolla-ci-globals-overlay.yml": {
       "sha": "e11f4d65bca446150d6e2ed32a49a8fccfa0ebbc",
       "date": "2026-08-04"
