@@ -301,6 +301,18 @@
       "sha": "291f5057d4b3c808d60ca0e052975c79464e48b8",
       "date": "2026-08-08"
     },
+    "rust/kerbside-proxy/Dockerfile": {
+      "sha": "9983de1064b7c477aa988cab490d34b2901556c1",
+      "date": "2026-08-18"
+    },
+    "rust/kerbside-proxy/README.md": {
+      "sha": "e827f685f04ba9e4f951d6203f384be5db2bf918",
+      "date": "2026-08-18"
+    },
+    "rust/kerbside-proxy/build.rs": {
+      "sha": "986a0e57e486d95869634f76d307579210f6d31e",
+      "date": "2026-08-18"
+    },
     "rust/kerbside-proxy/src/allowlist.rs": {
       "sha": "f2adab6fb95e5085f48b9b558926b1ff457e1636",
       "date": "2026-08-15"
@@ -312,6 +324,10 @@
     "rust/kerbside-proxy/src/listen.rs": {
       "sha": "93dca4c1400e57b32bff1302231d4d544b191568",
       "date": "2026-08-15"
+    },
+    "rust/kerbside-proxy/src/main.rs": {
+      "sha": "22f1ccbbad414a08a886a1aaf8af9eda459b557b",
+      "date": "2026-08-18"
     },
     "rust/kerbside-proxy/src/metrics.rs": {
       "sha": "521fa7d251dc05fbf4d92f440069ae8d73570ddb",

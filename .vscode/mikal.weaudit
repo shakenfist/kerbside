@@ -570,6 +570,26 @@
     {
       "path": "etc",
       "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/main.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/Dockerfile",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/build.rs",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
