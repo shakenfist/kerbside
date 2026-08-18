@@ -405,6 +405,10 @@
       "sha": "893254104cf2f052c3e5ba07993cac6c0242d4ea",
       "date": "2026-08-15"
     },
+    "tools/build-proxy-wheel.sh": {
+      "sha": "f006126d6fed7486f2a4920247b99f62640c2259",
+      "date": "2026-08-18"
+    },
     "tools/check-required-checks.sh": {
       "sha": "dc86bff62d2de280a5da40d61385de27367b775d",
       "date": "2026-08-15"
@@ -424,6 +428,10 @@
     "tools/direct-qemu/generate-tls.sh": {
       "sha": "b271b8113594b50f461ce653cca8252fe2270a47",
       "date": "2026-08-15"
+    },
+    "tools/direct-qemu/install-proxy-wheel.sh": {
+      "sha": "9266fc276c757b71e0649167abc81b3b735282c8",
+      "date": "2026-08-18"
     },
     "tools/direct-qemu/lane-down.sh": {
       "sha": "d800366551ac787c228b18f6b20da5e2708f7361",
@@ -481,6 +489,10 @@
       "sha": "f8631679d5a7e3c8fb244cedd1da9004768365c0",
       "date": "2026-08-15"
     },
+    "tools/direct-qemu/verify-terminate-live.sh": {
+      "sha": "ad344ca4713fbee4c2139b3504ed1ae3ca88ab6e",
+      "date": "2026-08-18"
+    },
     "tools/direct-qemu/wait-for-banner.sh": {
       "sha": "17c8a378a6a96c9c359eee505ee473f55a219f61",
       "date": "2026-08-09"
@@ -496,6 +508,26 @@
     "tools/flake8wrap.sh": {
       "sha": "97ee081c8257372a4de994eba1b9e2b5434da1d2",
       "date": "2026-08-06"
+    },
+    "tools/gen-protos.sh": {
+      "sha": "e56d238dbdaa31490f83a34766e73e2361b0c5df",
+      "date": "2026-08-18"
+    },
+    "tools/ovirt-e2e/README.md": {
+      "sha": "20e8fe84c47bc6851f0246d60057e4c5ae8d6027",
+      "date": "2026-08-18"
+    },
+    "tools/ovirt-e2e/deploy-kerbside.sh": {
+      "sha": "88df300309fac461076d44ad818d316a32073fe3",
+      "date": "2026-08-18"
+    },
+    "tools/ovirt-e2e/drive-console.py": {
+      "sha": "5abf82e72acb8a1e4fd2f8fa5b43365d8da8ff29",
+      "date": "2026-08-18"
+    },
+    "tools/ovirt-e2e/gen-sources.py": {
+      "sha": "c26f5d39cf2511577c68452925973be54f23a174",
+      "date": "2026-08-18"
     },
     "tools/pin-indirect-dependencies.sh": {
       "sha": "241b462c281d6e33fa1d4023d15762a95d69112a",
@@ -549,9 +581,21 @@
       "sha": "e8db5e0a6203e02464c53e3a8ffe74b31ff5b799",
       "date": "2026-08-15"
     },
+    "tools/stamp-dev-proxy-version.sh": {
+      "sha": "8669f794ef3761bb20e245154a815beba2d5cf79",
+      "date": "2026-08-18"
+    },
+    "tools/stamp-proxy-version.sh": {
+      "sha": "f89c1f63e9a6f77a98f8a67ba61a8c204af97ec8",
+      "date": "2026-08-18"
+    },
     "tools/test-ovirt-console.py": {
       "sha": "c3ee796b2c44079bcacd21fa166e104e9a3930b1",
       "date": "2026-08-06"
+    },
+    "tools/verify-wheel-stamping.sh": {
+      "sha": "37c6a675aaded9b471302a04f962f94100175999",
+      "date": "2026-08-18"
     }
   }
 }

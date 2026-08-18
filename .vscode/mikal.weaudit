@@ -630,6 +630,50 @@
     {
       "path": "tempest-plugin/kerbside_tempest_plugin/tests",
       "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/install-proxy-wheel.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/verify-terminate-live.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/ovirt-e2e/deploy-kerbside.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/ovirt-e2e/drive-console.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/ovirt-e2e/gen-sources.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/ovirt-e2e/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/build-proxy-wheel.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/gen-protos.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/stamp-dev-proxy-version.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/stamp-proxy-version.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/verify-wheel-stamping.sh",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
