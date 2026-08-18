@@ -101,6 +101,46 @@
       "sha": "820c1131f4b682b14900f1b58bd94301b5b4a9d7",
       "date": "2026-08-18"
     },
+    "demo/Dockerfile": {
+      "sha": "e94b4457477d238ad2f2f5cc143a8859eff0145a",
+      "date": "2026-08-18"
+    },
+    "demo/README.md": {
+      "sha": "5adb19e2b7ab41965a9e3399bb8dd745f9d58ee4",
+      "date": "2026-08-18"
+    },
+    "demo/demo-env.sh": {
+      "sha": "a5cbc188afcbf3811142a84e55aaa423c6e0e60a",
+      "date": "2026-08-18"
+    },
+    "demo/docker-compose.yml": {
+      "sha": "81f2777457eb8e6836d125f6b8bab0b5acdc205c",
+      "date": "2026-08-18"
+    },
+    "demo/entrypoint.sh": {
+      "sha": "8401f99b8352e66059b6fc85cea84b1b44b34d1f",
+      "date": "2026-08-18"
+    },
+    "demo/get-console.sh": {
+      "sha": "a5af2d69d9dae1bec75c5179b7b695c750af2009",
+      "date": "2026-08-18"
+    },
+    "demo/kerbside-demo-env": {
+      "sha": "5483df34682fbc8de78eb33a845d31fe0f16a473",
+      "date": "2026-08-18"
+    },
+    "demo/kerbside.ini": {
+      "sha": "b31de6116ea70559b0706b9512049fea6ce661cd",
+      "date": "2026-08-18"
+    },
+    "demo/sources.yaml": {
+      "sha": "f137eedf566fcd074bd43730d13974795fcc3743",
+      "date": "2026-08-18"
+    },
+    "demo/spice-target/Dockerfile": {
+      "sha": "cd7c80a6bf0b5aaf393b3ce9a542c53e41b22ba9",
+      "date": "2026-08-18"
+    },
     "docs/console-sources.md": {
       "sha": "d7f5bfd56c00f99929ec1727df7eac2d28b73979",
       "date": "2026-08-13"

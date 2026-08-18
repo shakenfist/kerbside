@@ -510,6 +510,54 @@
     {
       "path": ".github/workflows",
       "author": "mikal"
+    },
+    {
+      "path": "demo/spice-target/Dockerfile",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/spice-target",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/demo-env.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/docker-compose.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/Dockerfile",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/entrypoint.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/get-console.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/kerbside-demo-env",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/kerbside.ini",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/sources.yaml",
+      "author": "mikal"
+    },
+    {
+      "path": "demo",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
