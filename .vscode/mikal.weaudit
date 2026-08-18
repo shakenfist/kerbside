@@ -444,14 +444,6 @@
       "author": "mikal"
     },
     {
-      "path": ".claude/CLAUDE.md",
-      "author": "mikal"
-    },
-    {
-      "path": ".claude",
-      "author": "mikal"
-    },
-    {
       "path": "AGENTS.md",
       "author": "mikal"
     },
@@ -464,19 +456,11 @@
       "author": "mikal"
     },
     {
-      "path": "RELEASE-SETUP.md",
-      "author": "mikal"
-    },
-    {
       "path": "ARCHITECTURE.md",
       "author": "mikal"
     },
     {
       "path": ".github/workflows/codeql-analysis.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/dev-proxy-wheel.yml",
       "author": "mikal"
     },
     {
@@ -505,10 +489,6 @@
     },
     {
       "path": ".github/workflows/sf-e2e-functional.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows",
       "author": "mikal"
     },
     {

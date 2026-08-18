@@ -1,10 +1,6 @@
 {
   "version": 1,
   "files": {
-    ".claude/CLAUDE.md": {
-      "sha": "db3451c58bf8ce81f3238aad0eb25998e9ba54d3",
-      "date": "2026-08-18"
-    },
     ".claude/skills/add-database-migration.md": {
       "sha": "08654bd241fe61c40b99388da625e30733681d64",
       "date": "2026-08-15"
@@ -19,10 +15,6 @@
     },
     ".github/workflows/codeql-analysis.yml": {
       "sha": "296eca7815ac6582bf4fa9d0714869ac1eab574a",
-      "date": "2026-08-18"
-    },
-    ".github/workflows/dev-proxy-wheel.yml": {
-      "sha": "be2feb34c3aa6981ff94025b9562315bdc0bf2df",
       "date": "2026-08-18"
     },
     ".github/workflows/direct-qemu-functional.yml": {
@@ -95,10 +87,6 @@
     },
     "README.md": {
       "sha": "32e9538d08f646af6d7ccfb4b92f0de435b7e1cf",
-      "date": "2026-08-18"
-    },
-    "RELEASE-SETUP.md": {
-      "sha": "820c1131f4b682b14900f1b58bd94301b5b4a9d7",
       "date": "2026-08-18"
     },
     "demo/Dockerfile": {
