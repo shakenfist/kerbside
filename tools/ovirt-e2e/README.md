@@ -48,20 +48,22 @@ Different hosts, same port numbers.
 
 ## The path being proven
 
-```
-ryll --headless
-  -> kerbside proxy        127.0.0.1:5901  (plaintext)
-                           127.0.0.1:5900  (TLS, proxy CA)
-  -> hypervisor            10.0.2.2:5900   -> NEED_SECURED
-  -> hypervisor            10.0.2.2:5901   TLS: verified
-                           against the engine CA, subject
-                           pinned to O=local,CN=ovirt.local
-  -> qemu on the oVirt host, authenticated with a fresh
-     engine-issued graphics-console ticket
+```mermaid
+flowchart TD
+    ryll["ryll --headless"]
+    proxy["kerbside proxy (on the runner)<br/>127.0.0.1:5901 (plaintext)<br/>127.0.0.1:5900 (TLS, proxy CA)"]
+    plain["hypervisor 10.0.2.2:5900"]
+    secure["hypervisor 10.0.2.2:5901<br/>TLS: verified against the engine CA,<br/>subject pinned to O=local,CN=ovirt.local"]
+    qemu["qemu on the oVirt host<br/>authenticated with a fresh<br/>engine-issued graphics-console ticket"]
+
+    ryll --> proxy
+    proxy --> plain
+    plain -- "NEED_SECURED" --> secure
+    secure --> qemu
 ```
 
-Everything on the right of the first arrow is code that, before this
-lane, had never run in CI.
+Everything past the first arrow is code that, before this lane, had never
+run in CI.
 
 ## Step flow
 
