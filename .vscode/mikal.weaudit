@@ -466,6 +466,10 @@
     {
       "path": "RELEASE-SETUP.md",
       "author": "mikal"
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
