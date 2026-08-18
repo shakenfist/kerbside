@@ -32,6 +32,20 @@ VV="${WORKDIR}/demo-console.vv"
 RYLL_SOCK="${WORKDIR}/ryll-demo.sock"
 RYLL_LOG="${WORKDIR}/ryll-demo.log"
 
+# Unix socket paths are capped at ~108 bytes by the kernel, and ryll's
+# control socket lives under WORKDIR. Overrun that and the bind fails
+# silently: this script then reports "ryll never created its control
+# socket" for a session that in fact connected perfectly, which is a
+# genuinely misleading half hour. The CI default is short; an override
+# under a long scratch path is how you get here.
+if [ "${#RYLL_SOCK}" -gt 100 ]; then
+    echo "ERROR: WORKDIR is too long: ${RYLL_SOCK} is ${#RYLL_SOCK} bytes," >&2
+    echo "  and a Unix socket path cannot exceed about 108. ryll would" >&2
+    echo "  fail to bind its control socket and this script would blame" >&2
+    echo "  the session. Use a shorter WORKDIR." >&2
+    exit 1
+fi
+
 # How long a console request may take once the backend is gone before we
 # call it a hang. The proxy's own backend connection attempt failed in
 # about 9 seconds when this was measured by hand during phase 3, so 60
@@ -52,6 +66,18 @@ ok() {
 bad() {
     echo "  FAIL: $1" >&2
     FAILURES+=("$1")
+}
+
+# Counts matching lines in the proxy's log so far. Used in before/after
+# pairs rather than as an absolute count, because `docker compose logs`
+# returns the whole history of the container: an absolute count passes on
+# a line left over from an earlier session, which makes the assertion
+# about the stack's past rather than about the thing just done. A fresh
+# CI stack hides that, and re-running this script by hand exposes it.
+# `|| true` because grep -c exits 1 on no matches, and under pipefail
+# that would kill the assignment and the script with it.
+count_proxy_log() {
+    docker compose logs --no-color kerbside 2>&1 | grep -c "$1" || true
 }
 
 # demo/sources.yaml is edited in place by assertion 4. Restoring it from
@@ -118,6 +144,7 @@ if ! command -v ryll > /dev/null 2>&1; then
     bad 'ryll is not on PATH; the workflow should have built it'
 else
     rm -f "${RYLL_SOCK}"
+    RELAYED_BEFORE="$(count_proxy_log 'hypervisor connection successful')"
     # --file rather than a positional argument, and --verbose because the
     # headless event loop otherwise swallows connect_channel errors as
     # "Connection task completed" -- with a TLS leg under test that is
@@ -142,9 +169,16 @@ else
         # one -- surface that alongside, because it names the actual
         # fault.
         bad 'ryll never created its control socket'
+        # `|| true` is load-bearing, for the same reason as the `|| RC=$?`
+        # below. Under `set -o pipefail` a grep that matches nothing makes
+        # the whole pipeline exit 1, the assignment fails, and `set -e`
+        # kills the script -- which meant that when the proxy had NO
+        # matching reason to report, this diagnostic block died instead of
+        # falling through to print the ryll log. That is exactly the case
+        # where the ryll log is the only evidence there is.
         PROXY_REASON="$(docker compose logs --no-color kerbside 2>&1 \
             | grep -E 'hypervisor connection failed|connection refused' \
-            | tail -3)"
+            | tail -3 || true)"
         if [ -n "${PROXY_REASON}" ]; then
             echo "--- the proxy's reason ---" >&2
             echo "${PROXY_REASON}" >&2
@@ -158,22 +192,77 @@ else
         # opened".
         if python3 "${REPO_ROOT}/tools/direct-qemu/smoke-client.py" \
                 "${RYLL_SOCK}" 2>&1 | tee -a "${RYLL_LOG}"; then
-            ok 'ryll established a SPICE session over the TLS port'
+            ok 'ryll established a SPICE session'
         else
             bad 'ryll could not establish a SPICE session'
         fi
-    fi
 
-    # Every connection must have crossed the TLS port. A session that
-    # quietly ran over 5901 while the TLS leg was broken looks identical
-    # to a working one from the client's side, and that is the failure
-    # this whole demo is arranged to make visible.
-    TLS_CONNS="$(docker compose logs --no-color kerbside 2>&1 \
-        | grep -c 'secure SPICE listener bound' || true)"
-    if [ "${TLS_CONNS}" -ge 1 ]; then
-        ok 'the proxy bound its TLS listener'
-    else
-        bad 'the proxy never reported binding a TLS listener'
+        # Which port the session actually crossed. This is the failure
+        # the whole demo is arranged to make visible: a session that
+        # quietly ran over the plaintext port with the TLS leg broken
+        # looks identical to a working one from the client's side.
+        #
+        # An earlier version of this greped the proxy log for `secure
+        # SPICE listener bound` and proved nothing. That line is emitted
+        # once at bind time by rust/kerbside-proxy/src/listen.rs, and its
+        # `insecure SPICE listener bound` sibling fires identically for
+        # the plaintext port, so the check passed whenever the proxy had
+        # merely started -- including runs where ryll never connected.
+        # Confirmed against a real lane artifact: both lines appear at
+        # startup, twice, because the daemon restarted the proxy.
+        #
+        # Both ports are published on loopback, so the honest oracle is
+        # the host's own socket table while the session is still live.
+        # Zero established sockets on the plaintext port is the property
+        # under test; a non-zero count on the TLS port is the
+        # corroborating positive. Ports come from the .vv rather than
+        # being hardcoded, so this cannot drift from what the client was
+        # actually told to use.
+        TLS_PORT="$(sed -n 's/^tls-port=//p' "${VV}" | tr -d '\r')"
+        PLAIN_PORT="$(sed -n 's/^port=//p' "${VV}" | tr -d '\r')"
+
+        if ! command -v ss > /dev/null 2>&1; then
+            # Not skipped quietly: a check that cannot run is a check
+            # that is not protecting anything, and saying so is the
+            # difference between a gap and a false sense of coverage.
+            bad 'ss is unavailable, so the session port could not be checked'
+        elif [ -z "${TLS_PORT}" ] || [ -z "${PLAIN_PORT}" ]; then
+            bad 'the .vv did not carry both port and tls-port, so the session port could not be checked'
+        else
+            established_on_port() {
+                ss -tn state established 2> /dev/null \
+                    | awk -v p=":$1\$" '$3 ~ p || $4 ~ p' \
+                    | wc -l
+            }
+            TLS_SOCKETS="$(established_on_port "${TLS_PORT}")"
+            PLAIN_SOCKETS="$(established_on_port "${PLAIN_PORT}")"
+            echo "  established sockets: ${TLS_PORT}=${TLS_SOCKETS}," \
+                "${PLAIN_PORT}=${PLAIN_SOCKETS}"
+
+            if [ "${PLAIN_SOCKETS}" -eq 0 ]; then
+                ok "no session crossed the plaintext port ${PLAIN_PORT}"
+            else
+                bad "${PLAIN_SOCKETS} established sockets on the plaintext port ${PLAIN_PORT}; the session did not stay on the TLS leg"
+            fi
+
+            if [ "${TLS_SOCKETS}" -ge 1 ]; then
+                ok "the session crossed the TLS port ${TLS_PORT}"
+            else
+                bad "no established sockets on the TLS port ${TLS_PORT} while the session was open"
+            fi
+        fi
+
+        # A per-connection line, not a bind-time one: this is the proxy
+        # saying it relayed channels to the hypervisor. Counted as a
+        # delta across this session, so a line from an earlier session
+        # cannot satisfy it.
+        RELAYED_AFTER="$(count_proxy_log 'hypervisor connection successful')"
+        RELAYED_NEW=$(( RELAYED_AFTER - RELAYED_BEFORE ))
+        if [ "${RELAYED_NEW}" -ge 1 ]; then
+            ok "the proxy relayed ${RELAYED_NEW} channel(s) for this session"
+        else
+            bad 'the proxy did not report relaying any channel for this session'
+        fi
     fi
 
     kill "$(cat "${WORKDIR}/ryll.pid")" 2> /dev/null || true
@@ -197,7 +286,11 @@ fi
 # names the cause.
 
 echo "[lane-assert] Stopping the SPICE target; a session must fail promptly"
-docker compose stop spice-target > /dev/null 2>&1
+# stderr kept, and the failure routed through `bad` rather than left to
+# `set -e`: discarding both streams here meant a failed stop killed the
+# script with docker's exit status and no output at all.
+docker compose stop spice-target > /dev/null \
+    || bad 'could not stop spice-target, so the backend-failure case did not run'
 
 if ! command -v ryll > /dev/null 2>&1; then
     bad 'ryll is not on PATH, so the backend-failure case could not be driven'
@@ -208,12 +301,20 @@ else
         > "${WORKDIR}/backend-gone-fetch.log" 2>&1 || true
 
     rm -f "${WORKDIR}/ryll-fail.sock"
+    FAILLOG_BEFORE="$(count_proxy_log 'hypervisor connection failed')"
     START="$(date +%s)"
+    # `|| RC=$?`, not a bare invocation followed by `RC=$?`. This script
+    # runs under `set -e`, so a bare non-zero exit here kills it before
+    # the next line ever runs -- which made the timeout branch below
+    # dead code and silently skipped every assertion after it. The two
+    # interesting outcomes are both non-zero (124 for the hang this
+    # exists to catch, and whatever ryll returns on a failed connect),
+    # so the failure has to be captured rather than fatal.
+    RC=0
     timeout "${BACKEND_FAIL_TIMEOUT}" \
         ryll --verbose --headless --file "${WORKDIR}/backend-gone.vv" \
             --control-socket "${WORKDIR}/ryll-fail.sock" \
-            > "${WORKDIR}/ryll-backend-gone.log" 2>&1
-    RC=$?
+            > "${WORKDIR}/ryll-backend-gone.log" 2>&1 || RC=$?
     ELAPSED=$(( $(date +%s) - START ))
 
     if [ "${RC}" -eq 124 ]; then
@@ -223,17 +324,37 @@ else
     fi
 
     # The proxy must say why. A client that merely gives up tells an
-    # operator nothing; this is the line that does.
-    if docker compose logs --no-color kerbside 2>&1 \
-            | grep -q 'hypervisor connection failed'; then
+    # operator nothing; this is the line that does. A delta again, so an
+    # earlier run's failure cannot stand in for this one's.
+    FAILLOG_AFTER="$(count_proxy_log 'hypervisor connection failed')"
+    if [ "$(( FAILLOG_AFTER - FAILLOG_BEFORE ))" -ge 1 ]; then
         ok 'the proxy logged the backend connection failure'
     else
-        bad 'the proxy never logged a hypervisor connection failure'
+        bad 'the proxy did not log a hypervisor connection failure for this attempt'
     fi
 fi
 
 echo "[lane-assert] Restarting the SPICE target"
-docker compose start spice-target > /dev/null 2>&1
+docker compose start spice-target > /dev/null \
+    || bad 'could not restart spice-target'
+
+# And wait for it, rather than assuming. Assertion 4 below runs against
+# the live stack, so a half-dead backend here would surface as a mint
+# failure and be attributed to the mint guard -- the same
+# wrong-attribution shape as findings 13 and 14.
+for _ in $(seq 1 60); do
+    if docker compose ps --status running --services 2> /dev/null \
+            | grep -qx 'spice-target'; then
+        break
+    fi
+    sleep 1
+done
+if docker compose ps --status running --services 2> /dev/null \
+        | grep -qx 'spice-target'; then
+    ok 'spice-target came back after the restart'
+else
+    bad 'spice-target did not come back after the restart'
+fi
 
 # ── 4. The mint guard must refuse a non-static source ────────────────
 

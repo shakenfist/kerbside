@@ -70,19 +70,42 @@ echo "=== ports the demo publishes ==="
 # holder now while it is cheap to look. 5900 is the realistic risk: it
 # is the default VNC port and any desktop or screen-sharing service on
 # the runner will have taken it.
-for port in 13002 5900 5901; do
+#
+# Privilege matters here, and getting it wrong makes the check useless:
+# `ss -tlnp` only fills in the process column for sockets owned by the
+# calling user, so unprivileged output for the realistic collision -- a
+# system VNC service on 5900 -- names the address and no holder, which
+# is exactly the information the daemon's error already gives. Every
+# other privileged action in this lane assumes passwordless sudo, so use
+# it here too and fall back to unprivileged rather than failing.
+list_listeners() {
     if command -v ss > /dev/null 2>&1; then
-        HOLDER="$(ss -tlnp 2>/dev/null | awk -v p=":${port}\$" '$4 ~ p {print; exit}')"
+        sudo -n ss -tlnp 2> /dev/null || ss -tlnp 2> /dev/null
+    elif command -v netstat > /dev/null 2>&1; then
+        sudo -n netstat -tlnp 2> /dev/null || netstat -tlnp 2> /dev/null
     else
-        HOLDER="$(netstat -tlnp 2>/dev/null | awk -v p=":${port}\$" '$4 ~ p {print; exit}')"
+        return 1
     fi
-    if [ -n "${HOLDER}" ]; then
-        echo "WARNING: port ${port} is already bound; the demo stack will fail to start"
-        echo "  ${HOLDER}"
-    else
-        echo "port ${port}: free"
-    fi
-done
+}
+
+# netstat is NOT installed on a Debian 12 base, so the absence of both
+# tools is a real possibility and must not read as "all ports free".
+if ! LISTENERS="$(list_listeners)"; then
+    echo "WARNING: neither ss nor netstat is available, so port collisions"
+    echo "  could not be checked at all. This is not the same as the ports"
+    echo "  being free; if the stack fails to bind, start here."
+else
+    for port in 13002 5900 5901; do
+        HOLDER="$(echo "${LISTENERS}" \
+            | awk -v p=":${port}\$" '$4 ~ p {print; exit}')"
+        if [ -n "${HOLDER}" ]; then
+            echo "WARNING: port ${port} is already bound; the demo stack will fail to start"
+            echo "  ${HOLDER}"
+        else
+            echo "port ${port}: free"
+        fi
+    done
+fi
 
 echo ""
 echo "=== a build container can reach a package index ==="

@@ -8,6 +8,14 @@ newer with the Compose v2 plugin, so `docker compose` rather than
 `docker-compose`. The image build uses `RUN --mount`, which needs
 BuildKit, and BuildKit is the default builder from 23.0 on.
 
+If your distribution is older than that, install from
+[Docker's own repository](https://docs.docker.com/engine/install/debian/)
+rather than from the distribution. Debian 12 is the trap worth naming:
+`apt install docker.io docker-compose` there gets Engine 20.10.24 and
+the end-of-life Python Compose v1, which provides no `docker compose`
+subcommand at all, and the build then fails on `RUN --mount` with a
+message that does not explain itself.
+
 ```bash
 docker compose up -d      # build and start; the first build takes a few minutes
 ./get-console.sh          # mint a token and write demo-console.vv

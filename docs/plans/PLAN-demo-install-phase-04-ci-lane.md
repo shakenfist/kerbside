@@ -279,10 +279,33 @@ provide the `docker compose` subcommand the demo documents.
 Verified against `sources.debian.org`, not assumed. Resolved by
 decision 9.
 
-Note that findings 5's other two questions are therefore still
-open: nothing yet establishes that the daemon can pull an image
-or that a build can reach an index on these runners. The gate in
-the back brief stays closed until a probe run answers them.
+The second run, with decision 9's install step in front of the
+probe, answered all of finding 5 and closed the gate:
+
+```
+client 29.7.2 / server 29.7.2
+Docker Compose version v5.5.0
+server version: 29.7.2
+port 13002: free
+port 5900: free
+port 5901: free
+index reachable from inside a build
+/dev/vda3       282G  4.1G  266G   2% /
+=== probe-runner complete: this runner can build and run the demo ===
+```
+
+The index check is the one that mattered, and it did the real
+thing: pulled `python:3.13-slim` from Docker Hub, then
+downloaded `kerbside_proxy-0.5.0-py3-none-manylinux_2_28_x86_64.whl`
+at 29 MB/s from inside the build. The squid also serves
+`download.docker.com` — `docker-ce`, `docker-ce-cli`,
+`containerd.io`, `docker-buildx-plugin` and
+`docker-compose-plugin` all fetched from `bookworm/stable` — and
+both proxy paths were configured from the runner's real
+environment (`http://cache.home.stillhq.com:3128`) rather than
+guessed. All three ports the demo publishes are free on these
+runners, so finding 10's collision is a development-host problem
+only.
 
 **17. The four SC2015 findings in `lane-assert.sh` were never
 linted locally**, despite step 4d's own definition of done
@@ -304,6 +327,208 @@ because pre-commit sees staged files; it only makes the tox
 environment stricter for work in progress. The empty-list guard
 in that script already records an earlier member of this same
 family of bug.
+
+**18. The redaction step ran before log collection, so it could
+not have scrubbed the logs at all** — and a real secret went out
+in the first green run's artifact because of it. Finding 8 aimed
+the redaction at the `.vv` console token, which it did handle
+(`password=REDACTED` in both `.vv` files, confirmed by
+downloading the artifact). What it missed is that MariaDB prints
+the root password it generates for `MARIADB_RANDOM_ROOT_PASSWORD`
+(`demo/docker-compose.yml:17`) straight into its own log:
+
+```
+db-1 | [Note] [Entrypoint]: GENERATED ROOT PASSWORD: <32 chars>
+```
+
+Severity is low on its own terms — the database is never
+published outside the compose network, the password is random per
+run, and the container is destroyed with the job — but it was a
+credential in an artifact downloadable by anyone who can read the
+repository, and the step meant to prevent exactly that was
+ordered so that it never could.
+
+Resolved by `tools/demo/redact-artifacts.sh`, called *after* log
+collection. It redacts both secrets and then **fails the step if
+either pattern stopped matching**, because a redaction that
+silently stops working looks identical to one that worked. It
+prints offending filenames only, never the matching line, since
+the workflow log is as public as the artifact. Verified both ways
+against the real leaked artifact from the green run: it scrubs
+the live token and the database password, and it exits 1 naming
+the file when a token is planted somewhere the patterns do not
+reach.
+
+## What review found
+
+The automated reviewer raised twelve items on pull request #336.
+Three were real defects in this phase's own work, and two of
+them are the same failure mode findings 13 and 14 already record
+— an assertion reporting the wrong thing — which is worth saying
+plainly rather than filing as three unrelated fixes.
+
+**19. `set -e` made the bounded-failure assertion dead code.**
+`lane-assert.sh` ran `timeout ... ryll ...` as a bare command
+followed by `RC=$?`. Under `set -euo pipefail` a non-zero exit
+terminates the script *before* `RC` is ever assigned. Verified
+directly: a script doing `timeout 1 sleep 5; RC=$?` exits 124
+without reaching the next line.
+
+The consequences were worse than a missed assertion. Exit 124 is
+precisely the hang this group exists to catch, so the `bad "a
+session hung..."` branch could never run; and everything after
+it — the proxy's own failure log line, and the whole of
+assertion 4 — was silently skipped, while the summary still
+reported however many assertions had passed. The lane reported 8
+passing because ryll happens to exit 0 on this path today, which
+is an accident of ryll's behaviour and not a property the script
+established. Fixed with `|| RC=$?`.
+
+**20. The "session crossed the TLS port" assertion was a
+tautology.** It grepped the proxy log for `secure SPICE listener
+bound`, which `rust/kerbside-proxy/src/listen.rs` emits once at
+*bind* time; its `insecure SPICE listener bound` sibling fires
+identically for the plaintext port. So the check passed whenever
+the proxy had merely started, including runs where the client
+never connected — and it sat outside the branch that establishes
+a session, so it passed when ryll never came up at all.
+Confirmed against the real artifact from the green run: both
+lines appear at startup, twice, because the daemon restarted the
+proxy.
+
+This mattered more than an ordinary weak assertion, because the
+silent-plaintext-fallback failure is the one thing the entire
+demo is arranged to make visible, and the `PASS:` line read as
+coverage of exactly that.
+
+Replaced with a real per-session oracle. Both ports are
+published on loopback, so the honest question is what the host's
+socket table says while the session is live: zero established
+sockets on the plaintext port is the property under test, a
+non-zero count on the TLS port is the corroborating positive,
+and both port numbers come from the `.vv` itself rather than
+being hardcoded. A separate assertion now checks a genuinely
+per-connection log line (`hypervisor connection successful`,
+which carries a `session_id`), and the old check is gone rather
+than renamed.
+
+**21. `install-docker.sh`'s idempotence short-circuit skipped
+the configuration it exists to apply.** The early `exit 0` on an
+already-usable docker also skipped the systemd drop-in and
+`~/.docker/config.json` — the two things an improved runner
+image would *not* bring with it. So the lane would have broken
+on the day the runner image grew docker, which is the day this
+script was supposed to become harmless. It failed safe rather
+than silently, but the diagnosis would have pointed at the
+probe. Now only the apt install is gated, and the daemon restart
+is guarded on the drop-in changing so the unconditional path is
+not gratuitously bouncing the daemon.
+
+The rest were accepted as written, and are worth recording
+because two of them are latent versions of bugs this plan
+already documents:
+
+- **The redaction covered only `*.vv`.** Widened to every file
+  under the artifact directory before the residual check, so a
+  token reaching a `.log` is now *fixed* rather than merely
+  reported. Retested against the leaked artifact with a token
+  planted in `logs/kerbside.log`.
+- **The port-collision check could not name a holder.**
+  `ss -tlnp` only fills the process column for the caller's own
+  sockets, so for the collision the comment names — a system VNC
+  service on 5900 — it added nothing over the daemon's error.
+  This is not hypothetical: it is exactly what happened on the
+  development host, where the 5900 holder could not be
+  identified. Now `sudo -n ss` with an unprivileged fallback.
+  Worse, `netstat` is absent from a Debian 12 base, so the
+  fallback branch reported every port free when neither tool
+  existed; that now warns explicitly.
+- **The shebang regex anchored on end-of-line**, so
+  `#!/bin/sh -e` and `#!/bin/bash -eu` were not selected. No such
+  file exists in the tree today, which makes this the third
+  member of finding 17's family: a selection bug that reads as
+  coverage. Now `\b(sh|bash|dash|ksh)\b`, verified to accept the
+  argument-carrying forms and still reject `#!/usr/bin/python3`.
+- **Two `docker compose` calls discarded both streams under
+  `set -e`**, and nothing asserted `spice-target` came back after
+  the restart, so a half-dead backend would have been reported as
+  a mint-guard failure — finding 14's wrong-attribution shape
+  again. Both routed through `bad`, with a wait-and-assert after
+  the restart.
+- **The runner-size comment implied a cargo-free lane.** It is
+  not: ryll is a cargo release build. The comment now says so and
+  carries the measured timings, which also answer the reviewer's
+  caching suggestion — at 4.5 minutes end to end there is nothing
+  to optimise.
+- **The default PyPI build path is tested by nothing.** Already
+  decision 4 and already Future work; the gap is now
+  cross-referenced from `demo/docker-compose.yml` at the point
+  someone would change the glue that breaks it.
+- `demo-probe.yml` being a TEMPORARY workflow merging to develop
+  was raised, and the reviewer's preferred resolution — delete it
+  in this pull request, since `demo-compose.yml` runs the probe as
+  its second step — is what had already been done.
+
+### What testing the review fixes then found
+
+Running the rewritten script locally, in both directions, turned
+up three more of the same family. That is the argument for
+actually running it rather than reasoning about it.
+
+**22. `set -o pipefail` killed the diagnostic block, in exactly
+the case it exists for.** `PROXY_REASON="$(docker compose logs
+... | grep -E ... | tail -3)"` looks safe because `tail` succeeds,
+but under `pipefail` a `grep` that matches nothing makes the
+pipeline exit 1, the assignment fails, and `set -e` ends the
+script. So when the proxy had **no** matching reason to report,
+the block died instead of falling through to print the ryll log —
+losing the only evidence available precisely when the proxy had
+none to offer. Found because a local run hit it. Fixed with
+`|| true`, and the same trap is now called out in a comment on
+`count_proxy_log`.
+
+**23. Two assertions counted the proxy log's whole history, so
+they could pass on an earlier session's lines.** `docker compose
+logs` returns everything the container has ever printed. A
+re-run against a stack that had already served a session
+reported `PASS: the proxy relayed 8 channel(s)` while that run
+established no session at all. A single-run CI lane against a
+fresh stack hides this completely, which is what makes it worth
+recording: the assertion was sound only by accident of the
+harness. Both are now before/after deltas, and the healthy run
+correctly reports 4 channels — main, display, cursor, inputs —
+rather than a cumulative 8.
+
+**24. A long `WORKDIR` makes ryll's control socket unbindable,
+and the script blamed the session for it.** Unix socket paths cap
+at about 108 bytes. A scratch-directory override pushed
+`ryll-demo.sock` to 127, the bind failed, and `lane-assert.sh`
+reported `ryll never created its control socket` for a session
+whose log showed a complete SPICE handshake with display updates
+and ping/pong traffic. CI's default path is short so this cannot
+bite there, but it cost a debugging cycle here and would cost the
+next person one too. There is now an explicit length check that
+fails early and names the real cause.
+
+Evidence from the local runs, which is what these fixes are worth
+rather than the reasoning behind them:
+
+- healthy: 11 assertions pass, and the port oracle reports
+  `established sockets: 5900=12, 5901=0` — the same 12-on-TLS,
+  0-on-plaintext split phase 3 measured by hand with
+  `remote-viewer`.
+- the oracle is not blind: holding one plaintext connection open
+  on 5901 takes the count to 3, so the assertion fails.
+- the previously-dead hang branch fires:
+  `FAIL: a session hung for 1s with the backend stopped` — and
+  the script now **runs to completion and prints a verdict**
+  instead of dying at exit 124 with no output.
+- the delta assertions fail honestly on a run with no session,
+  where the absolute counts had passed.
+- the socket-length guard fails early with the real cause, and a
+  short `WORKDIR` still passes.
+- teardown leaves ports 13002/5900/5901 free and `sources.yaml`
+  restored by the EXIT trap.
 
 ## Decisions
 
@@ -439,11 +664,21 @@ finding 16, and chosen over the two alternatives:
 
 Installing in the lane keeps the phase self-contained and
 reviewable in one pull request, and it exercises the same
-install path `demo/README.md` gives a human. It costs about a
-minute per run. `tools/demo/install-docker.sh` is idempotent
-against a server 23.0+ with the compose plugin, so if the image
-ever grows one the cost disappears without anyone having to
-remember to remove the step.
+install path `demo/README.md` gives a human — which it did not
+when this was written; the README stated the requirement and no
+install path, so it now names Docker's repository and the
+bookworm trap explicitly.
+
+Measured cost is **12 seconds**, not the "about a minute" first
+claimed here, out of a 4.5 minute lane.
+`tools/demo/install-docker.sh` skips the apt install when the
+server is already 23.0+ with the compose plugin, so if the runner
+image ever grows one that cost disappears with nobody having to
+remember to remove the step. Only the *install* is skipped: the
+proxy configuration and the socket permission run every time,
+because they are the parts a better image would not bring with
+it, and the daemon restart is guarded on the drop-in's content
+actually changing.
 
 The script also configures two proxy paths that the runner's own
 environment does not cover, because neither is inherited: a
@@ -522,12 +757,16 @@ the host's Rust toolchains untouched.
       `kerbside 0.5.1.dev4+g7e1f2fc` from the checkout and
       `kerbside-proxy 0.5.1.dev1` from PyPI, so the daemon and
       the binary both track develop with nothing built locally.
-- [x] `tools/demo/lane-assert.sh` passes all 8 assertions:
-      the three `.vv` fields, a ryll SPICE session over the TLS
-      port, the proxy's TLS listener, a bounded backend failure
-      (8s, matching phase 3's ~9s by hand), the proxy logging
-      that failure, and the mint guard refusing and naming the
-      offending source.
+- [x] `tools/demo/lane-assert.sh` passes all 11 assertions: the
+      three `.vv` fields; a ryll SPICE session, zero established
+      sockets on the plaintext port, at least one on the TLS
+      port, and a per-connection relay log line; a bounded
+      backend failure (8s, matching phase 3's ~9s by hand) and
+      the proxy logging that failure; `spice-target` returning
+      after the restart; and the mint guard refusing and naming
+      the offending source. Was 8 before review — findings 19,
+      20 and the item-9 fixes replaced a tautology with three
+      real checks and added the post-restart one.
 - [x] `smoke-client.py` works against a ryll built without
       `digest-decode` — it uses only `hello`, `status` and
       `screenshot`, no digest verbs. Confirmed by reading it
@@ -578,40 +817,72 @@ the host's Rust toolchains untouched.
 - [x] No cargo or Rust step in the workflow, and the residual
       contract-skew case is explained in a comment.
 
-Outstanding, and **not** completable without a push and a pull
-request — these are the items the phase cannot close on its
-own:
+These needed a push and a pull request, and are now settled by
+runs on pull request #336:
 
-- [ ] `tools/demo/probe-runner.sh` runs on a private-CI runner
+- [x] `tools/demo/probe-runner.sh` runs on a private-CI runner
       and its output is recorded here, including the Docker
       server version and whether a build reached an index.
-      Locally it passes and correctly reported the real 5900
-      collision on the development host. **Partially done**: one
-      run has happened and is recorded as finding 16, but it
-      stopped at a missing daemon, so the two questions this
-      item exists to answer — server version and index
-      reachability from inside a build — are still unanswered.
-      Decision 9 is the attempt to make the next run answer
-      them.
-- [ ] `tools/demo/install-docker.sh` succeeds on a private-CI
+      Locally it also correctly reported the real 5900 collision
+      on the development host. Both runs are recorded as finding
+      16: the first stopped at a missing daemon, the second
+      answered everything.
+- [x] `tools/demo/install-docker.sh` succeeds on a private-CI
       runner — which is also the only test that the squid in
-      front of these runners permits `download.docker.com`.
-      Untestable locally: this host already has docker, so the
-      script's own idempotence check short-circuits it, and that
-      path is the one thing about it that *is* verified here.
-- [ ] `.github/workflows/demo-probe.yml` deleted once that
-      output is recorded. **Deliberately still present**: the
-      back brief gates 4b on reading the probe output, and
-      that gate has not been satisfied.
-- [ ] The lane is green on a pull request touching `demo/`.
+      front of these runners permits `download.docker.com`. It
+      does. Locally only the idempotence path is exercisable,
+      and it is: the script exits 0 without touching a host that
+      already has docker.
+- [x] `.github/workflows/demo-probe.yml` deleted, its output
+      recorded in finding 16 first.
+- [x] The lane is green on a pull request touching `demo/`. All
+      13 steps ran — none skipped — and every assertion passed,
+      in 4.5 minutes end to end. Note what that run did *not*
+      establish, per findings 19 and 20: one of the eight
+      assertions was a tautology, and two more were only reached
+      because ryll happened to exit 0. The assertions were
+      rewritten after review and need a fresh green run to be
+      worth as much as this tick implies — see the outstanding
+      item below.
+- [x] The `/src` build pairs a checkout daemon with a PyPI dev
+      proxy wheel, with no cargo build of the proxy, exactly as
+      decision 3 argued: `kerbside 0.5.1.dev3+gdfd1719.d20260817`
+      with `kerbside-proxy 0.5.1.dev1`. (ryll is still built from
+      source; the lane is not cargo-free.)
+- [x] A real artifact inspected for a live console token:
+      `password=REDACTED` in both `.vv` files. That inspection
+      is what turned up finding 18 — the database password the
+      same artifact *did* leak — so this item is ticked on the
+      strength of having actually downloaded and grepped the
+      artifact rather than trusting the step.
+- [x] `tools/check-required-checks.sh` passes against the live
+      ruleset — it runs as the "Verify required-check names
+      against the exported ruleset" step inside `sanity_checks`,
+      which is green.
+
+Still outstanding:
+
 - [ ] The lane does not run on a pull request touching only
       `docs/` outside `installation.md` — demonstrated, not
-      assumed.
-- [ ] A failure artifact from a real red run inspected for a
-      live console token (`grep -c '^password='` is 0 after the
-      redaction step).
-- [ ] `tools/check-required-checks.sh` passes against the live
-      ruleset.
+      assumed. Requires a docs-only pull request, which this
+      phase has no reason to raise on its own; the natural
+      demonstration is phase 5, which edits
+      `docs/installation.md` and so should *also* trip the
+      filter deliberately.
+- [ ] The redaction fix in finding 18 confirmed on a real run.
+      It is verified against the leaked artifact locally, in both
+      the scrubbing and the refusing direction, but the reordered
+      workflow steps have not themselves executed in CI yet.
+- [ ] A green run of the **rewritten** assertions (findings 19,
+      20, 22, 23 and the review's item 9) in CI. Verified locally
+      in both directions first — 11 passing on a healthy stack
+      with `5900=12, 5901=0`, and failing correctly on a plaintext
+      connection, a hung session and a session-free run — so what
+      remains is confirmation on a runner rather than discovery.
+      The port oracle is the one to watch: it samples the host
+      socket table while the session is live, and a runner that
+      tears channels down faster than this host would read zero on
+      the TLS port and fail honestly but unhelpfully.
 
 ## Registration
 

@@ -41,9 +41,14 @@ mapfile -t FILES < <(
                 ;;
             *)
                 # A shell shebang, however it is spelled: #!/bin/bash,
-                # #!/bin/sh, #!/usr/bin/env bash.
+                # #!/bin/sh, #!/usr/bin/env bash, and also the forms that
+                # carry arguments -- #!/bin/sh -e, #!/bin/bash -eu. An
+                # earlier version anchored on end-of-line, which silently
+                # skipped every one of those; word boundaries at both
+                # ends keep #!/usr/bin/python3 out without needing the
+                # anchor.
                 if head -1 "${f}" 2> /dev/null \
-                        | grep -qE '^#!.*(\bsh|\bbash|\bdash|\bksh)$'; then
+                        | grep -qE '^#!.*\b(sh|bash|dash|ksh)\b'; then
                     echo "${f}"
                 fi
                 ;;

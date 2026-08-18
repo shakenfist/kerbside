@@ -45,6 +45,18 @@ services:
         # evaluate is what you can install. Build against the checkout
         # instead with:
         #   KERBSIDE_SOURCE=/src docker compose build kerbside
+        #
+        # Know this before changing anything in demo/: the default pairs
+        # THIS checkout's glue -- entrypoint.sh, kerbside-demo-env,
+        # kerbside.ini, sources.yaml, all copied or mounted from the
+        # tree -- with a *released* kerbside from PyPI. The CI lane
+        # overrides KERBSIDE_SOURCE to /src, so nothing tests that
+        # pairing, and glue that depends on an unreleased CLI or config
+        # surface breaks the documented demo silently. That is exactly
+        # the `kerbside db upgrade` / "No such command 'db'" failure
+        # that forced phase 3's reversal. A nightly run with
+        # KERBSIDE_SOURCE unset is the tracked fix; see
+        # docs/plans/PLAN-demo-install-phase-04-ci-lane.md's Future work.
         KERBSIDE_SOURCE: ${KERBSIDE_SOURCE:-kerbside}
     depends_on:
       db:

@@ -17,12 +17,16 @@
 #     is 1.29.2, the end-of-life python implementation, which does not
 #     provide the `docker compose` subcommand the demo documents.
 #
-# That is also the install path demo/README.md points a human at, so the
-# lane and the documentation stay the same story.
+# demo/README.md points a human at the same place, and names the
+# bookworm trap explicitly, so the lane and the documentation stay the
+# same story.
 #
-# Idempotent on purpose. If the runner image ever grows a new enough
-# docker this becomes a no-op, and the lane stops paying for it without
-# anyone having to remember to delete the step.
+# Idempotent on purpose: if the runner image ever grows a new enough
+# docker, the apt install below is skipped and the lane stops paying for
+# it without anyone having to remember to delete the step. Note that only
+# the *install* is skipped. The proxy configuration and the socket
+# permission run every time, because they are precisely the parts a
+# better runner image would not bring with it.
 #
 # Verifying the result is NOT this script's job. It installs and
 # configures; tools/demo/probe-runner.sh then independently checks that
@@ -43,37 +47,42 @@ have_usable_docker() {
     docker compose version > /dev/null 2>&1 || return 1
 }
 
+# Only the apt install is skipped when docker is already usable -- NOT
+# the proxy configuration or the socket permission below. Those two are
+# the parts an improved runner image would not bring with it, so exiting
+# early here would mean the lane silently breaks on the day the image
+# grows docker, which is exactly the day this script is supposed to
+# become harmless.
 if have_usable_docker; then
-    echo "=== docker is already usable, nothing to install ==="
+    echo "=== docker is already usable, skipping the apt install ==="
     docker version --format 'server {{.Server.Version}}'
     docker compose version
-    exit 0
+else
+    echo "=== installing docker from download.docker.com ==="
+    sudo apt-get update
+    sudo apt-get install -y --no-install-recommends ca-certificates curl
+
+    sudo install -m 0755 -d /etc/apt/keyrings
+
+    # curl runs unprivileged and pipes into `sudo tee`, rather than the
+    # `sudo curl -o` the upstream instructions use. sudo resets the
+    # environment, so a privileged curl loses the runner's http_proxy and
+    # cannot reach download.docker.com through the squid in front of it.
+    curl -fsSL https://download.docker.com/linux/debian/gpg \
+        | sudo tee /etc/apt/keyrings/docker.asc > /dev/null
+    sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+    ARCH="$(dpkg --print-architecture)"
+    CODENAME="$(. /etc/os-release && echo "${VERSION_CODENAME}")"
+    echo "deb [arch=${ARCH} signed-by=/etc/apt/keyrings/docker.asc]" \
+        "https://download.docker.com/linux/debian ${CODENAME} stable" \
+        | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+    sudo apt-get update
+    sudo apt-get install -y --no-install-recommends \
+        docker-ce docker-ce-cli containerd.io \
+        docker-buildx-plugin docker-compose-plugin
 fi
-
-echo "=== installing docker from download.docker.com ==="
-sudo apt-get update
-sudo apt-get install -y --no-install-recommends ca-certificates curl
-
-sudo install -m 0755 -d /etc/apt/keyrings
-
-# curl runs unprivileged and pipes into `sudo tee`, rather than the
-# `sudo curl -o` the upstream instructions use. sudo resets the
-# environment, so a privileged curl loses the runner's http_proxy and
-# cannot reach download.docker.com through the squid in front of it.
-curl -fsSL https://download.docker.com/linux/debian/gpg \
-    | sudo tee /etc/apt/keyrings/docker.asc > /dev/null
-sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-ARCH="$(dpkg --print-architecture)"
-CODENAME="$(. /etc/os-release && echo "${VERSION_CODENAME}")"
-echo "deb [arch=${ARCH} signed-by=/etc/apt/keyrings/docker.asc]" \
-    "https://download.docker.com/linux/debian ${CODENAME} stable" \
-    | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-sudo apt-get update
-sudo apt-get install -y --no-install-recommends \
-    docker-ce docker-ce-cli containerd.io \
-    docker-buildx-plugin docker-compose-plugin
 
 # Two separate proxy problems, and neither is solved by the runner's own
 # environment variables.
@@ -102,16 +111,27 @@ if [ -n "${http_proxy:-}" ] || [ -n "${https_proxy:-}" ]; then
         echo "Environment=\"NO_PROXY=${NO_PROXY_VALUE}\""
     } > "${DROPIN}"
 
+    DROPIN_PATH=/etc/systemd/system/docker.service.d/http-proxy.conf
     sudo mkdir -p /etc/systemd/system/docker.service.d
-    sudo install -m 0644 "${DROPIN}" \
-        /etc/systemd/system/docker.service.d/http-proxy.conf
-    rm -f "${DROPIN}"
 
-    echo "daemon drop-in:"
-    sed 's/^/  /' < /etc/systemd/system/docker.service.d/http-proxy.conf
-
-    sudo systemctl daemon-reload
-    sudo systemctl restart docker
+    # Restart only when the drop-in actually changes. This block now runs
+    # on every invocation, including the already-had-docker path, and
+    # bouncing the daemon for an identical file would be a gratuitous
+    # interruption -- on a runner that had containers running, a
+    # destructive one.
+    if sudo test -f "${DROPIN_PATH}" \
+            && sudo cmp -s "${DROPIN}" "${DROPIN_PATH}"; then
+        echo "daemon drop-in already correct, not restarting docker:"
+        sed 's/^/  /' < "${DROPIN}"
+        rm -f "${DROPIN}"
+    else
+        sudo install -m 0644 "${DROPIN}" "${DROPIN_PATH}"
+        rm -f "${DROPIN}"
+        echo "daemon drop-in:"
+        sed 's/^/  /' < "${DROPIN_PATH}"
+        sudo systemctl daemon-reload
+        sudo systemctl restart docker
+    fi
 
     # Merged rather than written, so that a pre-existing registry login
     # on the runner is not discarded along with it.

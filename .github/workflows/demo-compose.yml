@@ -75,11 +75,17 @@ concurrency:
 jobs:
   demo:
     name: compose up / SPICE session / negative cases
-    # l: a qemu TCG guest, a MariaDB, a container build and a ryll build
-    # on one runner. Never an unsized vm label -- rust.yml:36-38 records
-    # that one defaults to xs (1 core / 2 GB) in private-ci. Sized below
-    # rust.yml's xl because there is no cargo release build of the proxy
-    # here; revisit with the probe's timings if the lane is slow.
+    # l: a qemu TCG guest, a MariaDB, a container build and a cargo
+    # release build of ryll, on one runner. Never an unsized vm label --
+    # rust.yml:36-38 records that one defaults to xs (1 core / 2 GB) in
+    # private-ci. Sized below rust.yml's xl because the *proxy* is not
+    # built here (decision 3); ryll still is, so this is not a
+    # cargo-free lane.
+    #
+    # Measured on the first green run, at l: 4.5 minutes end to end --
+    # ryll 1.7, stack up 1.6, docker install 0.2, assertions 0.3. So `l`
+    # is right, and caching cargo or the probe's base image would be
+    # optimising a lane that finishes in under five minutes.
     runs-on: [self-hosted, vm, debian-12, l]
     timeout-minutes: 60
 
@@ -160,18 +166,6 @@ jobs:
       - name: Assert the demo works
         run: tools/demo/lane-assert.sh
 
-      # Redact before upload, not after. The .vv carries
-      # `password=<token>` (kerbside/api.py:374) -- a real, short-lived
-      # console credential -- and workflow artifacts are downloadable by
-      # anyone who can read the repository.
-      - name: Redact the console token from artifacts
-        if: always()
-        run: |
-          shopt -s nullglob
-          for vv in /tmp/kerbside-demo-lane/*.vv; do
-            sed -i 's/^password=.*/password=REDACTED/' "${vv}"
-          done
-
       - name: Collect compose logs
         if: always()
         run: |
@@ -181,6 +175,17 @@ jobs:
             docker compose logs --no-color "${svc}" \
               > "/tmp/kerbside-demo-lane/logs/${svc}.log" 2>&1 || true
           done
+
+      # After log collection and before upload, and that order is
+      # load-bearing: this step originally ran first, which meant it
+      # could not scrub the logs at all. It caught the .vv console token
+      # and missed the root password MariaDB prints into db.log. The
+      # script redacts both and then fails the step if either pattern
+      # stopped matching, rather than reporting success for having found
+      # nothing.
+      - name: Redact secrets from artifacts
+        if: always()
+        run: tools/demo/redact-artifacts.sh /tmp/kerbside-demo-lane
 
       - name: Upload artifacts
         if: always()
