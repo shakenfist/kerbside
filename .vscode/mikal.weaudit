@@ -590,6 +590,46 @@
     {
       "path": "rust/kerbside-proxy/build.rs",
       "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/ryll_client.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests/api/__init__.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests/api/test_spice_via_kerbside.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests/api",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests/scenario/__init__.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests/scenario/test_sextant_scenario.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests/scenario",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests/__init__.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

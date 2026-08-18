@@ -353,6 +353,10 @@
       "sha": "e2be3c864a08747f987880b5205d719f33a15f78",
       "date": "2026-08-05"
     },
+    "tempest-plugin/README.md": {
+      "sha": "bf3b673319f7f3de52865fc648bd112d0ff384ff",
+      "date": "2026-08-18"
+    },
     "tempest-plugin/kerbside_tempest_plugin/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-08"
@@ -364,6 +368,30 @@
     "tempest-plugin/kerbside_tempest_plugin/plugin.py": {
       "sha": "38d6e6f49d507181ae616aabf2f06feb35c2e3df",
       "date": "2026-08-08"
+    },
+    "tempest-plugin/kerbside_tempest_plugin/ryll_client.py": {
+      "sha": "e71e73c619267872fb014234672a0f497e5bb497",
+      "date": "2026-08-18"
+    },
+    "tempest-plugin/kerbside_tempest_plugin/tests/__init__.py": {
+      "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "date": "2026-08-18"
+    },
+    "tempest-plugin/kerbside_tempest_plugin/tests/api/__init__.py": {
+      "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "date": "2026-08-18"
+    },
+    "tempest-plugin/kerbside_tempest_plugin/tests/api/test_spice_via_kerbside.py": {
+      "sha": "a81ea8817e1fc7e29d05ab118c46fae683f67888",
+      "date": "2026-08-18"
+    },
+    "tempest-plugin/kerbside_tempest_plugin/tests/scenario/__init__.py": {
+      "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "date": "2026-08-18"
+    },
+    "tempest-plugin/kerbside_tempest_plugin/tests/scenario/test_sextant_scenario.py": {
+      "sha": "f5339b67869cf1f394c4229a560372f375e7c3ed",
+      "date": "2026-08-18"
     },
     "tools/address-comments-with-claude.sh": {
       "sha": "ad0b0df9ee27870b0caa5c3e52b5f91792ce0426",
