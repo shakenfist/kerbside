@@ -126,6 +126,9 @@ Neither tier:
 - `dev-proxy-wheel.yml` - Unattended PyPI publish of rolling
   kerbside-proxy dev wheels, on develop pushes path-filtered to the
   binary's inputs (plus a dry-run-by-default workflow_dispatch)
+- `pypi-storage-check.yml` - Weekly credential-free check of the
+  kerbside-proxy PyPI storage budget; files a tracking issue when a
+  threshold is crossed
 - `export-repo-config.yml` - Repo config archival, including the ruleset
   that `tools/check-required-checks.sh` validates against
 - `pr-address-comments.yml` - Bot-triggered comment addressing

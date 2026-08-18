@@ -16,6 +16,12 @@ path = "src/main.rs"
 # host-subject verifier that enforces ConnectionConfig.host_subject during the
 # TLS handshake). Cargo resolves the workspace member by package name and
 # builds only it plus its dependency subtree, not the ryll GUI binary.
+#
+# Keep the exact `rev` pin. dev-proxy-wheel.yml excludes Cargo.lock from its
+# publish trigger on the grounds that a lockfile-only change cannot alter the
+# binary's interface; that holds only while every git dependency is pinned by
+# rev here. Switching this to a branch or tag would move the resolved commit
+# into Cargo.lock, so a ryll update would stop publishing a dev wheel.
 shakenfist-spice-protocol = { git = "https://github.com/shakenfist/ryll", rev = "0f297a68d73115fac15e07f8c751ad6754a88810" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "macros", "signal", "sync"] }
