@@ -106,4 +106,4 @@ protoc-bin-vendored = "3"
 # this binary). Deliberately a build-dependency only: the hashing happens at
 # compile time, so there is no reason to pull sha2 into the runtime dependency
 # tree alongside ring/rustls.
-sha2 = "0.10"
+sha2 = "0.11"

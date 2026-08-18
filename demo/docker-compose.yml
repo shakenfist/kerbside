@@ -12,7 +12,7 @@ name: kerbside-demo
 
 services:
   db:
-    image: mariadb:11
+    image: mariadb:12
     environment:
       MARIADB_RANDOM_ROOT_PASSWORD: 'yes'
       MARIADB_DATABASE: kerbside
@@ -41,12 +41,11 @@ services:
       context: ..
       dockerfile: demo/Dockerfile
       args:
-        # Defaults to the checkout, because the newest release
-        # (0.4.0) predates `kerbside db upgrade` and the entrypoint
-        # needs it. See the long note in demo/Dockerfile: this should
-        # become `kerbside` once a release carries that command.
-        #   KERBSIDE_SOURCE=kerbside docker compose build kerbside
-        KERBSIDE_SOURCE: ${KERBSIDE_SOURCE:-/src}
+        # Defaults to the released package from PyPI, so what you
+        # evaluate is what you can install. Build against the checkout
+        # instead with:
+        #   KERBSIDE_SOURCE=/src docker compose build kerbside
+        KERBSIDE_SOURCE: ${KERBSIDE_SOURCE:-kerbside}
     depends_on:
       db:
         # "healthy" rather than "started": the entrypoint runs
