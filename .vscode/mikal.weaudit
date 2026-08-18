@@ -398,6 +398,282 @@
     {
       "path": "PUSH-AUDIT.md",
       "author": "mikal"
+    },
+    {
+      "path": "kerbside/migrations/versions/5c8101ff14d7_sources_can_be_deleted.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/migrations/versions/7d1c2f36a7b3_connection_id_as_bigint.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/migrations/versions/9a3f1c7b2e40_proxychannels_surrogate_id.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/migrations/versions/ad47e96baff6_initial_schema.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/migrations/versions/bb26023f0c98_remove_flavor_column.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/migrations/versions/c4e7a1b9d2f3_session_terminations.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/migrations/versions/cdb5c3529858_sf_token_tables.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/migrations/versions/e1a4c7d2f9b6_auditevents_pid_as_string.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/migrations/versions/f7b2e9c4a1d8_drop_proxychannels_session_id_fk.py",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/migrations/versions",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/migrations/env.py",
+      "author": "mikal"
+    },
+    {
+      "path": ".claude/CLAUDE.md",
+      "author": "mikal"
+    },
+    {
+      "path": ".claude",
+      "author": "mikal"
+    },
+    {
+      "path": "AGENTS.md",
+      "author": "mikal"
+    },
+    {
+      "path": "PLAN-TEMPLATE.md",
+      "author": "mikal"
+    },
+    {
+      "path": "README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "RELEASE-SETUP.md",
+      "author": "mikal"
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/codeql-analysis.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/dev-proxy-wheel.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/direct-qemu-functional.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/functional-tests.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/pr-retest.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/renovate.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/rust.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/sf-e2e-functional.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/spice-target/Dockerfile",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/spice-target",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/demo-env.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/docker-compose.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/Dockerfile",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/entrypoint.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/get-console.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/kerbside-demo-env",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/kerbside.ini",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/sources.yaml",
+      "author": "mikal"
+    },
+    {
+      "path": "demo",
+      "author": "mikal"
+    },
+    {
+      "path": "etc/example-static-sources.yaml",
+      "author": "mikal"
+    },
+    {
+      "path": "etc/kerbside.conf.example",
+      "author": "mikal"
+    },
+    {
+      "path": "etc",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src/main.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/src",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/Dockerfile",
+      "author": "mikal"
+    },
+    {
+      "path": "rust/kerbside-proxy/build.rs",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/ryll_client.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests/api/__init__.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests/api/test_spice_via_kerbside.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests/api",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests/scenario/__init__.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests/scenario/test_sextant_scenario.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests/scenario",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests/__init__.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/install-proxy-wheel.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/direct-qemu/verify-terminate-live.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/ovirt-e2e/deploy-kerbside.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/ovirt-e2e/drive-console.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/ovirt-e2e/gen-sources.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/ovirt-e2e/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/build-proxy-wheel.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/gen-protos.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/stamp-dev-proxy-version.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/stamp-proxy-version.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/verify-wheel-stamping.sh",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

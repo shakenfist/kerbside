@@ -10,34 +10,25 @@ server.
 
 ## High-Level Architecture
 
-```
-                                    +------------------+
-                                    |   Web Browser    |
-                                    |   (Admin UI)     |
-                                    +--------+---------+
-                                             |
-                                             | HTTPS
-                                             v
-                                    +--------+---------+       +--------------+
-                                    | kerbside (Python)|       |   MariaDB    |
-                                    |  REST API +      +<----->+  (shared bus)|
-                                    |  daemon          |       +------+-------+
-                                    +--------+---------+              ^
-                                             | supervises            |
-                                             | + gRPC/UDS            | DB
-                                             v                       |
-+------------------+     TLS       +---------+----------+            |
-|  SPICE Client    +-------------->+  kerbside-proxy    +------------+
-|  (virt-viewer)   |    :5900      |  (Rust, tokio)     |
-+------------------+               +---------+----------+
-                                             |
-                    +------------------------+------------------------+
-                    |                        |                        |
-                    v                        v                        v
-           +--------+------+        +--------+------+        +--------+------+
-           | Shaken Fist   |        |   OpenStack   |        |     oVirt     |
-           | Hypervisors   |        |   Hypervisors |        |   Hypervisors |
-           +---------------+        +---------------+        +---------------+
+```mermaid
+graph TD
+    browser["Web Browser<br/>(Admin UI)"]
+    kerbside["kerbside (Python)<br/>REST API + daemon"]
+    db[("MariaDB<br/>(shared bus)")]
+    client["SPICE Client<br/>(virt-viewer)"]
+    proxy["kerbside-proxy<br/>(Rust, tokio)"]
+    sf["Shaken Fist<br/>Hypervisors"]
+    os["OpenStack<br/>Hypervisors"]
+    ovirt["oVirt<br/>Hypervisors"]
+
+    browser -->|HTTPS| kerbside
+    kerbside <-->|SQLAlchemy| db
+    kerbside -.->|supervises| proxy
+    client -->|"TLS :5900"| proxy
+    proxy <-->|gRPC over UDS| kerbside
+    proxy -->|TLS| sf
+    proxy -->|TLS| os
+    proxy -->|TLS| ovirt
 ```
 
 ## Core Components
@@ -284,50 +275,33 @@ for the static driver lives at
 
 ### Console Discovery
 
-```
-sources.yaml
-    |
-    v
-_parse_sources() reads YAML config
-    |
-    v
-Source class instantiated (ShakenFistSource/oVirtSource)
-    |
-    v
-Source.__call__() yields console entries
-    |
-    v
-db.add_console() stores in database
-    |
-    v
-API returns console list to authenticated clients
+```mermaid
+graph TD
+    yaml["sources.yaml"]
+    parse["_parse_sources() reads YAML config"]
+    inst["Source class instantiated<br/>(ShakenFistSource / oVirtSource / ...)"]
+    emit["Source.__call__() yields console entries"]
+    store["db.add_console() stores in database"]
+    api["API returns console list to<br/>authenticated clients"]
+
+    yaml --> parse --> inst --> emit --> store --> api
 ```
 
 ### Client Connection
 
-```
-Client requests virt-viewer config via API
-    |
-    v
-consoletoken.create_token() generates 48-char token
-    |
-    v
-Token embedded in virt-viewer file as password
-    |
-    v
-Client connects to proxy with encrypted password
-    |
-    v
-Proxy decrypts and validates the token (AuthorizeConnection over gRPC)
-    |
-    v
-db.get_console() retrieves hypervisor details
-    |
-    v
-SpiceClient.connect() establishes server connection
-    |
-    v
-Bidirectional proxy relay begins
+```mermaid
+graph TD
+    request["Client requests virt-viewer config via API"]
+    mint["consoletoken.create_token() generates 48-char token"]
+    embed["Token embedded in virt-viewer file as password"]
+    connect["Client connects to proxy with encrypted password"]
+    authorize["Proxy decrypts and validates the token<br/>(AuthorizeConnection over gRPC)"]
+    lookup["db.get_console() retrieves hypervisor details"]
+    backend["Proxy connects the backend leg to the hypervisor"]
+    relay["Bidirectional proxy relay begins"]
+
+    request --> mint --> embed --> connect --> authorize
+    authorize --> lookup --> backend --> relay
 ```
 
 ## Configuration model

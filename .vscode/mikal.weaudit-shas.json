@@ -1,6 +1,10 @@
 {
   "version": 1,
   "files": {
+    ".claude/CLAUDE.md": {
+      "sha": "db3451c58bf8ce81f3238aad0eb25998e9ba54d3",
+      "date": "2026-08-18"
+    },
     ".claude/skills/add-database-migration.md": {
       "sha": "08654bd241fe61c40b99388da625e30733681d64",
       "date": "2026-08-15"
@@ -13,9 +17,25 @@
       "sha": "ca9be799707e0aefba16e5e594f1b37e4c58c299",
       "date": "2026-08-11"
     },
+    ".github/workflows/codeql-analysis.yml": {
+      "sha": "296eca7815ac6582bf4fa9d0714869ac1eab574a",
+      "date": "2026-08-18"
+    },
+    ".github/workflows/dev-proxy-wheel.yml": {
+      "sha": "be2feb34c3aa6981ff94025b9562315bdc0bf2df",
+      "date": "2026-08-18"
+    },
+    ".github/workflows/direct-qemu-functional.yml": {
+      "sha": "759758bc55f01acba338bae30710b03148d31610",
+      "date": "2026-08-18"
+    },
     ".github/workflows/export-repo-config.yml": {
       "sha": "53b5d8eb46e89e228dd88d42d7e1b0c3ea6694cd",
       "date": "2026-08-11"
+    },
+    ".github/workflows/functional-tests.yml": {
+      "sha": "6a0d4321712dd0d7f3d7176d9a0df54aa04ffacd",
+      "date": "2026-08-18"
     },
     ".github/workflows/pin-indirect-dependencies.yml": {
       "sha": "0faad202ec3336b3fa8b6ed2787c557fc3172c24",
@@ -29,17 +49,97 @@
       "sha": "066168bcb5b6ccbd0247bc40c74d804fc173b084",
       "date": "2026-08-11"
     },
+    ".github/workflows/pr-retest.yml": {
+      "sha": "86352446dd2c808f6191213a3280e1c525cb6417",
+      "date": "2026-08-18"
+    },
     ".github/workflows/prune-reviews.yml": {
       "sha": "27c5c370391a513b7978fe4eb2c0302c3da68ae3",
       "date": "2026-08-11"
+    },
+    ".github/workflows/release.yml": {
+      "sha": "b3614bdba1b5d4c02c14820bc0f8dcfd85752372",
+      "date": "2026-08-18"
+    },
+    ".github/workflows/renovate.yml": {
+      "sha": "9ad807719d1e8fbb781f3e234fdf61cce9fe447a",
+      "date": "2026-08-18"
+    },
+    ".github/workflows/rust.yml": {
+      "sha": "5e419f673f63263dff3953f237bb76b9f43e39a1",
+      "date": "2026-08-18"
+    },
+    ".github/workflows/sf-e2e-functional.yml": {
+      "sha": "9a54f8284dd2c5875d6ea51f1c85e595a88c37e8",
+      "date": "2026-08-18"
+    },
+    "AGENTS.md": {
+      "sha": "d3033f32e61d8a2e90531e1f3f30eeedfed201c4",
+      "date": "2026-08-18"
+    },
+    "ARCHITECTURE.md": {
+      "sha": "6e598a1d984dac856dbc73ce6851003ed1aba23f",
+      "date": "2026-08-18"
     },
     "AUTHORS": {
       "sha": "52747656c9ce3a27509516db50abacb7930c8ca2",
       "date": "2026-08-04"
     },
+    "PLAN-TEMPLATE.md": {
+      "sha": "7c3ddcf8a48ed560bfa174cdad6b64c7b26dcf5a",
+      "date": "2026-08-18"
+    },
     "PUSH-AUDIT.md": {
       "sha": "05c9d50bfc1192f87b66783c0a118cde3c93b40f",
       "date": "2026-08-15"
+    },
+    "README.md": {
+      "sha": "32e9538d08f646af6d7ccfb4b92f0de435b7e1cf",
+      "date": "2026-08-18"
+    },
+    "RELEASE-SETUP.md": {
+      "sha": "820c1131f4b682b14900f1b58bd94301b5b4a9d7",
+      "date": "2026-08-18"
+    },
+    "demo/Dockerfile": {
+      "sha": "e94b4457477d238ad2f2f5cc143a8859eff0145a",
+      "date": "2026-08-18"
+    },
+    "demo/README.md": {
+      "sha": "5adb19e2b7ab41965a9e3399bb8dd745f9d58ee4",
+      "date": "2026-08-18"
+    },
+    "demo/demo-env.sh": {
+      "sha": "a5cbc188afcbf3811142a84e55aaa423c6e0e60a",
+      "date": "2026-08-18"
+    },
+    "demo/docker-compose.yml": {
+      "sha": "81f2777457eb8e6836d125f6b8bab0b5acdc205c",
+      "date": "2026-08-18"
+    },
+    "demo/entrypoint.sh": {
+      "sha": "8401f99b8352e66059b6fc85cea84b1b44b34d1f",
+      "date": "2026-08-18"
+    },
+    "demo/get-console.sh": {
+      "sha": "a5af2d69d9dae1bec75c5179b7b695c750af2009",
+      "date": "2026-08-18"
+    },
+    "demo/kerbside-demo-env": {
+      "sha": "5483df34682fbc8de78eb33a845d31fe0f16a473",
+      "date": "2026-08-18"
+    },
+    "demo/kerbside.ini": {
+      "sha": "b31de6116ea70559b0706b9512049fea6ce661cd",
+      "date": "2026-08-18"
+    },
+    "demo/sources.yaml": {
+      "sha": "f137eedf566fcd074bd43730d13974795fcc3743",
+      "date": "2026-08-18"
+    },
+    "demo/spice-target/Dockerfile": {
+      "sha": "cd7c80a6bf0b5aaf393b3ce9a542c53e41b22ba9",
+      "date": "2026-08-18"
     },
     "docs/console-sources.md": {
       "sha": "d7f5bfd56c00f99929ec1727df7eac2d28b73979",
@@ -48,6 +148,14 @@
     "docs/use-cases/ovirt.md": {
       "sha": "0e0902827c2bbbb08bacc3267ee3c565737a59be",
       "date": "2026-08-13"
+    },
+    "etc/example-static-sources.yaml": {
+      "sha": "558621b0e5ee59b1a61c784a96ea9f7281d3dcd1",
+      "date": "2026-08-18"
+    },
+    "etc/kerbside.conf.example": {
+      "sha": "60dad322b15b80e9d03c8918becd308fcf93e82f",
+      "date": "2026-08-18"
     },
     "etc/kolla-ci-globals-overlay.yml": {
       "sha": "e11f4d65bca446150d6e2ed32a49a8fccfa0ebbc",
@@ -68,6 +176,46 @@
     "kerbside/db.py": {
       "sha": "c3612a3f570288c42907bec0243701344acbe3a4",
       "date": "2026-08-06"
+    },
+    "kerbside/migrations/env.py": {
+      "sha": "be576fb0b1e8709138b6d01074f657fc36edb76b",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/5c8101ff14d7_sources_can_be_deleted.py": {
+      "sha": "f6e524d52a9afcba4987ad979aedfe47ec4fb3ec",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/7d1c2f36a7b3_connection_id_as_bigint.py": {
+      "sha": "0d26891fe87c8c55fc7c0126f1aae1e81e0ae20e",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/9a3f1c7b2e40_proxychannels_surrogate_id.py": {
+      "sha": "bf0e6343896a937f9eba2ecc6eb6a82740b6e545",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/ad47e96baff6_initial_schema.py": {
+      "sha": "17858c0fca8c677897223315c2d889b947c2dc70",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/bb26023f0c98_remove_flavor_column.py": {
+      "sha": "9652b3a947dae9e0fa22f1ed8397b96a6db5a343",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/c4e7a1b9d2f3_session_terminations.py": {
+      "sha": "34597ad33c7ed39acf11ab025874aacb15775907",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/cdb5c3529858_sf_token_tables.py": {
+      "sha": "8c28ea4b9a7d85a9fa80557ace4a865d2976cf9f",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/e1a4c7d2f9b6_auditevents_pid_as_string.py": {
+      "sha": "d5b53b8aede63d5b1a787cbcc276007c5e0324d4",
+      "date": "2026-08-18"
+    },
+    "kerbside/migrations/versions/f7b2e9c4a1d8_drop_proxychannels_session_id_fk.py": {
+      "sha": "be35c384ab3ce8217a894c1a5861810b95b8cf3d",
+      "date": "2026-08-18"
     },
     "kerbside/rpc/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
@@ -153,6 +301,18 @@
       "sha": "291f5057d4b3c808d60ca0e052975c79464e48b8",
       "date": "2026-08-08"
     },
+    "rust/kerbside-proxy/Dockerfile": {
+      "sha": "9983de1064b7c477aa988cab490d34b2901556c1",
+      "date": "2026-08-18"
+    },
+    "rust/kerbside-proxy/README.md": {
+      "sha": "e827f685f04ba9e4f951d6203f384be5db2bf918",
+      "date": "2026-08-18"
+    },
+    "rust/kerbside-proxy/build.rs": {
+      "sha": "986a0e57e486d95869634f76d307579210f6d31e",
+      "date": "2026-08-18"
+    },
     "rust/kerbside-proxy/src/allowlist.rs": {
       "sha": "f2adab6fb95e5085f48b9b558926b1ff457e1636",
       "date": "2026-08-15"
@@ -164,6 +324,10 @@
     "rust/kerbside-proxy/src/listen.rs": {
       "sha": "93dca4c1400e57b32bff1302231d4d544b191568",
       "date": "2026-08-15"
+    },
+    "rust/kerbside-proxy/src/main.rs": {
+      "sha": "22f1ccbbad414a08a886a1aaf8af9eda459b557b",
+      "date": "2026-08-18"
     },
     "rust/kerbside-proxy/src/metrics.rs": {
       "sha": "521fa7d251dc05fbf4d92f440069ae8d73570ddb",
@@ -189,6 +353,10 @@
       "sha": "e2be3c864a08747f987880b5205d719f33a15f78",
       "date": "2026-08-05"
     },
+    "tempest-plugin/README.md": {
+      "sha": "bf3b673319f7f3de52865fc648bd112d0ff384ff",
+      "date": "2026-08-18"
+    },
     "tempest-plugin/kerbside_tempest_plugin/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-08"
@@ -201,6 +369,30 @@
       "sha": "38d6e6f49d507181ae616aabf2f06feb35c2e3df",
       "date": "2026-08-08"
     },
+    "tempest-plugin/kerbside_tempest_plugin/ryll_client.py": {
+      "sha": "e71e73c619267872fb014234672a0f497e5bb497",
+      "date": "2026-08-18"
+    },
+    "tempest-plugin/kerbside_tempest_plugin/tests/__init__.py": {
+      "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "date": "2026-08-18"
+    },
+    "tempest-plugin/kerbside_tempest_plugin/tests/api/__init__.py": {
+      "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "date": "2026-08-18"
+    },
+    "tempest-plugin/kerbside_tempest_plugin/tests/api/test_spice_via_kerbside.py": {
+      "sha": "a81ea8817e1fc7e29d05ab118c46fae683f67888",
+      "date": "2026-08-18"
+    },
+    "tempest-plugin/kerbside_tempest_plugin/tests/scenario/__init__.py": {
+      "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "date": "2026-08-18"
+    },
+    "tempest-plugin/kerbside_tempest_plugin/tests/scenario/test_sextant_scenario.py": {
+      "sha": "f5339b67869cf1f394c4229a560372f375e7c3ed",
+      "date": "2026-08-18"
+    },
     "tools/address-comments-with-claude.sh": {
       "sha": "ad0b0df9ee27870b0caa5c3e52b5f91792ce0426",
       "date": "2026-08-06"
@@ -212,6 +404,10 @@
     "tools/audit/wave2-mechanical.sh": {
       "sha": "893254104cf2f052c3e5ba07993cac6c0242d4ea",
       "date": "2026-08-15"
+    },
+    "tools/build-proxy-wheel.sh": {
+      "sha": "f006126d6fed7486f2a4920247b99f62640c2259",
+      "date": "2026-08-18"
     },
     "tools/check-required-checks.sh": {
       "sha": "dc86bff62d2de280a5da40d61385de27367b775d",
@@ -232,6 +428,10 @@
     "tools/direct-qemu/generate-tls.sh": {
       "sha": "b271b8113594b50f461ce653cca8252fe2270a47",
       "date": "2026-08-15"
+    },
+    "tools/direct-qemu/install-proxy-wheel.sh": {
+      "sha": "9266fc276c757b71e0649167abc81b3b735282c8",
+      "date": "2026-08-18"
     },
     "tools/direct-qemu/lane-down.sh": {
       "sha": "d800366551ac787c228b18f6b20da5e2708f7361",
@@ -289,6 +489,10 @@
       "sha": "f8631679d5a7e3c8fb244cedd1da9004768365c0",
       "date": "2026-08-15"
     },
+    "tools/direct-qemu/verify-terminate-live.sh": {
+      "sha": "ad344ca4713fbee4c2139b3504ed1ae3ca88ab6e",
+      "date": "2026-08-18"
+    },
     "tools/direct-qemu/wait-for-banner.sh": {
       "sha": "17c8a378a6a96c9c359eee505ee473f55a219f61",
       "date": "2026-08-09"
@@ -304,6 +508,26 @@
     "tools/flake8wrap.sh": {
       "sha": "97ee081c8257372a4de994eba1b9e2b5434da1d2",
       "date": "2026-08-06"
+    },
+    "tools/gen-protos.sh": {
+      "sha": "e56d238dbdaa31490f83a34766e73e2361b0c5df",
+      "date": "2026-08-18"
+    },
+    "tools/ovirt-e2e/README.md": {
+      "sha": "20e8fe84c47bc6851f0246d60057e4c5ae8d6027",
+      "date": "2026-08-18"
+    },
+    "tools/ovirt-e2e/deploy-kerbside.sh": {
+      "sha": "88df300309fac461076d44ad818d316a32073fe3",
+      "date": "2026-08-18"
+    },
+    "tools/ovirt-e2e/drive-console.py": {
+      "sha": "5abf82e72acb8a1e4fd2f8fa5b43365d8da8ff29",
+      "date": "2026-08-18"
+    },
+    "tools/ovirt-e2e/gen-sources.py": {
+      "sha": "c26f5d39cf2511577c68452925973be54f23a174",
+      "date": "2026-08-18"
     },
     "tools/pin-indirect-dependencies.sh": {
       "sha": "241b462c281d6e33fa1d4023d15762a95d69112a",
@@ -357,9 +581,21 @@
       "sha": "e8db5e0a6203e02464c53e3a8ffe74b31ff5b799",
       "date": "2026-08-15"
     },
+    "tools/stamp-dev-proxy-version.sh": {
+      "sha": "8669f794ef3761bb20e245154a815beba2d5cf79",
+      "date": "2026-08-18"
+    },
+    "tools/stamp-proxy-version.sh": {
+      "sha": "f89c1f63e9a6f77a98f8a67ba61a8c204af97ec8",
+      "date": "2026-08-18"
+    },
     "tools/test-ovirt-console.py": {
       "sha": "c3ee796b2c44079bcacd21fa166e104e9a3930b1",
       "date": "2026-08-06"
+    },
+    "tools/verify-wheel-stamping.sh": {
+      "sha": "37c6a675aaded9b471302a04f962f94100175999",
+      "date": "2026-08-18"
     }
   }
 }
