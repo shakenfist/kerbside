@@ -836,14 +836,12 @@ runs on pull request #336:
 - [x] `.github/workflows/demo-probe.yml` deleted, its output
       recorded in finding 16 first.
 - [x] The lane is green on a pull request touching `demo/`. All
-      13 steps ran — none skipped — and every assertion passed,
-      in 4.5 minutes end to end. Note what that run did *not*
-      establish, per findings 19 and 20: one of the eight
-      assertions was a tautology, and two more were only reached
-      because ryll happened to exit 0. The assertions were
-      rewritten after review and need a fresh green run to be
-      worth as much as this tick implies — see the outstanding
-      item below.
+      13 steps ran — none skipped — in 4.5 minutes end to end.
+      The first such run is *not* what this tick rests on: per
+      findings 19 and 20, one of its eight assertions was a
+      tautology and two more were reached only because ryll
+      happened to exit 0. It rests on the run after the review
+      fixes, where all 11 rewritten assertions passed.
 - [x] The `/src` build pairs a checkout daemon with a PyPI dev
       proxy wheel, with no cargo build of the proxy, exactly as
       decision 3 argued: `kerbside 0.5.1.dev3+gdfd1719.d20260817`
@@ -860,29 +858,32 @@ runs on pull request #336:
       against the exported ruleset" step inside `sanity_checks`,
       which is green.
 
-Still outstanding:
+- [x] The redaction fix in finding 18 confirmed on a real run:
+      `redacted a generated database password in
+      /tmp/kerbside-demo-lane/logs/db.log`, then `no secrets
+      remain`. Confirmed by **downloading that run's artifact and
+      grepping it**, rather than by trusting the step's own
+      output: no unredacted `^password=` line and no unredacted
+      `GENERATED ROOT PASSWORD` anywhere in it.
+- [x] A green run of the **rewritten** assertions (findings 19,
+      20, 22, 23 and the review's item 9). All 11 pass on a
+      runner, and the flakiness risk in the port oracle did not
+      materialise: CI reports `established sockets: 5900=12,
+      5901=0`, byte-identical to the local run and to the split
+      phase 3 measured by hand with `remote-viewer`. The relay
+      delta reports 4 channels rather than a cumulative count,
+      confirming finding 23's fix against a fresh stack.
+
+Still outstanding, and deliberately left for phase 5:
 
 - [ ] The lane does not run on a pull request touching only
       `docs/` outside `installation.md` — demonstrated, not
-      assumed. Requires a docs-only pull request, which this
-      phase has no reason to raise on its own; the natural
-      demonstration is phase 5, which edits
-      `docs/installation.md` and so should *also* trip the
-      filter deliberately.
-- [ ] The redaction fix in finding 18 confirmed on a real run.
-      It is verified against the leaked artifact locally, in both
-      the scrubbing and the refusing direction, but the reordered
-      workflow steps have not themselves executed in CI yet.
-- [ ] A green run of the **rewritten** assertions (findings 19,
-      20, 22, 23 and the review's item 9) in CI. Verified locally
-      in both directions first — 11 passing on a healthy stack
-      with `5900=12, 5901=0`, and failing correctly on a plaintext
-      connection, a hung session and a session-free run — so what
-      remains is confirmation on a runner rather than discovery.
-      The port oracle is the one to watch: it samples the host
-      socket table while the session is live, and a runner that
-      tears channels down faster than this host would read zero on
-      the TLS port and fail honestly but unhelpfully.
+      assumed. This needs a docs-only pull request, which this
+      phase has no reason to raise on its own. Phase 5 edits
+      `docs/installation.md`, which is *in* the filter, so it is
+      the natural place to demonstrate both directions: that lane
+      fires for that page, and does not fire for a `docs/` change
+      outside it.
 
 ## Registration
 
