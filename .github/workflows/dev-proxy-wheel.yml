@@ -31,6 +31,35 @@
 # reviewers, deployment branches restricted to develop) and the second PyPI
 # trusted publisher on the kerbside-proxy project (this workflow file plus the
 # `dev-release` environment) -- is documented in RELEASE-SETUP.md.
+#
+# LOCKFILE-ONLY MERGES DO NOT PUBLISH. `rust/kerbside-proxy/Cargo.lock` is
+# excluded from the path filter below. A lockfile-only change moves
+# transitive dependency pins; it cannot change the proto, the contract hash,
+# or the binary's interface, so a dev wheel that lags one such bump is still
+# a correct, contract-compatible binary -- which is all a dev wheel promises.
+# Measured against 217 first-parent develop merges over the 42 days from
+# 2026-07-06 to 2026-08-17, 42 would have triggered a publish under the old
+# filter, and 18 of those touched only Cargo.lock. `Cargo.toml` is
+# deliberately still a trigger: it carries direct dependency versions and
+# crate features, which can change behaviour in ways the contract hash would
+# not catch.
+#
+# THIS EXCLUSION ASSUMES EVERY GIT DEPENDENCY IS REV-PINNED IN Cargo.toml.
+# `shakenfist-spice-protocol` is pinned by exact rev today, so moving to a
+# newer ryll is a `Cargo.toml` change and still publishes. Were any git
+# dependency switched to a branch or tag pin, the resolved commit would live
+# only in `Cargo.lock` and a ryll update would become a lockfile-only change
+# -- the case this exclusion is least safe for, since that crate supplies the
+# L1 firewall grammar, the link handshake, ticket decryption and mini-header
+# framing. If a git dependency ever loses its rev pin, revisit this filter.
+#
+# The cost of that exclusion, stated here because the paragraph above
+# otherwise reads as pure reassurance: Renovate lands transitive Rust
+# dependency updates as lockfile-only changes, advisory-driven ones among
+# them, and after this exclusion those do not reach published dev wheels
+# until some other substantive change to `rust/**` happens. To push one out
+# immediately, run this workflow via `workflow_dispatch` on develop with the
+# dry-run input turned off.
 
 name: Dev proxy wheel
 
@@ -41,6 +70,7 @@ on:
     branches: [develop]
     paths:
       - 'rust/**'
+      - '!rust/kerbside-proxy/Cargo.lock'
       - 'kerbside/rpc/kerbside.proto'
       - 'tools/build-proxy-wheel.sh'
       - 'tools/stamp-dev-proxy-version.sh'
