@@ -344,3 +344,106 @@ its shape should be agreed before four more commits land on top
 of it. The rename in decision 1 is the specific thing to confirm
 -- it is cheap to abandon at that point and expensive to unpick
 afterwards.
+
+## Outcome
+
+Executed 2026-08-20 on branch `sfui-conversion-phase-09`. Five
+commits, one more than the plan's five steps, because 9a was
+split in two -- see below.
+
+**What was deleted.** 47 files, 8.4 MB: `static/css/` (32 files
+of Bootstrap 5.3), `static/js/` (14 files -- Bootstrap bundles,
+jQuery 3.7.0, axios 1.6.5), `static/logo.svg`, and the 77-line
+`base.html` nothing extended. `kerbside/api/static/` now holds
+`sfui/` and nothing else. The vendored sfui copy is byte for
+byte unchanged, so the daily `sfui-vendor` audit is unaffected.
+
+**What the rename touched.** Five `{% extends %}` lines, two
+in-template comments, two comments in `test_api_html.py`, one
+docstring in `tools/preview-templates.py`, two directory notes
+in `ARCHITECTURE.md` and two references in `docs/development.md`.
+Nothing under `docs/plans/`, deliberately.
+
+**Where the plan was wrong.**
+
+1. **The single-commit shape defeated its own success
+   criterion.** Decision 2 put the delete and the rename in one
+   commit, with `git mv` after `git rm`, expecting git to record
+   a rename. It does not: because the old `base.html` was
+   deleted and the new one moved onto that same path in the same
+   commit, git recorded `D base-sfui.html` plus `M base.html`,
+   and `git log --follow base.html` walked the Bootstrap base's
+   history back to the initial commit instead of reaching the
+   sfui base's. At the plan's review gate the step was split in
+   two -- delete everything old, then rename -- which records a
+   true `R100`. The intermediate state is sound: after the first
+   commit all five pages still extend `base-sfui.html`, which
+   still exists, so nothing dangles. Decision 2's reasoning was
+   right about not splitting the *asset* deletion from the
+   `{% extends %}` update; it just did not follow that a
+   same-path swap is not a rename to git.
+
+2. **The survey missed `tools/preview-templates.py`.** Its
+   module docstring named `base-sfui.html` and described a world
+   with unconverted pages left in it. The survey's grep for live
+   references covered `kerbside/`, `docs/`, `ARCHITECTURE.md`
+   and `AGENTS.md` but not `tools/`. Found during the plan's
+   recovery from a crashed session, folded into 9a, and the
+   greps widened.
+
+3. **8.6 MB was `du` block-rounding.** The real figure is 8.4 MB
+   of file content.
+
+Everything else the survey found held: `AGENTS.md` needed no
+change, `.vscode/review-scope.toml` did need pruning, no
+`.weaudit` mark referenced a deleted path, and the sfui README
+audit greps pass over the finished templates -- no hex or
+`rgba()` literals, and `--sf-font-sans` is the only token
+referenced.
+
+**Verification.** `pre-commit run --all-files` green at every
+commit. The new `StaticAssetReferenceTestCase` was proved to
+fail by pointing `base.html` at `/static/nope.css`, which failed
+all five of its tests. All five pages were rendered through
+`tools/preview-templates.py` and screenshotted in both palettes:
+brand chrome, theme toggle, tab strip, tables, disclosures, the
+two-step terminate control and the poll footer all present and
+styled.
+
+### Drafted closing comment for #244
+
+Not posted. For Michael to post, or to edit first.
+
+> Closed by the sfui conversion, which landed over nine phases.
+>
+> The admin UI is now built on [sfui](https://github.com/shakenfist/sfui),
+> the Shaken Fist design system, making kerbside its second
+> consumer after the private-ci conductor dashboard. What
+> changed:
+>
+> - **All five pages rebuilt** on sfui tokens and components --
+>   login, consoles, sessions, sources and audit -- with a
+>   shared base template, brand chrome, a tab-strip nav and a
+>   three-way theme toggle that follows the system palette by
+>   default.
+> - **Bootstrap, jQuery and axios are gone**, 8.4 MB across 47
+>   vendored files, along with the last hand-rolled markup
+>   defects the conversion surfaced.
+> - **Reloads replaced by polling**: pages that used a
+>   `<meta http-equiv="refresh">` now fetch and morph their
+>   content every 30 seconds, so scroll position, focus, an open
+>   disclosure and a half-confirmed terminate survive a tick.
+>   A failed poll reports staleness rather than throwing away a
+>   readable page.
+> - **Destructive actions are POSTs** behind a CSRF
+>   double-submit header (#133). One `.vv` GET that mints a
+>   token could not convert; it is mitigated with a
+>   `SameSite=Lax` cookie and tracked separately as #319.
+> - **A safety net that did not exist before**: HTML smoke
+>   tests over every page, asserting on fixture data rather than
+>   markup so they survive future rewrites, plus a test that
+>   every `/static/` reference a page makes resolves to a file
+>   that is actually there.
+>
+> The plan and its nine phase documents are in `docs/plans/`,
+> starting at `PLAN-sfui-conversion.md`.

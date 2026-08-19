@@ -258,7 +258,7 @@ locally-running kerbside.
 | 6. Sessions, sources and audit pages | PLAN-sfui-conversion-phase-06-remaining-pages.md | Done |
 | 7. morphdom polling | PLAN-sfui-conversion-phase-07-polling.md | Done |
 | 8. Terminate actions to POST (#133) | PLAN-sfui-conversion-phase-08-terminate-post.md | Done |
-| 9. Teardown, docs and issue closure | PLAN-sfui-conversion-phase-09-teardown.md | Planned |
+| 9. Teardown, docs and issue closure | PLAN-sfui-conversion-phase-09-teardown.md | Done |
 
 Phase notes, dependencies and recommended planning effort:
 
