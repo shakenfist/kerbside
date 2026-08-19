@@ -468,10 +468,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/functional-tests.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/pr-retest.yml",
       "author": "mikal"
     },
@@ -504,10 +500,6 @@
       "author": "mikal"
     },
     {
-      "path": "demo/docker-compose.yml",
-      "author": "mikal"
-    },
-    {
       "path": "demo/Dockerfile",
       "author": "mikal"
     },
@@ -528,15 +520,7 @@
       "author": "mikal"
     },
     {
-      "path": "demo/README.md",
-      "author": "mikal"
-    },
-    {
       "path": "demo/sources.yaml",
-      "author": "mikal"
-    },
-    {
-      "path": "demo",
       "author": "mikal"
     },
     {
