@@ -117,6 +117,8 @@ Neither tier:
 
 - `rust.yml` - Rust proxy lint, tests, and wheel build (advisory,
   path-filtered)
+- `demo-compose.yml` - the `demo/` stack brought up against the PR,
+  asserting a proxied SPICE session (advisory, path-filtered)
 - `codeql-analysis.yml` - Security scanning
 - `prune-reviews.yml` - Prunes stale review marks after a develop push
 - `pin-indirect-dependencies.yml` - Regenerates the pinned indirect

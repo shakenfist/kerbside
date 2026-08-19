@@ -1,0 +1,204 @@
+# The compose demo lane: bring demo/ up against this pull request and
+# assert a SPICE session is proxied.
+#
+# Advisory and path-filtered, following rust.yml. It is deliberately NOT
+# a required check: the five required checks are gate jobs whose display
+# names are bound to the develop ruleset that
+# tools/check-required-checks.sh validates against, so adding one means a
+# ruleset change that blocks every merge in the repository if it drifts.
+# docs/testing.md is the authority on tiers and lists this lane.
+#
+# Two things about this lane are worth knowing before editing it.
+#
+# It builds with KERBSIDE_SOURCE=/src, which is NOT the demo's default.
+# The default installs released kerbside from PyPI, because an evaluator
+# should get what they can install; a lane doing that would test the last
+# release instead of the pull request. This is the only place that
+# overrides it.
+#
+# There is no cargo step, and that is deliberate rather than an
+# oversight. pyproject.toml carries a dev-inclusive floor
+# (kerbside-proxy>=X.dev0), so a checkout install resolves the newest dev
+# wheel published from develop by dev-proxy-wheel.yml -- verified: a /src
+# build pairs a checkout kerbside with kerbside-proxy 0.5.1.dev1 from
+# PyPI. Building the Rust proxy here would add a cold release build to
+# every run for no signal that rust.yml does not already give.
+#
+# The residual case is a pull request that changes
+# kerbside/rpc/kerbside.proto *and* one of the paths below, before a dev
+# wheel exists for the new proto. Then the checkout daemon and the PyPI
+# wheel disagree and proxy_supervisor.check_contract() refuses to launch
+# the binary, so this lane goes red for a reason that is not the demo's
+# fault. That failure is loud and correctly diagnosed by the daemon's own
+# message; the fix is to let the dev wheel publish, not to work around it
+# here. If it ever becomes a nuisance, the fallback is one step calling
+# tools/direct-qemu/install-proxy-wheel.sh --venv, as
+# direct-qemu-functional.yml does.
+
+name: Demo compose lane
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - 'demo/**'
+      - 'tools/demo/**'
+      - 'kerbside/migrations/**'
+      - 'pyproject.toml'
+      - 'docs/installation.md'
+      - '.github/workflows/demo-compose.yml'
+  push:
+    branches: [develop]
+    paths:
+      - 'demo/**'
+      - 'tools/demo/**'
+      - 'kerbside/migrations/**'
+      - 'pyproject.toml'
+      - 'docs/installation.md'
+      - '.github/workflows/demo-compose.yml'
+  workflow_dispatch:
+
+# docs/installation.md is in the filter on purpose: phase 5 makes that
+# page the narrative version of this demo, and the page and the thing it
+# documents should not be able to drift without the lane running.
+# kerbside/migrations/** and pyproject.toml are there because the
+# packaging is the part most likely to break silently -- and pyproject
+# is where the proxy floor above lives.
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  demo:
+    name: compose up / SPICE session / negative cases
+    # l: a qemu TCG guest, a MariaDB, a container build and a cargo
+    # release build of ryll, on one runner. Never an unsized vm label --
+    # rust.yml:36-38 records that one defaults to xs (1 core / 2 GB) in
+    # private-ci. Sized below rust.yml's xl because the *proxy* is not
+    # built here (decision 3); ryll still is, so this is not a
+    # cargo-free lane.
+    #
+    # Measured on the first green run, at l: 4.5 minutes end to end --
+    # ryll 1.7, stack up 1.6, docker install 0.2, assertions 0.3. So `l`
+    # is right, and caching cargo or the probe's base image would be
+    # optimising a lane that finishes in under five minutes.
+    runs-on: [self-hosted, vm, debian-12, l]
+    timeout-minutes: 60
+
+    # The runner image exports http_proxy/https_proxy at an upstream
+    # squid. Loopback traffic to the published demo ports must bypass it
+    # or squid answers 503 ERR_CONNECT_FAIL when it cannot route the
+    # request back through itself. Recorded at
+    # direct-qemu-functional.yml:88-92 and hit again by the oVirt lane.
+    env:
+      no_proxy: 127.0.0.1,localhost
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # A KERBSIDE_SOURCE=/src build needs real git metadata, and
+          # more of it than it looks: setuptools_scm's file finder is the
+          # only reason kerbside/sources/ and kerbside/migrations/ get
+          # installed (neither has an __init__.py, so neither is in
+          # pyproject's `packages`), and deriving a dev version needs the
+          # commit count since the last v* tag, which a shallow clone
+          # cannot produce. Same reason direct-qemu-functional.yml:100
+          # and sf-e2e-functional.yml:113 do this.
+          fetch-depth: 0
+
+      # The runner image ships no docker, and Debian 12 cannot supply a
+      # usable one either -- the script explains both halves and
+      # configures the daemon and builds for the runner's proxy.
+      # Idempotent, so if the image ever grows a new enough docker this
+      # stops costing anything.
+      - name: Install docker
+        run: tools/demo/install-docker.sh
+
+      # Answers "can this runner build containers at all" before
+      # anything slow. Also names whatever holds 5900, which the Docker
+      # daemon's own bind error never does.
+      - name: Probe the runner
+        run: tools/demo/probe-runner.sh
+
+      - name: Install system packages
+        # Only what ryll needs to compile. The demo itself needs nothing
+        # on the host but docker: qemu, MariaDB and kerbside all run in
+        # containers, which is the point of the demo.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config libssl-dev \
+            libx11-dev libxcb1-dev libxkbcommon-dev \
+            python3 python3-venv
+
+      - name: Ensure Rust toolchain
+        run: |
+          if cargo --version > /dev/null 2>&1; then
+            echo "cargo already available: $(cargo --version)"
+          else
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+              | sh -s -- -y --default-toolchain stable
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Build ryll from main
+        # WITHOUT --features digest-decode. This lane asserts that a
+        # SPICE session is established, not what it renders, which is the
+        # same choice functional-tests.yml:629 makes for the oVirt lane.
+        # Do NOT copy direct-qemu-functional.yml:143 here -- that lane
+        # includes the feature because it asserts on pixels, and the
+        # extra build cost buys this lane nothing.
+        run: |
+          git clone --depth 1 \
+            https://github.com/shakenfist/ryll.git /tmp/ryll-src
+          cd /tmp/ryll-src
+          cargo build --release --no-default-features -p ryll
+          sudo install -m 755 target/release/ryll /usr/local/bin/ryll
+          ryll --version
+
+      - name: Bring up the demo stack
+        run: tools/demo/lane-up.sh
+
+      - name: Assert the demo works
+        run: tools/demo/lane-assert.sh
+
+      - name: Collect compose logs
+        if: always()
+        run: |
+          mkdir -p /tmp/kerbside-demo-lane/logs
+          cd demo
+          for svc in db spice-target kerbside; do
+            docker compose logs --no-color "${svc}" \
+              > "/tmp/kerbside-demo-lane/logs/${svc}.log" 2>&1 || true
+          done
+
+      # After log collection and before upload, and that order is
+      # load-bearing: this step originally ran first, which meant it
+      # could not scrub the logs at all. It caught the .vv console token
+      # and missed the root password MariaDB prints into db.log. The
+      # script redacts both and then fails the step if either pattern
+      # stopped matching, rather than reporting success for having found
+      # nothing.
+      - name: Redact secrets from artifacts
+        if: always()
+        run: tools/demo/redact-artifacts.sh /tmp/kerbside-demo-lane
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: demo-compose-artifacts-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            /tmp/kerbside-demo-lane/logs/
+            /tmp/kerbside-demo-lane/*.vv
+            /tmp/kerbside-demo-lane/*.log
+
+      - name: Tear down
+        if: always()
+        run: cd demo && docker compose down -v --remove-orphans || true
