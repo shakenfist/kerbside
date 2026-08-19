@@ -363,15 +363,13 @@ kerbside/
                        #   `kerbside db upgrade` works from an install.
     versions/          # Migration scripts
   api/                 # Web UI assets
-    templates/         # Jinja2 templates: base-sfui.html (sfui base; see
+    templates/         # Jinja2 templates: base.html (the sfui base; see
                        #   AGENTS.md) is extended by all five pages --
                        #   login.html, consoles.html, sessions.html,
-                       #   sources.html and audit.html. base.html (the old
-                       #   Bootstrap base) is unreferenced, pending deletion
-                       #   alongside the old static assets. base-sfui.html
-                       #   wraps the page content in <main id="kb-content">,
-                       #   the morph target every polling page's fetch
-                       #   cycle updates in place.
+                       #   sources.html and audit.html. It wraps the page
+                       #   content in <main id="kb-content">, the morph
+                       #   target every polling page's fetch cycle updates
+                       #   in place.
       icons/           # Theme-following icons, inlined via
                        #   {% include 'icons/....svg' %} rather than served
                        #   as static assets -- an SVG loaded through <img>
@@ -383,8 +381,8 @@ kerbside/
                        #   sessions.html, and poll.html, the 30-second
                        #   fetch-and-morph poll every refresh=True page
                        #   includes in place of a meta refresh.
-    static/            # CSS, JS (static/icons/ retired; see templates/icons/
-                       #   above)
+    static/            # Web assets: sfui/ and nothing else (static/icons/
+                       #   retired; see templates/icons/ above)
       sfui/            # Vendored shakenfist/sfui design system (never
                        #   edited in place; see docs/development.md)
 rust/kerbside-proxy/   # The Rust SPICE proxy (binary crate)
