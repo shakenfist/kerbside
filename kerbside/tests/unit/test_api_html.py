@@ -69,7 +69,7 @@ class LoginPageTestCase(testtools.TestCase):
 
     def test_login_page_offers_no_navigation(self):
         # Root.get() passes navitems=[] for the login branch, so
-        # base-sfui.html's {% if navitems %} guard renders neither the nav
+        # base.html's {% if navitems %} guard renders neither the nav
         # strip nor the logout control. '/console' and '/session' would only
         # appear as navitem hrefs, so their absence is the signal that no
         # navigation was offered to an unauthenticated user.
@@ -85,7 +85,7 @@ class LoginPageTestCase(testtools.TestCase):
         self.assertNotIn('/session', body)
 
     def test_login_page_does_not_poll(self):
-        # base-sfui.html renders refresh=False for the login branch, so
+        # base.html renders refresh=False for the login branch, so
         # neither the old meta refresh nor the morphdom poll's status span
         # appears. These are behavioural absences tied to whether the page
         # polls, not to markup cosmetics, so they survive a future rewrite
