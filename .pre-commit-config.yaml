@@ -30,8 +30,7 @@ repos:
         args: ['-x']
 
   # Trailing whitespace, end-of-file, basic hygiene.
-  # Vendored Bootstrap assets under kerbside/api/static/{css,js}/ and
-  # the vendored sfui copy under kerbside/api/static/sfui/ are
+  # The vendored sfui copy under kerbside/api/static/sfui/ is
   # excluded so we do not gratuitously modify upstream files.
   #
   # The weAudit review marks under .vscode/ are excluded from the two
@@ -51,9 +50,9 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: ^(kerbside/api/static/(css|js|sfui)/|\.vscode/.*\.weaudit)
+        exclude: ^(kerbside/api/static/sfui/|\.vscode/.*\.weaudit)
       - id: end-of-file-fixer
-        exclude: ^(kerbside/api/static/(css|js|sfui)/|\.vscode/.*\.weaudit)
+        exclude: ^(kerbside/api/static/sfui/|\.vscode/.*\.weaudit)
       - id: check-yaml
       - id: check-merge-conflict
       - id: check-added-large-files
