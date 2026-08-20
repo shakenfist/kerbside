@@ -14,12 +14,12 @@ real static tree (templates use root-relative asset paths like
 document root), and prints the two commands that turn that into a
 screenshot.
 
-Only pages that have actually been converted onto base-sfui.html are
-listed in PAGES below -- this script must never invent fixtures for a
-page that has not been converted yet. Today that is all five: 'login',
-which renders directly with no database and no JWT needed, and
-'consoles', 'sessions', 'sources' and 'audit', which each need
-authentication and one or more kerbside.db calls mocked.
+PAGES below lists every page the app renders, all five of them on
+base.html: 'login', which renders directly with no database and no JWT
+needed, and 'consoles', 'sessions', 'sources' and 'audit', which each
+need authentication and one or more kerbside.db calls mocked. A page
+added later needs its fixtures added here too, or it cannot be
+previewed.
 """
 
 import argparse

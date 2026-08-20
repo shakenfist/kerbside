@@ -1,5 +1,7 @@
 import copy
 import datetime
+import os
+import re
 from unittest import mock
 import testtools
 
@@ -45,9 +47,10 @@ class LoginPageTestCase(testtools.TestCase):
 
     These assertions must only ever look for fixture data markers (words,
     ids, sentinel strings), never for markup (tags, CSS classes, element
-    ids). The sfui conversion is going to rewrite every template; a test
-    tied to markup would break on every rewrite, defeating the point of
-    having a safety net that spans the conversion.
+    ids). The sfui conversion did rewrite every template, and a test tied
+    to markup would have broken on every rewrite, defeating the point of
+    having a safety net that spanned the conversion. The rule stands for
+    the rewrites that come after it.
     """
 
     def setUp(self):
@@ -69,7 +72,7 @@ class LoginPageTestCase(testtools.TestCase):
 
     def test_login_page_offers_no_navigation(self):
         # Root.get() passes navitems=[] for the login branch, so
-        # base-sfui.html's {% if navitems %} guard renders neither the nav
+        # base.html's {% if navitems %} guard renders neither the nav
         # strip nor the logout control. '/console' and '/session' would only
         # appear as navitem hrefs, so their absence is the signal that no
         # navigation was offered to an unauthenticated user.
@@ -85,7 +88,7 @@ class LoginPageTestCase(testtools.TestCase):
         self.assertNotIn('/session', body)
 
     def test_login_page_does_not_poll(self):
-        # base-sfui.html renders refresh=False for the login branch, so
+        # base.html renders refresh=False for the login branch, so
         # neither the old meta refresh nor the morphdom poll's status span
         # appears. These are behavioural absences tied to whether the page
         # polls, not to markup cosmetics, so they survive a future rewrite
@@ -105,9 +108,10 @@ class HtmlPagesTestCase(testtools.TestCase):
 
     These assertions must only ever look for fixture data markers (words,
     ids, sentinel strings), never for markup (tags, CSS classes, element
-    ids). The sfui conversion is going to rewrite every template; a test
-    tied to markup would break on every rewrite, defeating the point of
-    having a safety net that spans the conversion.
+    ids). The sfui conversion did rewrite every template, and a test tied
+    to markup would have broken on every rewrite, defeating the point of
+    having a safety net that spanned the conversion. The rule stands for
+    the rewrites that come after it.
 
     Two of these tests (consoles, sources) also double as leak guards: the
     HTML views pass raw db dicts straight to the template, unlike the JSON
@@ -301,3 +305,98 @@ class HtmlPagesTestCase(testtools.TestCase):
 
         self.assertEqual(302, resp.status_code)
         self.assertTrue(resp.headers['Location'].endswith('/session'))
+
+
+class StaticAssetReferenceTestCase(testtools.TestCase):
+    """Every /static/ reference a rendered page makes resolves to a file.
+
+    This class is deliberately exempt from the markup rule the two
+    classes above state, and the exemption is a narrow one. Those
+    assertions avoid markup because a test naming particular tags or
+    classes breaks on every template rewrite. This test names no markup:
+    it asserts a referential invariant between whatever markup exists
+    and the filesystem, so a rewrite that changes which assets a page
+    loads passes it unchanged, while one that points a page at an asset
+    that is not there fails it.
+
+    It exists because deleting the Bootstrap era static assets had no
+    such safety net: nothing but a human loading the page would have
+    noticed a template left referencing a file that had been removed.
+    """
+
+    # Deliberately not an HTML parser. The invariant is about the
+    # reference strings the template emits, and a regex over the body
+    # cannot be fooled into resolving a path the browser would not see.
+    STATIC_REF_RE = re.compile(r'(?:src|href)="(/static/[^"]*)"')
+
+    def setUp(self):
+        super().setUp()
+        api.app.config['TESTING'] = True
+        self.client = api.app.test_client()
+
+    def _authenticate(self):
+        jwt_patch = mock.patch(
+            'kerbside.api.verify_jwt_in_request', return_value=(None, {}))
+        jwt_patch.start()
+        self.addCleanup(jwt_patch.stop)
+
+    def _assert_static_references_resolve(self, resp):
+        self.assertEqual(200, resp.status_code)
+        body = resp.get_data(as_text=True)
+        refs = set(self.STATIC_REF_RE.findall(body))
+
+        # A page that referenced no assets at all would otherwise pass
+        # vacuously, which is the failure this test is here to catch.
+        self.assertNotEqual(set(), refs)
+
+        # app.static_folder is built from kerbside/api.py's __file__, so
+        # this resolves the same way whatever the test's cwd is.
+        for ref in refs:
+            path = ref[len('/static/'):].split('?')[0].split('#')[0]
+            candidate = os.path.join(api.app.static_folder, path)
+            self.assertTrue(
+                os.path.isfile(candidate),
+                '%s does not resolve to a file (looked for %s)'
+                % (ref, candidate))
+
+    def test_login_page_assets_resolve(self):
+        self._assert_static_references_resolve(
+            self.client.get('/', headers={'Accept': 'text/html'}))
+
+    @mock.patch('kerbside.api.db.get_consoles')
+    def test_consoles_page_assets_resolve(self, mock_get_consoles):
+        self._authenticate()
+        mock_get_consoles.return_value = [copy.deepcopy(CONSOLE)]
+
+        self._assert_static_references_resolve(
+            self.client.get('/console', headers={'Accept': 'text/html'}))
+
+    @mock.patch('kerbside.api.db.get_sessions')
+    def test_sessions_page_assets_resolve(self, mock_get_sessions):
+        self._authenticate()
+        mock_get_sessions.return_value = copy.deepcopy(SESSIONS)
+
+        self._assert_static_references_resolve(
+            self.client.get('/session', headers={'Accept': 'text/html'}))
+
+    @mock.patch('kerbside.api.db.get_sources')
+    def test_sources_page_assets_resolve(self, mock_get_sources):
+        self._authenticate()
+        mock_get_sources.return_value = [copy.deepcopy(SOURCE)]
+
+        self._assert_static_references_resolve(
+            self.client.get('/source', headers={'Accept': 'text/html'}))
+
+    @mock.patch('kerbside.api.db.get_audit_events')
+    @mock.patch('kerbside.api.db.count_audit_events')
+    @mock.patch('kerbside.api.db.get_console')
+    def test_audit_page_assets_resolve(
+            self, mock_get_console, mock_count_events, mock_get_events):
+        self._authenticate()
+        mock_get_console.return_value = copy.deepcopy(CONSOLE)
+        mock_count_events.return_value = 42
+        mock_get_events.return_value = [copy.deepcopy(AUDIT_EVENT)]
+
+        self._assert_static_references_resolve(
+            self.client.get('/console/sf1/u-1234/audit',
+                            headers={'Accept': 'text/html'}))
