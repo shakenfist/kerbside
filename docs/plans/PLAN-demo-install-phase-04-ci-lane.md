@@ -891,7 +891,13 @@ on the same pull request (#351):
 - [x] **Positive.** Pushing `8a9f5ef`, which adds
       `docs/installation.md` to the same pull request, started
       https://github.com/shakenfist/kerbside/actions/runs/32545893284
-      within seconds.
+      within seconds. That run was later cancelled by the
+      workflow's concurrency group when the next commit was
+      pushed, and re-triggered as
+      https://github.com/shakenfist/kerbside/actions/runs/32546415623 —
+      which is the same observation twice. What is being
+      demonstrated here is that the filter fires, not what the
+      lane concluded.
 
 ## Registration
 
