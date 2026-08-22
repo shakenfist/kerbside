@@ -326,7 +326,7 @@ anything to wait on.
 | 2. `etc/kerbside.conf.example` | [PLAN-demo-install-phase-02-conf-example.md](PLAN-demo-install-phase-02-conf-example.md) | Complete |
 | 3. The compose demo | [PLAN-demo-install-phase-03-compose-demo.md](PLAN-demo-install-phase-03-compose-demo.md) | Complete |
 | 4. CI lane for the demo | [PLAN-demo-install-phase-04-ci-lane.md](PLAN-demo-install-phase-04-ci-lane.md) | Complete bar one item deferred to phase 5 |
-| 5. Rewrite installation.md | [PLAN-demo-install-phase-05-docs.md](PLAN-demo-install-phase-05-docs.md) | Not started |
+| 5. Rewrite installation.md | [PLAN-demo-install-phase-05-docs.md](PLAN-demo-install-phase-05-docs.md) | Planned, re-surveyed 2026-08-22 |
 
 The ordering is a dependency chain, not a preference. Phase
 3's container entrypoint calls `kerbside db upgrade` from
