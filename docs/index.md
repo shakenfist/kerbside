@@ -213,8 +213,8 @@ Internal design of the Kerbside proxy:
   the process model, the connection state machine, the relay, and the SPICE
   firewall
 
-- [ARCHITECTURE.md](../ARCHITECTURE.md) - High-level system architecture
-  overview (in project root)
+- [ARCHITECTURE.md](https://github.com/shakenfist/kerbside/blob/develop/ARCHITECTURE.md) -
+  High-level system architecture overview (in project root)
 
 ### SPICE Protocol Documentation
 

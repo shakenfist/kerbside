@@ -166,6 +166,13 @@ https://www.spice-space.org/spice-protocol.html.
   parse" separate from "was empty".** Conflating them (issue #272)
   reported a broken parser as a security failure for two days.
 
+- **A link out of `docs/` must be an absolute URL.** `docs/` is
+  synchronised into shakenfist/shakenfist and published on
+  shakenfist.com, where the tree above `docs/` does not exist, so
+  `../ARCHITECTURE.md` renders correctly on GitHub and 404s on the
+  site. Links that stay inside `docs/` should stay relative; they move
+  with the tree and work in both renderings.
+
 - **The credential scan runs on every change, including
   documentation-only ones.** It is the one CI job not gated on
   `check_paths`, it scans all of history rather than the diff, and it
