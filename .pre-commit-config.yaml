@@ -43,9 +43,9 @@ repos:
   #
   # Deliberately scoped to these two hooks rather than set as a
   # top-level exclude. Review notes are prose, so hiding them from
-  # every hook would also hide them from any content scanner we add
-  # later -- issue #185 tracks exactly that. See
-  # docs/code-review-tracking.md in shakenfist/development.
+  # every hook would also hide them from a content scanner -- which
+  # now exists: the credential_scan job reads them like any other
+  # file. See docs/code-review-tracking.md in shakenfist/development.
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:

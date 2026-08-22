@@ -166,6 +166,15 @@ https://www.spice-space.org/spice-protocol.html.
   parse" separate from "was empty".** Conflating them (issue #272)
   reported a broken parser as a security failure for two days.
 
+- **The credential scan runs on every change, including
+  documentation-only ones.** It is the one CI job not gated on
+  `check_paths`, it scans all of history rather than the diff, and it
+  fails on a credential-shaped string in a code sample as readily as
+  on a real key. Do not silence one by widening `.gitleaks.toml`;
+  suppression has two mechanisms and picking the wrong one blinds the
+  scanner to future leaks. See "The credential scan" in
+  [`docs/testing.md`](docs/testing.md).
+
 - **`REVIEWS.md` is generated; never edit it by hand.** Commits that
   add review marks must be signed — confirm `git config
   commit.gpgsign` is `true` (with `gpg.format` `x509` and
