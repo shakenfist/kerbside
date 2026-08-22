@@ -1065,7 +1065,7 @@ jobs:
     # membership does not depend on a guard in another repository, and
     # merge-group and dispatch rollups stay free of a no-op reviewer job.
     if: github.event_name == 'pull_request'
-    needs: [sanity_checks]
+    needs: [credential_scan, sanity_checks]
     # A cross-repository reusable workflow cannot grant itself more
     # token scope than its caller has, so the permissions go here.
     permissions:
