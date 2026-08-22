@@ -61,10 +61,6 @@
       "sha": "9a54f8284dd2c5875d6ea51f1c85e595a88c37e8",
       "date": "2026-08-18"
     },
-    "AGENTS.md": {
-      "sha": "d3033f32e61d8a2e90531e1f3f30eeedfed201c4",
-      "date": "2026-08-18"
-    },
     "AUTHORS": {
       "sha": "52747656c9ce3a27509516db50abacb7930c8ca2",
       "date": "2026-08-04"
@@ -76,10 +72,6 @@
     "PUSH-AUDIT.md": {
       "sha": "05c9d50bfc1192f87b66783c0a118cde3c93b40f",
       "date": "2026-08-15"
-    },
-    "README.md": {
-      "sha": "32e9538d08f646af6d7ccfb4b92f0de435b7e1cf",
-      "date": "2026-08-18"
     },
     "demo/Dockerfile": {
       "sha": "e94b4457477d238ad2f2f5cc143a8859eff0145a",
