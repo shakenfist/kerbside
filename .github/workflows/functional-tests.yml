@@ -238,6 +238,17 @@ jobs:
           . /tmp/venv-test/bin/activate
           tox -eshellcheck
 
+      # skillsaw lints the agent context -- AGENTS.md, .claude/CLAUDE.md
+      # and the skills under .claude/skills/ -- for malformed
+      # frontmatter, embedded credentials and invisible-unicode
+      # smuggling. The pre-commit hook is the same linter at the same
+      # error-only severity, but a hook can be skipped with --no-verify
+      # or by a clone that never ran `pre-commit install`, and agent
+      # context is code an agent executes against.
+      - name: Lint agent context with skillsaw
+        timeout-minutes: 5
+        uses: stbenjam/skillsaw@v0
+
       - name: Attempt to install requirements
         timeout-minutes: 5
         run: |

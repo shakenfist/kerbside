@@ -31,6 +31,19 @@ repos:
         types_or: [sh, bash, shell]
         args: ['-x']
 
+  # skillsaw lints the agent context -- AGENTS.md, .claude/CLAUDE.md and
+  # the skills under .claude/skills/ -- for malformed frontmatter,
+  # embedded credentials and invisible-unicode smuggling. Agent context
+  # is code an agent executes against, and it is the material the
+  # credential scan is least likely to be pointed at. The same linter
+  # runs in CI (sanity_checks), because a hook is advisory: it can be
+  # skipped with --no-verify or by a clone that never ran
+  # `pre-commit install`.
+  - repo: https://github.com/stbenjam/skillsaw
+    rev: v0.18.0
+    hooks:
+      - id: skillsaw
+
   # Trailing whitespace, end-of-file, basic hygiene.
   # The vendored sfui copy under kerbside/api/static/sfui/ is
   # excluded so we do not gratuitously modify upstream files.
