@@ -5,6 +5,38 @@ and then points at the guide for the cloud you actually run. If you
 would rather see Kerbside working before reading about it, skip to
 [Try it: the demo stack](#try-it-the-demo-stack).
 
+## Before you install: OS packages
+
+`pip install kerbside` builds `mysqlclient` from source — that package
+ships no wheel — so a clean machine needs a compiler, the MariaDB
+client headers and `pkg-config` before pip will get anywhere. Without
+them the install fails at `Can not find valid pkg-config name`, or
+later in the compile, which reads as a Python problem and is not one.
+
+On Debian:
+
+```bash
+sudo apt-get install build-essential pkg-config python3-dev \
+    libmariadb-dev-compat libxml2-dev libxslt1-dev
+```
+
+On Ubuntu the same list applies with `libmysqlclient-dev` in place of
+`libmariadb-dev-compat`. On RHEL, CentOS and Fedora:
+
+```bash
+sudo dnf install gcc pkgconfig python3-devel mariadb-devel \
+    libxml2-devel libxslt-devel
+```
+
+You will also want a MariaDB or MySQL server, either locally or
+reachable over the network — see
+[What a running Kerbside needs](#what-a-running-kerbside-needs).
+
+From a checkout, `tox -e bindep` reports the same thing against
+`bindep.txt`, per platform. It needs the source tree and `tox`, so it
+is a developer convenience rather than a step for someone installing
+from PyPI.
+
 ## Installing with pip
 
 ```bash
@@ -39,23 +71,6 @@ to fix it. `KERBSIDE_SKIP_CONTRACT_CHECK=1` is the explicit, unsupported
 escape hatch that downgrades the refusal to a logged warning. See
 [proxy-architecture.md](proxy-architecture.md) for how the check works.
 
-## Checking OS package dependencies
-
-Kerbside requires certain OS-level packages to be installed. You can
-check for missing dependencies using bindep via tox:
-
-```bash
-tox -e bindep
-```
-
-This reads `bindep.txt`, detects your operating system, and reports
-the missing platform-specific packages. Install them with your
-system's package manager — `sudo apt-get install <package-names>` on
-Debian and Ubuntu, `sudo dnf install <package-names>` on RHEL, CentOS
-and Fedora. The list covers MariaDB/MySQL client libraries, XML
-parsing libraries, and the build tools needed to compile Python
-extensions.
-
 ## What a running Kerbside needs
 
 Installing the package gives you commands, not a running system. This
@@ -80,6 +95,13 @@ must be co-located** — the same host, the same container, or two
 containers sharing that path. Note that the API's port is a gunicorn
 argument rather than a Kerbside setting; `PUBLIC_FQDN` is how Kerbside
 tells clients where to find it.
+
+That gunicorn line is the demo's shape, not a recommendation: it
+serves plain HTTP on every interface, and the API carries bearer
+tokens and Keystone credentials. A real deployment binds it to an
+interface you have chosen and puts TLS in front of it — a reverse
+proxy, or gunicorn's own `--certfile` and `--keyfile`. The proxy leg's
+TLS settings below do not cover the API leg; they are separate.
 
 **A database.** MySQL or MariaDB, reached via `SQL_URL`. Create the
 database and its user yourself, then let Kerbside create its own
@@ -149,6 +171,18 @@ cd kerbside/demo
 docker compose up -d
 ```
 
+One thing to know about that pairing: the clone lands on `develop`,
+but the image installs the most recent *release* from PyPI, so the
+demo's glue comes from the checkout while Kerbside itself does not.
+That is deliberate — what you evaluate is what you can install — and
+CI does not exercise it, because the lane builds from the checkout
+instead. If you have changed anything under `demo/`, or want a
+stack that matches the tree you are sitting in, build it that way:
+`KERBSIDE_SOURCE=/src docker compose build kerbside`, which needs an
+ordinary clone rather than a git worktree.
+[demo/README.md](https://github.com/shakenfist/kerbside/blob/develop/demo/README.md)
+covers both forms.
+
 The first run builds the image and takes a few minutes; afterwards the
 stack comes up in seconds. When it returns, three containers are
 running — MariaDB, a disk-less qemu with a SPICE server, and Kerbside
@@ -174,7 +208,14 @@ it: it connects to the port the `.vv` advertises and verifies the
 presented certificate against the CA embedded in that same file.
 
 ```
+[demo] Waiting for the stack to finish starting...
 [demo] Minting a bearer token...
+WARNING: this is a demonstration token, minted directly from
+AUTH_SECRET_SEED because kerbside has no non-Keystone login (issue
+#300). Do not use this pattern in production.
+Token written to /tmp/demo-token.169928
+[demo] Waiting for the console list...
+[demo] Looking up the console...
 [demo] Console: demo-console (demo/0d3f6a52-0000-0000-0000-0000000dec01)
 [demo] Fetching the .vv file...
 [demo] Verifying the TLS leg...
@@ -182,6 +223,9 @@ presented certificate against the CA embedded in that same file.
     subject matches host-subject=C=US,O=Kerbside CI,CN=kerbside-ci
 [demo] Wrote ./demo-console.vv
 ```
+
+(The script then repeats the `remote-viewer` command and the
+expectation below, which is the next step here.)
 
 Then open it. `remote-viewer` ships in the `virt-viewer` package
 (`sudo apt-get install virt-viewer`, or `sudo dnf install

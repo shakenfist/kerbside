@@ -41,7 +41,7 @@ directory:
 
 - [Documentation Index](https://github.com/shakenfist/kerbside/blob/develop/docs/index.md) - What Kerbside is, the broker model, and the connection flow
 - [Kerbside for oVirt](https://github.com/shakenfist/kerbside/blob/develop/docs/use-cases/ovirt.md) - The first of the per-deployment guides: what Kerbside replaces in an oVirt deployment, and how to set it up
-- [Installation](https://github.com/shakenfist/kerbside/blob/develop/docs/installation.md) - Packages, OS dependencies, and deployment
+- [Installation](https://github.com/shakenfist/kerbside/blob/develop/docs/installation.md) - From `pip install` to a proxied console: what a running Kerbside needs, the compose demo, and where to go for your cloud
 - [Configuration](https://github.com/shakenfist/kerbside/blob/develop/docs/configuration.md) - Configuration reference, including the SPICE firewall knobs
 - [Console Sources](https://github.com/shakenfist/kerbside/blob/develop/docs/console-sources.md) - Configuring sources.yaml for Shaken Fist, OpenStack, and oVirt
 - [Proxy Architecture](https://github.com/shakenfist/kerbside/blob/develop/docs/proxy-architecture.md) - Internal proxy design, state machine, and firewall

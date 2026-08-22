@@ -14,6 +14,12 @@ mariadb-server [platform:rpm platform:redhat platform:debian]
 # themselves come from libmariadb-dev above.
 pkg-config [platform:dpkg]
 pkgconfig [platform:rpm]
+# mysqlclient compiles a C extension, so the Python headers are needed
+# too. Verified 2026-08-22: without these, pip install kerbside gets
+# past pkg-config and then fails in the compile on both debian:trixie
+# and rockylinux:10.
+python3-dev [platform:dpkg]
+python3-devel [platform:rpm]
 libxml2-dev [platform:dpkg]
 libxslt1-dev [platform:dpkg]
 build-essential [platform:dpkg]

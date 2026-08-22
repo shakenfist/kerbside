@@ -277,7 +277,7 @@ flag, which is how guards die.
   proper issuance audit needs an event shape that is not
   console-scoped.
 
-### 2. Does `installation.md` or the static use-case page own the compose stack?
+### 2. Does `installation.md` or the static use-case page own the compose stack? — SETTLED 2026-08-22
 
 `PLAN-use-case-docs.md:49` reserves a "Standalone / static
 source" page for the static driver, "for labs, demos, and
@@ -326,7 +326,7 @@ anything to wait on.
 | 2. `etc/kerbside.conf.example` | [PLAN-demo-install-phase-02-conf-example.md](PLAN-demo-install-phase-02-conf-example.md) | Complete |
 | 3. The compose demo | [PLAN-demo-install-phase-03-compose-demo.md](PLAN-demo-install-phase-03-compose-demo.md) | Complete |
 | 4. CI lane for the demo | [PLAN-demo-install-phase-04-ci-lane.md](PLAN-demo-install-phase-04-ci-lane.md) | Complete |
-| 5. Rewrite installation.md | [PLAN-demo-install-phase-05-docs.md](PLAN-demo-install-phase-05-docs.md) | Planned, re-surveyed 2026-08-22 |
+| 5. Rewrite installation.md | [PLAN-demo-install-phase-05-docs.md](PLAN-demo-install-phase-05-docs.md) | Implemented in PR #351, not yet merged |
 
 The ordering is a dependency chain, not a preference. Phase
 3's container entrypoint calls `kerbside db upgrade` from
