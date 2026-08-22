@@ -447,7 +447,7 @@ jobs:
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "set -xe; sudo dnf update -y; sudo dnf distro-sync --nobest -y"
+              "set -xe; sudo dnf update -y --nobest; sudo dnf distro-sync --nobest -y"
 
       - name: Install ovirt-engine
         run: |
