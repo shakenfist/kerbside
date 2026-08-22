@@ -31,6 +31,7 @@
  *                    deletes the cookie; any value other than
  *                    'auto', 'light' or 'dark' throws. The
  *                    cookie is sf-theme, Path=/, SameSite=Lax,
+ *                    Secure when the page is served over https,
  *                    expiring in one year.
  */
 (function () {
@@ -38,21 +39,24 @@
 
     var COOKIE = 'sf-theme';
     var ONE_YEAR = 31536000;
-    var media = window.matchMedia(
-        '(prefers-color-scheme: dark)');
+    var media = window.matchMedia('(prefers-color-scheme: dark)');
 
     function storedPreference() {
-        var match = document.cookie.match(new RegExp(
-            '(?:^|;\\s*)' + COOKIE + '=(light|dark)(?:;|$)'));
+        var match = document.cookie.match(
+            new RegExp('(?:^|;\\s*)' + COOKIE + '=(light|dark)(?:;|$)'),
+        );
         return match ? match[1] : 'auto';
     }
 
     var preference = storedPreference();
 
     function stamp() {
-        var resolved = preference === 'auto'
-            ? (media.matches ? 'dark' : 'light')
-            : preference;
+        var resolved =
+            preference === 'auto'
+                ? media.matches
+                    ? 'dark'
+                    : 'light'
+                : preference;
         document.documentElement.dataset.theme = resolved;
     }
 
@@ -70,16 +74,36 @@
             if (['auto', 'light', 'dark'].indexOf(value) < 0) {
                 throw new Error(
                     'sfTheme.set: preference must be auto, ' +
-                    'light or dark');
+                        'light or dark',
+                );
             }
             preference = value;
+            // Conditional because an unconditional Secure would
+            // stop the cookie being stored at all on an http-only
+            // deployment, and the preference would appear not to
+            // persist. The asymmetry to know about: a browser will
+            // not let an http page overwrite a Secure cookie of the
+            // same name, so on a mixed-scheme origin a preference
+            // set over https cannot be changed back over http --
+            // the write is silently dropped. Both current consumers
+            // are single-scheme, so this is noted rather than
+            // handled.
+            var secure =
+                window.location.protocol === 'https:' ? '; Secure' : '';
             if (value === 'auto') {
-                document.cookie = COOKIE +
-                    '=; Path=/; Max-Age=0; SameSite=Lax';
+                document.cookie =
+                    COOKIE +
+                    '=; Path=/; Max-Age=0; SameSite=Lax' +
+                    secure;
             } else {
-                document.cookie = COOKIE + '=' + value +
-                    '; Path=/; Max-Age=' + ONE_YEAR +
-                    '; SameSite=Lax';
+                document.cookie =
+                    COOKIE +
+                    '=' +
+                    value +
+                    '; Path=/; Max-Age=' +
+                    ONE_YEAR +
+                    '; SameSite=Lax' +
+                    secure;
             }
             stamp();
         },
