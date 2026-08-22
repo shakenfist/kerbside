@@ -245,9 +245,31 @@ jobs:
       # error-only severity, but a hook can be skipped with --no-verify
       # or by a clone that never ran `pre-commit install`, and agent
       # context is code an agent executes against.
+      #
+      # Installed into the test venv rather than run as
+      # stbenjam/skillsaw@v0. That composite action opens with
+      # actions/setup-python pinned to 3.11, actions/python-versions
+      # publishes no Debian 12 build, and these runners carry no tool
+      # cache -- so the action fails before it lints anything.
+      # shakenfist/actions reaches the same linter through pre-commit
+      # rather than the action, for the same reason.
+      #
+      # Keep this pin in lockstep with .pre-commit-config.yaml's
+      # skillsaw rev: CI runs this pin, developers run the hook, and
+      # bumping only one of them makes the two disagree about what
+      # passes. The "skillsaw" group in renovate.json proposes both in
+      # one pull request; a hand bump has to remember on its own.
+      #
+      # --no-custom-rules ignores any .skillsaw.yaml in the tree, which
+      # is what the action does by default. A custom rule is code, and a
+      # pull request must not be able to teach the linter judging it new
+      # tricks.
       - name: Lint agent context with skillsaw
         timeout-minutes: 5
-        uses: stbenjam/skillsaw@v0
+        run: |
+          . /tmp/venv-test/bin/activate
+          uv pip install skillsaw==0.18.0
+          skillsaw --no-custom-rules .
 
       - name: Attempt to install requirements
         timeout-minutes: 5

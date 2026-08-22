@@ -436,12 +436,26 @@ Renovate moved the two out of lockstep (PR #198).
 Renovate also reads `.pre-commit-config.yaml`, because `renovate.json`
 turns its `pre-commit` manager on — it is opt-in, and a repository
 that leaves it off has its linters as the one set of pins nobody
-watches. Two of those pins have a partner elsewhere in the tree:
-shellcheck is pinned both as a hook revision and as a `shellcheck-py`
-dependency of the `shellcheck` tox environment, and the two must move
-together or CI and the pre-commit hook disagree about what passes.
-Renovate has no tox manager, so a `customManagers` regex picks the tox
-pin up and the `shellcheck` group lands both in one pull request.
+watches. Two of those hooks have a partner pin elsewhere in the tree,
+and in both cases the pair must move together or CI and the pre-commit
+hook disagree about what passes:
+
+- **shellcheck** is pinned as a hook revision and as a `shellcheck-py`
+  dependency of the `shellcheck` tox environment, which is what CI
+  runs.
+- **skillsaw** is pinned as a hook revision and as the `skillsaw==`
+  version the `sanity_checks` job installs into its test venv. CI
+  installs the linter rather than using `stbenjam/skillsaw@v0`: that
+  composite action begins with `actions/setup-python` pinned to a
+  version `actions/python-versions` publishes no Debian 12 build of,
+  and the self-hosted runners carry no tool cache, so the action fails
+  before it lints anything.
+
+Neither partner pin is visible to a stock Renovate manager — there is
+no tox manager, and the `skillsaw==` pin sits in a `run:` block rather
+than a `uses:` — so a `customManagers` regex picks each one up, and the
+`shellcheck` and `skillsaw` groups land both halves of a bump in one
+pull request.
 
 ## Development configuration
 
