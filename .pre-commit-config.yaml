@@ -20,7 +20,9 @@ repos:
   # Shell script linter for our tools/ scripts.
   # Keep rev in lockstep with tox.ini's [testenv:shellcheck] deps pin:
   # CI runs the tox environment, developers run this hook, and bumping
-  # only one of them makes the two disagree about what passes.
+  # only one of them makes the two disagree about what passes. The
+  # "shellcheck" group in renovate.json proposes both in one pull
+  # request; a hand bump has to remember on its own.
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.10.0.1
     hooks:

@@ -433,6 +433,16 @@ comment. The canonical case is pydantic-core, which each pydantic
 release exact-pins itself, and which broke every CI install when
 Renovate moved the two out of lockstep (PR #198).
 
+Renovate also reads `.pre-commit-config.yaml`, because `renovate.json`
+turns its `pre-commit` manager on — it is opt-in, and a repository
+that leaves it off has its linters as the one set of pins nobody
+watches. Two of those pins have a partner elsewhere in the tree:
+shellcheck is pinned both as a hook revision and as a `shellcheck-py`
+dependency of the `shellcheck` tox environment, and the two must move
+together or CI and the pre-commit hook disagree about what passes.
+Renovate has no tox manager, so a `customManagers` regex picks the tox
+pin up and the `shellcheck` group lands both in one pull request.
+
 ## Development configuration
 
 Configuration is loaded from environment variables (`KERBSIDE_*`), then
