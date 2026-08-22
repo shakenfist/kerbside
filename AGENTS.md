@@ -20,6 +20,7 @@ SPICE protocol negotiation, authentication, and bidirectional traffic relay.
 | How do I run the tests, and what gates a PR? | [`docs/testing.md`](docs/testing.md) |
 | What are the configuration settings? | [`docs/configuration.md`](docs/configuration.md) |
 | How do I install and deploy it? | [`docs/installation.md`](docs/installation.md) |
+| How do I see it running, quickly? | [`demo/README.md`](demo/README.md), the compose demo |
 | How is it deployed against a specific cloud? | [`docs/use-cases/`](docs/use-cases/) |
 | How do I exercise the proxy against real qemu? | [`docs/direct-qemu-harness.md`](docs/direct-qemu-harness.md) |
 | What are the database tables? | [`docs/schema.md`](docs/schema.md) |
@@ -114,6 +115,13 @@ https://www.spice-space.org/spice-protocol.html.
   or a size cap needs widening — not the verdict weakening. Validate
   with the warn-only capture in
   [`docs/direct-qemu-harness.md`](docs/direct-qemu-harness.md).
+
+- **The demo cannot be built against a checkout from a git
+  worktree.** `KERBSIDE_SOURCE=/src docker compose build kerbside`
+  needs the repository's git metadata in the build context, which a
+  worktree does not provide; run it from an ordinary clone. The
+  default build installs the released package from PyPI and works
+  anywhere. Issue #326 tracks the underlying packaging fragility.
 
 - **Renaming a `Can enqueue: <lane>` gate job blocks every merge**
   until the develop ruleset is updated to match. Both the direct-qemu

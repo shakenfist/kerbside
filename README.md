@@ -31,6 +31,8 @@ This installs the Python control plane and a matching prebuilt
 `kerbside-proxy` binary wheel automatically (x86_64 and aarch64). See
 [docs/installation.md](https://github.com/shakenfist/kerbside/blob/develop/docs/installation.md)
 for the packaging details, OS-level dependencies, and deployment pointers.
+If you would rather see it working first, `demo/` brings the whole stack
+up under `docker compose` and hands you a proxied console.
 
 ## Documentation
 

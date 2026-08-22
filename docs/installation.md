@@ -1,5 +1,10 @@
 # Installation
 
+This page takes you from nothing to a working, proxied SPICE console,
+and then points at the guide for the cloud you actually run. If you
+would rather see Kerbside working before reading about it, skip to
+[Try it: the demo stack](#try-it-the-demo-stack).
+
 ## Installing with pip
 
 ```bash
@@ -43,33 +48,238 @@ check for missing dependencies using bindep via tox:
 tox -e bindep
 ```
 
-This will read the `bindep.txt` file and report any missing system
-packages that need to be installed for your platform. The bindep tool
-automatically detects your operating system and checks for
-platform-specific packages.
+This reads `bindep.txt`, detects your operating system, and reports
+the missing platform-specific packages. Install them with your
+system's package manager — `sudo apt-get install <package-names>` on
+Debian and Ubuntu, `sudo dnf install <package-names>` on RHEL, CentOS
+and Fedora. The list covers MariaDB/MySQL client libraries, XML
+parsing libraries, and the build tools needed to compile Python
+extensions.
 
-After running the bindep check, install any missing packages using
-your system's package manager:
+## What a running Kerbside needs
 
-**Debian/Ubuntu:**
+Installing the package gives you commands, not a running system. This
+section is the mental model: what has to exist before a console works.
+[configuration.md](configuration.md) is the reference for every
+setting; this is the short list of things you cannot skip.
+
+**Two processes, co-located.** The REST API is a WSGI application
+served by gunicorn, and the SPICE proxy is a daemon that supervises
+the Rust binary:
+
 ```bash
-sudo apt-get install <package-names>
+gunicorn --bind 0.0.0.0:13002 --workers 2 'kerbside.api:app'
+kerbside daemon run
 ```
 
-**RHEL/CentOS/Fedora:**
+Neither is optional and they are not interchangeable: the API is where
+brokers and users ask for consoles, and `daemon run` is what discovers
+consoles and moves SPICE traffic. They talk to each other over a unix
+socket (`API_SOCKET_PATH`, default `/run/kerbside/api.sock`), so **they
+must be co-located** — the same host, the same container, or two
+containers sharing that path. Note that the API's port is a gunicorn
+argument rather than a Kerbside setting; `PUBLIC_FQDN` is how Kerbside
+tells clients where to find it.
+
+**A database.** MySQL or MariaDB, reached via `SQL_URL`. Create the
+database and its user yourself, then let Kerbside create its own
+schema:
+
 ```bash
-sudo dnf install <package-names>
+kerbside db upgrade
 ```
 
-The `bindep.txt` file includes dependencies for MariaDB/MySQL client
-libraries, XML parsing libraries, and build tools needed for compiling
-Python extensions.
+Run that before starting either process, and again after every
+upgrade. It is idempotent, so a service unit or container entrypoint
+can call it unconditionally. It reads `SQL_URL` from the configuration
+described below, so write that first: with no configuration at all,
+`SQL_URL` still has a Kolla-shaped placeholder default and the command
+fails with `Unknown server host 'kolla'`, which is a missing config
+file rather than a database problem.
 
-## Deployment
+**TLS material for the proxy leg.** Clients reach the proxy over TLS
+and verify it against a CA you provide. Four settings carry this:
+`CACERT_PATH`, `PROXY_HOST_CERT_PATH`, `PROXY_HOST_CERT_KEY_PATH` and
+`PROXY_HOST_SUBJECT`. The last is the trap — it is the subject string
+clients are told to expect, so it must match the subject of the
+certificate the proxy actually presents. When those disagree, the
+viewer refuses the connection and the error does not explain itself.
 
-Kerbside is deployed as a component of the cloud it serves. For
-OpenStack there is a sample Kolla-Ansible deployment implementation in
-the [kerbside-patches](https://github.com/shakenfist/kerbside-patches)
-repository. See [console-sources.md](console-sources.md) for
-configuring console sources and [configuration.md](configuration.md)
-for the full configuration reference.
+**A console source.** Kerbside proxies consoles it has discovered, so
+it needs at least one source in the file named by `SOURCES_PATH`,
+conventionally `/etc/kerbside/sources.yaml`. The drivers are Shaken
+Fist, oVirt, OpenStack, and `static` for fixed targets — see
+[console-sources.md](console-sources.md).
+
+**The minimum configuration set.** Configuration is an INI file at
+`/etc/kerbside/kerbside.ini`; that path is hardcoded, and environment
+variables prefixed with `KERBSIDE_` override it. These eight settings
+are the ones with no useful default, and they are exactly the ones
+left live in
+[etc/kerbside.conf.example](https://github.com/shakenfist/kerbside/blob/develop/etc/kerbside.conf.example),
+which documents every setting Kerbside has:
+
+| Setting | What it is |
+|---|---|
+| `sql_url` | The database, as a SQLAlchemy URL |
+| `auth_secret_seed` | The seed session tokens are signed with; generate a fresh one per deployment |
+| `sources_path` | Where `sources.yaml` lives |
+| `public_fqdn` | The name clients should reach this Kerbside by |
+| `cacert_path` | The CA clients verify the proxy against |
+| `proxy_host_cert_path` | The proxy's certificate |
+| `proxy_host_cert_key_path` | Its key |
+| `proxy_host_subject` | The subject clients are told to expect |
+
+## Try it: the demo stack
+
+`demo/` in this repository brings all of that up in three containers,
+so you can watch a proxied console work before deciding how to deploy
+one. It needs nothing but Docker Engine 23.0 or newer with the Compose
+v2 plugin — no Python, no database, and no certificates of your own.
+On Debian 12, install Docker from
+[Docker's own repository](https://docs.docker.com/engine/install/debian/)
+rather than from the distribution, which ships an engine too old to
+build the image.
+
+`pip install` does not give you `demo/`, so start from a checkout:
+
+```bash
+git clone https://github.com/shakenfist/kerbside
+cd kerbside/demo
+docker compose up -d
+```
+
+The first run builds the image and takes a few minutes; afterwards the
+stack comes up in seconds. When it returns, three containers are
+running — MariaDB, a disk-less qemu with a SPICE server, and Kerbside
+with both of its processes:
+
+```
+$ docker compose ps --format 'table {{.Service}}\t{{.Status}}'
+SERVICE        STATUS
+db             Up 7 minutes (healthy)
+kerbside       Up 7 minutes (healthy)
+spice-target   Up 7 minutes
+```
+
+Now mint a token and fetch a console file:
+
+```bash
+./get-console.sh
+```
+
+The script mints a bearer token, finds the demo console, writes
+`demo-console.vv`, and then proves the TLS leg rather than assuming
+it: it connects to the port the `.vv` advertises and verifies the
+presented certificate against the CA embedded in that same file.
+
+```
+[demo] Minting a bearer token...
+[demo] Console: demo-console (demo/0d3f6a52-0000-0000-0000-0000000dec01)
+[demo] Fetching the .vv file...
+[demo] Verifying the TLS leg...
+    TLSv1.3, certificate verified against the CA in the .vv
+    subject matches host-subject=C=US,O=Kerbside CI,CN=kerbside-ci
+[demo] Wrote ./demo-console.vv
+```
+
+Then open it. `remote-viewer` ships in the `virt-viewer` package
+(`sudo apt-get install virt-viewer`, or `sudo dnf install
+virt-viewer`), and it is the only thing you need on the client side:
+
+```bash
+remote-viewer ./demo-console.vv
+```
+
+**Expect a black screen with boot firmware text, and expect the boot
+to fail.** The demo VM has no disk, so it tries the network, then a
+floppy, then gives up:
+
+```
+iPXE (PCI 00:02.0) starting execution...ok
+net0: 52:54:00:12:34:56 using 82574l on 0000:00:02.0 (Ethernet) [open]
+Nothing to boot: No such file or directory
+Booting from Floppy...
+Boot failed: could not read the boot disk
+
+No bootable device.
+```
+
+That screen *is* the SPICE session: it is being drawn by a real qemu
+and relayed through Kerbside over TLS. The viewer's title bar names
+the proxy session it is attached to. If you want to confirm the
+traffic took the TLS port rather than the plaintext one, count
+established sockets while the viewer is open — they should all be on
+5900, and none on 5901:
+
+```bash
+ss -H -tn state established '( dport = :5900 or sport = :5900 )' | wc -l
+ss -H -tn state established '( dport = :5901 or sport = :5901 )' | wc -l
+```
+
+On a live session that prints `12` and `0`. The `-H` matters: without
+it `ss` emits a header line and both counts come back one too high,
+which makes the plaintext port look used when it is not.
+
+When you are finished:
+
+```bash
+docker compose down -v
+```
+
+That removes the containers, the database, and the generated CA and
+signing seed — both of which are created on first start rather than
+baked into the image.
+
+### Where the token comes from
+
+`get-console.sh` runs `kerbside demo token` inside the container, and
+that command prints a warning every time it succeeds. The warning is
+worth reading: the command exists because interactive login is
+Keystone-only today
+([#300](https://github.com/shakenfist/kerbside/issues/300)), so a
+static deployment gives a human no way to log in at all. It stands in
+for authentication in a demonstration; it is not a preview of how your
+users will get consoles.
+
+It also refuses to mint unless every configured source is `static`,
+and refuses while the signing seed is unconfigured. Those refusals are
+deliberate rather than configuration problems to work around — in a
+real deployment a broker mints session tokens through the API. If
+`kerbside demo token` refuses on the demo stack, something else is
+genuinely wrong.
+
+### What the demo is not
+
+| Limitation | Detail |
+|---|---|
+| No real authentication | Login is Keystone-only ([#300](https://github.com/shakenfist/kerbside/issues/300)), and the session JWT scheme has no revocation or issuance audit ([#301](https://github.com/shakenfist/kerbside/issues/301)). The web UI on `http://127.0.0.1:13002` cannot be logged into |
+| A self-signed CA | Generated into a volume on first start, and destroyed by `down -v` |
+| Loopback only | Every published port binds to `127.0.0.1` on purpose. Widening it puts an unauthenticated console proxy on your network |
+| Two processes in one container | The shortest way to co-locate them for a demo, not a shape to copy. Real deployments run them as separate units sharing the socket |
+| A plaintext backend leg | Kerbside talks plaintext SPICE to the qemu container. Real deployments should pin the backend too; [ovirt.md](use-cases/ovirt.md) shows what that looks like |
+| A static source, not a cloud | The `static` driver points at a fixed target, so nothing is being discovered from a real cloud |
+
+[demo/README.md](https://github.com/shakenfist/kerbside/blob/develop/demo/README.md)
+is the reference for the stack itself: what each container is, how to
+build it against a checkout rather than the released package, and why
+each of these choices was made.
+
+## Deploying for real
+
+Kerbside is deployed as a component of the cloud it serves, so the
+shape of a real deployment depends on which cloud that is. Start with
+the guide for yours:
+
+| Deployment | Guide |
+|---|---|
+| oVirt | [use-cases/ovirt.md](use-cases/ovirt.md) |
+| OpenStack | A sample Kolla-Ansible deployment lives in [kerbside-patches](https://github.com/shakenfist/kerbside-patches) |
+| Shaken Fist | [console-sources.md](console-sources.md#shaken-fist), until the use-case page is written |
+| Static targets | The demo above is the worked example |
+
+Whichever you pick, the pieces described in
+[What a running Kerbside needs](#what-a-running-kerbside-needs) are
+the same, and two references apply throughout:
+[configuration.md](configuration.md) for every setting, and
+[console-sources.md](console-sources.md) for configuring sources.
