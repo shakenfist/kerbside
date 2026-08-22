@@ -1,4 +1,4 @@
-"""Stdlib-only NDJSON client for ryll's control socket (protocol v1.1).
+"""Stdlib-only NDJSON client for ryll's control socket (protocol v1.x).
 
 This module is the tempest plugin's own implementation of the ryll
 control-socket protocol. The protocol is specified end-to-end in
@@ -29,6 +29,15 @@ Design notes:
   test treats EOF after the final keypress as expected (ryll exits and
   unlinks the socket once the guest shuts down), so it must be catchable
   specifically rather than blanket-caught alongside genuine failures.
+- **Minor versions float.** This client requests
+  :data:`CLIENT_PROTOCOL_VERSION` and speaks that feature set, but the
+  protocol only requires the *major* components to agree: the spec's
+  compatibility rule accepts a minor mismatch in either direction and
+  says explicitly that clients must not compare the server's
+  ``protocol_version`` for equality. The direct-qemu lane builds ryll
+  from ``main``, so its minor version moves without warning. Callers
+  that need to gate on a server feature parse the returned version with
+  :func:`parse_protocol_version` and compare tuples.
 
 All timeouts and deadlines in this module are measured against
 ``time.monotonic()`` so they are immune to wall-clock adjustments.
@@ -41,6 +50,12 @@ import os
 import socket
 import time
 
+
+# The protocol version this client requests in its hello. It is the
+# feature set the client implements, not a demand on the server: every
+# verb and event used here exists in 1.1, and a newer server answers
+# with its own (higher) minor version.
+CLIENT_PROTOCOL_VERSION = '1.1'
 
 # Standard PNG file signature; used to sanity-check screenshot bytes.
 _PNG_MAGIC = b'\x89PNG\r\n\x1a\n'
@@ -101,6 +116,27 @@ class RyllRpcError(RyllError):
         self.method = method
         prefix = '%s: ' % method if method else ''
         super().__init__('%s%s (%s)' % (prefix, message, code))
+
+
+def parse_protocol_version(version):
+    """Parse a dotted ``major.minor`` protocol version into an int tuple.
+
+    The protocol specifies ``protocol_version`` as exactly two dotted
+    parts, so anything else is a malformed frame rather than a version
+    this client should try to interpret leniently.
+
+    :raises ValueError: the value is not a two-part dotted integer pair.
+    """
+    parts = str(version).split('.')
+    if len(parts) != 2:
+        raise ValueError(
+            'malformed protocol version %r: expected major.minor' % (version,))
+    try:
+        return (int(parts[0]), int(parts[1]))
+    except ValueError:
+        raise ValueError(
+            'malformed protocol version %r: parts must be integers'
+            % (version,))
 
 
 class RyllClient:
@@ -218,16 +254,21 @@ class RyllClient:
     def hello(self, client_name='kerbside-tempest', timeout=_DEFAULT_CALL_TIMEOUT):
         """Perform the mandatory ``hello`` handshake; return its result dict.
 
-        Sends ``protocol_version`` ``"1.1"``. Returns the ``result`` object
-        (with ``server_name``, ``protocol_version``, ``supported_methods``,
-        and ``supported_events``). A ``busy`` server surfaces here as a
+        Sends :data:`CLIENT_PROTOCOL_VERSION`. Returns the ``result``
+        object (with ``server_name``, ``protocol_version``,
+        ``supported_methods``, and ``supported_events``). The returned
+        ``protocol_version`` is whatever minor version the server speaks
+        and need not match what was requested; only a *major* mismatch is
+        an error, and the server reports that as a
+        ``protocol_version_mismatch`` :class:`RyllRpcError` before
+        closing the connection. A ``busy`` server surfaces here as a
         :class:`RyllRpcError` with code ``busy``: the busy line has no
         ``id``, so :meth:`call` matches it as the response to this first
         request and raises accordingly.
         """
         return self.call('hello', {
             'client_name': client_name,
-            'protocol_version': '1.1',
+            'protocol_version': CLIENT_PROTOCOL_VERSION,
         }, timeout=timeout)
 
     # ── Request / response ────────────────────────────────────────────────
