@@ -145,5 +145,5 @@ blocks every merge in the repository.
 ## Skills
 
 Claude skills are available in `.claude/skills/` for common tasks:
-- `add-database-migration.md` - Creating Alembic database migrations
-- `add-source-type.md` - Adding new cloud source implementations
+- `add-database-migration/SKILL.md` - Creating Alembic database migrations
+- `add-source-type/SKILL.md` - Adding new cloud source implementations

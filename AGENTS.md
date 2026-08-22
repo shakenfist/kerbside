@@ -205,9 +205,9 @@ https://www.spice-space.org/spice-protocol.html.
 
 Claude skills for common tasks are in `.claude/skills/`:
 
-- `add-database-migration.md` — creating Alembic migrations, including
+- `add-database-migration/` — creating Alembic migrations, including
   model updates and documentation.
-- `add-source-type.md` — adding new cloud source implementations, from
+- `add-source-type/` — adding new cloud source implementations, from
   source class through tests and docs.
 
 Project-specific instructions are in `.claude/CLAUDE.md`.
