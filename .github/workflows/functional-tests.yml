@@ -1011,7 +1011,6 @@ jobs:
       pull-requests: write
       issues: write
     uses: shakenfist/actions/.github/workflows/pr-auto-review.yml@main
-    secrets: inherit
 
   # The merge-queue gate jobs, mirroring shakenfist/shakenfist. Their
   # display names ("Can see status", "Can enqueue", "Can merge") are
