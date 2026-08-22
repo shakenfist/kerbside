@@ -389,6 +389,10 @@ rust/kerbside-proxy/   # The Rust SPICE proxy (binary crate)
   src/                 # listeners, TLS, handshake, backend leg, relay,
                        #   firewall (policy.rs/allowlist.rs), gRPC client
 etc/                   # Configuration examples
+demo/                  # Three-container compose demo: MariaDB, a
+                       #   disk-less qemu SPICE target, and kerbside
+                       #   running both processes. The worked example
+                       #   behind docs/installation.md
 tools/                 # Utility scripts (incl. run-tempest-tests)
   direct-qemu/         # Direct-QEMU CI lane glue scripts
     generate-tls.sh    # Mint ephemeral self-signed CA + proxy cert

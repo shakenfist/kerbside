@@ -128,3 +128,37 @@ class DemoStackCouplingTestCase(testtools.TestCase):
         except ValueError:
             self.fail('demo/sources.yaml console uuid %r is not a valid '
                       'UUID' % match.group(1))
+
+    def test_the_installation_guide_quotes_the_demo_it_documents(self):
+        """The page quotes demo constants; nothing else notices if they move.
+
+        docs/installation.md walks the reader through the demo and
+        quotes its host subject and console uuid as literal output. The
+        demo-compose lane's path filter includes that page precisely so
+        the two cannot drift, but CI can only catch drift it can see:
+        changing the subject in docker-compose.yml would keep every
+        test green and silently falsify the prose.
+        """
+        page = _require('docs', 'installation.md')
+        compose = _require('demo', 'docker-compose.yml')
+        sources = _require('demo', 'sources.yaml')
+
+        subject = re.search(
+            r'KERBSIDE_PROXY_HOST_SUBJECT:\s*(.+)', compose)
+        self.assertIsNotNone(
+            subject,
+            'demo/docker-compose.yml no longer sets '
+            'KERBSIDE_PROXY_HOST_SUBJECT')
+        self.assertIn(
+            subject.group(1).strip().strip('"\''), page,
+            'docs/installation.md quotes a host subject that '
+            'demo/docker-compose.yml no longer uses, so the transcript '
+            'in "Try it: the demo stack" is no longer what a reader '
+            'sees')
+
+        console = re.search(r'^\s*- uuid:\s*"([^"]+)"', sources, re.M)
+        self.assertIsNotNone(console, 'demo/sources.yaml has no console uuid')
+        self.assertIn(
+            console.group(1), page,
+            'docs/installation.md quotes a console uuid that '
+            'demo/sources.yaml no longer defines')
