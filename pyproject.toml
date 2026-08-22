@@ -43,7 +43,7 @@ dependencies = [
     "flasgger==0.9.7.1",                # mit
     "flask-jwt-extended==4.7.4",        # mit
     "bcrypt==5.0.0",                    # apache2
-    "gunicorn==26.0.0",                 # mit
+    "gunicorn==26.1.0",                 # mit
     "flask-request-id-middleware==1.1", # mit
     "pyyaml==6.0.3",                    # mit
     "psutil==7.2.2",                    # bsd
