@@ -22,9 +22,12 @@ repos:
   # CI runs the tox environment, developers run this hook, and bumping
   # only one of them makes the two disagree about what passes. The
   # "shellcheck" group in renovate.json proposes both in one pull
-  # request; a hand bump has to remember on its own.
+  # request; a hand bump has to remember on its own. That grouping
+  # only works because renovate.json also teaches Renovate to read
+  # this repo's four-component tags -- without it the lookup here
+  # fails outright and the tox pin moves alone.
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.10.0.1
+    rev: v0.11.0.1
     hooks:
       - id: shellcheck
         files: ^(tools|demo)/
