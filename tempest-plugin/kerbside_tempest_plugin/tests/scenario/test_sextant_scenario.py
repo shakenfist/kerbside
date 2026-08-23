@@ -50,6 +50,11 @@ KEY_I_SCANCODE = 23
 # AT-set-1 encodes a key release as the make code with the high bit set.
 KEY_RELEASE_BIT = 0x80
 
+# The oldest control-socket protocol this scenario can run against, as a
+# (major, minor) tuple. 1.1 is where digest_updated was added; the lane
+# tracks ryll main, so anything newer in the same major is fine.
+MIN_PROTOCOL_VERSION = (1, 1)
+
 # The byte-exact payload the locked bootloader expects, hardcoded in
 # uncalibrated-sextant/src/bootloader.rs::PASTE_TARGET. It is a property
 # of the committed qcow2 fixture, not configuration.
@@ -95,15 +100,15 @@ MIN_BOOT_LINE_RECORDS = 10
 def press_key(client, scancode):
     """Type one key as an explicit down + up pair with the release bit set.
 
-    ryll v0.1.5's control socket writes the supplied scancode verbatim
-    into the SPICE KEY_UP message, so a ``send_key`` with state
-    ``"press"`` (or an ``"up"`` without the release bit) injects the make
-    code twice and the guest sees the key double-typed. Until ryll
-    encodes the release bit server-side (as the protocol document's
-    extended-key example implies it should), the caller must supply it:
-    an explicit down with the make code, then an up with ``make | 0x80``.
-    This stays correct against a fixed server too — ORing in a release
-    bit that is already set is a no-op.
+    Control-socket protocols before 1.2 wrote the supplied scancode
+    verbatim into the SPICE KEY_UP message, so a ``send_key`` with state
+    ``"press"`` (or an ``"up"`` without the release bit) injected the
+    make code twice and the guest saw the key double-typed. Protocol 1.2
+    sets the release bit server-side, but supplying it here stays
+    correct: the server ORs the bit in, and ORing a bit that is already
+    set is a no-op — an affordance the protocol document guarantees.
+    Sending it explicitly is what lets this scenario run unchanged
+    against either version.
     """
     client.send_key(scancode, state='down')
     client.send_key(scancode | KEY_RELEASE_BIT, state='up')
@@ -405,14 +410,29 @@ class SextantScenarioTest(tempest.test.BaseTestCase):
         client.connect()
         self.addCleanup(client.close)
 
-        # Beat 1: hello. Protocol v1.1 with the digest event available. A
-        # missing digest_updated is a lane misconfiguration (ryll built
-        # without the feature), never a skip.
+        # Beat 1: hello. Protocol v1.1 or newer with the digest event
+        # available. A missing digest_updated is a lane misconfiguration
+        # (ryll built without the feature), never a skip.
+        #
+        # The version is compared as a tuple, not for equality: the
+        # protocol's compatibility rule is that only the major component
+        # must agree, and the lane builds ryll from main, so the minor
+        # version moves whenever upstream adds a verb or an event.
+        # MIN_PROTOCOL_VERSION is the floor this scenario needs
+        # (digest_updated arrived in 1.1); what the test actually depends
+        # on is asserted below, as capabilities.
         hello = client.hello(client_name='kerbside-sextant-scenario')
         LOG.info('hello: %s', hello)
-        self.assertEqual('1.1', hello.get('protocol_version'),
-                         'expected ryll to speak protocol 1.1, got %r' %
-                         hello.get('protocol_version'))
+        served = ryll_client.parse_protocol_version(
+            hello.get('protocol_version'))
+        self.assertEqual(MIN_PROTOCOL_VERSION[0], served[0],
+                         'expected ryll to speak protocol major version %d, '
+                         'got %r' % (MIN_PROTOCOL_VERSION[0],
+                                     hello.get('protocol_version')))
+        self.assertGreaterEqual(
+            served, MIN_PROTOCOL_VERSION,
+            'expected ryll to speak protocol %d.%d or newer, got %r' %
+            (MIN_PROTOCOL_VERSION + (hello.get('protocol_version'),)))
         self.assertIn(
             'digest_updated', hello.get('supported_events', []),
             'ryll does not advertise digest_updated: the lane must build ryll '

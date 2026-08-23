@@ -32,7 +32,7 @@
  * so the control degrades sanely on a page that forgot the
  * stylesheet.
  */
-import {LitElement, html, css} from '../lit-core.min.js';
+import {css, html, LitElement} from '../lit-core.min.js';
 
 const OPTIONS = [
     {id: 'auto', label: 'Auto'},
@@ -84,18 +84,24 @@ class SfThemeToggle extends LitElement {
     render() {
         return html`
             <div role="radiogroup" aria-label="Color theme">
-                ${OPTIONS.map((option) => html`
+                ${OPTIONS.map(
+                    (option) => html`
                     <button
                         role="radio"
-                        aria-checked=${option.id === this.preference
-                            ? 'true' : 'false'}
-                        tabindex=${option.id === this.preference
-                            ? '0' : '-1'}
+                        aria-checked=${
+                            option.id === this.preference
+                                ? 'true'
+                                : 'false'
+                        }
+                        tabindex=${
+                            option.id === this.preference ? '0' : '-1'
+                        }
                         data-id=${option.id}
                         @click=${() => this._select(option.id)}
                         @keydown=${this._onKeydown}>
                         ${option.label}
-                    </button>`)}
+                    </button>`,
+                )}
             </div>`;
     }
 
@@ -104,11 +110,13 @@ class SfThemeToggle extends LitElement {
             return;
         }
         this.preference = id;
-        this.dispatchEvent(new CustomEvent('sf-theme-changed', {
-            detail: {preference: id},
-            bubbles: true,
-            composed: true,
-        }));
+        this.dispatchEvent(
+            new CustomEvent('sf-theme-changed', {
+                detail: {preference: id},
+                bubbles: true,
+                composed: true,
+            }),
+        );
     }
 
     _onKeydown(event) {
@@ -118,13 +126,15 @@ class SfThemeToggle extends LitElement {
         }
         event.preventDefault();
         const index = OPTIONS.findIndex(
-            (option) => option.id === this.preference);
-        const next = OPTIONS[
-            (index + delta + OPTIONS.length) % OPTIONS.length];
+            (option) => option.id === this.preference,
+        );
+        const next =
+            OPTIONS[(index + delta + OPTIONS.length) % OPTIONS.length];
         this._select(next.id);
         this.updateComplete.then(() => {
             const button = this.renderRoot.querySelector(
-                `button[data-id="${next.id}"]`);
+                `button[data-id="${CSS.escape(next.id)}"]`,
+            );
             if (button) {
                 button.focus();
             }

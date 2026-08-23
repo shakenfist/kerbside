@@ -91,6 +91,57 @@ jobs:
       - name: Report verdict
         run: echo "code_changed=${{ steps.filter.outputs.code || 'true (defaulted)' }}"
 
+  # Scan git history for leaked credentials. Deliberately not gated on
+  # check_paths: every other job here skips when only documentation
+  # changed, but a credential pasted into a code sample is still a
+  # credential, and the review notes under .vscode/ are prose which the
+  # rewriting pre-commit hooks deliberately leave alone so that a
+  # content scanner can see them.
+  #
+  # gitleaks is downloaded rather than apt-installed: the package first
+  # appears in Debian 13 while these runners are Debian 12, and the
+  # shared static pool grants no passwordless sudo either way. Version
+  # and checksum are both pinned, because .gitleaks.toml is written
+  # against 8.16's schema (per-rule allowlists changed shape in a later
+  # release) and a detector which silently changes behaviour under us is
+  # worse than no detector. To move the pin, run tools/gitleaks-scan.sh
+  # against the new version locally first and check that the positive
+  # control still passes.
+  credential_scan:
+    name: "Credential scan"
+    runs-on: [self-hosted, static]
+    # The scan is under two seconds over 750 commits; this is the
+    # backstop for the checkout and the download.
+    timeout-minutes: 10
+    # Keyed like the other jobs in this workflow -- see the long note on
+    # sanity_checks for why merge_group runs key on the base ref.
+    concurrency:
+      group: >-
+        ${{ github.workflow }}-credentials-${{
+        github.event_name == 'merge_group'
+        && format('merge_group-{0}', github.event.merge_group.base_ref)
+        || github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      # fetch-depth: 0 is load bearing. The scan covers every commit
+      # reachable from HEAD, and tools/gitleaks-scan.sh refuses to run
+      # against a shallow clone rather than reporting a clean history it
+      # never looked at.
+      - name: Checkout code with full history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          curl -sSLo /tmp/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.16.0/gitleaks_8.16.0_linux_x64.tar.gz
+          echo "f8d4fabedaeaabd2a3e7e7b96394b8ddeff0be32941a1719aedee08fc8678601  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+
+      - name: Scan history for credentials
+        run: tools/gitleaks-scan.sh --gitleaks /tmp/gitleaks
+
   sanity_checks:
     # Runs in both tiers: on pull_request as the core of the smoke
     # gate, and again in the merge group because it is minutes of m
@@ -186,6 +237,39 @@ jobs:
         run: |
           . /tmp/venv-test/bin/activate
           tox -eshellcheck
+
+      # skillsaw lints the agent context -- AGENTS.md, .claude/CLAUDE.md
+      # and the skills under .claude/skills/ -- for malformed
+      # frontmatter, embedded credentials and invisible-unicode
+      # smuggling. The pre-commit hook is the same linter at the same
+      # error-only severity, but a hook can be skipped with --no-verify
+      # or by a clone that never ran `pre-commit install`, and agent
+      # context is code an agent executes against.
+      #
+      # Installed into the test venv rather than run as
+      # stbenjam/skillsaw@v0. That composite action opens with
+      # actions/setup-python pinned to 3.11, actions/python-versions
+      # publishes no Debian 12 build, and these runners carry no tool
+      # cache -- so the action fails before it lints anything.
+      # shakenfist/actions reaches the same linter through pre-commit
+      # rather than the action, for the same reason.
+      #
+      # Keep this pin in lockstep with .pre-commit-config.yaml's
+      # skillsaw rev: CI runs this pin, developers run the hook, and
+      # bumping only one of them makes the two disagree about what
+      # passes. The "skillsaw" group in renovate.json proposes both in
+      # one pull request; a hand bump has to remember on its own.
+      #
+      # --no-custom-rules ignores any .skillsaw.yaml in the tree, which
+      # is what the action does by default. A custom rule is code, and a
+      # pull request must not be able to teach the linter judging it new
+      # tricks.
+      - name: Lint agent context with skillsaw
+        timeout-minutes: 5
+        run: |
+          . /tmp/venv-test/bin/activate
+          uv pip install skillsaw==0.18.0
+          skillsaw --no-custom-rules .
 
       - name: Attempt to install requirements
         timeout-minutes: 5
@@ -1003,7 +1087,7 @@ jobs:
     # membership does not depend on a guard in another repository, and
     # merge-group and dispatch rollups stay free of a no-op reviewer job.
     if: github.event_name == 'pull_request'
-    needs: [sanity_checks]
+    needs: [credential_scan, sanity_checks]
     # A cross-repository reusable workflow cannot grant itself more
     # token scope than its caller has, so the permissions go here.
     permissions:
@@ -1038,6 +1122,7 @@ jobs:
     name: "Can enqueue"
     needs:
       - check_paths
+      - credential_scan
       - sanity_checks
     if: always() && github.event_name != 'merge_group'
     permissions:
@@ -1058,6 +1143,7 @@ jobs:
     name: "Can merge"
     needs:
       - check_paths
+      - credential_scan
       - sanity_checks
       - ovirt_matrix
       - openstack_matrix

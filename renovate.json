@@ -8,6 +8,36 @@
   "schedule": [
     "after 9pm"
   ],
+  "pre-commit": {
+    "description": "Renovate's pre-commit manager is opt-in. Without this the hook revisions in .pre-commit-config.yaml are the one dependency file nobody is watching -- and those hooks are the linters gating every commit, so the thing judging everything else goes unjudged.",
+    "enabled": true
+  },
+  "customManagers": [
+    {
+      "description": "Pick up the shellcheck-py pin in tox.ini's [testenv:shellcheck] deps. Renovate has no tox manager, so without this the pin is invisible to it -- and enabling the pre-commit manager above would then bump the hook alone, leaving CI (which runs the tox environment) and developers (who run the hook) disagreeing about what passes. The shellcheck group below lands both in one pull request.",
+      "customType": "regex",
+      "fileMatch": [
+        "^tox\\.ini$"
+      ],
+      "matchStrings": [
+        "shellcheck-py==(?<currentValue>[0-9.]+)"
+      ],
+      "depNameTemplate": "shellcheck-py",
+      "datasourceTemplate": "pypi"
+    },
+    {
+      "description": "Pick up the skillsaw pin in functional-tests.yml's sanity_checks job. The linter is installed into the test venv rather than run as stbenjam/skillsaw@v0, whose composite action pins actions/setup-python to a version with no Debian 12 build, so Renovate's github-actions manager never sees it. Without this the pre-commit manager would bump the hook alone, leaving CI and developers disagreeing about what passes. The skillsaw group below lands both in one pull request.",
+      "customType": "regex",
+      "fileMatch": [
+        "^\\.github/workflows/functional-tests\\.yml$"
+      ],
+      "matchStrings": [
+        "skillsaw==(?<currentValue>[0-9.]+)"
+      ],
+      "depNameTemplate": "skillsaw",
+      "datasourceTemplate": "pypi"
+    }
+  ],
   "packageRules": [
     {
       "description": "Flag minor, patch, and digest updates for review (not auto-merged)",
@@ -17,6 +47,22 @@
         "digest"
       ],
       "automerge": false
+    },
+    {
+      "description": "Group the two shellcheck pins together. The pre-commit hook revision and the tox.ini dependency must move as one: .pre-commit-config.yaml says to keep them in lockstep, and nothing enforces it if they arrive in separate pull requests. The two names differ because they come from different datasources -- a GitHub tag for the hook, a PyPI release for the tox pin.",
+      "groupName": "shellcheck",
+      "matchPackageNames": [
+        "shellcheck-py",
+        "shellcheck-py/shellcheck-py"
+      ]
+    },
+    {
+      "description": "Group the two skillsaw pins together, for the same reason as shellcheck above. The pre-commit hook revision and the CI install must move as one: .pre-commit-config.yaml says to keep them in lockstep, and nothing enforces it if they arrive in separate pull requests. The two names differ because they come from different datasources -- a GitHub tag for the hook, a PyPI release for the CI pin.",
+      "groupName": "skillsaw",
+      "matchPackageNames": [
+        "skillsaw",
+        "stbenjam/skillsaw"
+      ]
     },
     {
       "description": "Group pydantic updates together",

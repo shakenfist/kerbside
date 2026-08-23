@@ -20,7 +20,9 @@ repos:
   # Shell script linter for our tools/ scripts.
   # Keep rev in lockstep with tox.ini's [testenv:shellcheck] deps pin:
   # CI runs the tox environment, developers run this hook, and bumping
-  # only one of them makes the two disagree about what passes.
+  # only one of them makes the two disagree about what passes. The
+  # "shellcheck" group in renovate.json proposes both in one pull
+  # request; a hand bump has to remember on its own.
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.10.0.1
     hooks:
@@ -28,6 +30,25 @@ repos:
         files: ^(tools|demo)/
         types_or: [sh, bash, shell]
         args: ['-x']
+
+  # skillsaw lints the agent context -- AGENTS.md, .claude/CLAUDE.md and
+  # the skills under .claude/skills/ -- for malformed frontmatter,
+  # embedded credentials and invisible-unicode smuggling. Agent context
+  # is code an agent executes against, and it is the material the
+  # credential scan is least likely to be pointed at. The same linter
+  # runs in CI (sanity_checks), because a hook is advisory: it can be
+  # skipped with --no-verify or by a clone that never ran
+  # `pre-commit install`.
+  #
+  # Keep rev in lockstep with functional-tests.yml's skillsaw pin, for
+  # the same reason as shellcheck above: CI installs that pin,
+  # developers run this hook, and bumping only one of them makes the
+  # two disagree about what passes. The "skillsaw" group in
+  # renovate.json proposes both in one pull request.
+  - repo: https://github.com/stbenjam/skillsaw
+    rev: v0.18.0
+    hooks:
+      - id: skillsaw
 
   # Trailing whitespace, end-of-file, basic hygiene.
   # The vendored sfui copy under kerbside/api/static/sfui/ is
@@ -43,9 +64,9 @@ repos:
   #
   # Deliberately scoped to these two hooks rather than set as a
   # top-level exclude. Review notes are prose, so hiding them from
-  # every hook would also hide them from any content scanner we add
-  # later -- issue #185 tracks exactly that. See
-  # docs/code-review-tracking.md in shakenfist/development.
+  # every hook would also hide them from a content scanner -- which
+  # now exists: the credential_scan job reads them like any other
+  # file. See docs/code-review-tracking.md in shakenfist/development.
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:

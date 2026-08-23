@@ -102,7 +102,10 @@ jobs, and the required checks -- read it before changing any workflow.
 
 Smoke tier, on every pull request:
 
-- `functional-tests.yml` (`sanity_checks`) - flake8, unit tests, coverage
+- `functional-tests.yml` (`sanity_checks`) - lint (flake8,
+  shellcheck, skillsaw), unit tests, coverage
+- `functional-tests.yml` (`credential_scan`) - gitleaks over the
+  history; the one job never skipped by the path filter
 - `direct-qemu-functional.yml` - the proxy against a local qemu SPICE
   server; also nightly
 - `sf-e2e-functional.yml` - single-node Shaken Fist end to end; also
@@ -145,5 +148,5 @@ blocks every merge in the repository.
 ## Skills
 
 Claude skills are available in `.claude/skills/` for common tasks:
-- `add-database-migration.md` - Creating Alembic database migrations
-- `add-source-type.md` - Adding new cloud source implementations
+- `add-database-migration/SKILL.md` - Creating Alembic database migrations
+- `add-source-type/SKILL.md` - Adding new cloud source implementations

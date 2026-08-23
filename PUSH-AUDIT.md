@@ -276,11 +276,38 @@ copy lives in shakenfist/development at
   move it.
 <!-- shared-block-end -->
 
-- `ARCHITECTURE.md` reflects any new or modified proxy
-  components, hypervisor backends, channel types, or
-  the connection lifecycle.
-- `AGENTS.md` reflects any new dependencies, build
-  commands, or conventions.
+<!-- shared-block: llm-doc-discipline v1 -->
+AGENTS.md and ARCHITECTURE.md discipline (shared block; do not
+edit -- the canonical copy lives in shakenfist/development at
+`templates/shared-blocks/llm-doc-discipline.md`):
+
+- `AGENTS.md` is a working guide: the conventions, invariants and
+  gotchas an agent cannot infer by reading the code, plus curated
+  links into `docs/`. It is loaded into every session, so every
+  line costs context on every task.
+- `ARCHITECTURE.md` is a map: the component inventory, how data
+  moves between components, and why the shape is the way it is.
+  A deep dive on one subsystem belongs in `docs/`, where humans
+  benefit from it too.
+- One canonical home per fact. If `docs/` covers it, link to it
+  instead of restating it -- and the same rule applies between
+  `AGENTS.md` and `ARCHITECTURE.md`.
+- Neither file is a reference manual, a runbook, or a changelog.
+  CLI flags, configuration keys, wire protocols, step-by-step
+  procedures and plan history go to `docs/`.
+- Growth in either file is itself a finding: if the diff adds
+  content that belongs in `docs/`, flag it as blocking and move
+  it.
+<!-- shared-block-end -->
+
+- `ARCHITECTURE.md` reflects any change to the shape of
+  the system: new or modified proxy components,
+  hypervisor backends, channel types, or the connection
+  lifecycle.
+- `AGENTS.md` reflects any change to a convention — a
+  new invariant or gotcha an agent cannot infer from
+  the code. New dependencies and build commands are
+  documented in `docs/development.md` instead.
 - Protocol documentation in `docs/` is consistent with
   the implementation. In particular: if a packet type,
   capability, or channel was touched, the matching
@@ -293,6 +320,29 @@ copy lives in shakenfist/development at
 - Plan files in `docs/plans/` are up to date —
   completed phases are marked complete, deferred items
   are listed.
+
+<!-- shared-block: plan-phase-references v1 -->
+Plan phase references (shared block; do not edit -- the canonical
+copy lives in shakenfist/development at
+`templates/shared-blocks/plan-phase-references.md`):
+
+- Documentation outside plans directories describes the current
+  state of the software, not the history of how it was built. Do
+  not write "implemented in phase 5" or "since phase 3 of the
+  two-tier CI plan": a reader wants to know whether a feature
+  exists, not which phase of which plan delivered it.
+- If a documented behaviour is implemented, describe it plainly.
+  If it is planned but not yet implemented, link to the master
+  plan in `docs/plans/` instead of citing a phase number.
+- Reserve the word "phase" for plan documents. A procedural
+  document describing a live multi-stage process (a release
+  runbook, say) should call its stages "steps" or "stages", so
+  that a phase reference in `docs/` is always a plan smell.
+- The consistency audit greps `README.md` and `docs/` (excluding
+  plans directories) for "phase <number>". Append
+  `<!-- audit-ok: phase-reference -->` to a line only when the
+  reference is genuinely not about an implementation plan.
+<!-- shared-block-end -->
 - If the changes affect the hypervisor-facing contract,
   note whether `shakenfist/kerbside-patches` needs a
   matching update.

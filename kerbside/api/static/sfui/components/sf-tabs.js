@@ -30,7 +30,7 @@
  * so the strip degrades sanely on a page that forgot the
  * stylesheet.
  */
-import {LitElement, html, css, nothing} from '../lit-core.min.js';
+import {css, html, LitElement, nothing} from '../lit-core.min.js';
 
 class SfTabs extends LitElement {
     static properties = {
@@ -106,19 +106,23 @@ class SfTabs extends LitElement {
     render() {
         return html`
             <nav role="tablist">
-                ${(this.tabs || []).map((tab) => html`
+                ${(this.tabs || []).map(
+                    (tab) => html`
                     <button
                         role="tab"
-                        aria-selected=${tab.id === this.selected
-                            ? 'true' : 'false'}
-                        tabindex=${tab.id === this.selected
-                            ? '0' : '-1'}
+                        aria-selected=${
+                            tab.id === this.selected ? 'true' : 'false'
+                        }
+                        tabindex=${
+                            tab.id === this.selected ? '0' : '-1'
+                        }
                         data-id=${tab.id}
                         @click=${() => this._select(tab.id)}
                         @keydown=${this._onKeydown}>
                         ${tab.label}
                         ${this._badge(tab.badge)}
-                    </button>`)}
+                    </button>`,
+                )}
             </nav>`;
     }
 
@@ -126,8 +130,11 @@ class SfTabs extends LitElement {
         if (!badge) {
             return nothing;
         }
-        const severity = ['info', 'attention', 'urgent']
-            .includes(badge.severity) ? badge.severity : 'info';
+        const severity = ['info', 'attention', 'urgent'].includes(
+            badge.severity,
+        )
+            ? badge.severity
+            : 'info';
         if (badge.count !== undefined && badge.count !== null) {
             return html`
                 <span class="badge ${severity}">
@@ -143,11 +150,13 @@ class SfTabs extends LitElement {
             return;
         }
         this.selected = id;
-        this.dispatchEvent(new CustomEvent('sf-tab-selected', {
-            detail: {id},
-            bubbles: true,
-            composed: true,
-        }));
+        this.dispatchEvent(
+            new CustomEvent('sf-tab-selected', {
+                detail: {id},
+                bubbles: true,
+                composed: true,
+            }),
+        );
     }
 
     _onKeydown(event) {
@@ -157,13 +166,17 @@ class SfTabs extends LitElement {
         }
         event.preventDefault();
         const index = this.tabs.findIndex(
-            (tab) => tab.id === this.selected);
-        const next = this.tabs[
-            (index + delta + this.tabs.length) % this.tabs.length];
+            (tab) => tab.id === this.selected,
+        );
+        const next =
+            this.tabs[
+                (index + delta + this.tabs.length) % this.tabs.length
+            ];
         this._select(next.id);
         this.updateComplete.then(() => {
             const button = this.renderRoot.querySelector(
-                `button[data-id="${next.id}"]`);
+                `button[data-id="${CSS.escape(next.id)}"]`,
+            );
             if (button) {
                 button.focus();
             }

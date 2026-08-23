@@ -166,6 +166,22 @@ https://www.spice-space.org/spice-protocol.html.
   parse" separate from "was empty".** Conflating them (issue #272)
   reported a broken parser as a security failure for two days.
 
+- **A link out of `docs/` must be an absolute URL.** `docs/` is
+  synchronised into shakenfist/shakenfist and published on
+  shakenfist.com, where the tree above `docs/` does not exist, so
+  `../ARCHITECTURE.md` renders correctly on GitHub and 404s on the
+  site. Links that stay inside `docs/` should stay relative; they move
+  with the tree and work in both renderings.
+
+- **The credential scan runs on every change, including
+  documentation-only ones.** It is the one CI job not gated on
+  `check_paths`, it scans all of history rather than the diff, and it
+  fails on a credential-shaped string in a code sample as readily as
+  on a real key. Do not silence one by widening `.gitleaks.toml`;
+  suppression has two mechanisms and picking the wrong one blinds the
+  scanner to future leaks. See "The credential scan" in
+  [`docs/testing.md`](docs/testing.md).
+
 - **`REVIEWS.md` is generated; never edit it by hand.** Commits that
   add review marks must be signed — confirm `git config
   commit.gpgsign` is `true` (with `gpg.format` `x509` and
@@ -189,9 +205,9 @@ https://www.spice-space.org/spice-protocol.html.
 
 Claude skills for common tasks are in `.claude/skills/`:
 
-- `add-database-migration.md` — creating Alembic migrations, including
+- `add-database-migration/` — creating Alembic migrations, including
   model updates and documentation.
-- `add-source-type.md` — adding new cloud source implementations, from
+- `add-source-type/` — adding new cloud source implementations, from
   source class through tests and docs.
 
 Project-specific instructions are in `.claude/CLAUDE.md`.

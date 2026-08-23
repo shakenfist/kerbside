@@ -1,0 +1,57 @@
+# gitleaks configuration for Kerbside.
+#
+# Run in CI by the credential_scan job in
+# .github/workflows/functional-tests.yml, which invokes a pinned
+# gitleaks 8.16.0 through tools/gitleaks-scan.sh rather than using
+# gitleaks-action, because that action refuses to run on organization
+# repositories without a paid licence.
+#
+# There are two places to record an accepted finding, and they are not
+# interchangeable:
+#
+#   * Content which recurs -- a documentation placeholder, a test
+#     fixture, an upstream default -- is allowlisted here, keyed on the
+#     text. It reappears in a new commit every time the paragraph
+#     around it is edited, so anything keyed on a commit would need
+#     replacing each time. Prefer a regex to a path: blinding a whole
+#     file also blinds a real credential added to it later.
+#
+#   * A specific historical event goes in .gitleaksignore as a
+#     commit:path:rule-id:line fingerprint, which forgives that one
+#     occurrence and nothing else -- the same secret in a new commit
+#     fails the scan again. Write down what the credential was and what
+#     was done about it; an undocumented entry is indistinguishable
+#     from a mistake.
+#
+# Neither mechanism is a way to make a live credential stop being
+# reported. History cannot be rewritten to unpublish anything from a
+# public repository -- the objects survive in every fork -- so an
+# accepted finding is a claim that the credential has been dealt with
+# where it was trusted, not that it has been tidied out of sight.
+#
+# This file is written against 8.16's schema, which is not the one the
+# current upstream documentation describes: per-rule allowlists became
+# a repeatable [[rules.allowlists]] array in a later release, while
+# 8.16 takes a single [rules.allowlist] table. 8.16 also matches global
+# allowlist regexes against the whole match rather than the secret
+# alone, so anchoring one with ^...$ silently stops it matching. Check
+# any change against the pinned version rather than against the
+# website; the pin lives in the credential_scan job.
+
+title = "Kerbside"
+
+[extend]
+# The upstream rules for third party credential shapes -- cloud keys,
+# API tokens, private keys, JWTs -- are the whole rule set, because
+# every credential Kerbside handles is one it was given rather than one
+# it invented. The exception is the SPICE console token minted by
+# kerbside/consoletoken.py, which is 48 characters of unadorned base62
+# and so cannot be told apart from any other identifier of that length
+# by a regex. Giving it an identifying prefix, the way GitHub uses
+# "ghp_" and Shaken Fist uses "sfk_", would make it scannable; that is
+# a wire-format change to a value SPICE carries as a password, so it is
+# tracked separately as issue #357 rather than done here.
+useDefault = true
+
+# There are no accepted findings: the history is clean as scanned. Add
+# an [allowlist] block with a "regexes" list here when that changes.

@@ -93,11 +93,11 @@
  */
 @layer sfui.base {
     :root {
-        --sf-font-sans: -apple-system, BlinkMacSystemFont,
-                        'Segoe UI', Roboto, Oxygen, Ubuntu,
-                        sans-serif;
-        --sf-font-mono: 'SF Mono', Consolas,
-                        'Liberation Mono', monospace;
+        --sf-font-sans:
+            -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+            Oxygen, Ubuntu, sans-serif;
+        --sf-font-mono:
+            "SF Mono", Consolas, "Liberation Mono", monospace;
         --sf-radius-sm: 4px;
         --sf-radius: 6px;
         --sf-radius-lg: 8px;
@@ -148,8 +148,7 @@
            toward the Shaken Fist teal. This is the reference
            brand treatment. */
         border-bottom: 1px solid
-            color-mix(in srgb, var(--sf-brand) 45%,
-                      var(--sf-border));
+            color-mix(in srgb, var(--sf-brand) 45%, var(--sf-border));
     }
 
     /* The lockup is left-aligned. A page that wants it centered
@@ -260,7 +259,7 @@
     /* The current section is marked with aria-current, the state
        assistive technology already reads, rather than a modifier
        class that could disagree with it. */
-    .sf-nav a[aria-current='page'] {
+    .sf-nav a[aria-current="page"] {
         color: var(--sf-text);
         border-bottom-color: var(--sf-accent);
     }
@@ -296,6 +295,11 @@
         padding: 1.2rem 1.3rem;
     }
 
+    /* components/sf-data-table.js is the component version of
+       this table, for pages that build rows from data, and
+       copies these measurements rule for rule. The two must
+       stay visually in step: a change here belongs there as
+       well. */
     .sf-table {
         width: 100%;
         border-collapse: collapse;
@@ -330,7 +334,10 @@
        same over a page background and inside a card. */
     .sf-table--striped tbody tr:nth-child(even) {
         background: color-mix(
-            in srgb, var(--sf-text-dim) 8%, transparent);
+            in srgb,
+            var(--sf-text-dim) 8%,
+            transparent
+        );
     }
 
     /* Row hover last, so it wins over the stripe. A wide table
@@ -338,7 +345,10 @@
        pointer picked out. */
     .sf-table tbody tr:hover {
         background: color-mix(
-            in srgb, var(--sf-accent) 8%, transparent);
+            in srgb,
+            var(--sf-accent) 8%,
+            transparent
+        );
     }
 
     /* Wrapper for a table too wide for its column: the table
@@ -455,43 +465,56 @@
 
     .sf-badge--green {
         background: color-mix(
-            in srgb, var(--sf-green) 15%, transparent);
+            in srgb,
+            var(--sf-green) 15%,
+            transparent
+        );
         color: var(--sf-green);
     }
 
     .sf-badge--amber {
         background: color-mix(
-            in srgb, var(--sf-amber) 15%, transparent);
+            in srgb,
+            var(--sf-amber) 15%,
+            transparent
+        );
         color: var(--sf-amber);
     }
 
     .sf-badge--red {
-        background: color-mix(
-            in srgb, var(--sf-red) 15%, transparent);
+        background: color-mix(in srgb, var(--sf-red) 15%, transparent);
         color: var(--sf-red);
     }
 
     .sf-badge--purple {
         background: color-mix(
-            in srgb, var(--sf-purple) 15%, transparent);
+            in srgb,
+            var(--sf-purple) 15%,
+            transparent
+        );
         color: var(--sf-purple);
     }
 
     .sf-badge--pink {
-        background: color-mix(
-            in srgb, var(--sf-pink) 15%, transparent);
+        background: color-mix(in srgb, var(--sf-pink) 15%, transparent);
         color: var(--sf-pink);
     }
 
     .sf-badge--accent {
         background: color-mix(
-            in srgb, var(--sf-accent) 15%, transparent);
+            in srgb,
+            var(--sf-accent) 15%,
+            transparent
+        );
         color: var(--sf-accent);
     }
 
     .sf-badge--dim {
         background: color-mix(
-            in srgb, var(--sf-text-dim) 15%, transparent);
+            in srgb,
+            var(--sf-text-dim) 15%,
+            transparent
+        );
         color: var(--sf-text-dim);
     }
 
@@ -534,21 +557,26 @@
 
     .sf-banner--warn {
         background: color-mix(
-            in srgb, var(--sf-amber) 15%, transparent);
+            in srgb,
+            var(--sf-amber) 15%,
+            transparent
+        );
         border-color: var(--sf-amber);
         color: var(--sf-amber);
     }
 
     .sf-banner--error {
-        background: color-mix(
-            in srgb, var(--sf-red) 15%, transparent);
+        background: color-mix(in srgb, var(--sf-red) 15%, transparent);
         border-color: var(--sf-red);
         color: var(--sf-red);
     }
 
     .sf-banner--info {
         background: color-mix(
-            in srgb, var(--sf-accent) 15%, transparent);
+            in srgb,
+            var(--sf-accent) 15%,
+            transparent
+        );
         border-color: var(--sf-accent);
         color: var(--sf-accent);
     }

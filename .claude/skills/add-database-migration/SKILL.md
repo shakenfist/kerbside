@@ -1,3 +1,8 @@
+---
+name: add-database-migration
+description: Create an Alembic migration for Kerbside, with the model, schema documentation and tests that go with it. Use when adding, removing or altering a database table or column.
+---
+
 # Add Database Migration
 
 When creating a new Alembic database migration for Kerbside:

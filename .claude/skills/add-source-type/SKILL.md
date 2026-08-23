@@ -1,3 +1,8 @@
+---
+name: add-source-type
+description: Add a new cloud console source to Kerbside, from the source class through registration, tests and documentation. Use when wiring Kerbside up to a cloud platform it does not discover consoles from yet.
+---
+
 # Add New Cloud Source Type
 
 When adding a new cloud source type to Kerbside:
