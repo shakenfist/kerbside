@@ -57,7 +57,12 @@ SUMMARY="${RESULTS_DIR}/latency-${PROXY}.summary.txt"
 # Always tear the lane down, and stash the ryll/serial logs first -- they live
 # inside WORKDIR (which lane-down removes) so copying them into RESULTS_DIR is
 # what keeps a measurement hiccup debuggable from the uploaded artifacts.
-# shellcheck disable=SC2317  # invoked indirectly via the EXIT trap below
+# Version 0.11 of the linter split the old SC2317 in two: unreachable
+# commands kept that code, while "this function is never invoked" became
+# SC2329. Both are named below so the suppression holds either side of
+# the bump. (Do not start these comment lines with the linter's name --
+# it parses any such comment as a directive and fails with SC1073.)
+# shellcheck disable=SC2317,SC2329  # invoked indirectly via the EXIT trap below
 cleanup() {
     for name in ryll-ci.stdout ryll-ci.stderr sextant-serial.log; do
         if [ -f "${WORKDIR}/${name}" ]; then
