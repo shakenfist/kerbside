@@ -582,6 +582,34 @@
     {
       "path": "tools/verify-wheel-stamping.sh",
       "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/demo-compose.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/dev-proxy-wheel.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/functional-tests.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/pr-re-review.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/pypi-storage-check.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows",
+      "author": "mikal"
+    },
+    {
+      "path": ".pre-commit-config.yaml",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
