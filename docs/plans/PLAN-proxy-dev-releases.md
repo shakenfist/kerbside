@@ -267,6 +267,7 @@ All resolved by the operator on 2026-08-14:
 | 3. Contract handshake | [PLAN-proxy-dev-releases-phase-03-contract-handshake.md](PLAN-proxy-dev-releases-phase-03-contract-handshake.md) | Complete (merged in PR #314, 2026-08-16) |
 | 4. Docs, downstream cleanup and verification | [PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md](PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md) | Docs (4a) complete in PR #314. 4b (patch175 simplification) withdrawn 2026-08-18 — decision 1 is reversed in the phase plan and the Kolla patch keeps its PyPI fallback. 4c (Gerrit recheck) outstanding, operator-driven |
 | 5. Automated dev release pruning | [PLAN-proxy-dev-releases-phase-05-pypi-prune.md](PLAN-proxy-dev-releases-phase-05-pypi-prune.md) | Complete (merged in PR #328, 2026-08-18) — storage monitor, lockfile-only merges no longer publish, pruning runbook |
+| 6. Push audit | [PLAN-proxy-dev-releases-phase-06-push-audit.md](PLAN-proxy-dev-releases-phase-06-push-audit.md) | Not started |
 
 Phase sketches (to be expanded into per-phase plans):
 
@@ -407,6 +408,16 @@ under the operator's CI-cost policy. Phase 5 lands as its
 own, separate PR — the single-PR batching applied to the
 phases that had to merge together to turn the scenario
 jobs green, and phase 5 depends on none of that.)
+
+**Phase 6 — push audit.** Work through `PUSH-AUDIT.md`
+against the accumulated diff of every phase in this plan
+versus `develop` — phases 1 to 5 together, not phase 5
+alone, because what the phases did to each other is only
+visible once they are all in the same diff. Findings land
+as their own pull request; this plan is not complete until
+each one is fixed or declined in writing here, with the
+reason. If the audit finds nothing, record that in a
+sentence — it is a result worth having.
 
 ## Agent guidance
 

@@ -29,6 +29,11 @@ SPICE protocol negotiation, authentication, and bidirectional traffic relay.
 
 [`docs/index.md`](docs/index.md) is the full index.
 
+[`PUSH-AUDIT.md`](PUSH-AUDIT.md) is the pre-push audit runbook — two
+waves of build, style, code quality, test, documentation and security
+review over a change before it is pushed — and it runs as the last
+phase of every master plan in [`docs/plans/`](docs/plans/index.md).
+
 ## Key files to understand
 
 | File | Purpose |
