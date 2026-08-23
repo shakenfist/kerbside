@@ -216,10 +216,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/pr-re-review.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/prune-reviews.yml",
       "author": "mikal"
     },
@@ -237,18 +233,6 @@
     },
     {
       "path": "docs/console-sources.md",
-      "author": "mikal"
-    },
-    {
-      "path": ".claude/skills/add-source-type.md",
-      "author": "mikal"
-    },
-    {
-      "path": ".claude/skills/add-database-migration.md",
-      "author": "mikal"
-    },
-    {
-      "path": ".claude/skills",
       "author": "mikal"
     },
     {
@@ -392,10 +376,6 @@
       "author": "mikal"
     },
     {
-      "path": "PUSH-AUDIT.md",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/migrations/versions/5c8101ff14d7_sources_can_be_deleted.py",
       "author": "mikal"
     },
@@ -437,10 +417,6 @@
     },
     {
       "path": "kerbside/migrations/env.py",
-      "author": "mikal"
-    },
-    {
-      "path": "PLAN-TEMPLATE.md",
       "author": "mikal"
     },
     {
@@ -540,10 +516,6 @@
       "author": "mikal"
     },
     {
-      "path": "tempest-plugin/kerbside_tempest_plugin/ryll_client.py",
-      "author": "mikal"
-    },
-    {
       "path": "tempest-plugin/README.md",
       "author": "mikal"
     },
@@ -564,19 +536,7 @@
       "author": "mikal"
     },
     {
-      "path": "tempest-plugin/kerbside_tempest_plugin/tests/scenario/test_sextant_scenario.py",
-      "author": "mikal"
-    },
-    {
-      "path": "tempest-plugin/kerbside_tempest_plugin/tests/scenario",
-      "author": "mikal"
-    },
-    {
       "path": "tempest-plugin/kerbside_tempest_plugin/tests/__init__.py",
-      "author": "mikal"
-    },
-    {
-      "path": "tempest-plugin/kerbside_tempest_plugin/tests",
       "author": "mikal"
     },
     {

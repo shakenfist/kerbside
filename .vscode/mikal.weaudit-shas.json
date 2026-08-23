@@ -1,14 +1,6 @@
 {
   "version": 1,
   "files": {
-    ".claude/skills/add-database-migration.md": {
-      "sha": "08654bd241fe61c40b99388da625e30733681d64",
-      "date": "2026-08-15"
-    },
-    ".claude/skills/add-source-type.md": {
-      "sha": "bc071e1983e3e77fd3b36e6982dd7e487e39131f",
-      "date": "2026-08-15"
-    },
     ".github/actionlint.yaml": {
       "sha": "ca9be799707e0aefba16e5e594f1b37e4c58c299",
       "date": "2026-08-11"
@@ -31,10 +23,6 @@
     },
     ".github/workflows/pr-address-comments.yml": {
       "sha": "361512a22229e0c4c72755085e476020e3819ce6",
-      "date": "2026-08-11"
-    },
-    ".github/workflows/pr-re-review.yml": {
-      "sha": "066168bcb5b6ccbd0247bc40c74d804fc173b084",
       "date": "2026-08-11"
     },
     ".github/workflows/pr-retest.yml": {
@@ -64,14 +52,6 @@
     "AUTHORS": {
       "sha": "52747656c9ce3a27509516db50abacb7930c8ca2",
       "date": "2026-08-04"
-    },
-    "PLAN-TEMPLATE.md": {
-      "sha": "7c3ddcf8a48ed560bfa174cdad6b64c7b26dcf5a",
-      "date": "2026-08-18"
-    },
-    "PUSH-AUDIT.md": {
-      "sha": "05c9d50bfc1192f87b66783c0a118cde3c93b40f",
-      "date": "2026-08-15"
     },
     "demo/Dockerfile": {
       "sha": "e94b4457477d238ad2f2f5cc143a8859eff0145a",
@@ -333,10 +313,6 @@
       "sha": "38d6e6f49d507181ae616aabf2f06feb35c2e3df",
       "date": "2026-08-08"
     },
-    "tempest-plugin/kerbside_tempest_plugin/ryll_client.py": {
-      "sha": "e71e73c619267872fb014234672a0f497e5bb497",
-      "date": "2026-08-18"
-    },
     "tempest-plugin/kerbside_tempest_plugin/tests/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-18"
@@ -351,10 +327,6 @@
     },
     "tempest-plugin/kerbside_tempest_plugin/tests/scenario/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
-      "date": "2026-08-18"
-    },
-    "tempest-plugin/kerbside_tempest_plugin/tests/scenario/test_sextant_scenario.py": {
-      "sha": "f5339b67869cf1f394c4229a560372f375e7c3ed",
       "date": "2026-08-18"
     },
     "tools/address-comments-with-claude.sh": {
