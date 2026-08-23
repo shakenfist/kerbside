@@ -9,6 +9,14 @@
       "sha": "296eca7815ac6582bf4fa9d0714869ac1eab574a",
       "date": "2026-08-18"
     },
+    ".github/workflows/demo-compose.yml": {
+      "sha": "b1b99f3990b7942a7c92a4b8d3d0b1d21ea204a2",
+      "date": "2026-08-24"
+    },
+    ".github/workflows/dev-proxy-wheel.yml": {
+      "sha": "478ee850295df9b82b59606d3386482d3114a329",
+      "date": "2026-08-24"
+    },
     ".github/workflows/direct-qemu-functional.yml": {
       "sha": "759758bc55f01acba338bae30710b03148d31610",
       "date": "2026-08-18"
@@ -16,6 +24,10 @@
     ".github/workflows/export-repo-config.yml": {
       "sha": "53b5d8eb46e89e228dd88d42d7e1b0c3ea6694cd",
       "date": "2026-08-11"
+    },
+    ".github/workflows/functional-tests.yml": {
+      "sha": "13803ff1735f5dcf83b0f0511e522fe8ab023ffa",
+      "date": "2026-08-24"
     },
     ".github/workflows/pin-indirect-dependencies.yml": {
       "sha": "0faad202ec3336b3fa8b6ed2787c557fc3172c24",
@@ -25,6 +37,10 @@
       "sha": "361512a22229e0c4c72755085e476020e3819ce6",
       "date": "2026-08-11"
     },
+    ".github/workflows/pr-re-review.yml": {
+      "sha": "7080442cdfc23065e0e1a805da3beb9fb76fc268",
+      "date": "2026-08-24"
+    },
     ".github/workflows/pr-retest.yml": {
       "sha": "86352446dd2c808f6191213a3280e1c525cb6417",
       "date": "2026-08-18"
@@ -32,6 +48,10 @@
     ".github/workflows/prune-reviews.yml": {
       "sha": "27c5c370391a513b7978fe4eb2c0302c3da68ae3",
       "date": "2026-08-11"
+    },
+    ".github/workflows/pypi-storage-check.yml": {
+      "sha": "b4ea2a75e61abba4bcfd122d9f0d8222f1b25607",
+      "date": "2026-08-24"
     },
     ".github/workflows/release.yml": {
       "sha": "b3614bdba1b5d4c02c14820bc0f8dcfd85752372",
@@ -48,6 +68,10 @@
     ".github/workflows/sf-e2e-functional.yml": {
       "sha": "9a54f8284dd2c5875d6ea51f1c85e595a88c37e8",
       "date": "2026-08-18"
+    },
+    ".pre-commit-config.yaml": {
+      "sha": "59b894c9b13bd6a295781a370c55f75b2420d9f3",
+      "date": "2026-08-24"
     },
     "AUTHORS": {
       "sha": "52747656c9ce3a27509516db50abacb7930c8ca2",
