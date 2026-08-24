@@ -69,7 +69,7 @@ dependencies = [
     # protobuf is pinned to the version the checked-in stubs were
     # generated against; regenerate via `tox -egenprotos` if bumped.
     "grpcio==1.83.0",                   # apache2
-    "protobuf==7.35.1",                 # bsd
+    "protobuf==7.36.0",                 # bsd
 
     # Optional dependancies, depending on what clouds you want to provide access to
     # shakenfist-client               # apache2
