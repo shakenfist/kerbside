@@ -413,10 +413,6 @@
       "sha": "aaddc0bf0732e30310bcb0ee2ac852fca7c0d3d2",
       "date": "2026-08-15"
     },
-    "tools/direct-qemu/run-loadtest.sh": {
-      "sha": "c1b58cfed5a611187b38bdf780ab5f280b3ed905",
-      "date": "2026-08-15"
-    },
     "tools/direct-qemu/run-scenario.sh": {
       "sha": "6b989adb040d27dc9ba49f765c0ae7881ac65f80",
       "date": "2026-08-15"

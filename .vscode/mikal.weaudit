@@ -288,10 +288,6 @@
       "author": "mikal"
     },
     {
-      "path": "tools/direct-qemu/run-loadtest.sh",
-      "author": "mikal"
-    },
-    {
       "path": "tools/direct-qemu/run-scenario.sh",
       "author": "mikal"
     },
