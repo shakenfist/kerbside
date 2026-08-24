@@ -68,7 +68,7 @@ repos:
   # now exists: the credential_scan job reads them like any other
   # file. See docs/code-review-tracking.md in shakenfist/development.
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
         exclude: ^(kerbside/api/static/sfui/|\.vscode/.*\.weaudit)
