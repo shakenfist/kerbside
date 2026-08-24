@@ -606,10 +606,6 @@
     {
       "path": ".github/workflows",
       "author": "mikal"
-    },
-    {
-      "path": ".pre-commit-config.yaml",
-      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
