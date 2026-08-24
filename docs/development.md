@@ -461,6 +461,13 @@ than a `uses:` — so a `customManagers` regex picks each one up, and the
 `shellcheck` and `skillsaw` groups land both halves of a bump in one
 pull request.
 
+Grouping only proposes the two halves together, though; it does not
+enforce that they agree. So `tools/shellcheck-wrap.sh` checks the hook
+revision against the `shellcheck-py` pin before it lints anything, and
+`tox -e shellcheck` fails in the smoke tier if they have drifted apart —
+which is what happened when the tag lookup above silently stopped
+resolving. The skillsaw pair has no equivalent assertion yet.
+
 ## Development configuration
 
 Configuration is loaded from environment variables (`KERBSIDE_*`), then

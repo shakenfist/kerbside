@@ -24,6 +24,36 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "${REPO_ROOT}"
 
+# Both pins must name the same shellcheck version, and until now the only
+# thing holding them together was renovate.json being correct. That is
+# not enough on its own: the github-tags lookup behind the hook silently
+# stopped resolving, so no hook update was ever proposed, and CI drifted
+# to a newer shellcheck than developers ran until somebody read the
+# dependency dashboard. Assert the agreement here instead, where both CI
+# and a developer running `tox -e shellcheck` trip over a disagreement on
+# the next run, whatever Renovate does or does not propose.
+HOOK_REV="$(sed -n '\#shellcheck-py/shellcheck-py#,/rev:/{s/^ *rev: *v//p;}' \
+        .pre-commit-config.yaml)"
+TOX_PIN="$(sed -n 's/^ *shellcheck-py==\(.*\)$/\1/p' tox.ini)"
+
+if [ -z "${HOOK_REV}" ] || [ -z "${TOX_PIN}" ]; then
+    # Failing to read a pin has to be fatal rather than a silent skip,
+    # for the same reason the empty file list below is fatal: a check
+    # that quietly stops checking is worse than no check at all.
+    echo "ERROR: could not read both shellcheck pins (hook" \
+            "'${HOOK_REV}', tox '${TOX_PIN}'); the extraction above no" >&2
+    echo "  longer matches .pre-commit-config.yaml or tox.ini." >&2
+    exit 1
+fi
+
+if [ "${HOOK_REV}" != "${TOX_PIN}" ]; then
+    echo "ERROR: the shellcheck pins disagree: .pre-commit-config.yaml" >&2
+    echo "  pins v${HOOK_REV}, tox.ini pins ${TOX_PIN}. They must move" >&2
+    echo "  together, or this environment and the pre-commit hook will" >&2
+    echo "  disagree about what passes." >&2
+    exit 1
+fi
+
 # --others --exclude-standard so a new script that is not `git add`ed yet
 # is still checked. pre-commit sees staged files, so this cannot disagree
 # with the hook about a file being committed -- it only makes the tox
