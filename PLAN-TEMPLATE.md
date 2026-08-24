@@ -120,6 +120,19 @@ Matching is case-insensitive, so `In Progress` is accepted, but the
 spelling above is the one to write.
 <!-- shared-block-end -->
 
+The last row of every master plan's phase table is a push audit:
+work through [`PUSH-AUDIT.md`](PUSH-AUDIT.md) over the plan's
+**accumulated** diff — every phase together, against `develop` —
+rather than over the final phase alone, because what the phases did
+to each other is only visible once they are in the same diff. Name
+the commit range explicitly in the phase, and substitute it wherever
+`PUSH-AUDIT.md` says `git diff develop...HEAD`; once earlier phases
+have merged, that range is empty on the audit branch. Findings land
+as their own pull request, and the plan is not complete until each
+one is fixed or declined in writing in the plan, with the reason. An
+audit that finds nothing is recorded in a sentence — it is a result
+worth having.
+
 ## Agent guidance
 
 ### Execution model
@@ -365,6 +378,9 @@ implemented because the following statements will be true:
 * If the changes affect the hypervisor-facing contract,
   the relevant patches in `shakenfist/kerbside-patches`
   have been reviewed and updated if needed.
+* The `PUSH-AUDIT.md` audit has been run over the plan's
+  accumulated diff, and every finding it raised has been
+  fixed or declined in writing in the plan.
 
 ### Documentation index maintenance
 

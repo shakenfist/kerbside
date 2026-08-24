@@ -26,13 +26,13 @@ SPICE protocol negotiation, authentication, and bidirectional traffic relay.
 | What are the database tables? | [`docs/schema.md`](docs/schema.md) |
 | How do console sources work? | [`docs/console-sources.md`](docs/console-sources.md) |
 | How does the SPICE protocol work? | [`docs/spice/protocol-overview.md`](docs/spice/protocol-overview.md) |
+| How do I audit a change before pushing? | [`PUSH-AUDIT.md`](PUSH-AUDIT.md) |
 
 [`docs/index.md`](docs/index.md) is the full index.
 
-[`PUSH-AUDIT.md`](PUSH-AUDIT.md) is the pre-push audit runbook — two
-waves of build, style, code quality, test, documentation and security
-review over a change before it is pushed — and it runs as the last
-phase of every master plan in [`docs/plans/`](docs/plans/index.md).
+A master plan's final phase runs that audit over the plan's
+accumulated diff, not over the last phase alone;
+[`PLAN-TEMPLATE.md`](PLAN-TEMPLATE.md) carries the convention.
 
 ## Key files to understand
 
