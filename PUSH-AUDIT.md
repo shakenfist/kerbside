@@ -22,14 +22,12 @@ spawned in parallel.
 The management session reviews all findings, fixes any
 issues, and confirms the push.
 
-**Note:** The `tools/audit/wave1.sh` and
-`tools/audit/wave2-mechanical.sh` scripts referenced
-below need to be created for this repo. Adapt them from
-`shakenfist/ryll/tools/audit/` as a starting point; the
-mechanical portions translate well, but the lint /
-test commands change from cargo to tox and the
-style-grep set changes from Rust-flavoured to
-Python-flavoured.
+**Note:** Both scripts already exist, at
+`tools/audit/wave1.sh` and
+`tools/audit/wave2-mechanical.sh`. They were adapted from
+`shakenfist/ryll/tools/audit/`, with the lint and test
+gates moved from cargo to tox and the style greps made
+Python-flavoured. Run them, do not re-derive them.
 
 ## Wave 1: Mechanical checks
 
@@ -59,8 +57,26 @@ Exit codes:
 | 0    | all wave 1 checks passed             |
 | 1    | flake8 failed                        |
 | 2    | py3 test suite failed                |
-| 3    | raw `print()` found in non-test code |
-| 4    | bare `except:` found                 |
+| 3    | raw `print()` added in non-test code |
+| 4    | bare `except:` added in source       |
+| 5    | could not reach the repository root  |
+
+Codes 3 and 4 are the only fatal style checks, and both
+inspect **only lines added** relative to `DIFF_BASE`
+(`develop`, hard-coded at `tools/audit/wave1.sh:37`), so
+pre-existing intentional prints — the config and logging
+bootstrap, the `kerbside` CLI — do not trip them. A
+`print()` may still be added deliberately if its file
+carries the marker comment `audit-allow-print`. Every
+other style check is advisory and does not change the
+exit code.
+
+Because those checks are diff-based, a branch whose work
+has already merged to `develop` gets an empty diff and a
+vacuous pass. When auditing an accumulated range rather
+than a live branch — as a master plan's push-audit phase
+does — run the style greps over that range yourself, or
+edit `DIFF_BASE` locally without committing it.
 
 If wave 1 fails, fix the cause and re-run before
 spending on wave 2.
