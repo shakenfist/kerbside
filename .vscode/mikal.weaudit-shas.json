@@ -57,10 +57,6 @@
       "sha": "b3614bdba1b5d4c02c14820bc0f8dcfd85752372",
       "date": "2026-08-18"
     },
-    ".github/workflows/renovate.yml": {
-      "sha": "9ad807719d1e8fbb781f3e234fdf61cce9fe447a",
-      "date": "2026-08-18"
-    },
     ".github/workflows/rust.yml": {
       "sha": "5e419f673f63263dff3953f237bb76b9f43e39a1",
       "date": "2026-08-18"

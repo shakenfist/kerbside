@@ -432,10 +432,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/renovate.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/rust.yml",
       "author": "mikal"
     },
@@ -597,10 +593,6 @@
     },
     {
       "path": ".github/workflows/pypi-storage-check.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows",
       "author": "mikal"
     }
   ],
