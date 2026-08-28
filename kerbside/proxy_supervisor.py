@@ -94,16 +94,22 @@ def get_binary_contract_hash(bin_path):
     a short human-readable string describing why the hash could not be
     determined -- a non-zero exit (every release <= 0.4.0 predates the flag
     and so rejects it), a timeout, output which is not a 64 character lower
-    case hex digest, or an OSError raised trying to execute the binary at
-    all (wrong architecture, missing permissions, missing file).
+    case hex digest (including output which is not even valid UTF-8), or an
+    OSError raised trying to execute the binary at all (wrong architecture,
+    missing permissions, missing file).
 
     check_contract() treats every failure_reason as a mismatch, because none
     of them can be shown to speak this package's contract.
     """
     try:
+        # errors='replace' rather than the strict default: a binary which
+        # prints something which is not UTF-8 must produce a failure reason
+        # like every other bad answer does, not a UnicodeDecodeError escaping
+        # this function and surfacing as a traceback at daemon startup. The
+        # mangled text then fails the digest check below on its own.
         result = subprocess.run(
             [bin_path, '--contract-hash'], capture_output=True, text=True,
-            timeout=CONTRACT_HASH_PROBE_TIMEOUT)
+            errors='replace', timeout=CONTRACT_HASH_PROBE_TIMEOUT)
     except subprocess.TimeoutExpired:
         LOG.warning('%s --contract-hash timed out' % bin_path)
         return None, (
