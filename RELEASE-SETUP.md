@@ -212,6 +212,20 @@ publishes unreleased `kerbside-proxy` dev wheels to PyPI:
   no required reviewers (see "Configure Dev Release Publishing" above), so
   consumers of dev wheels are trusting CI provenance, not a human-approved,
   tag-signed release.
+- **Nothing in this repository verifies those attestations.** They are
+  produced at publish time and consumed by no install path: neither
+  `pip install kerbside`, nor the instructions in
+  `docs/installation.md`, nor the Kolla patch passes `--require-hashes`,
+  a lockfile, or PEP 740 attestation verification. The commands under
+  "Verifying Releases" below are there for an operator who chooses to
+  run them by hand, and nothing runs them automatically. The
+  attestations are an audit trail after the fact, not a gate on the way
+  in.
+- **Incident response is a manual yank.** If a published
+  `kerbside-proxy` wheel is ever suspected of being compromised,
+  removing it is the same hand-driven PyPI web-UI action as pruning,
+  for the same reason: PyPI offers no API to delete or yank a release
+  (see "Pruning dev releases" below).
 - The approval-gated `release` environment and the exact lockstep version
   pins it produces (see "Two-package lockstep release" above) are
   unaffected — dev releases only ever publish `kerbside-proxy`, never
@@ -289,11 +303,10 @@ this project's current zero-credential OIDC publishing posture for a
 single account-wide credential capable of deleting the final releases
 too, in order to automate reclaiming storage that, at the measured
 growth rate, is years away from being needed. That trade was declined
-deliberately, not overlooked — see the phase 5 decisions in
-`docs/plans/PLAN-proxy-dev-releases-phase-05-pypi-prune.md` for the
-full reasoning. Revisit this if Warehouse issue #12810 ever ships: a
-real delete API would remove the password/TOTP requirement and change
-the calculus.
+deliberately, not overlooked — the full reasoning is recorded in
+`docs/plans/PLAN-proxy-dev-releases-phase-05-pypi-prune.md`. Revisit
+this if Warehouse issue #12810 ever ships: a real delete API would
+remove the password/TOTP requirement and change the calculus.
 
 ## Verifying Releases
 
