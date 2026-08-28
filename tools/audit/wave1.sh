@@ -104,8 +104,12 @@ fi
 
 if [[ "$have_base" == "1" ]]; then
     # Added .py lines in the diff, excluding tests and generated stubs.
+    # The second grep needs -E: in BRE (the default), \+ is the
+    # repetition operator, so an unescaped '^\+\+\+' matches any run
+    # of leading '+' and strips every added line, not just the
+    # '+++ b/<path>' diff headers. -E makes \+ a literal '+'.
     ADDED=$(audit_diff_for '\.py$' ':!*/tests/*' ':!*_pb2*' ':!*_pb2_grpc*' \
-        | grep -E '^\+' | grep -v '^\+\+\+' || true)
+        | grep -E '^\+' | grep -vE '^\+\+\+' || true)
 
     # 1. No raw print() added (logging only). Skip if the changed file
     #    carries the `audit-allow-print` marker.
