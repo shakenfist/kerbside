@@ -127,6 +127,39 @@ most importantly it cannot express the path scoping at all: a bare
 every unrelated merge that landed between the two phase PRs, which
 is the specific thing the path set exists to prevent.
 
+**Correction, 2026-08-29, found by step 6a and verified in the
+management session: the call-site form this decision originally
+specified — `git diff $AUDIT_RANGE -- $AUDIT_PATHS '*.py'` — does not
+do what the paragraph above claims.** Git *unions* positive
+pathspecs rather than intersecting them, so that command means
+"anything in `AUDIT_PATHS`, OR any `*.py` anywhere in the range",
+which re-admits exactly the unrelated merges the path set exists to
+exclude. Measured on the real range: the path set holds 7 Python
+files, and the union form returns 39. Exclusion pathspecs (`:!...`)
+are unaffected — those genuinely subtract.
+
+The scripts therefore intersect in two stages instead, via a pair of
+helpers each script defines once:
+
+```
+audit_paths_for <filename-ere> [exclusion pathspecs...]
+audit_diff_for  <filename-ere> [exclusion pathspecs...]
+```
+
+`audit_paths_for` runs `git diff --name-only $AUDIT_RANGE --
+$AUDIT_PATHS <exclusions>` and filters the resulting list with
+`grep -E <filename-ere>`; `audit_diff_for` re-diffs that literal
+file list, and produces nothing when the list is empty (a bare
+`git diff RANGE --` with no paths would otherwise mean
+"everything"). With `AUDIT_PATHS` unset both degrade to today's
+behaviour, because an empty positive pathspec list means no
+restriction.
+
+This is why step 6a carries a gate. The mechanism was wrong in the
+first draft of this plan and the sub-agent caught it by measuring
+rather than by trusting the brief; the same measurement is now a
+done-criterion.
+
 This is the decision a reviewer is most likely to argue with, on
 the grounds that a phase whose job is to *run* an audit should not
 be *changing* the audit tooling, and that the changed tooling then
@@ -258,6 +291,18 @@ which exports `AUDIT_RANGE` and `AUDIT_PATHS`.
   temporary path, and diff the output.
 * With the phase range exported, `wave2-mechanical.sh` reports
   against 40 files rather than printing "(none)" eight times.
+* The scoping intersects rather than unions. Falsifiable: with the
+  phase range exported, every file either script reports on is a
+  member of `AUDIT_PATHS`. Check it directly —
+
+  ```
+  eval "$(tools/audit/plan-range.sh 14b54f3 2e1fd43)"
+  comm -13 <(printf '%s\n' $AUDIT_PATHS | sort) \
+           <(tools/audit/wave2-mechanical.sh | grep -oE '[a-zA-Z0-9_./-]+\.(py|md|sh|toml|yml|rs|lock)' | sort -u)
+  ```
+
+  must print nothing. The Python-only view of the path set is 7
+  files, not 39; if a script reports 39, it is unioning.
 * `tools/audit/wave1.sh` exits 0 over the phase range, and its
   output shows "PASS: no raw print() added" reached via the marker
   rather than via an empty diff.

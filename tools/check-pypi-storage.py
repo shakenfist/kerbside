@@ -48,6 +48,9 @@ carrying an empty report, so callers must treat anything above 1 as a
 broken monitor rather than as news about the project.
 """
 
+# audit-allow-print: this is a reporting CLI -- pypi-storage-check.yml
+# captures its stdout and feeds it to file-pypi-storage-issue.sh.
+
 import argparse
 import json
 import sys

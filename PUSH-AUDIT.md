@@ -62,21 +62,28 @@ Exit codes:
 | 5    | could not reach the repository root  |
 
 Codes 3 and 4 are the only fatal style checks, and both
-inspect **only lines added** relative to `DIFF_BASE`
-(`develop`, hard-coded at `tools/audit/wave1.sh:37`), so
-pre-existing intentional prints — the config and logging
-bootstrap, the `kerbside` CLI — do not trip them. A
-`print()` may still be added deliberately if its file
-carries the marker comment `audit-allow-print`. Every
-other style check is advisory and does not change the
-exit code.
+inspect **only lines added** relative to `AUDIT_RANGE`
+(`develop...HEAD` by default), so pre-existing intentional
+prints — the config and logging bootstrap, the `kerbside`
+CLI — do not trip them. A `print()` may still be added
+deliberately if its file carries the marker comment
+`audit-allow-print`. Every other style check is advisory
+and does not change the exit code.
 
 Because those checks are diff-based, a branch whose work
 has already merged to `develop` gets an empty diff and a
-vacuous pass. When auditing an accumulated range rather
-than a live branch — as a master plan's push-audit phase
-does — run the style greps over that range yourself, or
-edit `DIFF_BASE` locally without committing it.
+vacuous pass. Both `tools/audit/wave1.sh` and
+`tools/audit/wave2-mechanical.sh` hard-code that default;
+both now also read `AUDIT_RANGE` and `AUDIT_PATHS` from
+the environment, so auditing an accumulated range — as a
+master plan's push-audit phase does — is exporting those
+instead of editing either script.
+`tools/audit/plan-range.sh` derives both from a plan's
+merge commits:
+
+```
+eval "$(tools/audit/plan-range.sh <first-merge-sha> <last-merge-sha>)"
+```
 
 If wave 1 fails, fix the cause and re-run before
 spending on wave 2.
