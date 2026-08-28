@@ -77,7 +77,10 @@ cd "${crate_dir}"
 # version, so on a release-stamped tree the grep below does not match. The
 # tree state, not call ordering, is what keeps the two stamp modes apart
 # (tools/verify-wheel-stamping.sh asserts both modes in CI).
-if grep -q '^dynamic = \["version"\]' pyproject.toml; then
+# Anchored at both ends deliberately: tools/stamp-proxy-version.sh and
+# tools/stamp-dev-proxy-version.sh test this same line in this same file, and
+# all three must agree about whether the tree is stamped.
+if grep -q '^dynamic = \["version"\]$' pyproject.toml; then
     echo "Unstamped tree: stamping the setuptools_scm dev version..."
     saved_pyproject="$(mktemp)"
     cp pyproject.toml "${saved_pyproject}"
