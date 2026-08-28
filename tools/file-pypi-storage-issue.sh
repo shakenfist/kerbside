@@ -33,10 +33,21 @@ file_or_comment() {
     local create_body="$2"
     local comment_body="$3"
 
-    local existing
-    existing=$(gh issue list --state open --search "in:title \"${title}\"" \
-        --json number,title \
-        --jq ".[] | select(.title == \"${title}\") | .number" | head -1)
+    # The exact-title match is made in bash rather than by interpolating
+    # ${title} into the jq program. Both call sites pass a literal today, so
+    # nothing here is exploitable, but a jq program assembled by string
+    # substitution is a trap for the next caller with a computed title -- a
+    # quote or a backslash in it would rewrite the program rather than be
+    # compared by it. --jq now only names fields, and never sees the title.
+    local existing=''
+    local number found
+    while IFS=$'\t' read -r number found; do
+        if [ "${found}" = "${title}" ]; then
+            existing="${number}"
+            break
+        fi
+    done < <(gh issue list --state open --search "in:title \"${title}\"" \
+        --json number,title --jq '.[] | "\(.number)\t\(.title)"')
 
     if [ -n "${existing}" ]; then
         gh issue comment "${existing}" --body "${comment_body}"
