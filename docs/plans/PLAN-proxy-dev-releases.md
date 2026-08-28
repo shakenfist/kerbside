@@ -265,7 +265,7 @@ All resolved by the operator on 2026-08-14:
 | 1. Dev wheel publish workflow | [PLAN-proxy-dev-releases-phase-01-publish-workflow.md](PLAN-proxy-dev-releases-phase-01-publish-workflow.md) | Complete (merged in PR #314, 2026-08-16) |
 | 2. Committed dev specifier and release stamping | [PLAN-proxy-dev-releases-phase-02-dev-specifier.md](PLAN-proxy-dev-releases-phase-02-dev-specifier.md) | Complete (merged in PR #314, 2026-08-16) |
 | 3. Contract handshake | [PLAN-proxy-dev-releases-phase-03-contract-handshake.md](PLAN-proxy-dev-releases-phase-03-contract-handshake.md) | Complete (merged in PR #314, 2026-08-16) |
-| 4. Docs, downstream cleanup and verification | [PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md](PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md) | Docs (4a) complete in PR #314. 4b (patch175 simplification) withdrawn 2026-08-18 — decision 1 is reversed in the phase plan and the Kolla patch keeps its PyPI fallback. 4c (Gerrit recheck) outstanding, operator-driven |
+| 4. Docs, downstream cleanup and verification | [PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md](PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md) | Complete |
 | 5. Automated dev release pruning | [PLAN-proxy-dev-releases-phase-05-pypi-prune.md](PLAN-proxy-dev-releases-phase-05-pypi-prune.md) | Complete (merged in PR #328, 2026-08-18) — storage monitor, lockfile-only merges no longer publish, pruning runbook |
 | 6. Push audit | [PLAN-proxy-dev-releases-phase-06-push-audit.md](PLAN-proxy-dev-releases-phase-06-push-audit.md) | Complete |
 
@@ -459,9 +459,10 @@ touches `rust/kerbside-proxy/build.rs` and
 `src/main.rs`. The phase runs
 `make -C rust/kerbside-proxy lint test` alongside wave 1.
 
-Scope note: 4b is withdrawn and 4c is still outstanding
-and operator-driven, so the audit covers phases 1 to 3,
-4a and 5.
+Scope note: 4b is withdrawn and 4c ships no diff in this
+repository, so the audit covers phases 1 to 3, 4a and 5.
+(4c completed on 2026-08-29, after the audit ran; it
+changed nothing here.)
 
 Findings land as their own pull request; this plan is not
 complete until each one is fixed or declined in writing
@@ -652,13 +653,15 @@ security-flavoured word anywhere was the single "verifies"
 that the documentation fix above removes. The claim was
 overstated, and the phase plan now says so.
 
-**This plan is not complete.** Phase 4c — the upstream
-Gerrit recheck of the kolla-ansible kerbside scenario jobs
-— is outstanding and operator-driven, and it is the only
-thing left in the plan. Everything else, the audit and its
-fixes included, is done, so the plan stays `In progress`
-until the recheck happens rather than closing on the
-audit.
+**This plan is complete.** Phase 4c — the upstream Gerrit
+recheck of the kolla-ansible kerbside scenario jobs — was
+the last thing outstanding, and the operator confirmed on
+2026-08-29 that every Gerrit review is passing Zuul CI.
+That was the plan's whole point: the scenario jobs that
+were red because an unreleased kerbside install could not
+resolve a proxy binary are now green, with no change
+required in upstream kolla. With the push audit and its
+fixes also done, nothing remains.
 
 ## Agent guidance
 
