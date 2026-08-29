@@ -55,9 +55,10 @@ audit_diff_for() {
     git diff $AUDIT_RANGE -- $files
 }
 
-# See wave1.sh for why '.'-splitting works for both range forms.
-if ! git rev-parse --verify "${AUDIT_RANGE%%.*}" >/dev/null 2>&1; then
-    echo "cannot find '${AUDIT_RANGE%%.*}'; nothing to diff"
+# See wave1.sh for why the base is split at '..' and not at the
+# first '.'.
+if ! git rev-parse --verify "${AUDIT_RANGE%%..*}" >/dev/null 2>&1; then
+    echo "cannot find '${AUDIT_RANGE%%..*}'; nothing to diff"
     exit 0
 fi
 

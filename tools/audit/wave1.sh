@@ -90,16 +90,19 @@ echo
 
 bold "=== wave 1b: mechanical style checks ==="
 
-# AUDIT_RANGE is either "develop...HEAD" or a "<sha>^1..<sha>" span
-# from plan-range.sh; both put the left-hand revision before the
-# first literal '.', so this strips at the first '.' rather than
-# parsing '...' vs '..' -- it keeps the original "does the base
-# exist" guard, adapted to a range instead of a single ref.
+# AUDIT_RANGE is a "develop...HEAD" or "<sha>^1..<sha>" span, so the
+# base is whatever precedes the first '..'. Strip at '..' rather than
+# at the first '.': a dotted ref ("v0.5.0..HEAD") truncates to "v0"
+# under '%%.*', which does not resolve, and the guard below then
+# skips both fatal checks and exits 0 -- the exact vacuous pass this
+# knob exists to eliminate. '%%..*' leaves a dotless single ref
+# untouched. It keeps the original "does the base exist" guard,
+# adapted to a range instead of a single ref.
 have_base=0
-if git rev-parse --verify "${AUDIT_RANGE%%.*}" >/dev/null 2>&1; then
+if git rev-parse --verify "${AUDIT_RANGE%%..*}" >/dev/null 2>&1; then
     have_base=1
 else
-    echo "ADVISORY: cannot find '${AUDIT_RANGE%%.*}'; skipping diff-based style checks"
+    echo "ADVISORY: cannot find '${AUDIT_RANGE%%..*}'; skipping diff-based style checks"
 fi
 
 if [[ "$have_base" == "1" ]]; then
@@ -123,6 +126,15 @@ if [[ "$have_base" == "1" ]]; then
             echo "$PRINT_HITS"
             exit 3
         fi
+        # The marker suppresses the check for the whole diff, not just
+        # the file carrying it, so name the file that granted the
+        # exemption: otherwise a branch that happens to touch a marked
+        # file gets no print check at all and the output looks like a
+        # clean pass. Narrowing the suppression to the marked file is
+        # a fleet-wide change to the audit scripts and is deliberately
+        # left upstream; making it visible is not.
+        echo "NOTE: print() check suppressed by the audit-allow-print marker in:"
+        echo "$MARKED"
     fi
     green "PASS: no raw print() added"
 

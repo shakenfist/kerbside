@@ -134,9 +134,16 @@ do what the paragraph above claims.** Git *unions* positive
 pathspecs rather than intersecting them, so that command means
 "anything in `AUDIT_PATHS`, OR any `*.py` anywhere in the range",
 which re-admits exactly the unrelated merges the path set exists to
-exclude. Measured on the real range: the path set holds 7 Python
-files, and the union form returns 39. Exclusion pathspecs (`:!...`)
-are unaffected — those genuinely subtract.
+exclude. Measured on the real range: the intersecting form yields 7
+Python files, the union form 46 paths of which 13 are Python.
+Exclusion pathspecs (`:!...`) are unaffected — those genuinely
+subtract.
+
+(An earlier revision of this paragraph recorded the union figure
+as 39, which does not reproduce; corrected 2026-08-29 after the
+phase 6 PR review re-measured it. The intersect/union distinction
+the decision rests on is unchanged — only the magnitude was
+wrong.)
 
 The scripts therefore intersect in two stages instead, via a pair of
 helpers each script defines once:
@@ -301,8 +308,11 @@ which exports `AUDIT_RANGE` and `AUDIT_PATHS`.
            <(tools/audit/wave2-mechanical.sh | grep -oE '[a-zA-Z0-9_./-]+\.(py|md|sh|toml|yml|rs|lock)' | sort -u)
   ```
 
-  must print nothing. The Python-only view of the path set is 7
-  files, not 39; if a script reports 39, it is unioning.
+  must print nothing — every path either script reports is a
+  member of `AUDIT_PATHS`. That property, not a particular count,
+  is what distinguishes intersecting from unioning: a script that
+  unions reports paths absent from `AUDIT_PATHS`, and the
+  `comm -13` above prints exactly those.
 * `tools/audit/wave1.sh` exits 0 over the phase range, and its
   output shows "PASS: no raw print() added" reached via the marker
   rather than via an empty diff.
@@ -324,6 +334,76 @@ which exports `AUDIT_RANGE` and `AUDIT_PATHS`.
   table and the `docs/plans/index.md` row, and the master plan's
   own status is either `Complete` or states what remains.
 * `pre-commit run --all-files` passes.
+
+## PR review round 1
+
+The automated reviewer raised eleven items against the phase 6 PR
+(kerbside#375): three `fix`, five `consider`, three `info`. Every
+claim was reproduced before being acted on; the dispositions are
+below so a later reader does not have to re-derive them.
+
+Notably, all three `fix` items are in `plan-range.sh` — the tooling
+this phase added so that the audit could run at all, and which the
+plan records as not having been audited itself. That is the expected
+place for them to be, and it is why the round is worth recording
+rather than just landing.
+
+Fixed:
+
+* **The base ref was the literal `develop`.** A CI-style checkout has
+  only `origin/develop`, so the ancestry guard failed with git's own
+  "Not a valid object name" followed by this script blaming ancestry
+  — the wrong problem entirely. It now resolves `develop` then
+  `origin/develop` and distinguishes "cannot resolve the base branch"
+  from "this SHA is not on it".
+* **`${AUDIT_RANGE%%.*}` truncated at the first dot.** A dotted ref
+  (`v0.5.0..HEAD`) became `v0`, which does not resolve, so both wave
+  scripts reported nothing to diff and exited 0 having checked
+  nothing. That is the same vacuous-green class as the BRE bug this
+  phase exists to have found. Both now strip at `..`.
+* **Reversed merge SHAs were accepted silently.** The derived range
+  then diffs backwards, so the `^\+` style checks inspect reverted
+  content and pass on work they never saw, while the path set still
+  looks entirely correct. An ancestry check between the first and
+  last SHA now rejects it.
+* **An empty derived path set silently widened the audit** (raised as
+  `consider`, taken because it is a two-line guard against a silent
+  wrong answer). Both wave scripts read an empty `AUDIT_PATHS` as "no
+  path restriction", inverting the caller's intent.
+* **`AUDIT_PATHS` is glob-expanded as well as word-split**
+  (`consider`). The whitespace guard existed for exactly this hazard
+  and covered only half of it; the guard now also rejects `*`, `?`
+  and `[`.
+* **The recorded union figure of 39 does not reproduce** (`consider`).
+  Re-measured: 46 paths, 13 of them Python, against the path set's 7.
+  The number sat inside an instruction to a future reader, so it is
+  corrected above and the done-criterion is restated as the property
+  it was standing in for.
+* **The new tooling had no tests of its own** (`consider`, taken).
+  `kerbside/tests/unit/test_plan_range.py` builds a fixture
+  repository and covers the guards above, the intersect-not-union
+  property, and the two range forms. It was written against the
+  pre-fix scripts first: six of its plan-range cases and two of its
+  base-resolution cases fail there, so it cannot pass vacuously.
+
+Declined, with reasons:
+
+* **The `audit-allow-print` marker disables the print check for the
+  whole diff, not just the marked file.** Still true, and the
+  reviewer is right that this PR is the one that both makes the check
+  functional and introduces the repository's only marker. Narrowing
+  the suppression per-file is a semantics change to scripts the whole
+  fleet copies, and restructuring `ADDED` risks the check this phase
+  just brought back to life. Taken instead: the check now names the
+  file that granted the exemption, so the suppression is visible in
+  the output rather than inferred. The narrowing stays upstream work.
+* **A `gh` failure inside the process substitution in
+  `file-pypi-storage-issue.sh` is invisible** (`info`). Pre-existing,
+  unchanged by this PR, and the worst case is a duplicate tracking
+  issue on a weekly cron. Already recorded as future work in the
+  master plan.
+* **Shell lint and flake8 could not be run in the reviewer's
+  environment** (`info`). Both run in CI, which is the authority.
 
 ## Back brief
 

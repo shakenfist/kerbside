@@ -85,6 +85,14 @@ merge commits:
 eval "$(tools/audit/plan-range.sh <first-merge-sha> <last-merge-sha>)"
 ```
 
+Give the merge SHAs oldest-first: reversed, the derived
+range diffs backwards and the style checks pass on
+reverted content. The script rejects that, along with a
+SHA that is not on `develop`, an empty derived path set,
+and a path carrying whitespace or a glob metacharacter —
+each of which would otherwise make the audit inspect the
+wrong content and pass.
+
 If wave 1 fails, fix the cause and re-run before
 spending on wave 2.
 
