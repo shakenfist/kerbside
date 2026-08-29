@@ -524,24 +524,58 @@ phase links. When all phases are complete, set the status to
   protection) were verified once, by hand, on 2026-07-18.
   This rewrite drops the checkboxes that recorded them, on
   the assumption that the `github-security` audit in
-  `development` re-checks all three continuously and so is a
-  better guarantee than a stale tick. That assumption is not
-  yet verified: phase 1 step 1d reads the audit and reports
-  which of the three it actually covers, and this bullet is
-  rewritten with the answer. If any of the three is not
-  covered, it needs a home somewhere other than a checkbox
-  nobody re-reads.
+  `development` re-checks all three continuously. Phase 1
+  step 1d checked that assumption and it is **wrong in both
+  directions**, so the settings are still uncovered:
+
+    - **Dependabot security updates is not checked at all.**
+      `docs/audits/github-security.md` line 12 lists it as
+      required, but `dependabot` appears nowhere in
+      `scripts/audit-check.py`. The specification and the
+      implementation disagree.
+    - **The check silently passes when it cannot reach the
+      GitHub API.** `check_github_security()` guards on `if
+      result.returncode == 0 and result.stdout.strip():` and
+      appends nothing when that fails, so `security` stays
+      `None`, the `if security:` block is skipped, and the
+      function returns `pass`. Only a timeout or a missing
+      `gh` binary is reported; an auth failure, a rate limit
+      or a 404 reads as compliant.
+
+  Both belong upstream, alongside phase 3's fix, and both
+  should be raised as issues on `shakenfist/development`
+  rather than worked around here. Until they are, secret
+  scanning and push protection are covered only when the
+  audit's API call happens to succeed, and Dependabot is not
+  covered at all.
 
 ### Bugs fixed during this work
 
-The survey found one defect, and it is in the audit tooling
-rather than in kerbside: `check_llm_context_lint_ci()` in
-`shakenfist/development/scripts/audit-check.py` contradicts
-its own specification by requiring skillsaw to be invoked in
-one of two specific ways. Phase 3 fixes it. Nothing else was
-found; #227's stale issue body is a rendering artifact of an
-old run rather than a bug, and corrects itself on the next
-audit.
+Three defects so far, all of them in the audit tooling in
+`shakenfist/development/scripts/audit-check.py` rather than
+in kerbside, and all of the same family -- a check that does
+not do what its specification says:
+
+1. `check_llm_context_lint_ci()` contradicts its own
+   specification by requiring skillsaw to be invoked in one
+   of two specific ways, which is what #359 reports against
+   kerbside. Found by the survey; phase 3 fixes it.
+2. `check_github_security()` does not check Dependabot
+   security updates, which its specification requires.
+   Found by phase 1 step 1d.
+3. `check_github_security()` returns `pass` when its
+   `gh api` call fails with a non-zero exit status, so an
+   auth failure or a rate limit reads as compliant. Found
+   by phase 1 step 1d.
+
+Only the first is in this plan's scope, because only the
+first is why kerbside carries an open issue. Defects 2 and 3
+should be filed against `shakenfist/development`; phase 3
+already goes there and is the natural place to raise them.
+
+#227's stale issue body is not a bug: it is a rendering
+artifact of an old run, and the live checker agrees with the
+tree at 124 of 194.
 
 ### Back brief
 
