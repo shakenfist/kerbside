@@ -1,4 +1,5 @@
 import os
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -258,6 +259,24 @@ class GetBinaryContractHashTestCase(testtools.TestCase):
             self.assertIsNone(reported)
             self.assertIn('is not a sha256 digest', failure_reason)
             self.assertNotIn('predates', failure_reason)
+
+    def test_returns_malformed_reason_on_non_utf8_output(self):
+        # Not mocked: the decoding of the child's stdout is the thing under
+        # test here, so the binary has to be real and has to really print
+        # bytes which are not valid UTF-8. Strict decoding would raise
+        # UnicodeDecodeError out of get_binary_contract_hash() and break its
+        # documented "every failure is a failure_reason" contract.
+        tmpdir = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(tmpdir, ignore_errors=True))
+        binary = os.path.join(tmpdir, 'kerbside-proxy')
+        with open(binary, 'w') as f:
+            f.write("#!/bin/sh\nprintf '\\377\\376rubbish\\n'\n")
+        os.chmod(binary, os.stat(binary).st_mode | stat.S_IEXEC)
+
+        with mock.patch('kerbside.proxy_supervisor.LOG'):
+            reported, failure_reason = proxy_supervisor.get_binary_contract_hash(binary)
+        self.assertIsNone(reported)
+        self.assertIn('is not a sha256 digest', failure_reason)
 
     def test_returns_oserror_reason_on_exec_failure(self):
         reported, failure_reason = self._probe(OSError(8, 'Exec format error'))

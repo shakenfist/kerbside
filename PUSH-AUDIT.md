@@ -45,10 +45,8 @@ It performs (and exits non-zero on any failure):
   source (logging only), no bare `except:` clauses, no
   `except Exception:` without a re-raise or a logged
   message, advisory long-line check on Python files in
-  the diff vs `develop`, advisory check for trailing
-  whitespace on touched lines, advisory check that
-  string literals in changed Python files prefer single
-  quotes (per project convention)
+  the diff over `AUDIT_RANGE`, and an advisory check for
+  trailing whitespace on touched lines
 
 Exit codes:
 
@@ -60,23 +58,42 @@ Exit codes:
 | 3    | raw `print()` added in non-test code |
 | 4    | bare `except:` added in source       |
 | 5    | could not reach the repository root  |
+| 6    | an explicitly-set `AUDIT_RANGE` does not resolve |
 
 Codes 3 and 4 are the only fatal style checks, and both
-inspect **only lines added** relative to `DIFF_BASE`
-(`develop`, hard-coded at `tools/audit/wave1.sh:37`), so
-pre-existing intentional prints — the config and logging
-bootstrap, the `kerbside` CLI — do not trip them. A
-`print()` may still be added deliberately if its file
-carries the marker comment `audit-allow-print`. Every
-other style check is advisory and does not change the
-exit code.
+inspect **only lines added** relative to `AUDIT_RANGE`
+(`develop...HEAD` by default), so pre-existing intentional
+prints — the config and logging bootstrap, the `kerbside`
+CLI — do not trip them. A `print()` may still be added
+deliberately if its file carries the marker comment
+`audit-allow-print`. Every other style check is advisory
+and does not change the exit code.
 
 Because those checks are diff-based, a branch whose work
 has already merged to `develop` gets an empty diff and a
-vacuous pass. When auditing an accumulated range rather
-than a live branch — as a master plan's push-audit phase
-does — run the style greps over that range yourself, or
-edit `DIFF_BASE` locally without committing it.
+vacuous pass. Both `tools/audit/wave1.sh` and
+`tools/audit/wave2-mechanical.sh` hard-code that default;
+both now also read `AUDIT_RANGE` and `AUDIT_PATHS` from
+the environment, so auditing an accumulated range — as a
+master plan's push-audit phase does — is exporting those
+instead of editing either script.
+`tools/audit/plan-range.sh` derives both from a plan's
+merge commits:
+
+```
+eval "$(tools/audit/plan-range.sh <first-merge-sha> <last-merge-sha>)"
+```
+
+Give the merge SHAs oldest-first: reversed, the derived
+range diffs backwards and the style checks pass on
+reverted content. The script rejects that, along with a
+SHA that is not on `develop` or has no first parent, an
+empty derived path set, and a path carrying whitespace, a
+glob metacharacter or a quoting character — each of which
+would otherwise make the audit inspect the wrong content
+and pass. An explicitly-set `AUDIT_RANGE` that does not
+resolve is fatal for the same reason (wave 1 exit 6, wave
+2 exit 1); the default range stays advisory.
 
 If wave 1 fails, fix the cause and re-run before
 spending on wave 2.
