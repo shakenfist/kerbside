@@ -349,18 +349,6 @@
       "sha": "ad0b0df9ee27870b0caa5c3e52b5f91792ce0426",
       "date": "2026-08-06"
     },
-    "tools/audit/wave1.sh": {
-      "sha": "219fca05b9c7cd896827cd1281e841accbe69b9d",
-      "date": "2026-08-06"
-    },
-    "tools/audit/wave2-mechanical.sh": {
-      "sha": "893254104cf2f052c3e5ba07993cac6c0242d4ea",
-      "date": "2026-08-15"
-    },
-    "tools/build-proxy-wheel.sh": {
-      "sha": "f006126d6fed7486f2a4920247b99f62640c2259",
-      "date": "2026-08-18"
-    },
     "tools/check-required-checks.sh": {
       "sha": "dc86bff62d2de280a5da40d61385de27367b775d",
       "date": "2026-08-15"

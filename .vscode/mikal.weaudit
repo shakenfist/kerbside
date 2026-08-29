@@ -100,10 +100,6 @@
       "author": "mikal"
     },
     {
-      "path": "tools/audit/wave1.sh",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/sources/base.py",
       "author": "mikal"
     },
@@ -344,14 +340,6 @@
       "author": "mikal"
     },
     {
-      "path": "tools/audit/wave2-mechanical.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/audit",
-      "author": "mikal"
-    },
-    {
       "path": "tools/check-required-checks.sh",
       "author": "mikal"
     },
@@ -553,10 +541,6 @@
     },
     {
       "path": "tools/ovirt-e2e/README.md",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/build-proxy-wheel.sh",
       "author": "mikal"
     },
     {
