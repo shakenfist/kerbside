@@ -224,13 +224,13 @@ to forcing it.
 
 ## Execution
 
-| Phase | Plan | Merged | Status |
+| Phase | Plan | Status | Merged |
 |-------|------|--------|--------|
-| 1. Shared blocks, vendor stamp and settings closeout | [PLAN-consistency-audit-phase-01-blocks-and-stamp.md](PLAN-consistency-audit-phase-01-blocks-and-stamp.md) | | In progress |
-| 2. Retire the comment addresser | PLAN-consistency-audit-phase-02-retire-addresser.md | | Not started |
-| 3. Skillsaw CI detection, upstream | PLAN-consistency-audit-phase-03-skillsaw-detection.md | | Not started |
-| 4. Review coverage backlog | PLAN-consistency-audit-phase-04-review-coverage.md | | Not started |
-| 5. Push audit | PLAN-consistency-audit-phase-05-push-audit.md | | Not started |
+| 1. Shared blocks, vendor stamp and settings closeout | [PLAN-consistency-audit-phase-01-blocks-and-stamp.md](PLAN-consistency-audit-phase-01-blocks-and-stamp.md) | In progress | |
+| 2. Retire the comment addresser | PLAN-consistency-audit-phase-02-retire-addresser.md | Not started | |
+| 3. Skillsaw CI detection, upstream | PLAN-consistency-audit-phase-03-skillsaw-detection.md | Not started | |
+| 4. Review coverage backlog | PLAN-consistency-audit-phase-04-review-coverage.md | Not started | |
+| 5. Push audit | PLAN-consistency-audit-phase-05-push-audit.md | Not started | |
 
 Phase sketches (to be expanded into per-phase plans):
 
