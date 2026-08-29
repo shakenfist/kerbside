@@ -405,6 +405,96 @@ Declined, with reasons:
 * **Shell lint and flake8 could not be run in the reviewer's
   environment** (`info`). Both run in CI, which is the authority.
 
+## PR review round 2
+
+Round 2 raised one `fix`, nine `consider` and two `info`, against
+three `fix` in round 1. Every `fix` in both rounds has been in the
+tooling this phase added rather than in the audited range, which is
+the expected shape: the plan says outright that the tooling was not
+itself audited.
+
+The theme of the round is worth stating, because it is the same one
+the phase exists for. Items 2, 3 and 8 are each a check that reports
+success having inspected nothing — the wave scripts defaulting to a
+bare `develop` that a fetched PR checkout cannot resolve, a range
+whose *tip* is unvalidated so every diff silently yields nothing, and
+three wave 2 sections whose `(none)` fallback is dead because a
+pipeline ending in `head` always exits 0. None of these were
+introduced by this PR, and all three are the BRE bug's failure mode
+wearing different clothes.
+
+Fixed:
+
+* **The path guard missed the characters that break its own
+  contract** (the round's only `fix`). `git diff --name-only` emits a
+  non-ASCII path as `"caf\303\251.py"`, which carries neither
+  whitespace nor a glob character, passes the guard, and then matches
+  nothing when handed back to git — a silently narrowed audit, the
+  exact failure the guard exists to stop. Separately, git does not
+  escape a single quote in a path, so one would terminate the quoting
+  in the emitted `export AUDIT_PATHS='...'` line and hand the
+  remainder to the caller's shell. Now derived under
+  `core.quotePath=false`, with `'`, `"` and `\` rejected alongside
+  whitespace and globs.
+* **Both wave scripts defaulted to a bare `develop`.** In a fetched PR
+  checkout — the shape anyone re-running the audit for verification
+  is most likely to have — the default resolved to nothing and both
+  scripts reported success having skipped every diff-based check. They
+  now fall back to `origin/develop` exactly as `plan-range.sh` does.
+  Where `develop` exists the default is unchanged, so the phase's
+  "default behaviour identical" gate still holds.
+* **The base-existence guard validated only the left side of the
+  range.** `AUDIT_RANGE='origin/develop..nosuchtip'` made every diff
+  emit `fatal: bad revision` and produce nothing, and both scripts
+  exited 0 reporting clean. Both ends are now validated, and an
+  explicitly-set range that does not resolve is fatal (wave 1 exit 6,
+  wave 2 exit 1) rather than advisory: an operator who named a range
+  and got a green report over nothing is strictly worse served than
+  one who gets an error. The *default* range keeps the original
+  tolerance, so this cannot fire on the ordinary path.
+* **The BRE fix had no regression test** — the defect with the largest
+  blast radius in the phase, pinned by nothing. `wave1.sh` gained
+  `AUDIT_SKIP_TOX=1`, which runs wave 1b without a tox cycle, because
+  a check nothing can cheaply exercise is how this bug survived six
+  weeks in the first place. `Wave1StyleCheckTestCase` copies the real
+  script into a fixture repository and asserts exit 3 on an added
+  `print()`, exit 4 on an added bare `except:`, exit 0 for a
+  pre-existing print, a test-file print and a marked file, and exit 6
+  for an unresolvable explicit range. Reintroducing the BRE bug fails
+  three of them.
+* **Three wave 2 sections could never print `(none)`.** A pipeline's
+  status is its last command's, so `... | head -20 || echo "(none)"`
+  never fires the fallback and an empty section looks identical to one
+  that failed to run. Captured into a variable and branched on, as the
+  DOCS section already did.
+* **`wave1.sh` printed "PASS: no raw print() added" immediately after
+  announcing that prints were found and suppressed**, partly undoing
+  the visibility added in round 1. The suppressed case now has its own
+  message.
+* **`plan-range.sh` aborted with git's error, not its own, on a commit
+  with no first parent**, breaking the script's stated fail-loudly-and-
+  say-why contract.
+* Documentation: `PUSH-AUDIT.md` claimed wave 1 runs a single-quote
+  style check it has never had, and still described the long-line
+  check as being against `develop`; `docs/plans/index.md`'s phase 6
+  cell opened with "planned" under a Complete status; and the master
+  plan's phase 4 row had lost the detail that 4b was withdrawn rather
+  than delivered.
+
+Declined:
+
+* **The `gh` failure inside the process substitution in
+  `file-pypi-storage-issue.sh`** (`info`, raised in both rounds and
+  correctly triaged by the reviewer as such). Pre-existing, worst case
+  is a duplicate tracking issue on a weekly cron, and it stays on the
+  master plan's future-work list.
+* **`test_plan_range.py` shelling out to git and bash from the unit
+  suite** (`info`). Deliberate: the alternative is asserting against a
+  reimplementation of the scripts, which cannot catch the class of bug
+  this file exists for. `tox -epy3` already requires git.
+* Narrowing the `audit-allow-print` marker to the file carrying it
+  stays declined, on round 1's reasoning.
+
 ## Back brief
 
 Before executing any step of this plan, back brief the operator on

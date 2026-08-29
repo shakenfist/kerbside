@@ -45,10 +45,8 @@ It performs (and exits non-zero on any failure):
   source (logging only), no bare `except:` clauses, no
   `except Exception:` without a re-raise or a logged
   message, advisory long-line check on Python files in
-  the diff vs `develop`, advisory check for trailing
-  whitespace on touched lines, advisory check that
-  string literals in changed Python files prefer single
-  quotes (per project convention)
+  the diff over `AUDIT_RANGE`, and an advisory check for
+  trailing whitespace on touched lines
 
 Exit codes:
 

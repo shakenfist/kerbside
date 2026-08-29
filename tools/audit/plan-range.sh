@@ -19,10 +19,11 @@
 # given, if neither `develop` nor `origin/develop` resolves, if any
 # SHA is not a commit, if any SHA is not an ancestor of the base
 # branch, if the SHAs are not given oldest-first, if the derived path
-# set is empty, or if any derived path contains whitespace or a glob
-# metacharacter -- the audit scripts rely on AUDIT_PATHS being
-# word-split into a git argument list, so such a path would silently
-# narrow the audit rather than loudly breaking it.
+# set is empty, or if any derived path contains whitespace, a glob
+# metacharacter or a quoting character -- the audit scripts rely on
+# AUDIT_PATHS being word-split into a git argument list, and the
+# caller evals it out of a single-quoted string, so such a path would
+# silently narrow the audit rather than loudly breaking it.
 
 set -e
 
@@ -55,6 +56,15 @@ for sha in "$@"; do
         echo "plan-range.sh: '${sha}' is not a commit" >&2
         exit 1
     fi
+    # The path set below diffs "${sha}^1..${sha}", so a commit with no
+    # first parent aborts there under set -e with git's own "ambiguous
+    # argument" and exit 128, rather than this script's own message
+    # naming the problem.
+    if ! git rev-parse --verify "${sha}^1^{commit}" >/dev/null 2>&1; then
+        echo "plan-range.sh: '${sha}' has no first parent; give the" >&2
+        echo "  merge commits a plan's phases landed as." >&2
+        exit 1
+    fi
     if ! git merge-base --is-ancestor "${sha}" "${base_ref}" 2>/dev/null; then
         echo "plan-range.sh: '${sha}' is not an ancestor of ${base_ref}" >&2
         exit 1
@@ -78,7 +88,12 @@ fi
 
 paths=""
 for sha in "$@"; do
-    files=$(git diff --name-only "${sha}^1..${sha}")
+    # core.quotePath=false so a non-ASCII path comes out literal rather
+    # than as "caf\303\251.py", which carries neither whitespace nor a
+    # glob character, survives the guard below, and then matches nothing
+    # when the wave scripts hand it back to git -- a silently narrowed
+    # audit, which is the exact failure the guard exists to stop.
+    files=$(git -c core.quotePath=false diff --name-only "${sha}^1..${sha}")
     paths="${paths}
 ${files}"
 done
@@ -97,9 +112,12 @@ fi
 
 while IFS= read -r path; do
     case "${path}" in
-        *[[:space:]*?[]*)
-            echo "plan-range.sh: path contains whitespace or a glob" >&2
-            echo "  metacharacter: '${path}'" >&2
+        *[[:space:]*?[\'\"\\]*)
+            # A single quote would terminate the quoting in the emitted
+            # export line and hand the remainder to the caller's shell;
+            # git does not escape one on output.
+            echo "plan-range.sh: path contains whitespace, a glob" >&2
+            echo "  metacharacter or a quoting character: ${path}" >&2
             exit 1
             ;;
     esac

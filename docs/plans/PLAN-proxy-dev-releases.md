@@ -265,7 +265,7 @@ All resolved by the operator on 2026-08-14:
 | 1. Dev wheel publish workflow | [PLAN-proxy-dev-releases-phase-01-publish-workflow.md](PLAN-proxy-dev-releases-phase-01-publish-workflow.md) | Complete (merged in PR #314, 2026-08-16) |
 | 2. Committed dev specifier and release stamping | [PLAN-proxy-dev-releases-phase-02-dev-specifier.md](PLAN-proxy-dev-releases-phase-02-dev-specifier.md) | Complete (merged in PR #314, 2026-08-16) |
 | 3. Contract handshake | [PLAN-proxy-dev-releases-phase-03-contract-handshake.md](PLAN-proxy-dev-releases-phase-03-contract-handshake.md) | Complete (merged in PR #314, 2026-08-16) |
-| 4. Docs, downstream cleanup and verification | [PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md](PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md) | Complete |
+| 4. Docs, downstream cleanup and verification | [PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md](PLAN-proxy-dev-releases-phase-04-docs-and-downstream.md) | Complete (4a docs in PR #314; 4b withdrawn 2026-08-18 after measurement, not delivered; 4c Gerrit recheck green 2026-08-29) |
 | 5. Automated dev release pruning | [PLAN-proxy-dev-releases-phase-05-pypi-prune.md](PLAN-proxy-dev-releases-phase-05-pypi-prune.md) | Complete (merged in PR #328, 2026-08-18) — storage monitor, lockfile-only merges no longer publish, pruning runbook |
 | 6. Push audit | [PLAN-proxy-dev-releases-phase-06-push-audit.md](PLAN-proxy-dev-releases-phase-06-push-audit.md) | Complete |
 

@@ -23,7 +23,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 
-AUDIT_RANGE="${AUDIT_RANGE:-develop...HEAD}"
+# Default to develop...HEAD, but resolve origin/develop when there is
+# no local develop: a fetched PR checkout has only the remote ref, and
+# the bare default there resolves to nothing, skips every diff-based
+# check and still reports success. Where develop exists this is
+# today's default unchanged.
+AUDIT_RANGE_EXPLICIT=1
+if [ -z "${AUDIT_RANGE:-}" ]; then
+    AUDIT_RANGE_EXPLICIT=0
+    if git rev-parse --verify develop >/dev/null 2>&1; then
+        AUDIT_RANGE="develop...HEAD"
+    elif git rev-parse --verify origin/develop >/dev/null 2>&1; then
+        AUDIT_RANGE="origin/develop...HEAD"
+    else
+        AUDIT_RANGE="develop...HEAD"
+    fi
+fi
 AUDIT_PATHS="${AUDIT_PATHS:-}"
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 
@@ -55,10 +70,15 @@ audit_diff_for() {
     git diff $AUDIT_RANGE -- $files
 }
 
-# See wave1.sh for why the base is split at '..' and not at the
-# first '.'.
-if ! git rev-parse --verify "${AUDIT_RANGE%%..*}" >/dev/null 2>&1; then
-    echo "cannot find '${AUDIT_RANGE%%..*}'; nothing to diff"
+# See wave1.sh for why both ends are validated and why the base is
+# split at '..' rather than at the first '.'.
+if ! git rev-parse --verify "${AUDIT_RANGE%%..*}" >/dev/null 2>&1 \
+        || ! git rev-parse --verify "${AUDIT_RANGE##*..}" >/dev/null 2>&1; then
+    if [ "$AUDIT_RANGE_EXPLICIT" = "1" ]; then
+        echo "FAIL: AUDIT_RANGE '$AUDIT_RANGE' does not resolve" >&2
+        exit 1
+    fi
+    echo "cannot resolve '$AUDIT_RANGE'; nothing to diff"
     exit 0
 fi
 
@@ -94,21 +114,25 @@ echo
 
 bold "=== wave 2d: security smoke ==="
 echo "new broad 'except Exception' blocks (review: re-raise or logged?):"
-audit_diff_for '\.py$' \
-    | grep -nE '^\+[[:space:]]*except Exception' | head -20 \
-    || echo "(none)"
+# Capture rather than piping straight to head: a pipeline's status is
+# the last command's, so `... | head -20 || echo "(none)"` never fires
+# the fallback and an empty section is indistinguishable from one that
+# failed to run.
+HITS=$(audit_diff_for '\.py$' \
+    | grep -nE '^\+[[:space:]]*except Exception' | head -20 || true)
+[[ -n "$HITS" ]] && echo "$HITS" || echo "(none)"
 echo
 
 echo "new assert statements in non-test code (stripped under python -O):"
-audit_diff_for '\.py$' ':!*/tests/*' \
-    | grep -nE '^\+[[:space:]]*assert ' | head -20 \
-    || echo "(none)"
+HITS=$(audit_diff_for '\.py$' ':!*/tests/*' \
+    | grep -nE '^\+[[:space:]]*assert ' | head -20 || true)
+[[ -n "$HITS" ]] && echo "$HITS" || echo "(none)"
 echo
 
 echo "dependency changes (pyproject.toml / bindep.txt) — surface for security review:"
-audit_diff_for '^(pyproject\.toml|bindep\.txt)$' \
-    | grep -E '^[+-]' | grep -viE '^[+-]{3} ' | head -40 \
-    || echo "(none)"
+HITS=$(audit_diff_for '^(pyproject\.toml|bindep\.txt)$' \
+    | grep -E '^[+-]' | grep -viE '^[+-]{3} ' | head -40 || true)
+[[ -n "$HITS" ]] && echo "$HITS" || echo "(none)"
 echo
 
 echo "new alembic revisions — surface for migration review:"
