@@ -58,6 +58,7 @@ Exit codes:
 | 3    | raw `print()` added in non-test code |
 | 4    | bare `except:` added in source       |
 | 5    | could not reach the repository root  |
+| 6    | an explicitly-set `AUDIT_RANGE` does not resolve |
 
 Codes 3 and 4 are the only fatal style checks, and both
 inspect **only lines added** relative to `AUDIT_RANGE`
@@ -86,10 +87,13 @@ eval "$(tools/audit/plan-range.sh <first-merge-sha> <last-merge-sha>)"
 Give the merge SHAs oldest-first: reversed, the derived
 range diffs backwards and the style checks pass on
 reverted content. The script rejects that, along with a
-SHA that is not on `develop`, an empty derived path set,
-and a path carrying whitespace or a glob metacharacter —
-each of which would otherwise make the audit inspect the
-wrong content and pass.
+SHA that is not on `develop` or has no first parent, an
+empty derived path set, and a path carrying whitespace, a
+glob metacharacter or a quoting character — each of which
+would otherwise make the audit inspect the wrong content
+and pass. An explicitly-set `AUDIT_RANGE` that does not
+resolve is fatal for the same reason (wave 1 exit 6, wave
+2 exit 1); the default range stays advisory.
 
 If wave 1 fails, fix the cause and re-run before
 spending on wave 2.

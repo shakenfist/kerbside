@@ -50,12 +50,34 @@ bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 # the caller's exclusions, then filter the resulting file list by
 # name.
 #
+# Both helpers round-trip a filename back into a pathspec, so both
+# hazards of that round trip are closed here rather than relied on
+# from plan-range.sh -- the file list below is derived from the range,
+# not from AUDIT_PATHS, so plan-range.sh's guards never see it:
+#
+#   * core.quotePath=false, or git renders a non-ASCII path as
+#     "caf\303\251.py", which then matches nothing when handed back
+#     and silently drops the file from the audit.
+#   * an array rather than an unquoted string, so a filename
+#     containing whitespace or a glob character is neither split nor
+#     expanded against the working tree.
+#
 # audit_paths_for <filename-ere> [exclusion pathspec...]
 audit_paths_for() {
     local pattern="$1"
     shift
-    # shellcheck disable=SC2086  # word splitting builds the arg list
-    git diff --name-only $AUDIT_RANGE -- $AUDIT_PATHS "$@" \
+    local -a scope=()
+    if [ -n "$AUDIT_PATHS" ]; then
+        # AUDIT_PATHS is a space-separated list, so it is deliberately
+        # word-split -- but with globbing off, which set -f does
+        # without disabling the splitting.
+        set -f
+        # shellcheck disable=SC2206  # deliberate split, globbing off
+        scope=($AUDIT_PATHS)
+        set +f
+    fi
+    git -c core.quotePath=false diff --name-only "$AUDIT_RANGE" \
+            -- "${scope[@]}" "$@" \
         | grep -E "$pattern" || true
 }
 
@@ -63,11 +85,10 @@ audit_paths_for() {
 audit_diff_for() {
     local pattern="$1"
     shift
-    local files
-    files=$(audit_paths_for "$pattern" "$@")
-    [ -n "$files" ] || return 0
-    # shellcheck disable=SC2086  # word splitting builds the arg list
-    git diff $AUDIT_RANGE -- $files
+    local -a files=()
+    mapfile -t files < <(audit_paths_for "$pattern" "$@")
+    [ "${#files[@]}" -gt 0 ] || return 0
+    git -c core.quotePath=false diff "$AUDIT_RANGE" -- "${files[@]}"
 }
 
 # See wave1.sh for why both ends are validated and why the base is
@@ -83,16 +104,19 @@ if ! git rev-parse --verify "${AUDIT_RANGE%%..*}" >/dev/null 2>&1 \
 fi
 
 bold "=== wave 2a: TODO / FIXME / HACK / XXX in changed files ==="
-audit_paths_for '\.py$' \
+# These two still work through the trailing grep's own exit status,
+# but capture and branch like every other section: relying on what
+# happens to be last in the pipeline is how the three sections above
+# lost their fallback in the first place.
+HITS=$(audit_paths_for '\.py$' \
     | xargs -r grep -nH -E '\b(TODO|FIXME|HACK|XXX)\b' 2>/dev/null \
-    | grep -v 'docs/plans/' \
-    || echo "(none)"
+    | grep -v 'docs/plans/' || true)
+[[ -n "$HITS" ]] && echo "$HITS" || echo "(none)"
 echo
 
 bold "=== wave 2a: new # noqa annotations in changed files ==="
-audit_diff_for '\.py$' \
-    | grep -E '^\+.*# noqa' \
-    || echo "(none)"
+HITS=$(audit_diff_for '\.py$' | grep -E '^\+.*# noqa' || true)
+[[ -n "$HITS" ]] && echo "$HITS" || echo "(none)"
 echo
 
 bold "=== wave 2b: new test count vs python files changed ==="
@@ -136,8 +160,11 @@ HITS=$(audit_diff_for '^(pyproject\.toml|bindep\.txt)$' \
 echo
 
 echo "new alembic revisions — surface for migration review:"
-audit_paths_for '^kerbside/migrations/versions/.*\.py$' \
-    || echo "(none)"
+# audit_paths_for ends in `|| true`, so it always exits 0 and a bare
+# `|| echo "(none)"` after it is dead code. Capture and branch, as
+# every other section that cannot rely on a trailing grep does.
+HITS=$(audit_paths_for '^kerbside/migrations/versions/.*\.py$')
+[[ -n "$HITS" ]] && echo "$HITS" || echo "(none)"
 echo
 
 bold "=== wave 2 mechanical complete ==="

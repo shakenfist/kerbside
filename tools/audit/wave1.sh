@@ -71,12 +71,34 @@ AUDIT_PATHS="${AUDIT_PATHS:-}"
 # the caller's exclusions, then filter the resulting file list by
 # name.
 #
+# Both helpers round-trip a filename back into a pathspec, so both
+# hazards of that round trip are closed here rather than relied on
+# from plan-range.sh -- the file list below is derived from the range,
+# not from AUDIT_PATHS, so plan-range.sh's guards never see it:
+#
+#   * core.quotePath=false, or git renders a non-ASCII path as
+#     "caf\303\251.py", which then matches nothing when handed back
+#     and silently drops the file from the audit.
+#   * an array rather than an unquoted string, so a filename
+#     containing whitespace or a glob character is neither split nor
+#     expanded against the working tree.
+#
 # audit_paths_for <filename-ere> [exclusion pathspec...]
 audit_paths_for() {
     local pattern="$1"
     shift
-    # shellcheck disable=SC2086  # word splitting builds the arg list
-    git diff --name-only $AUDIT_RANGE -- $AUDIT_PATHS "$@" \
+    local -a scope=()
+    if [ -n "$AUDIT_PATHS" ]; then
+        # AUDIT_PATHS is a space-separated list, so it is deliberately
+        # word-split -- but with globbing off, which set -f does
+        # without disabling the splitting.
+        set -f
+        # shellcheck disable=SC2206  # deliberate split, globbing off
+        scope=($AUDIT_PATHS)
+        set +f
+    fi
+    git -c core.quotePath=false diff --name-only "$AUDIT_RANGE" \
+            -- "${scope[@]}" "$@" \
         | grep -E "$pattern" || true
 }
 
@@ -84,11 +106,10 @@ audit_paths_for() {
 audit_diff_for() {
     local pattern="$1"
     shift
-    local files
-    files=$(audit_paths_for "$pattern" "$@")
-    [ -n "$files" ] || return 0
-    # shellcheck disable=SC2086  # word splitting builds the arg list
-    git diff $AUDIT_RANGE -- $files
+    local -a files=()
+    mapfile -t files < <(audit_paths_for "$pattern" "$@")
+    [ "${#files[@]}" -gt 0 ] || return 0
+    git -c core.quotePath=false diff "$AUDIT_RANGE" -- "${files[@]}"
 }
 
 # AUDIT_SKIP_TOX=1 runs wave 1b alone. The two fatal style checks

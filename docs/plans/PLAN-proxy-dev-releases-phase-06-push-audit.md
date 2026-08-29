@@ -314,8 +314,12 @@ which exports `AUDIT_RANGE` and `AUDIT_PATHS`.
   unions reports paths absent from `AUDIT_PATHS`, and the
   `comm -13` above prints exactly those.
 * `tools/audit/wave1.sh` exits 0 over the phase range, and its
-  output shows "PASS: no raw print() added" reached via the marker
-  rather than via an empty diff.
+  output shows "PASS (suppressed): print() added, exempted by the
+  marker in: tools/check-pypi-storage.py" — that is, the marker path
+  rather than an empty diff. (Originally written against the message
+  "PASS: no raw print() added"; PR review round 2 split the suppressed
+  case out into its own message, so that string now means the opposite
+  of what this criterion needs.)
 * `make -C rust/kerbside-proxy lint` and `make -C rust/kerbside-proxy
   test` both exit 0, or their failures are recorded in the master
   plan as out of scope with the reason.
@@ -494,6 +498,64 @@ Declined:
   this file exists for. `tox -epy3` already requires git.
 * Narrowing the `audit-allow-print` marker to the file carrying it
   stays declined, on round 1's reasoning.
+
+## PR review round 3
+
+Two `fix`, two `document`, two `consider`. Both `fix` items are the
+round-2 fixes not carried far enough, which is worth recording
+plainly: in each case the previous round fixed the instance the
+reviewer demonstrated and not the class it belonged to.
+
+* **`core.quotePath=false` was applied to `plan-range.sh` and not to
+  the wave scripts.** Both wave helpers do the same
+  filename-to-pathspec round trip internally, on a list derived from
+  the range rather than from `AUDIT_PATHS` — so `plan-range.sh`'s
+  guard never sees it and cannot help. Demonstrated: a branch adding
+  `print("boom")` to `kerbside/café.py` made `wave1.sh` report
+  "PASS: no raw print() added" and exit 0. It now exits 3.
+* **The alembic section's `(none)` fallback was dead, and round 2 is
+  what killed it.** That section previously ended in
+  `git diff --name-only ... || echo "(none)"`, which fired correctly;
+  rewriting it to call `audit_paths_for`, which ends in `|| true` and
+  so always exits 0, made the fallback unreachable. A section that
+  prints nothing is indistinguishable from one that failed to run —
+  the theme round 2 claimed to have closed.
+
+Both are fixed structurally rather than at the two demonstrated
+sites, because fixing the instance is exactly what produced this
+round:
+
+* Both helpers now take `-c core.quotePath=false`, and both build
+  their pathspec list as a bash array rather than an unquoted string.
+  The array form also closes `consider` item 6 — the internal file
+  list was glob-expanded as well as word-split — and removes both
+  `SC2086` disables, so the hazard is gone by construction rather
+  than by a comment asking the next editor to be careful.
+* Every `(none)` fallback in `wave2-mechanical.sh` now captures into a
+  variable and branches, including the two that still worked. They
+  worked only because their pipelines happened to end in a `grep`,
+  which is the kind of incidental correctness that this round shows
+  does not survive a refactor.
+
+Documentation, both of which had drifted from the code inside this
+PR: `PUSH-AUDIT.md`'s exit-code table did not list the new code 6 and
+its guard list omitted the quoting-character and no-first-parent
+guards; and this plan's own definition of done cited
+"PASS: no raw print() added" as evidence of the marker path, which
+round 2 made mean the opposite — the criterion was unsatisfiable as
+written, so a later reader re-checking the phase against it would
+have concluded the phase failed.
+
+`consider` item 5 taken: the wave1 tests inherited `AUDIT_RANGE` and
+`AUDIT_PATHS` from the ambient environment, so an operator following
+this phase's own documented workflow — export the range, then run a
+wave script, which runs the unit suite — would have seen spurious
+failures. `_GIT_ENV` now clears both alongside the git config it
+already cleared.
+
+Nothing was declined this round beyond the two standing declines
+(the `audit-allow-print` narrowing, and the `gh` process-substitution
+hole in `file-pypi-storage-issue.sh`).
 
 ## Back brief
 

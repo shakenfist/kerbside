@@ -23,6 +23,11 @@ _GIT_ENV = {
     # A developer's ~/.gitconfig must not decide whether these pass.
     'GIT_CONFIG_GLOBAL': os.devnull,
     'GIT_CONFIG_SYSTEM': os.devnull,
+    # Nor may an exported audit range: the phase's own documented
+    # workflow is `eval "$(plan-range.sh ...)"` and then a wave script,
+    # which runs this suite. The scripts treat empty as unset.
+    'AUDIT_RANGE': '',
+    'AUDIT_PATHS': '',
 }
 
 
@@ -497,6 +502,36 @@ class Wave1StyleCheckTestCase(testtools.TestCase):
         # check for the whole diff, not just the marked file.
         self.assertIn('suppressed', result.stdout)
         self.assertIn('kerbside/mod.py', result.stdout)
+
+    def test_a_print_in_a_non_ascii_filename_is_still_caught(self):
+        """The helpers round-trip a filename back into a pathspec.
+
+        git renders a non-ASCII path as "caf\\303\\251.py" by default,
+        which then matches nothing when handed back, so the file drops
+        out of the diff and its added print() is never seen. This is
+        the consumer side of the same round trip plan-range.sh guards;
+        its guard cannot help here, because the wave scripts derive
+        this list from the range rather than from AUDIT_PATHS.
+        """
+        self._git('checkout', '-q', '-b', 'feature')
+        self._write('kerbside/caf\u00e9.py', 'print("boom")\n')
+        self._commit('add a print in a non-ascii filename')
+
+        result = self._run_wave1()
+
+        self.assertEqual(3, result.returncode, result.stdout + result.stderr)
+        self.assertIn('raw print() added', result.stdout)
+
+    def test_a_print_in_a_filename_with_a_glob_character_is_caught(self):
+        """The file list is word-split, so it must not also be globbed."""
+        self._git('checkout', '-q', '-b', 'feature')
+        self._write('kerbside/a1.py', 'x = 1\n')
+        self._write('kerbside/a[1].py', 'print("boom")\n')
+        self._commit('add a print in a globbable filename')
+
+        result = self._run_wave1()
+
+        self.assertEqual(3, result.returncode, result.stdout + result.stderr)
 
     def test_an_unresolvable_explicit_range_is_fatal(self):
         """A typo'd AUDIT_RANGE must not read as a clean audit."""
