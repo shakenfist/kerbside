@@ -29,6 +29,16 @@ if test "$1" = "-HEAD" ; then
         fi
     done
 
+    # Every candidate can vanish, if the change deleted python files
+    # rather than editing them. Stop here rather than falling through:
+    # the command below treats an empty file list as "no arguments",
+    # and flake8 with no arguments walks the whole tree -- including
+    # the generated _pb2 stubs the grep above exists to exclude.
+    if [ -z "${filtered_files}" ]; then
+        echo "No python files remain in the end state."
+        exit 0
+    fi
+
     echo "Running flake8 on ${filtered_files}"
     # shellcheck disable=SC2086
     diff -u --from-file /dev/null ${filtered_files} | $FLAKE_COMMAND ${filtered_files}
