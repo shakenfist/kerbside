@@ -136,7 +136,6 @@ Neither tier:
   threshold is crossed
 - `export-repo-config.yml` - Repo config archival, including the ruleset
   that `tools/check-required-checks.sh` validates against
-- `pr-address-comments.yml` - Bot-triggered comment addressing
 - `pr-re-review.yml` - Bot-triggered re-review
 - `pr-retest.yml` - Bot-triggered functional test re-run
 
