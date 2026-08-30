@@ -33,14 +33,6 @@
       "sha": "0faad202ec3336b3fa8b6ed2787c557fc3172c24",
       "date": "2026-08-11"
     },
-    ".github/workflows/pr-address-comments.yml": {
-      "sha": "361512a22229e0c4c72755085e476020e3819ce6",
-      "date": "2026-08-11"
-    },
-    ".github/workflows/pr-re-review.yml": {
-      "sha": "7080442cdfc23065e0e1a805da3beb9fb76fc268",
-      "date": "2026-08-24"
-    },
     ".github/workflows/pr-retest.yml": {
       "sha": "86352446dd2c808f6191213a3280e1c525cb6417",
       "date": "2026-08-18"
@@ -229,10 +221,6 @@
       "sha": "63a0fe30a432130d990e5d6ca37c430b6c3cc76e",
       "date": "2026-08-08"
     },
-    "kerbside/tests/unit/test_render_review.py": {
-      "sha": "b8a713a5d434be11aa694685789070c1a8cb5546",
-      "date": "2026-08-08"
-    },
     "kerbside/tests/unit/test_rpc.py": {
       "sha": "fd70252c5a1bb9fcfd95a6267c1cf6b66782e68a",
       "date": "2026-08-08"
@@ -345,10 +333,6 @@
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-18"
     },
-    "tools/address-comments-with-claude.sh": {
-      "sha": "ad0b0df9ee27870b0caa5c3e52b5f91792ce0426",
-      "date": "2026-08-06"
-    },
     "tools/check-required-checks.sh": {
       "sha": "dc86bff62d2de280a5da40d61385de27367b775d",
       "date": "2026-08-15"
@@ -441,10 +425,6 @@
       "sha": "645f302940ecf097535401095753c8f78bf09d6e",
       "date": "2026-08-15"
     },
-    "tools/flake8wrap.sh": {
-      "sha": "97ee081c8257372a4de994eba1b9e2b5434da1d2",
-      "date": "2026-08-06"
-    },
     "tools/gen-protos.sh": {
       "sha": "e56d238dbdaa31490f83a34766e73e2361b0c5df",
       "date": "2026-08-18"
@@ -467,14 +447,6 @@
     },
     "tools/pin-indirect-dependencies.sh": {
       "sha": "241b462c281d6e33fa1d4023d15762a95d69112a",
-      "date": "2026-08-06"
-    },
-    "tools/render-review.py": {
-      "sha": "3e86e82eb69d2f60633fcfd27359ebf656dbf4ad",
-      "date": "2026-08-06"
-    },
-    "tools/review-schema.json": {
-      "sha": "1c8c73a1fde5b93f3f08daea5aa48f730b6fb024",
       "date": "2026-08-06"
     },
     "tools/review-tracking.sh": {

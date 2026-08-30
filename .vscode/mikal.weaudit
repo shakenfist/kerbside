@@ -64,27 +64,11 @@
       "author": "mikal"
     },
     {
-      "path": "tools/address-comments-with-claude.sh",
-      "author": "mikal"
-    },
-    {
       "path": "tools/ci-prune-reviews.sh",
       "author": "mikal"
     },
     {
-      "path": "tools/flake8wrap.sh",
-      "author": "mikal"
-    },
-    {
       "path": "tools/pin-indirect-dependencies.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/render-review.py",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/review-schema.json",
       "author": "mikal"
     },
     {
@@ -148,10 +132,6 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/tests/unit/test_render_review.py",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/tests/unit/test_rpc.py",
       "author": "mikal"
     },
@@ -205,10 +185,6 @@
     },
     {
       "path": ".github/workflows/pin-indirect-dependencies.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/pr-address-comments.yml",
       "author": "mikal"
     },
     {
@@ -569,10 +545,6 @@
     },
     {
       "path": ".github/workflows/functional-tests.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/pr-re-review.yml",
       "author": "mikal"
     },
     {

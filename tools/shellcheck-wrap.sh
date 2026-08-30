@@ -3,10 +3,9 @@
 #
 # This exists so shellcheck runs in CI. The pre-commit hook has covered
 # tools/ and demo/ since phase 3 of PLAN-demo-install, but pre-commit is
-# not invoked by any workflow or tox environment -- the only mentions in
-# .github/workflows are comments in pr-address-comments.yml explaining
-# why it is deliberately skipped there -- so until now the shell was
-# checked only on machines where a developer had installed the hooks.
+# not invoked by any workflow or tox environment -- so until now the
+# shell was checked only on machines where a developer had installed
+# the hooks.
 #
 # The scope deliberately matches .pre-commit-config.yaml's shellcheck
 # hook exactly: files under tools/ or demo/, shell only, with -x so
