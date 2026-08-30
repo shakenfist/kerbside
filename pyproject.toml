@@ -34,7 +34,7 @@ dependencies = [
     "kerbside-proxy>=0.4.0.dev0",       # apache2
     # KERBSIDE_PROXY_PIN
 
-    "click==8.4.2",                     # bsd
+    "click==8.5.0",                     # bsd
     "cryptography==50.0.1",             # apache2
     "pylogrus==0.4.0",                  # mit
     "prometheus-client==0.26.0",        # apache2
