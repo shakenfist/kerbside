@@ -56,7 +56,7 @@ dependencies = [
     # The pin-indirect-dependencies workflow and renovate.json both know to
     # leave pydantic-core alone.
     # never-pin: pydantic-core
-    "pydantic==2.13.4",                 # mit
+    "pydantic==2.13.5",                 # mit
     "pydantic-settings==2.15.0",        # mit
     "typing-extensions==4.16.0",        # (indirect dependency)
 
