@@ -83,8 +83,10 @@ git config tag.gpgsign true
 ```
 
 Check with `git log --format='%h %G? %s'` before pushing review marks;
-`N` means unsigned. Never edit `REVIEWS.md` by hand. See
-`docs/development.md` for details.
+`N` means unsigned *in that clone only* -- `%G?` reads x509 signatures
+only where `gpg.format` is set, so use `git cat-file commit <sha> |
+grep '^gpgsig'` to ask the question from a development clone. Never
+edit `REVIEWS.md` by hand. See `docs/development.md` for details.
 
 ## Documentation
 

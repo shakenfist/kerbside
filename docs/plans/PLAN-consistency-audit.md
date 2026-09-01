@@ -323,12 +323,20 @@ claims did not survive contact with the tree.
   smallest group of the six. The distribution is `kerbside/`
   25, `tools/` 17, `docs/` 17, and 7 repository-root files
   including `AGENTS.md` and `PUSH-AUDIT.md`.
-- **The signing prerequisite does not pass, and never has.**
-  `git config` has nothing set in either local or global
-  scope, and every mark-adding commit in history is unsigned
-  (`git log --format='%h %G? %s' -- REVIEWS.md` returns `N`
-  throughout). The 115 files that already count as reviewed
-  carry no attestation.
+- **The signing prerequisite passes.** *This bullet
+  originally said the opposite, and was corrected on
+  2026-09-02.* The survey read `N` from `git log
+  --format='%h %G? %s'` as "unsigned", but `%G?` verifies
+  against the current clone's `gpg.format`, and a
+  development clone with none set cannot parse gitsign's
+  x509 signature and reports `N` for a valid one. Testing
+  the commit object instead (`git cat-file commit <sha> |
+  grep '^gpgsig'`) finds **30 signed** mark-adding commits,
+  continuously since 2026-08-14, alongside 37 correctly
+  unsigned bot prunes. Three marks from before that date
+  are unsigned. The real question the phase had to settle
+  was which clone holds the configuration, not whether
+  anyone had ever run it.
 
 The phase also absorbs a check that did not exist when this
 sketch was written. `review-scope-completeness` landed
@@ -625,12 +633,13 @@ phase links. When all phases are complete, set the status to
 * The `review-coverage` audit runs `review-tracking.py
   status`, which reads the sidecar and never checks whether
   the commit carrying a mark was signed. A repository can
-  therefore pass the audit with no attestation at all, which
-  is what kerbside has been doing since the tooling was
-  adopted (phase 4 survey finding 4). The signature is the
-  attestation in this scheme, so an audit that ignores it
-  measures bookkeeping rather than review. Worth raising as
-  an issue on `shakenfist/development`, alongside the two
+  therefore pass the audit with no attestation at all.
+  Kerbside signs anyway, by convention rather than because
+  anything enforces it, so the gap here is latent rather
+  than live -- but the signature is the attestation in this
+  scheme, and an audit that ignores it measures bookkeeping
+  rather than review. Worth raising as an issue on
+  `shakenfist/development`, alongside the two
   `github-security` defects below.
 * #227's underlying problem is that review coverage decays
   with every merge -- the `prune-reviews` workflow

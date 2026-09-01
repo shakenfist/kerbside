@@ -223,6 +223,22 @@ store) rather than `N` (unsigned). `gitsign` needs an interactive
 Sigstore login on first use, so run `gitsign-credential-cache &` to
 authenticate once per session instead of once per commit.
 
+`%G?` is only meaningful in a clone that can interpret the signature.
+It verifies against whatever `gpg.format` the clone has configured,
+so in a development clone -- which sets none, and therefore defaults
+to OpenPGP -- a perfectly good x509 signature is unparseable and
+reports `N`, indistinguishable from no signature at all. To ask
+whether a commit is signed from anywhere, look at the object rather
+than at the verification result:
+
+```bash
+git cat-file commit <sha> | grep -q '^gpgsig' && echo signed
+```
+
+This distinction has already caused one wrong conclusion in this
+repository's planning documents, so it is worth knowing before
+auditing review history from a clone you do not review in.
+
 The bot's `prune` commits are deliberately unsigned: pruning only
 ever removes marks, so it cannot manufacture an attestation. Only
 the commits that add marks need signatures.
