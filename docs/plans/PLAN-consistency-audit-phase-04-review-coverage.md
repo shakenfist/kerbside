@@ -236,14 +236,14 @@ the table under *The review sessions*.
 
 | Step | Effort | Model | Isolation | Brief for sub-agent |
 |------|--------|-------|-----------|---------------------|
-| 4a | high | opus | none | Rewrite `.vscode/review-scope.toml` in the phase 4 worktree so `./tools/review-tracking.sh scope-orphans` reports zero orphans, and **stop before committing** -- this needs Michael's ratification (gate 1). The 44 orphans are listed by that command; run it first. Apply decision 2's candidate list: add `*.html`, `*.toml`, `*.ini`, `*.json`, `*.conf`, `*.cfg`, `*.mako`, `*.svg`, `*.txt`, `*Dockerfile`, `Makefile`, `*/Makefile`, `.dockerignore`, `.gitignore`, `*.gitignore` to `include`, plus the three extensionless paths `etc/kerbside.conf.example`, `demo/kerbside-demo-env` and `tools/run-tempest-tests`. Add to `exclude`, each with a one-line reason in the comment block above: `.github/exported-config/*`, `rust/kerbside-proxy/Cargo.lock`, `docs/schema.html`, `tests/fixtures/*.qcow2`, `AUTHORS`, `LICENSE`. Use `tests/fixtures/*.qcow2` and not `tests/fixtures/*`, which would also drop `tests/fixtures/README.md`. Follow the file's existing style: a prose comment block explaining the reasoning, then the two lists. Verify with `scope-orphans` (expect the "every tracked file is either in scope or explicitly excluded" line) and with `status`, and report both numbers: expect **227 in scope, 112 needing review**. If either number differs, report it rather than adjusting patterns until it matches. |
-| 4b | low | sonnet | none | Configure commit signing in the kerbside clone and prove it works. `gitsign` is at `/usr/bin/gitsign`; nothing is configured in either local or global git config today. Set, in this clone: `git config gpg.format x509`, `git config gpg.x509.program gitsign`, `git config commit.gpgsign true`, `git config tag.gpgsign true` -- the four `.claude/CLAUDE.md` documents. Note that git worktrees share the primary clone's config, so setting it once covers the phase worktree. Then verify against a real commit rather than asserting: make the 4a commit with signing on and check `git log --format='%h %G? %s' -1` shows something other than `N`. **gitsign authenticates through an interactive OIDC browser flow**, so if this session cannot reach a browser, stop and report that as blocked -- do not disable signing to get the commit through. |
+| 4a | high | opus | none | Rewrite `.vscode/review-scope.toml` in the phase 4 worktree so `./tools/review-tracking.sh scope-orphans` reports zero orphans, and **stop before committing** -- this needs Michael's ratification (gate 1). The 44 orphans are listed by that command; run it first. Apply decision 2's candidate list: add `*.html`, `*.toml`, `*.ini`, `*.json`, `*.conf`, `*.cfg`, `*.mako`, `*.svg`, `*.txt`, `*Dockerfile`, `Makefile`, `*/Makefile`, `.dockerignore`, `.gitignore`, `*.gitignore` to `include`, plus the three extensionless paths `etc/kerbside.conf.example`, `demo/kerbside-demo-env` and `tools/run-tempest-tests`. Add to `exclude`, each with a one-line reason in the comment block above: `.github/exported-config/*`, `rust/kerbside-proxy/Cargo.lock`, `docs/schema.html`, `tests/fixtures/*.qcow2`, `AUTHORS`, `LICENSE`. Use `tests/fixtures/*.qcow2` and not `tests/fixtures/*`, which would also drop `tests/fixtures/README.md`. Follow the file's existing style: a prose comment block explaining the reasoning, then the two lists. Verify with `scope-orphans` (expect the "every tracked file is either in scope or explicitly excluded" line) and with `status`, and report both numbers: expect **227 in scope, 112 needing review**. If either number differs, report it rather than adjusting patterns until it matches. *Outcome: 227 in scope as predicted, but 104 needing review rather than 112 -- see the note below the tranche table.* |
+| 4b | low | sonnet | none | Configure commit signing in the kerbside clone, for the review sessions to use. `gitsign` is at `/usr/bin/gitsign`; nothing is configured in either local or global git config today. Set, in this clone: `git config gpg.format x509`, `git config gpg.x509.program gitsign`, `git config commit.gpgsign true`, `git config tag.gpgsign true` -- the four `.claude/CLAUDE.md` documents. Git worktrees share the primary clone's config, so setting it once covers the phase worktree. **This step does not gate 4a or 4c.** Only a commit that *adds a review mark* needs a signature, because the signature is what binds a reviewer to the content they read; 4a changes review scope and 4c changes documentation, and neither touches `.vscode/*.weaudit*` or `REVIEWS.md`. The signing that matters begins at tranche 1. Note for whoever runs that first session: `gitsign` authenticates through an interactive Sigstore OIDC browser flow, so run `gitsign-credential-cache &` once and complete the login rather than authenticating per commit. If the flow cannot complete, stop -- do not disable signing to get a mark through, because an unsigned mark is indistinguishable later from the 115 already in history. |
 | 4c | medium | sonnet | none | Add the per-session recipe to `docs/development.md`, in the review tracking section that already documents `tools/review-tracking.sh`. It must cover: pull on a clean tree, then `./tools/review-tracking.sh prune`; pick files from the current tranche rather than from `next` (which chooses at random and would scatter the order this plan sets); read and mark in weAudit; then `./tools/review-tracking.sh stamp`, `git add .vscode/*.weaudit* REVIEWS.md`, and a **signed** commit. Give the one-liner that lists a tranche's outstanding files, so a session does not re-derive it: `./tools/review-tracking.sh status \| grep 'never reviewed' \| sed 's/.*: //' \| grep '^kerbside/'` with the prefix swapped per tranche. State that the commit must be signed and how to check (`git log --format='%h %G? %s' -1`; `N` means it landed unsigned). Cross-link the upstream workflow doc rather than restating it -- `docs/code-review-tracking.md` in shakenfist/development is the authority. Keep to the repository's 80-column wrap. |
 
 Each step is its own commit:
 
 - 4a: `Name every tracked file in review scope.`
-- 4b: no commit of its own (it makes 4a's commit signed)
+- 4b: no commit of its own (it changes git config, not the tree)
 - 4c: `Document the review session recipe.`
 
 ## The review sessions
@@ -263,6 +263,23 @@ and as `prune-reviews` runs.
 | 5 | Prose: repository root, `docs/`, `.claude/` | ~27 | `AGENTS.md`, `ARCHITECTURE.md`, `README.md`, `PLAN-TEMPLATE.md`, `PUSH-AUDIT.md`, `RELEASE-SETUP.md`, the `docs/` guides and the skills. Drift here is real but it is not exploitable, and reading it after the code means the reader can tell when a document has gone stale. |
 | 6 | `docs/spice/` and the unit tests | 24 | 9 protocol documents (`channel-protocols.md` alone is 952 lines) and 15 test modules. The protocol documents have never been read end to end and that is worth fixing, but they describe an external protocol rather than this repository's decisions. The tests are read constantly in the course of other work. Last, honestly. |
 
+**The backlog came out at 104, not the 112 this plan predicted, and
+the eight are already read.** The projection assumed every file
+entering scope was unreviewed. Eight were not: `demo/Dockerfile`,
+`demo/kerbside.ini`, `demo/kerbside-demo-env`,
+`demo/spice-target/Dockerfile`, `etc/kerbside.conf.example`,
+`loadtests/latency/Dockerfile`, `rust/kerbside-proxy/Dockerfile` and
+`tools/run-tempest-tests` all carry stamps dated 2026-08-06, 08-08 or
+08-18. They were read and marked in weAudit during earlier sessions
+*while out of scope*, the stamps persisted in the sidecar, and
+widening `include` made those reviews count. Tranche 3 is smaller by
+seven and tranche 4 by one as a result.
+
+This is worth knowing beyond the arithmetic: weAudit will mark any
+file, in scope or not, and the sidecar keeps the stamp. So a reviewer
+who reads something the scope config does not cover is not wasting
+the effort -- it banks against the day the file comes into scope.
+
 The backlog is still above the threshold at the end of tranche 5,
 with the 24 files of tranche 6 outstanding, so tranche 6 is what
 closes #227 -- there is no short cut that skips it. At a realistic 800 to 1,200 lines of
@@ -277,7 +294,8 @@ a phase that pretends it is three will stall and look stuck.
 | Scope is widened to satisfy `review-scope-completeness` and the review-coverage number gets worse, so the next reader thinks phase 4 went backwards. | Stated in decision 1 and carried into the master plan and the index row as part of the planning commit, with both before and after numbers. The Definition of done names 227 in scope and 112 needing review as the *expected* post-4a state, so hitting it reads as success rather than regression. |
 | The grind stalls after two sessions and the phase sits `In progress` for months with no way to tell progress from abandonment. | The tranche table is the progress meter: `status` filtered by tranche prefix says exactly where the phase is, and step 4c writes that one-liner into `docs/development.md` so any session can answer the question in one command. A stalled phase is a legitimate outcome to report; an unmeasurable one is not. |
 | A session marks files reviewed on a tree with uncommitted edits, so the mark attests to content that was never committed. | The upstream workflow's first rule, restated in 4c: mark only on a clean tree. `prune` catches it after the fact -- the blob SHA will not match at HEAD -- but after the fact means the reading has to be redone. |
-| gitsign cannot complete its browser flow in a headless or remote session, and signing gets quietly turned off to unblock a commit. | 4b makes this a stop-and-report condition rather than a judgement call. An unsigned mark is worse than a delayed one: it is indistinguishable, later, from the 115 already in history. |
+| gitsign cannot complete its browser flow in a headless or remote session, and signing gets quietly turned off to unblock a commit. | 4b makes this a stop-and-report condition rather than a judgement call, but only for the commits it applies to. An unsigned mark is worse than a delayed one: it is indistinguishable, later, from the 115 already in history. |
+| Signing is treated as a gate on every commit in the phase rather than on the mark-adding ones, and ordinary work blocks on a Sigstore login for no benefit. | Setting `commit.gpgsign true` makes git attempt to sign everything, which is what `.claude/CLAUDE.md` asks a fresh clone to do, but the convention it serves is narrower: `docs/development.md` records that the bot's prune commits are deliberately unsigned and that only mark-adding commits need signatures. 4a and 4c are committed unsigned on that basis. |
 | An agent is asked to "help with" a review session and ends up producing the reading the mark attests to. | Decision 5, and the step table stops at 4c for exactly this reason. There is no sub-agent step in this phase that reads a file under review. |
 | `review-scope-completeness` files an issue against kerbside between now and 4a landing, and it looks like the phase missed it. | Expected, not a problem. The check fails today and the issue is overdue; when it appears it is the same finding this phase is already fixing, and it closes on the audit run after 4a merges. |
 
@@ -286,15 +304,21 @@ a phase that pretends it is three will stall and look stuck.
 - [ ] `./tools/review-tracking.sh scope-orphans` prints *every
       tracked file is either in scope or explicitly excluded* and
       exits zero.
-- [ ] `./tools/review-tracking.sh status` reports **227 in-scope
-      files**, of which 112 need review, immediately after 4a --
-      recorded in the phase report so a later drift is visible.
+- [x] `./tools/review-tracking.sh status` reports **227 in-scope
+      files** immediately after 4a. The backlog came out at **104**,
+      not the predicted 112, because eight of the files entering
+      scope already carried stamps from earlier sessions; the
+      discrepancy is explained under the tranche table rather than
+      tuned away.
 - [ ] Every `exclude` entry added by 4a has a reason in the
       comment block that says what the file is, not merely that
       it is excluded.
 - [ ] `tests/fixtures/README.md` is still in scope after 4a.
-- [ ] `git log --format='%h %G? %s' -1` on the 4a commit does not
-      show `N`.
+- [ ] Signing is configured in the clone (`gpg.format`,
+      `gpg.x509.program`, `commit.gpgsign`, `tag.gpgsign`), so that
+      the first review session can attest. The 4a and 4c commits are
+      *not* expected to be signed: they add no review mark, and only
+      a mark-adding commit carries an attestation.
 - [ ] `docs/development.md` gives a session recipe that a reader
       can follow without opening the upstream document, and the
       tranche one-liner in it runs and produces file paths.
