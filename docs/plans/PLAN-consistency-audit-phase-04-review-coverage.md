@@ -1,4 +1,5 @@
-# Consistency audit phase 4: review scope and coverage
+# Consistency audit phase 4: review scope and session
+scaffolding
 
 Master plan:
 [PLAN-consistency-audit.md](PLAN-consistency-audit.md)
@@ -7,15 +8,13 @@ Master plan:
 phase are permanent: which file types are subject to human review
 for the life of the repository, and what to do about the fact
 that no review mark this repository has ever recorded was signed.
-The third, the order in which 112 files get read, decides whether
+The third, the order in which 104 files get read, decides whether
 the first sessions find anything.
 
 ## Scope
 
 **In scope:**
 
-- Issue #227 (`review-coverage`): 77 in-scope files need review
-  against a threshold of fewer than 5.
 - The `review-scope-completeness` check, which fails today with
   44 orphaned files and has **no issue open against kerbside
   yet**. It is folded in here rather than given a phase of its
@@ -26,6 +25,15 @@ the first sessions find anything.
   can be picked up by any session without re-deriving the order.
 
 **Out of scope:**
+
+- **Reading the files.** Issue #227 (`review-coverage`) stays
+  open when this phase completes, and closing it is not this
+  phase's job or the master plan's. The reading happens in
+  separate sessions on their own clock; the issue is recomputed
+  against HEAD daily, names exactly which files remain, and
+  closes itself from a passing audit run. See decision 5 of the
+  master plan. This phase delivers the scope, the order and the
+  recipe, and stops.
 
 - Re-reviewing the 115 files that already carry a mark. Their
   marks are unattested (survey finding 4) and that is worth
@@ -315,8 +323,8 @@ a phase that pretends it is three will stall and look stuck.
 
 | Risk | Mitigation |
 |------|------------|
-| Scope is widened to satisfy `review-scope-completeness` and the review-coverage number gets worse, so the next reader thinks phase 4 went backwards. | Stated in decision 1 and carried into the master plan and the index row as part of the planning commit, with both before and after numbers. The Definition of done names 227 in scope and 112 needing review as the *expected* post-4a state, so hitting it reads as success rather than regression. |
-| The grind stalls after two sessions and the phase sits `In progress` for months with no way to tell progress from abandonment. | The tranche table is the progress meter: `status` filtered by tranche prefix says exactly where the phase is, and step 4c writes that one-liner into `docs/development.md` so any session can answer the question in one command. A stalled phase is a legitimate outcome to report; an unmeasurable one is not. |
+| Scope is widened to satisfy `review-scope-completeness` and the review-coverage number gets worse, so the next reader thinks phase 4 went backwards. | Stated in decision 1 and carried into the master plan and the index row as part of the planning commit, with both before and after numbers. The Definition of done names 227 in scope as the *expected* post-4a state, so hitting it reads as success rather than regression. The backlog landed at 104 rather than 112, for the reason given under the tranche table. |
+| The reading stalls after two sessions with no way to tell progress from abandonment. | This is why the reading is tracked by #227 rather than by a plan status (decision 5 of the master plan): the audit recomputes coverage against HEAD daily, so the issue cannot go stale in the way a status column can. The tranche table is the ordering, and step 4c writes into `docs/development.md` the one-liner that says where the reading has got to. |
 | A session marks files reviewed on a tree with uncommitted edits, so the mark attests to content that was never committed. | The upstream workflow's first rule, restated in 4c: mark only on a clean tree. `prune` catches it after the fact -- the blob SHA will not match at HEAD -- but after the fact means the reading has to be redone. |
 | gitsign cannot complete its browser flow in a headless or remote session, and signing gets quietly turned off to unblock a commit. | 4b makes this a stop-and-report condition rather than a judgement call, but only for the commits it applies to. An unsigned mark is worse than a delayed one: it is indistinguishable, later, from the 115 already in history. |
 | Signing configuration is set in a development clone, where `commit.gpgsign true` makes git attempt to sign every ordinary commit and ordinary work blocks on a Sigstore login for no benefit. | Decision 6. The configuration belongs in the review account's clone only. This phase set it here during implementation and reverted it; the four settings are unset in both local and global scope, which is the state a development clone should be in. |
@@ -325,62 +333,72 @@ a phase that pretends it is three will stall and look stuck.
 
 ## Definition of done
 
-- [ ] `./tools/review-tracking.sh scope-orphans` prints *every
+Every item below was verified against `develop` at `b62a27c`
+on 2026-09-02, after the phase merged as `ade2788`.
+
+- [x] `./tools/review-tracking.sh scope-orphans` prints *every
       tracked file is either in scope or explicitly excluded* and
       exits zero.
+- [x] The `review-scope-completeness` audit passes for kerbside:
+      *Every tracked file is either in review scope or explicitly
+      excluded*.
 - [x] `./tools/review-tracking.sh status` reports **227 in-scope
       files** immediately after 4a. The backlog came out at **104**,
       not the predicted 112, because eight of the files entering
       scope already carried stamps from earlier sessions; the
       discrepancy is explained under the tranche table rather than
       tuned away.
-- [ ] Every `exclude` entry added by 4a has a reason in the
+- [x] Every `exclude` entry added by 4a has a reason in the
       comment block that says what the file is, not merely that
-      it is excluded.
-- [ ] `tests/fixtures/README.md` is still in scope after 4a.
-- [ ] The **review account's clone** signs, confirmed against the
-      first mark-adding commit rather than against its config. No
-      signing configuration is set in a development clone; the 4a and
-      4c commits are correctly unsigned, adding no review mark.
-- [ ] `docs/development.md` gives a session recipe that a reader
+      it is excluded. All twelve do.
+- [x] `tests/fixtures/README.md` is still in scope after 4a.
+- [x] No signing configuration is set in a development clone --
+      `gpg.format`, `gpg.x509.program`, `commit.gpgsign` and
+      `tag.gpgsign` are unset in both local and global scope --
+      and the convention is written down in `docs/development.md`.
+      The 4a and 4c commits are correctly unsigned, adding no
+      review mark.
+- [x] `docs/development.md` gives a session recipe that a reader
       can follow without opening the upstream document, and the
       tranche one-liner in it runs and produces file paths.
-- [ ] `pre-commit run --all-files` is clean.
-- [ ] The audit's `review-scope-completeness` check passes for
-      kerbside.
-- [ ] `review-coverage` reports fewer than 5 files needing review
-      and issue #227 closes from a passing audit run.
+- [x] `pre-commit run --all-files` is clean.
 
-The last two are on different clocks. `review-scope-completeness`
-passes as soon as 4a merges. `review-coverage` needs the tranches
-done, so this phase stays `In progress` across many sessions by
-design -- which is what the phase is, not a sign it is stuck.
+Two things this phase deliberately does **not** wait for, both
+of which belong to the reading rather than to the scaffolding
+(decision 5 of the master plan):
+
+- `review-coverage` reporting fewer than 5 files needing review,
+  and #227 closing from a passing audit run. The issue stays
+  open, recomputed daily, and is the sole tracker of the reading.
+- Confirmation that the **review account's clone** actually
+  signs, which can only be checked against a real mark-adding
+  commit and so cannot happen before the first reading session.
 
 ## Back brief
 
 The thing to notice about this phase is that its measured
-numbers get worse first. 4a takes the backlog from 77 to 112 and
-that is the correct outcome; a phase report that leads with "112
+numbers get worse first. 4a takes the backlog from 77 to 104 and
+that is the correct outcome; a phase report that leads with "104
 files need review" without leading with why is going to read as
 a failure.
 
-Two gates:
-
-**Gate 1, before 4a is committed.** The scope config decides what
-is subject to human review for the life of the repository, and
-the argument for including a file type is easier to make now than
-to revisit later. Show the proposed `include` and `exclude` lists
-with the reason for each addition and the resulting numbers, and
-wait. In particular the three that are genuine judgement calls
-rather than bookkeeping: the Jinja templates and SVG icons
+**Gate 1, before 4a is committed** -- passed. The scope config
+decides what is subject to human review for the life of the
+repository, and the argument for including a file type is easier
+to make now than to revisit later. The proposed `include` and
+`exclude` lists were shown with the reason for each addition and
+the resulting numbers, and agreed. The three genuine judgement
+calls rather than bookkeeping: the Jinja templates and SVG icons
 (in, decision 3), the ignore files (`.dockerignore` decides what
 ships in an image, so in), and `AUTHORS`/`LICENSE` (out, not
 authored here).
 
-**Gate 2, after the first review session.** One session against
-tranche 1 is enough to calibrate the 800-1,200 lines per hour
-estimate the tranche table is built on. If the real rate is half
-that, the plan is a twenty-session plan and the tranche
-boundaries should move before another ten sessions are spent
-against the wrong shape. Report the actual rate, not a
-reassurance.
+**Not a gate, but carry it into the first reading session.** One
+session against tranche 1 is enough to calibrate the 800-1,200
+lines per hour estimate the tranche table is built on. If the
+real rate is half that, this is a twenty-session job and the
+tranche boundaries should move before another ten sessions are
+spent against the wrong shape. That recalibration is a change to
+this document, not to any plan's status; the reading is tracked
+by #227 (decision 5 of the master plan) and this phase completed
+when the scaffolding did.

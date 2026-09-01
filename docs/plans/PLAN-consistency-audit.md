@@ -193,6 +193,13 @@ it currently fails, and leave behind a planning document
 that tracks the audit backlog as a whole rather than a
 subset of it.
 
+One audit is an exception, deliberately. `review-coverage`
+is not failing because anything in the repository is
+missing; it is failing because a hundred files have not yet
+been read by a person, and no amount of planning shortens
+that. This plan builds what the reading needs and leaves the
+reading to #227. Decision 5 sets out why.
+
 The problem is not any individual finding -- five of the six
 are small, and one of those is not kerbside's bug at all.
 The problem is that the backlog has no owner. Issues arrive
@@ -237,7 +244,7 @@ to forcing it.
 | 1. Shared blocks, vendor stamp and settings closeout | [PLAN-consistency-audit-phase-01-blocks-and-stamp.md](PLAN-consistency-audit-phase-01-blocks-and-stamp.md) | Complete | cbca9b1 |
 | 2. Retire the comment addresser | [PLAN-consistency-audit-phase-02-retire-addresser.md](PLAN-consistency-audit-phase-02-retire-addresser.md) | Complete | 5f3c80c |
 | 3. Skillsaw CI detection, upstream | [PLAN-consistency-audit-phase-03-skillsaw-detection.md](PLAN-consistency-audit-phase-03-skillsaw-detection.md) | Complete | 16e6173 |
-| 4. Review scope and coverage | [PLAN-consistency-audit-phase-04-review-coverage.md](PLAN-consistency-audit-phase-04-review-coverage.md) | In progress | |
+| 4. Review scope and session scaffolding | [PLAN-consistency-audit-phase-04-review-coverage.md](PLAN-consistency-audit-phase-04-review-coverage.md) | Complete | ade2788 |
 | 5. Diagram discipline and mermaid linting | PLAN-consistency-audit-phase-05-diagram-discipline.md | Not started | |
 | 6. Push audit | PLAN-consistency-audit-phase-06-push-audit.md | Not started | |
 
@@ -287,17 +294,24 @@ is to record the divergence here and ask for a
 `REPO_OVERRIDES` exemption rather than to break a CI step
 that works.
 
-**Phase 4 -- review scope and coverage.** Addresses #227
-and the `review-scope-completeness` check. This is a human
-review grind, not an implementation step: the phase's job is
-to sequence it into sessions that fit and pick an order that
-front-loads the files where a review is most likely to find
-something (`kerbside/api.py`, `kerbside/proxy_supervisor.py`,
-`kerbside/sf_token.py`, `kerbside/sources/ovirt.py`, and the
-Jinja templates that render the endpoints the open security
-issues concern). Every mark is a signed commit; the signing
-configuration in `AGENTS.md` is a prerequisite the phase must
-check before starting.
+**Phase 4 -- review scope and session scaffolding.**
+Resolves the `review-scope-completeness` check and builds
+the scaffolding the human review runs on: a scope
+configuration that names every tracked file, a session
+recipe in `docs/development.md` that a reader can follow
+without opening the upstream document, and a tranche order
+that front-loads the files where a review is most likely to
+find something (`kerbside/api.py`,
+`kerbside/proxy_supervisor.py`, `kerbside/sf_token.py`,
+`kerbside/sources/ovirt.py`, and the Jinja templates that
+render the endpoints the open security issues concern).
+Every mark is a signed commit, so the phase settles where
+the signing configuration lives before any reading starts.
+
+**The reading itself is out of scope, and #227 is not this
+plan's to close.** See decision 5. The phase delivers the
+scaffolding and stops; the 104 files are read in separate
+sessions on their own clock, tracked by the issue alone.
 
 *Corrected during phase 4 planning:* three of this sketch's
 claims did not survive contact with the tree.
@@ -438,6 +452,42 @@ it with a new file would strand the three completed security
 checkboxes and lose the history of why they were tracked.
 The old remit survives as phase 1's settings closeout.
 
+**Decision 5 -- the human reading is out of scope; this
+plan builds the scaffolding for it.** Phase 4 was originally
+written to run until the review backlog dropped below five,
+which would have kept this plan `In progress` for as long as
+it takes one person to read a hundred files -- weeks, at a
+rate nobody had measured. That is the wrong instrument. A
+plan tracks work that planning makes go faster, and reading
+source code is not that: the sequencing is worth deciding
+once, but after that the plan has nothing left to contribute
+and only reports a number the audit already reports better.
+
+So the boundary is drawn at the scaffolding. In scope: a
+scope configuration that names every tracked file, a
+documented session recipe, a tranche order, and the settled
+question of where signing configuration lives. Out of scope:
+the reading. #227 stays open and is sufficient on its own --
+it is recomputed against HEAD daily, it names exactly which
+files remain, and it closes itself when a passing audit run
+says so. Duplicating that into a status column adds a second
+place to be stale.
+
+Two consequences a reader should not be surprised by. This
+plan can reach `Complete` while `review-coverage` is still
+failing, which looks wrong against the mission statement and
+is why the mission now states the exception outright. And
+the tranche table in the phase 4 plan becomes a reference
+document rather than a progress tracker -- nothing updates
+it as tranches are worked, and nothing should.
+
+This is the decision most likely to be argued with, because
+the plan opens by complaining that the audit backlog has no
+owner and this hands the oldest issue in it back to the
+label. The distinction is that #227 does have an owner and a
+next action; what it lacked was scope that made the work
+possible to start, and that is what phase 4 delivered.
+
 ## Agent guidance
 
 ### Execution model
@@ -479,8 +529,10 @@ survey found rather than the four files the issue names.
 Phase 3 should be planned at high effort: it changes another
 repository's checker, and a widened check that accidentally
 passes a repository running no linter at all is worse than
-the false negative it fixes. Phase 4 is medium effort to
-plan and long to execute. Phase 5 follows `PUSH-AUDIT.md`.
+the false negative it fixes. Phase 4 was planned at high effort,
+because the scope configuration it writes is load-bearing
+for an audit and expensive to redo once reading has started
+against it. Phase 5 follows `PUSH-AUDIT.md`.
 
 ### Step-level guidance
 
@@ -524,8 +576,9 @@ verifies:
 We will know when this plan has been successfully
 implemented because the following statements will be true:
 
-* Issues #227, #360, #368, #370 and #373 are closed, each by
-  a consistency audit run that passes rather than by hand.
+* Issues #360, #368, #370 and #373 are closed, each by a
+  consistency audit run that passes rather than by hand.
+  #227 is deliberately absent: see decision 5.
 * #359 is closed, or -- if `development` declines the
   upstream change -- kerbside carries a recorded exemption
   and this plan says so in writing.
@@ -541,8 +594,13 @@ implemented because the following statements will be true:
   `address-comments-with-claude.sh`, `render-review.py` or
   `review-schema.json` exists anywhere in the tree, and
   `tox -epy3` still passes.
-* `tools/review-tracking.sh status` reports fewer than five
-  in-scope files needing review.
+* `./tools/review-tracking.sh scope-orphans` exits zero, and
+  the `review-scope-completeness` audit passes: every tracked
+  file is either in review scope or explicitly excluded, with
+  a stated reason for each exclusion.
+* `docs/development.md` documents the review session recipe,
+  and the command it gives for listing a tranche's
+  outstanding files runs and produces file paths.
 * The code passes `tox -eflake8` and `tox -epy3`, and
   `pre-commit run --all-files` is clean.
 * The `PUSH-AUDIT.md` audit has been run over the plan's
@@ -576,11 +634,12 @@ phase links. When all phases are complete, set the status to
   `github-security` defects below.
 * #227's underlying problem is that review coverage decays
   with every merge -- the `prune-reviews` workflow
-  invalidates a mark whenever its file changes. Phase 4
-  clears the backlog but does not stop it regrowing. A
-  standing review budget, of the kind
-  `shakenfist/actions`'s reviewer-budget work explores,
-  would be the durable fix and is out of scope here.
+  invalidates a mark whenever its file changes. Neither this
+  plan nor the reading sessions that follow it stop the
+  backlog regrowing; they only empty it once. A standing
+  review budget, of the kind `shakenfist/actions`'s
+  reviewer-budget work explores, would be the durable fix
+  and is out of scope here.
 * The three GitHub security settings ticked in July
   (Dependabot security updates, secret scanning, push
   protection) were verified once, by hand, on 2026-07-18.
@@ -636,8 +695,9 @@ should be filed against `shakenfist/development`; phase 3
 already goes there and is the natural place to raise them.
 
 #227's stale issue body is not a bug: it is a rendering
-artifact of an old run, and the live checker agrees with the
-tree at 124 of 194.
+artifact of an old run. The live checker agreed with the
+tree at 124 of 194 when this was written, and at 123 of 227
+once phase 4 widened the scope.
 
 ### Back brief
 
