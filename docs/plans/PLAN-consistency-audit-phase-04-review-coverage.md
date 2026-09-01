@@ -213,6 +213,30 @@ with no attestation at all, which is what kerbside has been
 doing. Raising that with `shakenfist/development` is future
 work, noted in the master plan, not this phase's job.
 
+**6. Signing configuration belongs in the review account's clone,
+not in a development clone.** Review sessions run under a separate
+account, so that turning on commit signing does not mean signing
+every ordinary development commit. That makes the split structural
+rather than a matter of remembering, and it matches the upstream
+workflow's note that the dedicated review account's clones never
+carry development edits.
+
+This phase got it wrong on the way through. Step 4b originally set
+`gpg.format`, `gpg.x509.program`, `commit.gpgsign` and `tag.gpgsign`
+in this clone, on the reading that `.claude/CLAUDE.md`'s "signing is
+per-clone config, so a fresh clone needs..." applied to whichever
+clone was to hand. It applies to the clone that makes review marks.
+The settings were reverted; a development clone should have none of
+them.
+
+The survey's finding stands unchanged and is worth restating so it is
+not read as a consequence of this mix-up: every mark-adding commit on
+develop is unsigned (`742dd06`, `08422d6`, `7b67f12`, `bc30959`), so
+the 115 files that already count as reviewed carry no attestation.
+That is a fact about the commits on the branch, whatever any clone's
+configuration says, and it is why the Definition of done asks for
+confirmation against a real commit rather than against a config file.
+
 **5. No agent pre-reads a file and hands the human a summary to
 mark against.** The review mark asserts that a person read the
 file. An agent-written briefing note, however good, becomes the
@@ -237,13 +261,13 @@ the table under *The review sessions*.
 | Step | Effort | Model | Isolation | Brief for sub-agent |
 |------|--------|-------|-----------|---------------------|
 | 4a | high | opus | none | Rewrite `.vscode/review-scope.toml` in the phase 4 worktree so `./tools/review-tracking.sh scope-orphans` reports zero orphans, and **stop before committing** -- this needs Michael's ratification (gate 1). The 44 orphans are listed by that command; run it first. Apply decision 2's candidate list: add `*.html`, `*.toml`, `*.ini`, `*.json`, `*.conf`, `*.cfg`, `*.mako`, `*.svg`, `*.txt`, `*Dockerfile`, `Makefile`, `*/Makefile`, `.dockerignore`, `.gitignore`, `*.gitignore` to `include`, plus the three extensionless paths `etc/kerbside.conf.example`, `demo/kerbside-demo-env` and `tools/run-tempest-tests`. Add to `exclude`, each with a one-line reason in the comment block above: `.github/exported-config/*`, `rust/kerbside-proxy/Cargo.lock`, `docs/schema.html`, `tests/fixtures/*.qcow2`, `AUTHORS`, `LICENSE`. Use `tests/fixtures/*.qcow2` and not `tests/fixtures/*`, which would also drop `tests/fixtures/README.md`. Follow the file's existing style: a prose comment block explaining the reasoning, then the two lists. Verify with `scope-orphans` (expect the "every tracked file is either in scope or explicitly excluded" line) and with `status`, and report both numbers: expect **227 in scope, 112 needing review**. If either number differs, report it rather than adjusting patterns until it matches. *Outcome: 227 in scope as predicted, but 104 needing review rather than 112 -- see the note below the tranche table.* |
-| 4b | low | sonnet | none | Configure commit signing in the kerbside clone, for the review sessions to use. `gitsign` is at `/usr/bin/gitsign`; nothing is configured in either local or global git config today. Set, in this clone: `git config gpg.format x509`, `git config gpg.x509.program gitsign`, `git config commit.gpgsign true`, `git config tag.gpgsign true` -- the four `.claude/CLAUDE.md` documents. Git worktrees share the primary clone's config, so setting it once covers the phase worktree. **This step does not gate 4a or 4c.** Only a commit that *adds a review mark* needs a signature, because the signature is what binds a reviewer to the content they read; 4a changes review scope and 4c changes documentation, and neither touches `.vscode/*.weaudit*` or `REVIEWS.md`. The signing that matters begins at tranche 1. Note for whoever runs that first session: `gitsign` authenticates through an interactive Sigstore OIDC browser flow, so run `gitsign-credential-cache &` once and complete the login rather than authenticating per commit. If the flow cannot complete, stop -- do not disable signing to get a mark through, because an unsigned mark is indistinguishable later from the 115 already in history. |
+| 4b | low | sonnet | none | **Nothing to do in this clone.** See decision 6: review sessions run under a separate account in a separate clone, and the signing configuration belongs there. Do not set `commit.gpgsign` in a development clone. The step remains in the table because the phase must still confirm, before tranche 1, that the review clone signs -- `git log --format='%h %G? %s' -1` after the first mark-adding commit, where `N` means it landed with no attestation. `gitsign` authenticates through an interactive Sigstore OIDC browser flow, so run `gitsign-credential-cache &` once in that clone rather than authenticating per commit. If the flow cannot complete, stop -- do not disable signing to get a mark through, because an unsigned mark is indistinguishable later from the 115 already in history. |
 | 4c | medium | sonnet | none | Add the per-session recipe to `docs/development.md`, in the review tracking section that already documents `tools/review-tracking.sh`. It must cover: pull on a clean tree, then `./tools/review-tracking.sh prune`; pick files from the current tranche rather than from `next` (which chooses at random and would scatter the order this plan sets); read and mark in weAudit; then `./tools/review-tracking.sh stamp`, `git add .vscode/*.weaudit* REVIEWS.md`, and a **signed** commit. Give the one-liner that lists a tranche's outstanding files, so a session does not re-derive it: `./tools/review-tracking.sh status \| grep 'never reviewed' \| sed 's/.*: //' \| grep '^kerbside/'` with the prefix swapped per tranche. State that the commit must be signed and how to check (`git log --format='%h %G? %s' -1`; `N` means it landed unsigned). Cross-link the upstream workflow doc rather than restating it -- `docs/code-review-tracking.md` in shakenfist/development is the authority. Keep to the repository's 80-column wrap. |
 
 Each step is its own commit:
 
 - 4a: `Name every tracked file in review scope.`
-- 4b: no commit of its own (it changes git config, not the tree)
+- 4b: no commit, and no change in this clone
 - 4c: `Document the review session recipe.`
 
 ## The review sessions
@@ -295,7 +319,7 @@ a phase that pretends it is three will stall and look stuck.
 | The grind stalls after two sessions and the phase sits `In progress` for months with no way to tell progress from abandonment. | The tranche table is the progress meter: `status` filtered by tranche prefix says exactly where the phase is, and step 4c writes that one-liner into `docs/development.md` so any session can answer the question in one command. A stalled phase is a legitimate outcome to report; an unmeasurable one is not. |
 | A session marks files reviewed on a tree with uncommitted edits, so the mark attests to content that was never committed. | The upstream workflow's first rule, restated in 4c: mark only on a clean tree. `prune` catches it after the fact -- the blob SHA will not match at HEAD -- but after the fact means the reading has to be redone. |
 | gitsign cannot complete its browser flow in a headless or remote session, and signing gets quietly turned off to unblock a commit. | 4b makes this a stop-and-report condition rather than a judgement call, but only for the commits it applies to. An unsigned mark is worse than a delayed one: it is indistinguishable, later, from the 115 already in history. |
-| Signing is treated as a gate on every commit in the phase rather than on the mark-adding ones, and ordinary work blocks on a Sigstore login for no benefit. | Setting `commit.gpgsign true` makes git attempt to sign everything, which is what `.claude/CLAUDE.md` asks a fresh clone to do, but the convention it serves is narrower: `docs/development.md` records that the bot's prune commits are deliberately unsigned and that only mark-adding commits need signatures. 4a and 4c are committed unsigned on that basis. |
+| Signing configuration is set in a development clone, where `commit.gpgsign true` makes git attempt to sign every ordinary commit and ordinary work blocks on a Sigstore login for no benefit. | Decision 6. The configuration belongs in the review account's clone only. This phase set it here during implementation and reverted it; the four settings are unset in both local and global scope, which is the state a development clone should be in. |
 | An agent is asked to "help with" a review session and ends up producing the reading the mark attests to. | Decision 5, and the step table stops at 4c for exactly this reason. There is no sub-agent step in this phase that reads a file under review. |
 | `review-scope-completeness` files an issue against kerbside between now and 4a landing, and it looks like the phase missed it. | Expected, not a problem. The check fails today and the issue is overdue; when it appears it is the same finding this phase is already fixing, and it closes on the audit run after 4a merges. |
 
@@ -314,11 +338,10 @@ a phase that pretends it is three will stall and look stuck.
       comment block that says what the file is, not merely that
       it is excluded.
 - [ ] `tests/fixtures/README.md` is still in scope after 4a.
-- [ ] Signing is configured in the clone (`gpg.format`,
-      `gpg.x509.program`, `commit.gpgsign`, `tag.gpgsign`), so that
-      the first review session can attest. The 4a and 4c commits are
-      *not* expected to be signed: they add no review mark, and only
-      a mark-adding commit carries an attestation.
+- [ ] The **review account's clone** signs, confirmed against the
+      first mark-adding commit rather than against its config. No
+      signing configuration is set in a development clone; the 4a and
+      4c commits are correctly unsigned, adding no review mark.
 - [ ] `docs/development.md` gives a session recipe that a reader
       can follow without opening the upstream document, and the
       tranche one-liner in it runs and produces file paths.

@@ -195,9 +195,20 @@ is a separate change that gets reviewed on its own terms.
 
 A review mark is an attestation, so the commit that introduces one
 must be signed -- that signature is what binds the reviewer to the
-exact content reviewed. Signing is configured per clone and is easy
-to forget in a fresh one; check it before stamping, because an
-unsigned review commit records a mark that nothing vouches for:
+exact content reviewed.
+
+Review sessions run under a separate account, in a clone kept for
+that purpose, and the signing configuration below belongs in **that**
+clone rather than in a development one. `commit.gpgsign` applies to
+every commit git makes, so setting it in a clone used for ordinary
+work means signing ordinary work too, and blocking each commit on a
+Sigstore login for no benefit -- only the commits that add marks
+carry an attestation. Keeping the two clones separate makes that
+split structural instead of something to remember.
+
+In the review clone, then, check the configuration before stamping,
+because an unsigned review commit records a mark that nothing
+vouches for:
 
 ```bash
 git config gpg.format x509
