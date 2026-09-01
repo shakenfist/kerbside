@@ -159,11 +159,12 @@ window so weAudit re-reads its state file -- it does not watch the
 file for external changes.
 
 Then pick files, read them, and mark each one reviewed with weAudit's
-*Mark File as Reviewed*. Prefer working through a tranche in the
-order set by the phase 4 plan
+*Mark File as Reviewed*. The review scope and scaffolding plan
 ([PLAN-consistency-audit-phase-04-review-coverage.md](plans/PLAN-consistency-audit-phase-04-review-coverage.md))
-over `review-tracking.sh next`, which picks at random and will
-scatter that order. This lists what is still outstanding in a
+groups the outstanding files into tranches, ordered so the files
+most likely to repay a reading come first. Prefer working through
+a tranche over `review-tracking.sh next`, which picks at random
+and will scatter that order. This lists what is still outstanding in a
 tranche, with the prefix changed to suit:
 
 ```bash
