@@ -124,7 +124,7 @@ dependencies = [
     "typing-inspection==0.4.4",
     "urllib3==2.7.0",
     "Werkzeug==3.1.8",
-    "wrapt==2.3.0",
+    "wrapt==2.4.0",
     # END_OF_INDIRECT_DEPS
 ]
 
