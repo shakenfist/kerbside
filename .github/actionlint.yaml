@@ -9,6 +9,7 @@ self-hosted-runner:
     - static
     - vm
     - debian-12
+    - debian-12-docker
     # Ephemeral runner sizes (see shakenfist/private-ci CI_SIZES). An
     # unsized vm job defaults to xs, so jobs set one explicitly.
     - xs
