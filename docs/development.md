@@ -185,8 +185,15 @@ git commit
 Two things make a session's work count for nothing if they are
 missed. The tree must be clean when a file is marked, or the
 committed tree will not match what was actually read. And the commit
-must be signed -- check with `git log --format='%h %G? %s' -1`, where
-`N` means the mark landed with no attestation at all. See below.
+must be signed:
+
+```bash
+git cat-file commit HEAD | grep -q '^gpgsig' && echo signed
+```
+
+That form works from any clone. `%G?` is the richer check once the
+clone is configured for it, and "Signing review marks" below covers
+both.
 
 Findings go to issues, not into the same commit. A review session
 produces marks, and where it finds something, a GitHub issue; the fix

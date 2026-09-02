@@ -188,11 +188,14 @@ https://www.spice-space.org/spice-protocol.html.
   [`docs/testing.md`](docs/testing.md).
 
 - **`REVIEWS.md` is generated; never edit it by hand.** Commits that
-  add review marks must be signed — confirm `git config
-  commit.gpgsign` is `true` (with `gpg.format` `x509` and
-  `gpg.x509.program` `gitsign`) before stamping, and check with
-  `git log --format='%h %G? %s'`; `N` means the mark landed unsigned.
-  See "Review tracking" in [`docs/development.md`](docs/development.md).
+  add review marks must be signed, but the signing configuration
+  belongs in the review account's clone rather than a development
+  one — `commit.gpgsign` applies to every commit, and only the ones
+  adding marks carry an attestation. Check a commit with
+  `git cat-file commit <sha> | grep '^gpgsig'`, which works from any
+  clone; `%G?` reads an x509 signature only where `gpg.format` is
+  set, and reports `N` for a valid one everywhere else. See "Review
+  tracking" in [`docs/development.md`](docs/development.md).
 
 ## Code style
 

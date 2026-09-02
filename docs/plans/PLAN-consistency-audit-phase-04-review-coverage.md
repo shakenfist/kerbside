@@ -34,11 +34,11 @@ the first sessions find anything.
   master plan. This phase delivers the scope, the order and the
   recipe, and stops.
 
-- Re-reviewing the 115 files that already carry a mark. All but
-  three of those marks are signed (survey finding 4, as
-  corrected); the three unsigned ones predate 2026-08-14 and are
-  not worth re-reading to re-attest, since they will come round
-  again on their next natural staleness.
+- Re-reviewing the 115 files that already carry a mark. Those
+  marks were made by 29 signed commits and three unsigned ones
+  predating 2026-08-14 (survey finding 4, as corrected). The
+  three are not worth re-reading to re-attest, since they will
+  come round again on their next natural staleness.
 - Teaching the `review-coverage` audit to care about signatures.
   That is an upstream change to `shakenfist/development` and is
   recorded as future work, not done here. See decision 4.
@@ -101,24 +101,39 @@ it cannot parse, and reports `N`. The signatures were there the
 whole time.
 
 The test that does not depend on local configuration is to look
-at the commit object:
+at the commit object rather than at a verification result:
 
 ```bash
-git cat-file commit <sha> | grep -q '^gpgsig' && echo SIGNED
+git log --no-merges --format=%H -- REVIEWS.md '.vscode/*.weaudit*' |
+    while read sha; do
+        git cat-file commit "$sha" | grep -q '^gpgsig' &&
+            echo "$sha signed" || echo "$sha unsigned"
+    done
 ```
 
-Run over every commit touching `REVIEWS.md` or the weAudit
-sidecars, that gives **30 signed** mark-adding commits and 37
-unsigned `Prune stale review marks` commits from
-`shakenfist-bot`, which is exactly the convention: a prune
-removes an attestation and asserts nothing, so it is correctly
-unsigned. Signing began with `8189265` on 2026-08-14 and every
-mark-adding commit since carries a signature. Three earlier ones
-do not -- `24d266d` *review: alembic* and `6f83fb5` *review:
-frontmatter* (both 2026-08-03/04) and `461268b` *review: ovirt
-use case, proxy architecture* (2026-08-13) -- along with the
-tooling-deployment and scope-change commits, which add no marks
-and need none.
+That gives **29 signed** commits, every one carrying gitsign's
+x509 `-----BEGIN SIGNED MESSAGE-----` form, and 46 unsigned. The
+46 break down as 38 `Prune stale review marks` commits, which is
+exactly the convention -- a prune removes an attestation and
+asserts nothing, so it is correctly unsigned -- and 8 others, of
+which three add marks and five are tooling, scope or
+documentation changes that add none.
+
+**Merge commits are excluded deliberately, and the exclusion is
+the point.** One merge in this set is signed -- `37c11de` *Merge
+branch 'develop' into reviews* -- but with GitHub's web-flow
+**PGP** key rather than a reviewer's x509 certificate, so it
+attests to nothing about any reading. Counting it would be the
+same class of error as the one this finding retracts, one level
+down: taking the presence of a signature for the presence of an
+attestation. Without `--no-merges` the total reads 30, which is
+the number this document first claimed.
+
+Signing began with `8189265` on 2026-08-14 and every mark-adding
+commit since carries a signature. Three earlier ones do not --
+`24d266d` *review: alembic* and `6f83fb5` *review: frontmatter*
+(both 2026-08-03/04) and `461268b` *review: ovirt use case,
+proxy architecture* (2026-08-13).
 
 So the prerequisite the sketch asked the phase to check does
 pass, in the clone where it matters. What this phase actually
@@ -395,7 +410,7 @@ of which belong to the reading rather than to the scaffolding
   open, recomputed daily, and is the sole tracker of the reading.
 - Confirmation that the **review account's clone** still signs,
   which can only be checked against a real mark-adding commit.
-  The 30 signed marks already in history say it does, so this is
+  The 29 signed marks already in history say it does, so this is
   a spot check rather than an open question -- but make it
   against the commit object, not `%G?` (survey finding 4).
 
