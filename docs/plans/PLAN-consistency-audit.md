@@ -245,7 +245,7 @@ to forcing it.
 | 2. Retire the comment addresser | [PLAN-consistency-audit-phase-02-retire-addresser.md](PLAN-consistency-audit-phase-02-retire-addresser.md) | Complete | 5f3c80c |
 | 3. Skillsaw CI detection, upstream | [PLAN-consistency-audit-phase-03-skillsaw-detection.md](PLAN-consistency-audit-phase-03-skillsaw-detection.md) | Complete | 16e6173 |
 | 4. Review scope and session scaffolding | [PLAN-consistency-audit-phase-04-review-coverage.md](PLAN-consistency-audit-phase-04-review-coverage.md) | Complete | ade2788 |
-| 5. Diagram discipline and mermaid linting | [PLAN-consistency-audit-phase-05-diagram-discipline.md](PLAN-consistency-audit-phase-05-diagram-discipline.md) | Not started | |
+| 5. Diagram discipline and mermaid linting | [PLAN-consistency-audit-phase-05-diagram-discipline.md](PLAN-consistency-audit-phase-05-diagram-discipline.md) | In progress | |
 | 6. Push audit | PLAN-consistency-audit-phase-06-push-audit.md | Not started | |
 
 Phase sketches (to be expanded into per-phase plans):

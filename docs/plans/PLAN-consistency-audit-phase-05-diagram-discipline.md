@@ -258,37 +258,50 @@ Each step is its own commit:
 ## Definition of done
 
 Every item is checkable against the branch. `<development>` is a
-checkout of `shakenfist/development`.
+checkout of `shakenfist/development`. Every box below was
+verified against the branch at `635cab1` on 2026-09-03, before
+the pull request was opened, except the last, which cannot be
+checked until it merges.
 
-- [ ] `python3 scripts/audit-check.py --repo-path <kerbside>
+- [x] `python3 scripts/audit-check.py --repo-path <kerbside>
       --repo-name kerbside` reports `push-audit` **pass** and
       `mermaid-lint-ci` **pass**.
-- [ ] The `diagram-discipline` block embedded in `PUSH-AUDIT.md`
+- [x] The `diagram-discipline` block embedded in `PUSH-AUDIT.md`
       is byte-identical to
       `templates/shared-blocks/diagram-discipline.md` at
       `origin/main`, and sits between the kerbside documentation
       bullets and `plan-phase-references`.
-- [ ] `tools/mermaid-lint.sh` and
+- [x] `tools/mermaid-lint.sh` and
       `.github/workflows/mermaid-lint.yml` are byte-identical to
       their `templates/mermaid-lint/` originals:
       `diff tools/mermaid-lint.sh <(git -C <development> show
       origin/main:templates/mermaid-lint/mermaid-lint.sh)` and
       the same for the workflow, both silent.
-- [ ] `tools/mermaid-lint.sh` is executable, and
+- [x] `tools/mermaid-lint.sh` is executable, and
       `./tools/mermaid-lint.sh` exits **zero** over nine files,
       measured from its own exit status and not through a pipe.
-- [ ] `.github/actionlint.yaml` lists `debian-12-docker`, and
+- [x] `.github/actionlint.yaml` lists `debian-12-docker`, and
       `pre-commit run --all-files` is clean **with the three new
       or changed files staged**.
-- [ ] `./tools/check-required-checks.sh` passes, and the develop
+- [x] `./tools/check-required-checks.sh` passes, and the develop
       ruleset in `.github/exported-config/` is unchanged -- the
       lane added no required check.
-- [ ] `docs/testing.md` lists the lane under the workflows in
+- [x] `docs/testing.md` lists the lane under the workflows in
       neither tier and says why it is not required; the workflow
       list in `.claude/CLAUDE.md` has one matching line; nothing
       was added to `AGENTS.md`.
-- [ ] #370 and #381 close from a passing audit run rather than
-      by hand.
+- [ ] #370 and #381 close when the pull request merges, from the
+      `Fixes` trailers on 5a and 5b. *This criterion originally
+      said the issues should close from a passing audit run
+      rather than by hand; the commits close them directly
+      instead, which is the form the repository's commit
+      conventions ask for.* The distinction the original wording
+      was protecting -- not closing an issue while its check
+      still fails -- is preserved by the first criterion above,
+      which was verified before the pull request was opened, and
+      by the audit itself: a check that still failed would file
+      a fresh issue the next morning rather than leave the
+      finding lost.
 
 ## Back brief
 

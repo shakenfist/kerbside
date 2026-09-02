@@ -124,6 +124,10 @@ Neither tier:
   path-filtered)
 - `demo-compose.yml` - the `demo/` stack brought up against the PR,
   asserting a proxied SPICE session (advisory, path-filtered)
+- `mermaid-lint.yml` - Renders every tracked markdown file's
+  mermaid diagrams and fails on a parse error (advisory,
+  path-filtered; never make it a required check, see
+  `docs/testing.md`)
 - `codeql-analysis.yml` - Security scanning
 - `prune-reviews.yml` - Prunes stale review marks after a develop push
 - `pin-indirect-dependencies.yml` - Regenerates the pinned indirect
