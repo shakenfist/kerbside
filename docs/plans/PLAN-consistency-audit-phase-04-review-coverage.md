@@ -1,5 +1,4 @@
-# Consistency audit phase 4: review scope and session
-scaffolding
+# Consistency audit phase 4: review scope and session scaffolding
 
 Master plan:
 [PLAN-consistency-audit.md](PLAN-consistency-audit.md)
@@ -245,6 +244,20 @@ precisely why it is worth raising with
 `shakenfist/development`. That is future work, noted in the
 master plan, not this phase's job.
 
+**5. No agent pre-reads a file and hands the human a summary to
+mark against.** The review mark asserts that a person read the
+file. An agent-written briefing note, however good, becomes the
+thing that gets read, and the mark then attests to the summary.
+The upstream workflow's line about "Claude Code in the integrated
+terminal for questions" is the supported use and the boundary:
+answering a question about a file the human is reading is fine;
+producing the reading is not.
+
+This is the second decision a reader might argue with, since it
+declines the one available speed-up on a 23,000-line grind. The
+answer is that the speed-up would empty the marks of meaning,
+and the marks are the entire product.
+
 **6. Signing configuration belongs in the review account's clone,
 not in a development clone.** Review sessions run under a separate
 account, so that turning on commit signing does not mean signing
@@ -268,20 +281,6 @@ reading `%G?` in a clone that cannot interpret an x509 signature.
 See survey finding 4. The Definition of done asks for confirmation
 against a real commit object rather than against `%G?` or a config
 file for exactly this reason.
-
-**5. No agent pre-reads a file and hands the human a summary to
-mark against.** The review mark asserts that a person read the
-file. An agent-written briefing note, however good, becomes the
-thing that gets read, and the mark then attests to the summary.
-The upstream workflow's line about "Claude Code in the integrated
-terminal for questions" is the supported use and the boundary:
-answering a question about a file the human is reading is fine;
-producing the reading is not.
-
-This is the second decision a reader might argue with, since it
-declines the one available speed-up on a 23,000-line grind. The
-answer is that the speed-up would empty the marks of meaning,
-and the marks are the entire product.
 
 ## Step plan
 
