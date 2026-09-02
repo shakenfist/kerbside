@@ -61,9 +61,10 @@
  * for when a page needs different measurements (an unlayered
  * override is the second):
  *
- *   --sf-container-max     .sf-container's max width; 1100px by
- *                          default, set it to 100% for a
- *                          full-bleed page
+ *   --sf-container-max     .sf-container's max width; 100% by
+ *                          default, so a page is full bleed
+ *                          until it asks not to be -- set a
+ *                          length to cap the measure
  *   --sf-page-pad          .sf-page's padding; the default drops
  *                          from 2rem to 1rem under 700px
  *   --sf-code-max-height   how tall .sf-code grows before it
@@ -101,7 +102,7 @@
         --sf-radius-sm: 4px;
         --sf-radius: 6px;
         --sf-radius-lg: 8px;
-        --sf-container-max: 1100px;
+        --sf-container-max: 100%;
         --sf-page-pad: 2rem;
         --sf-code-max-height: 24rem;
         --sf-table-cell-pad: 0.5rem 0.8rem;
