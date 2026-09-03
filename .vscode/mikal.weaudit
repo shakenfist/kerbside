@@ -544,10 +544,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/functional-tests.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/pypi-storage-check.yml",
       "author": "mikal"
     }
