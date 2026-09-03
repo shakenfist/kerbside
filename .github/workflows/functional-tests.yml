@@ -268,7 +268,7 @@ jobs:
         timeout-minutes: 5
         run: |
           . /tmp/venv-test/bin/activate
-          uv pip install skillsaw==0.18.0
+          uv pip install skillsaw==0.19.0
           skillsaw --no-custom-rules .
 
       - name: Attempt to install requirements
