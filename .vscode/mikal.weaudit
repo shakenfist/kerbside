@@ -192,10 +192,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/actionlint.yaml",
-      "author": "mikal"
-    },
-    {
       "path": "docs/use-cases/ovirt.md",
       "author": "mikal"
     },

@@ -1,10 +1,6 @@
 {
   "version": 1,
   "files": {
-    ".github/actionlint.yaml": {
-      "sha": "ca9be799707e0aefba16e5e594f1b37e4c58c299",
-      "date": "2026-08-11"
-    },
     ".github/workflows/codeql-analysis.yml": {
       "sha": "296eca7815ac6582bf4fa9d0714869ac1eab574a",
       "date": "2026-08-18"
