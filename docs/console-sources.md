@@ -68,6 +68,16 @@ token and virt-viewer (`.vv`) file. The audience Kerbside accepts is set by
 must equal Shaken Fist's `KERBSIDE_URL` exactly; see
 [Configuration](configuration.md).
 
+**What the exchange audits.** A rejection that happens *after* the token
+verifies -- an unknown console, or a replayed `jti` -- names a verified source
+and console uuid, and is recorded as an audit event against that console. A
+rejection that happens *before* verification -- a malformed token, an unknown
+key id, a bad signature, an expired token, a wrong audience -- is logged only.
+`/sf-console.vv` is unauthenticated by design, since the Shaken Fist JWT is
+itself the credential, so those rejections can be provoked by anyone with no
+credential at all; auditing them would let an unauthenticated caller grow the
+`audit_events` table without limit, and nothing reaps it.
+
 **Backend certificate pinning.** At scrape time each console's `host_subject`
 is pinned from the hypervisor node's published SPICE server certificate subject
 (`spice_server_cert_subject`), so the proxy's backend TLS leg can verify it is
