@@ -183,15 +183,22 @@ jobs:
       # This job works in the checked-out workspace, while
       # github-release below downloads into runner.temp. The asymmetry
       # is not an oversight: gh-action-pypi-publish is a composite
-      # action that delegates to a Docker container action, and a
-      # container sees the workspace mounted at /github/workspace and
-      # nothing else of the runner's filesystem. runner.temp is not
-      # mounted -- on a self-hosted runner it is a sibling of the
-      # workspace, not a child -- so packages-dir has to be relative
-      # to the workspace, and an absolute path fails there however it
-      # is spelled. The action needs a real workspace regardless,
-      # since it writes its container trampoline into
-      # .github/.tmp/ before running it.
+      # action that delegates to a Docker container action, and the
+      # container does not see the runner's paths at the places the
+      # workflow expressions name. From a release run:
+      #
+      #   docker run --workdir /github/workspace \
+      #     -v ".../_work/_temp":"/github/runner_temp" \
+      #     -v ".../_work/<repo>/<repo>":"/github/workspace"
+      #
+      # RUNNER_TEMP is mounted, but at /github/runner_temp, whereas
+      # "${{ runner.temp }}" expands to the host path on the left --
+      # which does not exist inside the container. The same goes for
+      # github.workspace. So every path this job hands the publish
+      # action has to be relative to the workspace, which is the one
+      # spelling that is correct on both sides of the mount. The
+      # action needs a real workspace regardless, since it writes its
+      # container trampoline into .github/.tmp/ before running it.
       #
       # Checking out is what makes that workspace safe to use. This
       # pool is persistent and a job which skips checkout inherits
@@ -240,10 +247,10 @@ jobs:
 
     steps:
       # As in publish-proxy-pypi: gh-action-pypi-publish delegates to
-      # a Docker container action, and the container sees only the
-      # workspace, mounted at /github/workspace. runner.temp is not
-      # mounted at its host path, so packages-dir has to be relative
-      # to the workspace and this job has to check out to have one.
+      # a Docker container action, and runner.temp is not mounted at
+      # the host path "${{ runner.temp }}" expands to, so packages-dir
+      # has to be relative to the workspace and this job has to check
+      # out to have one.
       # Checkout's "git clean -ffdx" removes whatever the last job on
       # this persistent runner left behind, including the proxy
       # wheels publish-proxy-pypi downloaded into its own dist/.
