@@ -114,6 +114,17 @@ jobs:
           name: proxy-wheel-${{ matrix.target }}
           path: dist/proxy-wheels/*.whl
 
+  # The four publishing jobs are guarded so that a workflow_dispatch
+  # run only ever exercises the build and the twine check. The event
+  # is tested as well as the ref because a dispatch can be aimed at a
+  # tag: the ref test alone passes there, and the run re-signs and
+  # force-pushes a tag that already exists, rewriting a signed object
+  # someone may already have verified. Aimed at a branch instead, an
+  # unguarded sign-tag computes a tag name of the literal string
+  # "refs/heads/<branch>" and force-pushes a garbage
+  # refs/tags/refs/heads/<branch> ref. Nothing is lost by requiring
+  # push: re-running a failed release goes through "Re-run jobs",
+  # which keeps the original push event.
   sign-tag:
     name: Sign release tag with Sigstore
     # Gate signing on ALL artifact builds, not just the Python sdist:
@@ -122,6 +133,7 @@ jobs:
     # proxy wheels are still building or have failed -- otherwise a dead
     # wheel build leaves the release wedged with signing queued.
     needs: [build, build-proxy-wheels]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     # This job mutates the runner -- it installs gitsign (sudo mv into
     # /usr/local/bin) and writes global git config -- so it belongs on an
     # ephemeral vm runner, not the shared static pool. Static grants no
@@ -172,6 +184,7 @@ jobs:
   publish-proxy-pypi:
     name: Publish kerbside-proxy to PyPI
     needs: [build-proxy-wheels, sign-tag]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: [self-hosted, static]
     environment: release
 
@@ -206,6 +219,7 @@ jobs:
     # gate ensures kerbside is never published referencing a proxy version
     # that failed to publish.
     needs: [build, sign-tag, publish-proxy-pypi]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: [self-hosted, static]
     environment: release
 
@@ -236,6 +250,7 @@ jobs:
   github-release:
     name: Create GitHub Release
     needs: [build, sign-tag, publish-pypi]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: [self-hosted, static]
 
     permissions:
