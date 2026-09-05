@@ -92,8 +92,20 @@ The following options are used to configure a Shaken Fist console source
 
 **Note**: The CA certificate is verified against the cluster's advertised
 certificate during initialization, and the cluster's VDI token signing keys are
-fetched at the same time. If the CA certificates do not match, or the signing
-keys cannot be fetched, the source is marked as errored.
+fetched at the same time. If the CA certificates do not match, the source is
+marked as errored and is not scraped.
+
+A failed signing key fetch is treated differently, because token exchange is
+optional and console scraping is not. The source is **not** errored: it is
+scraped as usual, its consoles stay in the inventory, and only
+`/sf-console.vv` token exchange is unavailable for that cluster until a later
+fetch succeeds. The most common cause is a cluster on which no signing key
+exists yet, because `sf-ctl ensure-kerbside-signing-key` has not been run --
+`/admin/vditokenpubkey` returns 404 until it has, and Shaken Fist never
+creates the key lazily. That case is logged at info level; a genuine failure
+such as an unreachable or unauthenticated cluster is logged as a warning.
+Kerbside refetches the keys on every maintenance pass, so nothing needs to be
+restarted once the key is created.
 
 ## oVirt
 

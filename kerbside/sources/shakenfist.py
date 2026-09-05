@@ -23,6 +23,31 @@ def _build_client(source_args, namespace):
         async_strategy=SHAKENFIST_CLIENT.ASYNC_BLOCK)
 
 
+def _signing_keys_absent(e):
+    """Does this key fetch failure mean "no signing keys" rather than "broken"?
+
+    Two shapes are a normal state rather than a fault, and both are likely
+    on an upgrade:
+
+    * ``ResourceNotFoundException`` -- Shaken Fist's ``/admin/vditokenpubkey``
+      returns 404 until an operator has run
+      ``sf-ctl ensure-kerbside-signing-key``, and nothing on the Shaken Fist
+      side creates the signing material lazily. A cluster older than the
+      release that added the endpoint answers the same way.
+    * ``AttributeError`` -- a shakenfist-client older than 0.8.3 has no
+      ``get_vdi_token_public_keys()``. The client is deliberately not a
+      runtime dependency (it is imported by name, see pyproject.toml), so
+      any version at all can be installed alongside kerbside.
+
+    Neither warrants a warning; both leave token exchange unavailable for
+    this source, which is what the caller logs.
+    """
+    not_found = getattr(SHAKENFIST_CLIENT, 'ResourceNotFoundException', None)
+    if not_found is not None and isinstance(e, not_found):
+        return True
+    return isinstance(e, AttributeError)
+
+
 class ShakenFistSource(base.BaseSource):
     def __init__(self, **kwargs):
         global SHAKENFIST_CLIENT
@@ -55,16 +80,30 @@ class ShakenFistSource(base.BaseSource):
 
         # Cache the cluster's VDI token signing public keys so offline
         # console-token verification never has to call Shaken Fist on the
-        # hot path. A transient fetch failure must not crash source
-        # construction; mark the source errored and log, mirroring the CA
-        # certificate handling above.
+        # hot path.
+        #
+        # A failure here deliberately does NOT error the source. Token
+        # exchange is an optional feature layered on top of scraping;
+        # scraping is this source's core job and predates it. An errored
+        # source is skipped entirely by main._parse_sources(), which then
+        # treats every console it did not re-see this tick as gone -- so
+        # erroring here deleted the source's whole console inventory,
+        # breaking the direct and proxy console routes, which have nothing
+        # to do with tokens. Degrade the optional feature instead, exactly
+        # as an absent spice_server_cert_subject degrades host subject
+        # enforcement in __call__ below.
         try:
             self.fetch_signing_keys()
         except Exception as e:
-            LOG.warning('Failed to fetch signing keys for source %s: %s'
-                        % (self.args['source'], e))
-            self.errored = True
-            return
+            if _signing_keys_absent(e):
+                LOG.info('Source %s publishes no VDI console token signing '
+                         'keys, so token exchange is unavailable for it: %s'
+                         % (self.args['source'], e))
+            else:
+                LOG.warning('Failed to fetch signing keys for source %s, so '
+                            'token exchange is unavailable for it until a '
+                            'later fetch succeeds: %s'
+                            % (self.args['source'], e))
 
     def _make_client(self, namespace):
         return _build_client(self.args, namespace)

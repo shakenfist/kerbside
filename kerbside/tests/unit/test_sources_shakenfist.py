@@ -228,3 +228,115 @@ class SigningKeyRefreshTestCase(testtools.TestCase):
 
         self.assertFalse(src.errored)
         mock_fetch.assert_called_once_with()
+
+
+class _FakeResourceNotFound(Exception):
+    """Stand-in for shakenfist_client.apiclient.ResourceNotFoundException.
+
+    The client module is imported by name at runtime rather than depended
+    upon, and _signing_keys_absent() looks the class up off whatever
+    SHAKENFIST_CLIENT happens to be -- so a fake attached to the fake
+    client module is exactly what production does.
+    """
+
+
+class SigningKeyFetchFailureTestCase(testtools.TestCase):
+    """A failed signing key fetch must not error the source.
+
+    Erroring it makes main._parse_sources() skip the scrape loop, and the
+    unconditional cleanup after that loop then deletes every console the
+    scrape did not re-report -- destroying the source's whole inventory
+    because an optional feature was unavailable. Token exchange degrades;
+    scraping does not.
+
+    The end-to-end regression guard for the deletion itself lives in
+    test_main.py (SigningKeyFailureScrapeTestCase); these tests pin the
+    source class's half of the contract.
+    """
+
+    def _construct(self, fetch_error):
+        client = mock.Mock()
+        client.get_cluster_cacert.return_value = 'CA'
+
+        fake_client_module = mock.Mock()
+        fake_client_module.ResourceNotFoundException = _FakeResourceNotFound
+
+        with mock.patch(
+                'kerbside.sources.shakenfist.SHAKENFIST_CLIENT',
+                fake_client_module), \
+             mock.patch(
+                'kerbside.sources.shakenfist._build_client',
+                return_value=client), \
+             mock.patch.object(
+                shakenfist_source.ShakenFistSource, 'fetch_signing_keys',
+                side_effect=fetch_error):
+            return shakenfist_source.ShakenFistSource(
+                source='sf1', username='system', password='k',
+                url='https://sf', ca_cert='CA')
+
+    def test_absent_signing_keys_do_not_error_the_source(self):
+        # /admin/vditokenpubkey 404s until an operator has run
+        # sf-ctl ensure-kerbside-signing-key.
+        src = self._construct(_FakeResourceNotFound('404'))
+        self.assertFalse(src.errored)
+
+    def test_old_client_without_the_call_does_not_error_the_source(self):
+        # shakenfist-client older than 0.8.3 has no
+        # get_vdi_token_public_keys(), which surfaces as AttributeError.
+        src = self._construct(
+            AttributeError("'Client' object has no attribute "
+                           "'get_vdi_token_public_keys'"))
+        self.assertFalse(src.errored)
+
+    def test_genuine_fetch_failure_does_not_error_the_source(self):
+        # Connection refused, an auth failure, anything else: still only
+        # token exchange is lost, so the source is still scrapeable.
+        src = self._construct(Exception('connection refused'))
+        self.assertFalse(src.errored)
+
+    def test_ca_mismatch_still_errors_the_source(self):
+        # The separate, correct erroring behaviour is unchanged: a source
+        # whose CA does not match cannot be trusted at all.
+        client = mock.Mock()
+        client.get_cluster_cacert.return_value = 'A DIFFERENT CA'
+
+        with mock.patch(
+                'kerbside.sources.shakenfist.SHAKENFIST_CLIENT', mock.Mock()), \
+             mock.patch(
+                'kerbside.sources.shakenfist._build_client',
+                return_value=client), \
+             mock.patch.object(
+                shakenfist_source.ShakenFistSource, 'fetch_signing_keys'):
+            src = shakenfist_source.ShakenFistSource(
+                source='sf1', username='system', password='k',
+                url='https://sf', ca_cert='CA')
+
+        self.assertTrue(src.errored)
+
+
+class SigningKeysAbsentTestCase(testtools.TestCase):
+    """_signing_keys_absent() classifies the log level, nothing else."""
+
+    def setUp(self):
+        super().setUp()
+        fake_client_module = mock.Mock()
+        fake_client_module.ResourceNotFoundException = _FakeResourceNotFound
+        patch = mock.patch(
+            'kerbside.sources.shakenfist.SHAKENFIST_CLIENT',
+            fake_client_module)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_resource_not_found_is_absent(self):
+        self.assertTrue(
+            shakenfist_source._signing_keys_absent(
+                _FakeResourceNotFound('404')))
+
+    def test_attribute_error_is_absent(self):
+        self.assertTrue(
+            shakenfist_source._signing_keys_absent(AttributeError('nope')))
+
+    def test_anything_else_is_a_real_failure(self):
+        self.assertFalse(
+            shakenfist_source._signing_keys_absent(
+                ConnectionRefusedError('refused')))
