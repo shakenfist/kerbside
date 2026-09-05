@@ -37,10 +37,6 @@
       "sha": "b4ea2a75e61abba4bcfd122d9f0d8222f1b25607",
       "date": "2026-08-24"
     },
-    ".github/workflows/release.yml": {
-      "sha": "b3614bdba1b5d4c02c14820bc0f8dcfd85752372",
-      "date": "2026-08-18"
-    },
     ".github/workflows/rust.yml": {
       "sha": "5e419f673f63263dff3953f237bb76b9f43e39a1",
       "date": "2026-08-18"

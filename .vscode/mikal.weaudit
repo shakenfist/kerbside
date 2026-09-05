@@ -388,10 +388,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/release.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/rust.yml",
       "author": "mikal"
     },
