@@ -59,7 +59,9 @@ def _parse_sources():
             )
         return
 
-    source_type = {}
+    # The sources we successfully and completely enumerated this tick.
+    # Only these can support the inference the cleanup below makes.
+    scraped_sources = set()
 
     extra_sources = {}
     for source in kerbside_db.get_sources():
@@ -78,9 +80,6 @@ def _parse_sources():
             if source['source'] in extra_sources:
                 del extra_sources[source['source']]
             stored_source = kerbside_db.get_source(source['source'])
-
-            # Cache the type of this source
-            source_type[source['source']] = source['type']
 
             # If this source is new, record it with the configured CA cert
             # (if any).
@@ -170,8 +169,43 @@ def _parse_sources():
             LOG.info('Source %s yielded %d consoles' % (source['source'], source_count))
             kerbside_db.set_source_error_state(source['source'], False)
 
+            # Reached only by falling off the end of the try block, so the
+            # source was enumerated all the way to exhaustion. Every path
+            # which gives up early -- an unknown type, a source which failed
+            # to initialise, an exception raised part way through the
+            # generator, or an openstack source which is not scraped at all
+            # -- continues before this line and is therefore absent below.
+            scraped_sources.add(source['source'])
+
+    # Consoles we did not re-see this tick. "Did not see it" only means
+    # "it is gone" for a source we actually managed to enumerate: if a
+    # source errored, raised part way through, or was skipped, we learned
+    # nothing at all about its consoles and must not delete them.
+    #
+    # Getting this wrong destroys data. A source which failed for any
+    # transient reason -- a network blip reaching the cluster, an API
+    # error, a CA mismatch during a rotation -- used to have its entire
+    # console inventory deleted here, including the direct and proxy
+    # routes which have nothing to do with whatever failed. Kerbside then
+    # rediscovers them on the next successful scrape, so it presents as a
+    # console outage rather than permanent loss, but it is an outage we
+    # caused ourselves out of a source being briefly unreachable.
+    #
+    # A source removed from the configuration entirely is the one case
+    # where deleting without scraping is right: it is deleted just below,
+    # and leaving its consoles behind would orphan them forever. It is
+    # absent from scraped_sources and present in extra_sources.
+    #
+    # This subsumes the openstack special case which used to live here.
+    # Openstack sources continue before the scrape loop, so they are not
+    # in scraped_sources and are retained by the general rule -- and that
+    # rule is derived from what happened rather than from a hardcoded
+    # source type, so a future source which also declines to scrape is
+    # protected without anyone remembering to add it here.
+    retained = {}
     for source, uuid in extra_consoles:
-        if source_type[source] == 'openstack':
+        if source not in scraped_sources and source not in extra_sources:
+            retained[source] = retained.get(source, 0) + 1
             continue
 
         LOG.with_fields(extra_consoles[(source, uuid)]).info(
@@ -179,6 +213,13 @@ def _parse_sources():
         kerbside_db.remove_console(source=source, uuid=uuid)
         kerbside_db.add_audit_event(
             source, uuid, None, None, None, None, 'Console no longer available')
+
+    # One line per source, not per console: a large unreachable cluster
+    # would otherwise bury the reason in thousands of identical lines.
+    for source in sorted(retained):
+        LOG.warning(
+            'Retained %d console(s) for source %s, which was not scraped '
+            'this pass' % (retained[source], source))
 
     for source in extra_sources:
         kerbside_db.delete_source(source)

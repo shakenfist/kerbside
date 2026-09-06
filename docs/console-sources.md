@@ -37,6 +37,25 @@ It is possible to have more than one console source for a given type, so for
 example the VDI proxy could be used to combine virtual machines from two
 OpenStack clusters together seamlessly.
 
+### What happens when a source fails
+
+Each scraping pass ends by cleaning up consoles it did not re-see, on the
+reasoning that they have been deleted at the source. That reasoning only
+holds for a source which was actually enumerated, so the cleanup is scoped
+to those: **a source which errored, raised, or was skipped keeps its
+consoles**. A cluster which is briefly unreachable, presents a mismatched
+CA during a rotation, or returns an API error therefore does not lose its
+console inventory; the consoles stay listed and are reconciled on the next
+successful pass.
+
+The one exception is a source removed from `sources.yaml` altogether. It is
+deleted along with its consoles, because nothing will ever scrape it again
+and its consoles would otherwise be orphaned.
+
+Erroring still marks the source as errored in the administrative interface,
+which is where a persistent failure should be diagnosed from. Retaining
+consoles is not the same as reporting the source as healthy.
+
 ## Shaken Fist
 
 Shaken Fist sources are periodically scraped for their available consoles, but

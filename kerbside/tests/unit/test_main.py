@@ -292,6 +292,194 @@ class ParseSourcesTestCase(testtools.TestCase):
                 source='test-sf', uuid='old-console-uuid')
 
     @mock.patch('os.path.exists', return_value=True)
+    def test_exception_mid_scrape_retains_the_inventory(self, mock_exists):
+        """A source which raises must not have its consoles deleted.
+
+        The cleanup infers "this console is gone" from "I did not see it
+        this pass". That inference is only sound for a source we managed
+        to enumerate. A source which raised told us nothing at all, and
+        deleting on no information destroys the operator's console
+        inventory over a transient network error.
+        """
+        from kerbside import main
+
+        with self._create_sources_yaml([{
+            'source': 'test-sf',
+            'type': 'shakenfist',
+            'url': 'http://localhost:13000',
+            'username': 'admin',
+            'password': 'secret'
+        }]):
+            self.mock_db_get_source.return_value = None
+            self.mock_shakenfist_source.side_effect = Exception(
+                'connection reset by peer')
+            self.mock_db_get_consoles.return_value = [{
+                'source': 'test-sf',
+                'uuid': 'live-console-uuid',
+                'name': 'a-vm'
+            }]
+
+            main._parse_sources()
+
+            self.assertFalse(self.mock_db_remove_console.called)
+            # The source is still marked errored -- retaining consoles is
+            # not the same as pretending the scrape worked.
+            self.mock_db_set_source_error_state.assert_called_with(
+                'test-sf', True)
+
+    @mock.patch('os.path.exists', return_value=True)
+    def test_errored_source_retains_the_inventory(self, mock_exists):
+        """A source which fails to initialise keeps its consoles."""
+        from kerbside import main
+
+        with self._create_sources_yaml([{
+            'source': 'test-sf',
+            'type': 'shakenfist',
+            'url': 'http://localhost:13000',
+            'username': 'admin',
+            'password': 'secret'
+        }]):
+            self.mock_db_get_source.return_value = None
+            self.mock_shakenfist_source.return_value = (
+                self._mock_source_lookup(errored=True))
+            self.mock_db_get_consoles.return_value = [{
+                'source': 'test-sf',
+                'uuid': 'live-console-uuid',
+                'name': 'a-vm'
+            }]
+
+            main._parse_sources()
+
+            self.assertFalse(self.mock_db_remove_console.called)
+
+    @mock.patch('os.path.exists', return_value=True)
+    def test_unknown_source_type_retains_the_inventory(self, mock_exists):
+        """An unrecognised type is not evidence its consoles are gone."""
+        from kerbside import main
+
+        with self._create_sources_yaml([{
+            'source': 'test-weird',
+            'type': 'not-a-real-source-type',
+            'url': 'http://localhost:13000'
+        }]):
+            self.mock_db_get_source.return_value = None
+            self.mock_db_get_consoles.return_value = [{
+                'source': 'test-weird',
+                'uuid': 'live-console-uuid',
+                'name': 'a-vm'
+            }]
+
+            main._parse_sources()
+
+            self.assertFalse(self.mock_db_remove_console.called)
+
+    @mock.patch('os.path.exists', return_value=True)
+    def test_openstack_consoles_are_retained(self, mock_exists):
+        """Openstack sources are not scraped, so nothing is inferred.
+
+        This used to be a hardcoded source-type check in the cleanup. It
+        is now a consequence of openstack never reaching the scrape loop,
+        which is why the behaviour is asserted here rather than assumed.
+        """
+        from kerbside import main
+
+        with self._create_sources_yaml([{
+            'source': 'test-os',
+            'type': 'openstack',
+            'url': 'http://localhost:5000',
+            'username': 'admin',
+            'password': 'secret',
+            'project_name': 'admin',
+            'user_domain_id': 'default',
+            'project_domain_id': 'default'
+        }]):
+            self.mock_db_get_source.return_value = None
+            self.mock_db_get_consoles.return_value = [{
+                'source': 'test-os',
+                'uuid': 'os-console-uuid',
+                'name': 'a-vm'
+            }]
+
+            main._parse_sources()
+
+            self.assertFalse(self.mock_db_remove_console.called)
+
+    @mock.patch('os.path.exists', return_value=True)
+    def test_a_failing_source_does_not_affect_a_healthy_one(self, mock_exists):
+        """Retention is per source, not all or nothing.
+
+        A healthy source's stale consoles must still be cleaned up while
+        an unhealthy sibling's are retained -- otherwise one broken
+        cluster freezes cleanup for every other one.
+        """
+        from kerbside import main
+
+        sources = [
+            {
+                'source': 'broken-sf',
+                'type': 'shakenfist',
+                'url': 'http://localhost:13000',
+                'username': 'admin',
+                'password': 'secret'
+            },
+            {
+                'source': 'healthy-static',
+                'type': 'static',
+                'url': 'http://localhost:13000'
+            }]
+        with self._create_sources_yaml(sources):
+            self.mock_db_get_source.return_value = None
+            self.mock_shakenfist_source.return_value = (
+                self._mock_source_lookup(errored=True))
+            self.mock_static_source.return_value = self._mock_source_lookup()
+            self.mock_db_get_consoles.return_value = [
+                {'source': 'broken-sf', 'uuid': 'keep-me', 'name': 'a-vm'},
+                {'source': 'healthy-static', 'uuid': 'drop-me', 'name': 'b-vm'},
+            ]
+
+            main._parse_sources()
+
+            self.mock_db_remove_console.assert_called_once_with(
+                source='healthy-static', uuid='drop-me')
+
+    @mock.patch('os.path.exists', return_value=True)
+    def test_removed_source_still_has_its_consoles_deleted(self, mock_exists):
+        """A source deleted from the configuration is the exception.
+
+        It is never scraped, but it is genuinely gone: the source row is
+        deleted immediately below the console cleanup, so retaining its
+        consoles would orphan them permanently. Before the cleanup was
+        scoped this case raised KeyError out of the source-type lookup
+        and took the whole scrape down with it.
+        """
+        from kerbside import main
+
+        with self._create_sources_yaml([{
+            'source': 'test-sf',
+            'type': 'shakenfist',
+            'url': 'http://localhost:13000',
+            'username': 'admin',
+            'password': 'secret'
+        }]):
+            self.mock_db_get_source.return_value = None
+            self.mock_shakenfist_source.return_value = self._mock_source_lookup()
+            self.mock_db_get_sources.return_value = [
+                {'name': 'test-sf', 'type': 'shakenfist'},
+                {'name': 'departed-sf', 'type': 'shakenfist'},
+            ]
+            self.mock_db_get_consoles.return_value = [{
+                'source': 'departed-sf',
+                'uuid': 'orphan-uuid',
+                'name': 'a-vm'
+            }]
+
+            main._parse_sources()
+
+            self.mock_db_remove_console.assert_called_once_with(
+                source='departed-sf', uuid='orphan-uuid')
+            self.mock_db_delete_source.assert_called_once_with('departed-sf')
+
+    @mock.patch('os.path.exists', return_value=True)
     def test_parse_sources_cleanup_extra_sources(self, mock_exists):
         from kerbside import main
 
