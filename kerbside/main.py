@@ -59,9 +59,13 @@ def _parse_sources():
             )
         return
 
-    # The sources we successfully and completely enumerated this tick.
-    # Only these can support the inference the cleanup below makes.
+    # What we learned about each source this pass. The cleanup at the end
+    # is scoped to the sources we enumerated to exhaustion; the skipped
+    # set separates "declines to be scraped, by design" from "tried and
+    # failed", which is the only one of the two worth warning about.
+    configured_sources = set()
     scraped_sources = set()
+    skipped_sources = set()
 
     extra_sources = {}
     for source in kerbside_db.get_sources():
@@ -76,6 +80,7 @@ def _parse_sources():
         for source in sources:
             source_count = 0
             lookup = None
+            configured_sources.add(source['source'])
 
             if source['source'] in extra_sources:
                 del extra_sources[source['source']]
@@ -133,6 +138,7 @@ def _parse_sources():
                     lookup = static_source.StaticSource(**source)
                 elif source['type'] == 'openstack':
                     # OpenStack now uses auth tokens instead of console scraping
+                    skipped_sources.add(source['source'])
                     continue
                 else:
                     LOG.error('Unknown source type %s' % source['type'])
@@ -169,42 +175,27 @@ def _parse_sources():
             LOG.info('Source %s yielded %d consoles' % (source['source'], source_count))
             kerbside_db.set_source_error_state(source['source'], False)
 
-            # Reached only by falling off the end of the try block, so the
-            # source was enumerated all the way to exhaustion. Every path
-            # which gives up early -- an unknown type, a source which failed
-            # to initialise, an exception raised part way through the
-            # generator, or an openstack source which is not scraped at all
-            # -- continues before this line and is therefore absent below.
+            # Reached only by falling off the end of the try block, so this
+            # source was enumerated all the way to exhaustion. Every early
+            # exit above continues past this line by construction.
             scraped_sources.add(source['source'])
 
-    # Consoles we did not re-see this tick. "Did not see it" only means
-    # "it is gone" for a source we actually managed to enumerate: if a
-    # source errored, raised part way through, or was skipped, we learned
-    # nothing at all about its consoles and must not delete them.
+    # Consoles we did not re-see this pass. "I did not see it" only means
+    # "it is gone" for a source we actually enumerated: a source which
+    # errored, raised, or declined to be scraped told us nothing at all
+    # about its consoles, so we keep them rather than destroy an
+    # inventory over a transient failure.
     #
-    # Getting this wrong destroys data. A source which failed for any
-    # transient reason -- a network blip reaching the cluster, an API
-    # error, a CA mismatch during a rotation -- used to have its entire
-    # console inventory deleted here, including the direct and proxy
-    # routes which have nothing to do with whatever failed. Kerbside then
-    # rediscovers them on the next successful scrape, so it presents as a
-    # console outage rather than permanent loss, but it is an outage we
-    # caused ourselves out of a source being briefly unreachable.
+    # A source which is no longer configured is the exception. It is
+    # absent from configured_sources, so its consoles are deleted here and
+    # the source itself is deleted just below -- retaining them would
+    # orphan them forever, with nothing left to ever scrape them again.
     #
-    # A source removed from the configuration entirely is the one case
-    # where deleting without scraping is right: it is deleted just below,
-    # and leaving its consoles behind would orphan them forever. It is
-    # absent from scraped_sources and present in extra_sources.
-    #
-    # This subsumes the openstack special case which used to live here.
-    # Openstack sources continue before the scrape loop, so they are not
-    # in scraped_sources and are retained by the general rule -- and that
-    # rule is derived from what happened rather than from a hardcoded
-    # source type, so a future source which also declines to scrape is
-    # protected without anyone remembering to add it here.
+    # docs/console-sources.md carries the operator facing version of this,
+    # including why the retention is not time bounded.
     retained = {}
     for source, uuid in extra_consoles:
-        if source not in scraped_sources and source not in extra_sources:
+        if source in configured_sources and source not in scraped_sources:
             retained[source] = retained.get(source, 0) + 1
             continue
 
@@ -215,11 +206,18 @@ def _parse_sources():
             source, uuid, None, None, None, None, 'Console no longer available')
 
     # One line per source, not per console: a large unreachable cluster
-    # would otherwise bury the reason in thousands of identical lines.
+    # would otherwise bury the reason in thousands of identical lines. A
+    # source which is not scraped by design is not a fault and does not
+    # warn -- that would be every openstack source holding a console,
+    # every pass, forever, and a warning which always fires is one
+    # operators learn to filter out.
     for source in sorted(retained):
-        LOG.warning(
-            'Retained %d console(s) for source %s, which was not scraped '
-            'this pass' % (retained[source], source))
+        log = LOG.with_fields({'source': source, 'consoles': retained[source]})
+        if source in skipped_sources:
+            log.debug('Retained consoles for a source which is not scraped')
+        else:
+            log.warning('Retained consoles for a source which failed to '
+                        'scrape this pass')
 
     for source in extra_sources:
         kerbside_db.delete_source(source)

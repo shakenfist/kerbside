@@ -292,14 +292,15 @@ class ParseSourcesTestCase(testtools.TestCase):
                 source='test-sf', uuid='old-console-uuid')
 
     @mock.patch('os.path.exists', return_value=True)
-    def test_exception_mid_scrape_retains_the_inventory(self, mock_exists):
+    def test_source_construction_failure_retains_the_inventory(
+            self, mock_exists):
         """A source which raises must not have its consoles deleted.
 
         The cleanup infers "this console is gone" from "I did not see it
         this pass". That inference is only sound for a source we managed
-        to enumerate. A source which raised told us nothing at all, and
-        deleting on no information destroys the operator's console
-        inventory over a transient network error.
+        to enumerate. A source whose constructor raised told us nothing
+        at all, and deleting on no information destroys the operator's
+        console inventory over a transient network error.
         """
         from kerbside import main
 
@@ -324,6 +325,51 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.assertFalse(self.mock_db_remove_console.called)
             # The source is still marked errored -- retaining consoles is
             # not the same as pretending the scrape worked.
+            self.mock_db_set_source_error_state.assert_called_with(
+                'test-sf', True)
+
+    @mock.patch('os.path.exists', return_value=True)
+    def test_partial_scrape_retains_the_inventory(self, mock_exists):
+        """A generator which raises part way through retains everything.
+
+        This is the interesting failure: by the time the exception
+        arrives, extra_consoles has been partially drained, so the
+        consoles yielded before it are already out of the dict while the
+        ones after it are not. Neither may be deleted, because an
+        incomplete enumeration is not evidence about either of them.
+        """
+        from kerbside import main
+
+        def _partial():
+            yield {
+                'source': 'test-sf',
+                'uuid': 'seen-console-uuid',
+                'name': 'a-vm'
+            }
+            raise Exception('connection reset by peer')
+
+        with self._create_sources_yaml([{
+            'source': 'test-sf',
+            'type': 'shakenfist',
+            'url': 'http://localhost:13000',
+            'username': 'admin',
+            'password': 'secret'
+        }]):
+            self.mock_db_get_source.return_value = None
+            mock_lookup = mock.MagicMock()
+            mock_lookup.errored = False
+            mock_lookup.return_value = _partial()
+            self.mock_shakenfist_source.return_value = mock_lookup
+            self.mock_db_get_consoles.return_value = [
+                {'source': 'test-sf', 'uuid': 'seen-console-uuid',
+                 'name': 'a-vm'},
+                {'source': 'test-sf', 'uuid': 'unseen-console-uuid',
+                 'name': 'b-vm'},
+            ]
+
+            main._parse_sources()
+
+            self.assertFalse(self.mock_db_remove_console.called)
             self.mock_db_set_source_error_state.assert_called_with(
                 'test-sf', True)
 
@@ -478,6 +524,43 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_db_remove_console.assert_called_once_with(
                 source='departed-sf', uuid='orphan-uuid')
             self.mock_db_delete_source.assert_called_once_with('departed-sf')
+
+    @mock.patch('os.path.exists', return_value=True)
+    def test_orphaned_consoles_are_cleaned_up(self, mock_exists):
+        """A console whose source is gone from everywhere is deleted.
+
+        get_sources() filters out soft deleted rows, so a source removed
+        from sources.yaml on an earlier pass is in neither the
+        configuration nor extra_sources. Keying retention off what is
+        configured, rather than off what is left in extra_sources, reaps
+        these rather than pinning them in the database forever.
+        """
+        from kerbside import main
+
+        with self._create_sources_yaml([{
+            'source': 'test-sf',
+            'type': 'shakenfist',
+            'url': 'http://localhost:13000',
+            'username': 'admin',
+            'password': 'secret'
+        }]):
+            self.mock_db_get_source.return_value = None
+            self.mock_shakenfist_source.return_value = (
+                self._mock_source_lookup())
+            self.mock_db_get_sources.return_value = [
+                {'name': 'test-sf', 'type': 'shakenfist'},
+            ]
+            self.mock_db_get_consoles.return_value = [{
+                'source': 'long-gone-sf',
+                'uuid': 'orphan-uuid',
+                'name': 'a-vm'
+            }]
+
+            main._parse_sources()
+
+            self.mock_db_remove_console.assert_called_once_with(
+                source='long-gone-sf', uuid='orphan-uuid')
+            self.assertFalse(self.mock_db_delete_source.called)
 
     @mock.patch('os.path.exists', return_value=True)
     def test_parse_sources_cleanup_extra_sources(self, mock_exists):

@@ -56,6 +56,14 @@ Erroring still marks the source as errored in the administrative interface,
 which is where a persistent failure should be diagnosed from. Retaining
 consoles is not the same as reporting the source as healthy.
 
+Retention is not time bounded. A cluster which has been decommissioned but
+left in `sources.yaml` keeps its consoles listed indefinitely, and users can
+still be issued tokens for virtual machines which no longer exist. That is
+the deliberate trade: a transient failure is common and used to be silently
+destructive, whereas a permanently dead source is visible as an errored
+source in the administrative interface, and removing it from `sources.yaml`
+deletes it and its consoles on the next pass.
+
 ## Shaken Fist
 
 Shaken Fist sources are periodically scraped for their available consoles, but
