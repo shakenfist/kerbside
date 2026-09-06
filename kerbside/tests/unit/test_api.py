@@ -5,6 +5,7 @@ from unittest import mock
 import testtools
 
 from kerbside import api
+from kerbside import sf_token
 
 
 class GetNavItemsTestCase(testtools.TestCase):
@@ -236,6 +237,71 @@ class SfTokenApiTestCase(testtools.TestCase):
         # The jti is now recorded as used.
         mock_add_jti.assert_called_once_with('jti-1', self.claims['exp'])
         mock_create_token.assert_called_once_with('sf1', 'console-uuid')
+
+    # --- 12. pre-verification rejections are logged, never audited -------
+
+    @mock.patch('kerbside.api.db.add_audit_event')
+    def test_malformed_token_writes_no_audit_event(self, mock_audit):
+        # /sf-console.vv is unauthenticated by design and this rejection
+        # happens before any signature check, so anyone can drive it with a
+        # single round trip. An audit row here is an unbounded
+        # unauthenticated write into a table nothing reaps.
+        self.mock_verify.side_effect = sf_token.Malformed('nope')
+
+        resp = self.client.get('/sf-console.vv?token=not-a-jwt')
+
+        self.assertEqual(401, resp.status_code)
+        self.assertEqual('malformed token', resp.get_json()['error'])
+        mock_audit.assert_not_called()
+
+    @mock.patch('kerbside.api.db.add_audit_event')
+    def test_no_pre_verification_rejection_writes_an_audit_event(
+            self, mock_audit):
+        # Every arm of the verification try/except, not just the malformed
+        # one -- they are all reachable without a credential.
+        for error, message in [
+                (sf_token.Malformed, 'malformed token'),
+                (sf_token.UnknownKid, 'unknown signing key'),
+                (sf_token.BadSignature, 'invalid token signature'),
+                (sf_token.Expired, 'token expired'),
+                (sf_token.WrongAudience, 'token audience rejected'),
+                (sf_token.SfTokenError, 'token rejected')]:
+            self.mock_verify.side_effect = error('nope')
+
+            resp = self.client.get('/sf-console.vv?token=some.jwt.value')
+
+            self.assertEqual(401, resp.status_code)
+            self.assertEqual(message, resp.get_json()['error'])
+
+        mock_audit.assert_not_called()
+
+    @mock.patch('kerbside.api.db.add_audit_event')
+    @mock.patch('kerbside.api.db.sf_token_jti_exists', return_value=True)
+    def test_replayed_jti_still_writes_an_audit_event(
+            self, mock_exists, mock_audit):
+        # The other half of the contract: a POST-verification rejection has
+        # a verified source and console uuid to attribute, and costs an
+        # attacker a validly signed single-use token to provoke, so it
+        # stays audited.
+        resp = self.client.get('/sf-console.vv?token=some.jwt.value')
+
+        self.assertEqual(401, resp.status_code)
+        mock_audit.assert_called_once_with(
+            'sf1', 'console-uuid', None, None, None, None,
+            'Rejected Shaken Fist console token: token already used')
+
+    @mock.patch('kerbside.api.db.add_audit_event')
+    @mock.patch('kerbside.api.db.get_console', return_value=None)
+    @mock.patch('kerbside.api.db.add_sf_token_jti')
+    @mock.patch('kerbside.api.db.sf_token_jti_exists', return_value=False)
+    def test_unknown_console_still_writes_an_audit_event(
+            self, mock_exists, mock_add_jti, mock_get_console, mock_audit):
+        resp = self.client.get('/sf-console.vv?token=some.jwt.value')
+
+        self.assertEqual(404, resp.status_code)
+        mock_audit.assert_called_once_with(
+            'sf1', 'console-uuid', None, None, None, None,
+            'Rejected Shaken Fist console token: console not found')
 
     # --- 11. 404 does not burn the jti; a later retry succeeds -----------
 

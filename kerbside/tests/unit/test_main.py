@@ -443,3 +443,169 @@ class ParseSourcesTestCase(testtools.TestCase):
             # Both source types should be instantiated
             self.mock_static_source.assert_called_once()
             self.mock_shakenfist_source.assert_called_once()
+
+
+class _FakeResourceNotFound(Exception):
+    """Stand-in for shakenfist_client.apiclient.ResourceNotFoundException."""
+
+
+class SigningKeyFailureScrapeTestCase(testtools.TestCase):
+    """A source whose signing key fetch failed must still be scraped.
+
+    This is the regression guard whose absence let the defect ship. It
+    drives the real ShakenFistSource through main._parse_sources() -- only
+    the Shaken Fist API client and the db layer are mocked -- because the
+    damage was done by main's own control flow, not by the source class:
+    an errored source hits the `continue` before the scrape loop, and the
+    unconditional cleanup after that loop then deletes every console the
+    scrape did not re-report. Asserting on the source class alone cannot
+    see that, so this asserts on remove_console.
+    """
+
+    def setUp(self):
+        super().setUp()
+
+        config_patch = mock.patch('kerbside.main.config', fake_config)
+        config_patch.start()
+        self.addCleanup(config_patch.stop)
+
+        self.mocks = {}
+        for name, kwargs in [
+                ('get_sources', {'return_value': []}),
+                ('get_consoles', {'return_value': []}),
+                ('get_source', {'return_value': None}),
+                ('add_source', {}),
+                ('set_source_error_state', {}),
+                ('add_console', {'return_value': True}),
+                ('add_audit_event', {}),
+                ('remove_console', {}),
+                ('delete_source', {})]:
+            patcher = mock.patch('kerbside.db.%s' % name, **kwargs)
+            self.mocks[name] = patcher.start()
+            self.addCleanup(patcher.stop)
+
+        # The client module is imported by name at runtime, so a fake
+        # module carrying the exception class is what the source really
+        # sees.
+        fake_client_module = mock.Mock()
+        fake_client_module.ResourceNotFoundException = _FakeResourceNotFound
+        client_patch = mock.patch(
+            'kerbside.sources.shakenfist.SHAKENFIST_CLIENT',
+            fake_client_module)
+        client_patch.start()
+        self.addCleanup(client_patch.stop)
+
+    @contextmanager
+    def _sources_yaml(self, sources):
+        f = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
+        try:
+            yaml.dump(sources, f)
+            f.close()
+            fake_config.SOURCES_PATH = f.name
+            yield f.name
+        finally:
+            if os.path.exists(f.name):
+                os.unlink(f.name)
+
+    def _sf_client(self, keys_error):
+        client = mock.Mock()
+        client.get_cluster_cacert.return_value = 'CA'
+        client.get_vdi_token_public_keys.side_effect = keys_error
+        client.get_nodes.return_value = [{
+            'uuid': 'node-uuid-1', 'name': 'n1', 'fqdn': 'n1',
+            'ip': '10.0.0.1'}]
+        client.get_instances.return_value = [{
+            'uuid': 'console-uuid-1', 'state': 'created',
+            'video': {'vdi': 'spice'}, 'node': 'node-uuid-1',
+            'vdi_port': 5900, 'vdi_tls_port': 5901,
+            'name': 'vm1', 'namespace': 'proj'}]
+        return client
+
+    def _run(self, keys_error):
+        existing_console = {
+            'source': 'test-sf', 'uuid': 'console-uuid-1', 'name': 'vm1'}
+        self.mocks['get_consoles'].return_value = [existing_console]
+
+        with self._sources_yaml([{
+                'source': 'test-sf',
+                'type': 'shakenfist',
+                'url': 'http://localhost:13000',
+                'username': 'system',
+                'password': 'secret',
+                'ca_cert': 'CA'}]):
+            with mock.patch(
+                    'kerbside.sources.shakenfist._build_client',
+                    return_value=self._sf_client(keys_error)):
+                from kerbside import main
+                main._parse_sources()
+
+    def test_absent_signing_keys_do_not_delete_the_inventory(self):
+        # A cluster on which sf-ctl ensure-kerbside-signing-key has never
+        # been run 404s /admin/vditokenpubkey. That is a normal state.
+        self._run(_FakeResourceNotFound('404'))
+
+        # The console the source already had was NOT deleted as "no longer
+        # available". This is the assertion that matters: it is the one the
+        # defect broke, and it is checked first so a regression reports the
+        # deletion rather than the missing scrape that caused it.
+        self.mocks['remove_console'].assert_not_called()
+        # It was not deleted because the scrape ran and re-saw it.
+        self.mocks['add_console'].assert_called_once()
+        self.assertEqual(
+            'console-uuid-1',
+            self.mocks['add_console'].call_args[1]['uuid'])
+        # The source is healthy: only token exchange is unavailable.
+        self.mocks['set_source_error_state'].assert_called_with(
+            'test-sf', False)
+
+    def test_old_client_does_not_delete_the_inventory(self):
+        # shakenfist-client older than 0.8.3 has no
+        # get_vdi_token_public_keys() at all.
+        self._run(AttributeError('get_vdi_token_public_keys'))
+
+        self.mocks['remove_console'].assert_not_called()
+        self.mocks['add_console'].assert_called_once()
+        self.mocks['set_source_error_state'].assert_called_with(
+            'test-sf', False)
+
+    def test_genuine_key_fetch_failure_does_not_delete_the_inventory(self):
+        # Connection refused, auth failure, anything else.
+        self._run(Exception('connection refused'))
+
+        self.mocks['remove_console'].assert_not_called()
+        self.mocks['add_console'].assert_called_once()
+        self.mocks['set_source_error_state'].assert_called_with(
+            'test-sf', False)
+
+    def test_scrape_failure_still_errors_the_source(self):
+        # The separate, correct behaviour is untouched: when the scrape
+        # itself fails the source is errored, and the consoles it did not
+        # report are still cleaned up.
+        existing_console = {
+            'source': 'test-sf', 'uuid': 'console-uuid-1', 'name': 'vm1'}
+        self.mocks['get_consoles'].return_value = [existing_console]
+
+        client = self._sf_client(None)
+        client.get_vdi_token_public_keys.side_effect = None
+        client.get_vdi_token_public_keys.return_value = {
+            'active_kid': 'k', 'keys': []}
+        client.get_nodes.side_effect = Exception('cluster unreachable')
+
+        with self._sources_yaml([{
+                'source': 'test-sf',
+                'type': 'shakenfist',
+                'url': 'http://localhost:13000',
+                'username': 'system',
+                'password': 'secret',
+                'ca_cert': 'CA'}]):
+            with mock.patch(
+                    'kerbside.sources.shakenfist._build_client',
+                    return_value=client), \
+                 mock.patch(
+                    'kerbside.sources.shakenfist.db.upsert_sf_token_keys'):
+                from kerbside import main
+                main._parse_sources()
+
+        self.mocks['set_source_error_state'].assert_called_with(
+            'test-sf', True)
+        self.mocks['add_console'].assert_not_called()

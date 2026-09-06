@@ -678,15 +678,32 @@ class SfToken(sf_api.Resource):
         if not token:
             return sf_api.error(401, 'token absent')
 
-        # Verify the token entirely offline. On any typed failure record a
-        # best-effort rejected audit event and return a distinct 401. Before
-        # verification succeeds we have no trustworthy source/uuid, so use a
-        # fixed label. The token string is never placed in the message, the
-        # audit event, or a log line.
+        # Verify the token entirely offline. On any typed failure log the
+        # reason and return a distinct 401. The token string is never placed
+        # in the message or in a log line.
+        #
+        # These rejections are deliberately NOT audit events. This route is
+        # unauthenticated by design -- the Shaken Fist JWT is the credential
+        # -- and every rejection below happens before any signature check,
+        # so anyone at all can drive one with a single round trip and no
+        # credential. Nothing reaps audit_events (main.py reaps console
+        # tokens, jtis and session terminations, and nothing else), and
+        # kerbside has no rate limiting, so a row per rejection is an
+        # unbounded unauthenticated write: it fills the table at tens of
+        # millions of rows a day, drags down the per-console ordered LIMIT
+        # 20 audit scan get_consoles() does, and eventually exhausts the
+        # database volume -- taking console access down with it, including
+        # the operator break-glass path. Do not reintroduce the write
+        # without also reaping the table.
+        #
+        # Little is lost. These rows were written against the placeholder
+        # ('sf-console', '-') precisely because nothing here is trustworthy
+        # enough to attribute them to. The rejections BELOW that do have
+        # real attribution -- a verified source and console uuid, on an
+        # unknown console or a replayed jti -- remain audit events.
         def _reject_pre_verify(reason):
-            db.add_audit_event(
-                'sf-console', '-', None, None, None, None,
-                'Rejected Shaken Fist console token: %s' % reason)
+            LOG.with_fields({'reason': reason}).info(
+                'Rejected Shaken Fist console token before verification')
 
         try:
             claims = sf_token.verify_sf_token(token)
