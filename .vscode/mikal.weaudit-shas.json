@@ -81,10 +81,6 @@
       "sha": "cd7c80a6bf0b5aaf393b3ce9a542c53e41b22ba9",
       "date": "2026-08-18"
     },
-    "docs/console-sources.md": {
-      "sha": "d7f5bfd56c00f99929ec1727df7eac2d28b73979",
-      "date": "2026-08-13"
-    },
     "docs/use-cases/ovirt.md": {
       "sha": "0e0902827c2bbbb08bacc3267ee3c565737a59be",
       "date": "2026-08-13"
@@ -177,10 +173,6 @@
       "sha": "9508569169800aacfe7745b363175ac241ac6a7c",
       "date": "2026-08-07"
     },
-    "kerbside/sources/shakenfist.py": {
-      "sha": "3c77e7e7dbe0d539bc76feb56f9a31aedeebe5e2",
-      "date": "2026-08-07"
-    },
     "kerbside/tests/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-08"
@@ -203,10 +195,6 @@
     },
     "kerbside/tests/unit/test_db.py": {
       "sha": "5808da38cdd244412b6207148f92919c0d9df554",
-      "date": "2026-08-08"
-    },
-    "kerbside/tests/unit/test_main.py": {
-      "sha": "63a0fe30a432130d990e5d6ca37c430b6c3cc76e",
       "date": "2026-08-08"
     },
     "kerbside/tests/unit/test_rpc.py": {

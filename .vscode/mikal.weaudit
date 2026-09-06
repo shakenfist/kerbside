@@ -88,10 +88,6 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/sources/shakenfist.py",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/rpc/__init__.py",
       "author": "mikal"
     },
@@ -125,10 +121,6 @@
     },
     {
       "path": "kerbside/tests/unit/test_db.py",
-      "author": "mikal"
-    },
-    {
-      "path": "kerbside/tests/unit/test_main.py",
       "author": "mikal"
     },
     {
@@ -197,10 +189,6 @@
     },
     {
       "path": "docs/use-cases",
-      "author": "mikal"
-    },
-    {
-      "path": "docs/console-sources.md",
       "author": "mikal"
     },
     {
