@@ -61,7 +61,7 @@ dependencies = [
     "typing-extensions==4.16.0",        # (indirect dependency)
 
     # These also move as a set
-    "alembic==1.19.1",                  # mit
+    "alembic==1.19.2",                  # mit
     "sqlalchemy==2.0.52",               # mit
     "mysqlclient==2.2.8",               # gpl
 
