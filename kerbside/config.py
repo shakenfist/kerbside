@@ -145,9 +145,6 @@ class Config(BaseSettings):
         '',
         description=('The path to write logs to. If blank we use syslog, use '
                      'the special value of "stdout" for console logs.'))
-    LOG_OUTPUT_JSON: bool = Field(
-        False,
-        description='Set to true to output JSON log messages, one per line.')
     LOG_VERBOSE: bool = Field(
         False,
         description='Should we output debug logs?')
