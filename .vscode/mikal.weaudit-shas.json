@@ -89,20 +89,12 @@
       "sha": "558621b0e5ee59b1a61c784a96ea9f7281d3dcd1",
       "date": "2026-08-18"
     },
-    "etc/kerbside.conf.example": {
-      "sha": "60dad322b15b80e9d03c8918becd308fcf93e82f",
-      "date": "2026-08-18"
-    },
     "etc/kolla-ci-globals-overlay.yml": {
       "sha": "e11f4d65bca446150d6e2ed32a49a8fccfa0ebbc",
       "date": "2026-08-04"
     },
     "kerbside/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
-      "date": "2026-08-06"
-    },
-    "kerbside/config.py": {
-      "sha": "4fd3e643b8729661fd544fdea0e521f925f3c6b2",
       "date": "2026-08-06"
     },
     "kerbside/consoletoken.py": {
@@ -208,10 +200,6 @@
     "kerbside/tests/unit/test_sources_static.py": {
       "sha": "dee99ff7370d039b7b6bc97654de54c1542ff949",
       "date": "2026-08-08"
-    },
-    "kerbside/util.py": {
-      "sha": "499e55529e2c1d1a51d1042757c137d96069dd03",
-      "date": "2026-08-06"
     },
     "loadtests/latency/Dockerfile": {
       "sha": "d32a31d4f504020525a71a9ebf34209cfee4c81a",
