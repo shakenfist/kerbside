@@ -236,9 +236,6 @@ public_fqdn = kerbside.example.com
 # container.
 # log_output_path =
 
-# Emit one JSON object per log line.
-# log_output_json = false
-
 # Include debug logging.
 # log_verbose = false
 
