@@ -136,11 +136,14 @@ https://www.spice-space.org/spice-protocol.html.
   `# END_OF_INDIRECT_DEPS` in `pyproject.toml`.** The nightly
   `pin-indirect-dependencies.yml` job regenerates that block wholesale
   and deletes whatever it finds there. Add new direct dependencies
-  *above* the start marker, preferring an exact version. Packages that
-  must never be pinned carry a `# never-pin: <name>` comment — the
-  canonical case is pydantic-core, which each pydantic release
-  exact-pins itself, and which broke every CI install when Renovate
-  moved the two out of lockstep (PR #198). See "Dependency pinning" in
+  *above* the start marker, preferring an exact version, and put
+  anything the repository imports there as well — a pin in the
+  generated block lasts only as long as some other library keeps
+  requiring it. Packages that must never be pinned carry a
+  `# never-pin: <name>` comment — the canonical case is pydantic-core,
+  which each pydantic release exact-pins itself, and which broke every
+  CI install when Renovate moved the two out of lockstep (PR #198).
+  See "Dependency pinning" in
   [`docs/development.md`](docs/development.md).
 
 - **Never edit `kerbside/api/static/sfui/` in place.** It is a verbatim
