@@ -34,7 +34,8 @@ tox -e bindep
   (`kerbside/rpc/kerbside.proto`); cross-node coordination is via the
   shared database, never direct RPC
 - **Database**: MySQL/MariaDB via SQLAlchemy + Alembic migrations
-- **API**: Flask REST with JWT auth and Prometheus metrics
+- **API**: Flask REST with JWT auth; Prometheus metrics are served
+  by the Rust proxy
 - **Sources**: pluggable console discovery (Shaken Fist, oVirt, OpenStack)
 
 ## Key Files

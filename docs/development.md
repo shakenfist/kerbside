@@ -552,6 +552,21 @@ comment. The canonical case is pydantic-core, which each pydantic
 release exact-pins itself, and which broke every CI install when
 Renovate moved the two out of lockstep (PR #198).
 
+A dependency that is genuinely installed but never imported carries a
+`# not-imported: <name> -- <reason>` comment in the same array, and the
+reason after the `--` is required. Kerbside has five: `kerbside-proxy`
+(the wheel ships the proxy binary, which `find_proxy_bin()` execs),
+`gunicorn` (a command, not a library), `mysqlclient` and `PyMySQL` (the
+SQLAlchemy drivers for the two `SQL_URL` spellings this project
+documents), and `typing-extensions` (pinned to move in lockstep with
+pydantic). The `unused-declared-dependency` consistency audit reads the
+marker, and the reason is the part a future reader needs — whether a
+dependency can go is a question about how it is used, and by then
+whoever knew has forgotten. Anything without a reason to be there gets
+deleted instead: `bcrypt`, `flasgger`, `prometheus-client`, `psutil`
+and `pylogrus` all went that way in issue #399, and `flasgger` alone
+took six packages out of the install closure with it.
+
 Renovate also reads `.pre-commit-config.yaml`, because `renovate.json`
 turns its `pre-commit` manager on — it is opt-in, and a repository
 that leaves it off has its linters as the one set of pins nobody
