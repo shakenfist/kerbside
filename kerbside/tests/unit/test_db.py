@@ -160,3 +160,75 @@ class SfTokenKeysDbTestCase(testtools.TestCase):
             rows = session.query(db.SfTokenKeys).all()
         self.assertEqual(1, len(rows))
         self.assertEqual(second_fetch, rows[0].fetched_at)
+
+
+class SourceSecretsDbTestCase(testtools.TestCase):
+    """The database layer decides what a source looks like to a caller.
+
+    Issue #132: two API handlers each had to remember to strip the
+    backend cloud password, and one of them did not. get_source() and
+    get_sources() now return the non-secret representation by default,
+    so forgetting means returning less, not leaking more.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.engine = create_engine('sqlite://')
+        db.Base.metadata.create_all(
+            self.engine, tables=[db.Source.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+        db.add_source(
+            'sf1', 'shakenfist', 'https://sf.example.com/api', 'sfvdi',
+            'sekrit-source-password', ca_cert='CA-CERT-MARKER')
+
+    def test_get_source_omits_secrets_by_default(self):
+        source = db.get_source('sf1')
+
+        self.assertNotIn('password', source)
+        self.assertEqual('sf1', source['name'])
+
+    def test_get_source_with_secrets_is_opt_in(self):
+        source = db.get_source('sf1', include_secrets=True)
+
+        self.assertEqual('sekrit-source-password', source['password'])
+
+    def test_get_sources_omits_secrets_by_default(self):
+        sources = db.get_sources()
+
+        self.assertEqual(1, len(sources))
+        self.assertNotIn('password', sources[0])
+
+    def test_get_sources_with_secrets_is_opt_in(self):
+        sources = db.get_sources(include_secrets=True)
+
+        self.assertEqual('sekrit-source-password', sources[0]['password'])
+
+    def test_public_export_keeps_the_non_secret_fields(self):
+        # ca_cert is the public half of the backend's TLS identity, not
+        # a credential, and the sources page renders it. url and
+        # username are retained because the list endpoint has always
+        # returned them and removing them is a separate decision.
+        source = db.get_source('sf1')
+
+        self.assertEqual('CA-CERT-MARKER', source['ca_cert'])
+        self.assertEqual('https://sf.example.com/api', source['url'])
+        self.assertEqual('sfvdi', source['username'])
+
+    def test_public_export_removes_every_secret_field(self):
+        # Guards a future secret being added to the model and to
+        # export() without being added to SOURCE_SECRET_FIELDS.
+        source = db.get_source('sf1')
+
+        for field in db.SOURCE_SECRET_FIELDS:
+            self.assertNotIn(field, source)
+
+    def test_redact_source_tolerates_an_already_redacted_dict(self):
+        redacted = db.redact_source(db.get_source('sf1'))
+
+        self.assertNotIn('password', redacted)
+
+    def test_get_source_returns_none_when_absent(self):
+        self.assertIsNone(db.get_source('nosuch'))

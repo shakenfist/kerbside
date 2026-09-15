@@ -3,10 +3,10 @@
 {% block title %}Kerbside sources{% endblock %}
 
 {% block content %}
-{# Fields are named one by one, never iterated: the view passes
-   db.get_sources() dicts unfiltered, and they carry password, url,
-   username, project_name, user_domain_id and project_domain_id
-   alongside what is rendered here. #}
+{# Fields are named one by one, never iterated: db.get_sources()
+   removes the source secrets, but the dicts the view passes still
+   carry url, username, project_name, user_domain_id and
+   project_domain_id alongside what is rendered here. #}
 <div class="sf-table-scroll">
     <table class="sf-table sf-table--striped">
         <thead>

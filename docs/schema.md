@@ -107,6 +107,15 @@ Console sources (cloud platforms) that provide virtual machines.
 | project_domain_id | string | OpenStack project domain (OpenStack only) |
 | deleted | boolean | Soft delete flag |
 
+`password` is a live credential for the backend cloud's management
+plane, and is never returned by the REST API or rendered by the web UI.
+`db.get_source()` and `db.get_sources()` remove the fields listed in
+`db.SOURCE_SECRET_FIELDS` unless a caller opts in with
+`include_secrets=True`, which only the code paths that authenticate to
+a backend cloud do. `ca_cert` is deliberately not treated as a secret:
+it is the public half of the backend's TLS identity, the sources page
+renders it, and clients need it to validate the connection.
+
 ### consoles
 
 Virtual machine consoles discovered from sources.

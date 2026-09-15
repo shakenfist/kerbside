@@ -392,7 +392,10 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
         if not c:
             return sf_api.error(404, 'console not found')
 
-        s = db.get_source(source)
+        # This handler authenticates to the backend cloud to acquire an
+        # oVirt ticket, so it needs the source secrets. They must not
+        # leave this method.
+        s = db.get_source(source, include_secrets=True)
         if not s:
             return sf_api.error(404, 'source not found')
 
@@ -431,7 +434,7 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
                 ca_cert_data = f.read().replace('\n', '\\n')
             ca_cert = f'\nca={ca_cert_data}'
 
-        LOG.with_fields(c).with_fields(s).info(
+        LOG.with_fields(c).with_fields(db.redact_source(s)).info(
             'Providing virt-viewer direct configuration for console')
 
         vv = VIRTVIEWER_TEMPLATE % {
@@ -453,7 +456,9 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
 class ConsolesProxyVirtViewer(sf_api.Resource):
     @verify_token
     def get(self, source=None, uuid=None):
-        s = db.get_source(source)
+        # As for the direct handler above, this one may authenticate to
+        # the backend cloud, so it needs the source secrets.
+        s = db.get_source(source, include_secrets=True)
         if not s:
             return sf_api.error(404, 'source not found')
 
@@ -849,13 +854,11 @@ class Sources(sf_api.Resource):
                     refresh=True, when=datetime.datetime.now()),
                 mimetype='text/html')
         else:
-            sources = []
-            for source in db.get_sources():
-                del source['password']
-                sources.append(source)
-
+            # db.get_sources() has already removed the source secrets,
+            # for both this branch and the template above.
             resp = flask.Response(
-                json.dumps(sources, indent=4, sort_keys=True, cls=DateTimeEncoder),
+                json.dumps(db.get_sources(), indent=4, sort_keys=True,
+                           cls=DateTimeEncoder),
                 mimetype='application/json')
         resp.status_code = 200
         return resp
@@ -864,7 +867,9 @@ class Sources(sf_api.Resource):
 class Source(sf_api.Resource):
     @verify_token
     def get(self, uuid):
-        # This is a REST API only call
+        # This is a REST API only call. db.get_source() removes the
+        # source secrets unless it is asked for them, so this handler
+        # and the list handler above cannot drift apart.
         source = db.get_source(uuid)
         if not source:
             return sf_api.error(404, 'source not found')

@@ -1,10 +1,13 @@
+import json
 import os
+from sqlalchemy import create_engine
 import tempfile
 import time
 from unittest import mock
 import testtools
 
 from kerbside import api
+from kerbside import db
 from kerbside import sf_token
 
 
@@ -329,3 +332,78 @@ class SfTokenApiTestCase(testtools.TestCase):
         resp = self.client.get('/sf-console.vv?token=some.jwt.value')
         self.assertEqual(200, resp.status_code)
         mock_add_jti.assert_called_once_with('jti-1', self.claims['exp'])
+
+
+class SourceApiSecretsTestCase(testtools.TestCase):
+    """The source endpoints must never disclose a backend credential.
+
+    Issue #132: the list endpoint stripped the password in the handler
+    and the single source endpoint forgot to, so any JWT holder could
+    read the management plane credentials of any configured source.
+    The strip now lives in db.get_source()/db.get_sources(), so these
+    tests drive the real database layer through the Flask client rather
+    than mocking it -- a mocked db would only prove the handler passes
+    through whatever it is handed, which is exactly the thing that went
+    wrong.
+    """
+
+    def setUp(self):
+        super().setUp()
+
+        self.engine = create_engine('sqlite://')
+        db.Base.metadata.create_all(
+            self.engine, tables=[db.Source.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+        db.add_source(
+            'sf1', 'shakenfist', 'https://sf.example.com/api', 'sfvdi',
+            'sekrit-source-password', ca_cert='CA-CERT-MARKER')
+
+        api.app.config['TESTING'] = True
+        self.client = api.app.test_client()
+        jwt_patch = mock.patch(
+            'kerbside.api.verify_jwt_in_request', return_value=(None, {}))
+        jwt_patch.start()
+        self.addCleanup(jwt_patch.stop)
+
+    def test_single_source_does_not_disclose_the_password(self):
+        resp = self.client.get(
+            '/source/sf1', headers={'Accept': 'application/json'})
+
+        self.assertEqual(200, resp.status_code)
+        self.assertNotIn('sekrit-source-password', resp.get_data(as_text=True))
+        source = json.loads(resp.get_data(as_text=True))
+        self.assertNotIn('password', source)
+        # ...but the source is still described.
+        self.assertEqual('sf1', source['name'])
+        self.assertEqual('shakenfist', source['type'])
+
+    def test_source_list_does_not_disclose_the_password(self):
+        resp = self.client.get(
+            '/source', headers={'Accept': 'application/json'})
+
+        self.assertEqual(200, resp.status_code)
+        self.assertNotIn('sekrit-source-password', resp.get_data(as_text=True))
+        sources = json.loads(resp.get_data(as_text=True))
+        self.assertEqual(1, len(sources))
+        self.assertNotIn('password', sources[0])
+
+    def test_both_endpoints_return_the_same_fields(self):
+        # The two handlers drifting apart is the bug, so assert they
+        # cannot: whatever one of them exposes, the other exposes too.
+        single = json.loads(self.client.get(
+            '/source/sf1',
+            headers={'Accept': 'application/json'}).get_data(as_text=True))
+        listed = json.loads(self.client.get(
+            '/source',
+            headers={'Accept': 'application/json'}).get_data(as_text=True))
+
+        self.assertEqual(sorted(single.keys()), sorted(listed[0].keys()))
+
+    def test_unknown_source_is_a_404(self):
+        resp = self.client.get(
+            '/source/nosuch', headers={'Accept': 'application/json'})
+
+        self.assertEqual(404, resp.status_code)

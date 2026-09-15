@@ -84,7 +84,10 @@ def _parse_sources():
 
             if source['source'] in extra_sources:
                 del extra_sources[source['source']]
-            stored_source = kerbside_db.get_source(source['source'])
+            # The comparison below includes the password, so this
+            # one lookup asks for the secrets.
+            stored_source = kerbside_db.get_source(
+                source['source'], include_secrets=True)
 
             # If this source is new, record it with the configured CA cert
             # (if any).
@@ -111,9 +114,17 @@ def _parse_sources():
                         new_value = source.get(field)
 
                     if stored_source[field] != new_value:
+                        # Log that a secret changed, never its value.
+                        if field in kerbside_db.SOURCE_SECRET_FIELDS:
+                            old_logged = new_logged = '<redacted>'
+                        else:
+                            old_logged = stored_source[field]
+                            new_logged = source.get(field)
+
                         LOG.with_fields({
-                            'old': stored_source[field],
-                            'new': source.get(field)
+                            'field': field,
+                            'old': old_logged,
+                            'new': new_logged
                             }).info('Source configuration changed for source %s'
                                     % source['source'])
                         dirty = True

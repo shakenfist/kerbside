@@ -49,6 +49,22 @@ class ReusedJti(Exception):
     ...
 
 
+# The source fields which are credentials. They are stored so that the
+# daemon can authenticate to the backend cloud, and must never reach an
+# API client, a rendered template or a log line. redact_source() and
+# Source.export_public() remove them; Source.export() keeps them and is
+# the deliberate exception for the code paths which do authenticate.
+SOURCE_SECRET_FIELDS = ['password']
+
+
+def redact_source(source: dict) -> dict:
+    """Return a copy of a source dict with the secret fields removed."""
+    out = dict(source)
+    for field in SOURCE_SECRET_FIELDS:
+        out.pop(field, None)
+    return out
+
+
 class Source(Base):
     __tablename__ = 'sources'
 
@@ -85,7 +101,14 @@ class Source(Base):
         self.project_domain_id = project_domain_id
         self.deleted = deleted
 
-    def export(self):
+    def export(self) -> dict:
+        """Export the source, secrets included.
+
+        This is only for the code which must authenticate to the
+        backend cloud. Anything which returns a source to an API
+        client, renders it in a template, or logs it must use
+        export_public() instead.
+        """
         return {
             'name': self.name,
             'type': self.type,
@@ -101,6 +124,16 @@ class Source(Base):
             'project_domain_id': self.project_domain_id,
             'deleted': self.deleted
         }
+
+    def export_public(self) -> dict:
+        """Export the source with SOURCE_SECRET_FIELDS removed.
+
+        ca_cert is deliberately retained. It is the public half of the
+        backend's TLS identity rather than a credential, the sources
+        page renders it, and a client needs it to validate the
+        connection it is being pointed at.
+        """
+        return redact_source(self.export())
 
 
 def add_source(name, type, url, username, password, project_name=None,
@@ -132,7 +165,12 @@ def add_source(name, type, url, username, password, project_name=None,
             session.commit()
 
 
-def get_sources():
+def get_sources(*, include_secrets: bool = False) -> list:
+    """Fetch every source which has not been deleted.
+
+    The secret fields are removed unless include_secrets is set, which
+    only the code paths authenticating to a backend cloud may do.
+    """
     out = []
     with Session(ENGINE) as session:
         try:
@@ -140,17 +178,27 @@ def get_sources():
                     filter(Source.deleted == False).\
                     order_by(Source.name).\
                     all():                                          # noqa: E712
-                out.append(source.export())
+                if include_secrets:
+                    out.append(source.export())
+                else:
+                    out.append(source.export_public())
         except exc.NoResultFound:
             ...
     return out
 
 
-def get_source(name):
+def get_source(name, *, include_secrets: bool = False):
+    """Fetch a single source by name, or None.
+
+    The secret fields are removed unless include_secrets is set, which
+    only the code paths authenticating to a backend cloud may do.
+    """
     with Session(ENGINE) as session:
         try:
             source = session.query(Source).filter(Source.name == name).one()
-            return source.export()
+            if include_secrets:
+                return source.export()
+            return source.export_public()
         except exc.NoResultFound:
             return None
 
