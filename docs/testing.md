@@ -496,6 +496,21 @@ master topology on `debian:13`, so this matches upstream rather than
 diverging from it. The containers Kolla builds are Debian trixie
 regardless of the guest, and are unaffected.
 
+The `workflow_dispatch` menu still offers a
+`kolla-ansible-master-debian-12` target alongside
+`kolla-ansible-master-debian-13`. Both select the same job and both
+provision a Debian 13 guest — there is no Debian 12 lane any more.
+The old spelling is kept only because `kerbside-patches`'
+`trigger-downstream.yml` dispatches it by name on every develop push,
+and a `workflow_dispatch` `choice` input rejects a value absent from
+its option list, so removing it would break that trigger outright.
+GitHub offers no way to label a choice option as deprecated, but the
+job reports itself by `matrix.test.description`, so a run started
+from the old name still announces the Debian 13 guest. Prefer the
+`debian-13` spelling; the other disappears once
+[shakenfist/kerbside-patches#1706](https://github.com/shakenfist/kerbside-patches/issues/1706)
+lands.
+
 The `tempest-plugin/` directory is a separate releasable that
 contributes Kerbside-specific Tempest tests; see
 `tempest-plugin/README.md` for what it covers.
