@@ -419,6 +419,18 @@ make -C rust/kerbside-proxy test    # cargo test
 make -C rust/kerbside-proxy lint    # cargo fmt --check + clippy -D warnings
 ```
 
+The Docker base sets the floor the *built binary* needs, not just the
+build: the Makefile writes `target/` back to the host, and
+`proxy_supervisor.find_proxy_bin()` then execs it on your own machine.
+The image is `rust:slim-trixie`, so that floor is glibc 2.41. On a host
+older than that -- Debian 12 is 2.36, Ubuntu 24.04 LTS is 2.39 -- the
+build succeeds and the daemon's child then dies with `version
+GLIBC_2.4x not found`. Build the manylinux wheel with
+`tools/build-proxy-wheel.sh` instead: zig pins it to glibc 2.28, which
+runs everywhere the image's output does and then some. That is the same
+property that makes the CI wheel correct for the oVirt lane's Rocky 8
+target, which is glibc 2.28 exactly.
+
 `build.rs` generates the tonic gRPC client from the same
 `kerbside/rpc/kerbside.proto` the Python side uses (vendored protoc, no
 system protobuf needed). The generator is `tonic-prost-build` and the
@@ -558,7 +570,7 @@ hook disagree about what passes:
   version the `sanity_checks` job installs into its test venv. CI
   installs the linter rather than using `stbenjam/skillsaw@v0`: that
   composite action begins with `actions/setup-python` pinned to a
-  version `actions/python-versions` publishes no Debian 12 build of,
+  version `actions/python-versions` publishes no Debian build of,
   and the self-hosted runners carry no tool cache, so the action fails
   before it lints anything.
 

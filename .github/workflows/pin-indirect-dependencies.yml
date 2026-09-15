@@ -59,7 +59,7 @@ jobs:
     # workload is light -- but the size must stay explicit, because label
     # matching is a subset test and an unsized job is eligible for any vm
     # in the pool, including an xl a Rust build is queued for.
-    runs-on: [self-hosted, vm, debian-12, m]
+    runs-on: [self-hosted, vm, debian-13, m]
     timeout-minutes: 60
     env:
       http_proxy: http://192.168.1.15:3128

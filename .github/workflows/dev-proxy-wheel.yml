@@ -99,12 +99,12 @@ jobs:
     # publish behind it. A cold build plus the aarch64 zig cross fits well
     # inside an hour.
     timeout-minutes: 60
-    # The vm/debian-12 runner carries the Rust build environment the crate
+    # The vm/debian-13 runner carries the Rust build environment the crate
     # needs (same runner as rust.yml and release.yml). aarch64 is
     # cross-compiled here with zig, so no aarch64 runner is required. xl: each
     # matrix leg is a full cold release build, which is CPU-bound; be
     # explicit, since an unsized vm label defaults to xs (1 core / 2 GB).
-    runs-on: [self-hosted, vm, debian-12, xl]
+    runs-on: [self-hosted, vm, debian-13, xl]
     strategy:
       # Do not let one architecture's flake (or a runner dying mid-build)
       # cancel the other leg -- each arch is independent.

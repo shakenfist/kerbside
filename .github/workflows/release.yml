@@ -70,12 +70,12 @@ jobs:
 
   build-proxy-wheels:
     name: Build kerbside-proxy wheels
-    # The vm/debian-12 runner carries the Rust build environment the crate
+    # The vm/debian-13 runner carries the Rust build environment the crate
     # needs (same runner as rust.yml). aarch64 is cross-compiled here with
     # zig, so no aarch64 runner is required. xl: each matrix leg is a full
     # cold release build (native x86_64 or zig cross), which is CPU-bound;
     # be explicit, since an unsized vm label defaults to xs (1 core / 2 GB).
-    runs-on: [self-hosted, vm, debian-12, xl]
+    runs-on: [self-hosted, vm, debian-13, xl]
     strategy:
       # Do not let one architecture's flake (or a runner dying mid-build)
       # cancel the other leg -- each arch is independent.
@@ -138,10 +138,12 @@ jobs:
     # /usr/local/bin) and writes global git config -- so it belongs on an
     # ephemeral vm runner, not the shared static pool. Static grants no
     # passwordless sudo (the mv would fail) and carries no OS label, so
-    # `[self-hosted, debian-12, static]` matched no runner and queued
-    # forever. vm has sudo, is throwaway, and takes an OS + size label. s:
-    # tiny job (download a binary, sign, push).
-    runs-on: [self-hosted, vm, debian-12, s]
+    # `[self-hosted, <os>, static]` matched no runner and queued forever
+    # -- the os of the day was debian-12 when that happened, but the
+    # lesson is about combining an OS label with static, not about that
+    # release. vm has sudo, is throwaway, and takes an OS + size label.
+    # s: tiny job (download a binary, sign, push).
+    runs-on: [self-hosted, vm, debian-13, s]
     environment: release
 
     permissions:

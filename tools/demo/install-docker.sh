@@ -4,22 +4,30 @@
 # The demo lane is the first container build in kerbside CI, and the
 # runner image has no docker at all: tools/demo/probe-runner.sh reported
 # `docker is not installed on this runner` on
-# [self-hosted, vm, debian-12, l].
+# [self-hosted, vm, debian-13, l].
 #
-# Debian 12 cannot supply what the demo needs either, which is why this
-# uses Docker's own apt repository rather than the distribution's:
+# This uses Docker's own apt repository rather than the distribution's.
+# On bookworm, which this lane ran on until Debian 12 went end of life,
+# that was the only thing that worked:
 #
-#   - bookworm ships docker.io 20.10.24, below the 23.0 that
-#     demo/Dockerfile's `RUN --mount=type=bind` needs from the built-in
-#     BuildKit frontend (see probe-runner.sh for why the Dockerfile
-#     cannot just carry a `# syntax=` directive instead);
-#   - bookworm has no docker-compose-v2 package at all. Its only compose
-#     is 1.29.2, the end-of-life python implementation, which does not
-#     provide the `docker compose` subcommand the demo documents.
+#   - docker.io was 20.10.24, below the 23.0 that demo/Dockerfile's
+#     `RUN --mount=type=bind` needs from the built-in BuildKit frontend
+#     (see probe-runner.sh for why the Dockerfile cannot just carry a
+#     `# syntax=` directive instead);
+#   - and the only compose in the archive was 1.29.2, the end-of-life
+#     python implementation, which does not provide the `docker compose`
+#     subcommand the demo documents.
 #
-# demo/README.md points a human at the same place, and names the
-# bookworm trap explicitly, so the lane and the documentation stay the
-# same story.
+# Trixie clears both bars: docker.io is 26.1.5, and docker-compose is
+# 2.26.1 installed at /usr/libexec/docker/cli-plugins/docker-compose,
+# i.e. as a real plugin. So on this runner `apt install docker.io
+# docker-compose` would now satisfy have_usable_docker() below -- which
+# is exactly the case the idempotence note further down anticipates, and
+# the reason nothing here needs to change if a future runner image
+# arrives with the distribution packages already on it. Docker's
+# repository stays because it is what Docker's own instructions assume
+# and what demo/README.md points a human at, so the lane and the
+# documentation stay the same story.
 #
 # Idempotent on purpose: if the runner image ever grows a new enough
 # docker, the apt install below is skipped and the lane stops paying for

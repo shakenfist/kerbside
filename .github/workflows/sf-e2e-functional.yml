@@ -83,7 +83,7 @@ jobs:
     if: >-
       github.event_name != 'merge_group'
       && needs.check_paths.outputs.code_changed != 'false'
-    runs-on: [self-hosted, vm, debian-12, l]
+    runs-on: [self-hosted, vm, debian-13, l]
     timeout-minutes: 120
 
     # The single-node SF API and kerbside both live on the primary and are
