@@ -69,7 +69,7 @@ dependencies = [
     # the only array the undeclared direct dependency audit reads, and
     # because both are installed by an ordinary install regardless.
     "packaging==26.3",                  # apache2/bsd
-    "PyJWT==2.13.0",                    # mit
+    "PyJWT==2.14.0",                    # mit
     "requests==2.34.2",                 # apache2
     "urllib3==2.7.0",                   # mit
 
