@@ -1,6 +1,18 @@
 {
   "version": 1,
   "files": {
+    ".claude/CLAUDE.md": {
+      "sha": "df3ebef567fb554bf8d05bc2e2df31b5ab9bf606",
+      "date": "2026-09-17"
+    },
+    ".claude/skills/add-database-migration/SKILL.md": {
+      "sha": "1eff02777bc5d05db960a82fc5dab8491ef4c207",
+      "date": "2026-09-17"
+    },
+    ".claude/skills/add-source-type/SKILL.md": {
+      "sha": "a8721f2f61e3fc43ac7aa3739f13716a811f1b37",
+      "date": "2026-09-17"
+    },
     ".github/workflows/codeql-analysis.yml": {
       "sha": "296eca7815ac6582bf4fa9d0714869ac1eab574a",
       "date": "2026-08-18"

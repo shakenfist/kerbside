@@ -502,6 +502,34 @@
     {
       "path": ".github/workflows/pypi-storage-check.yml",
       "author": "mikal"
+    },
+    {
+      "path": ".claude/skills/add-database-migration/SKILL.md",
+      "author": "mikal"
+    },
+    {
+      "path": ".claude/skills/add-database-migration",
+      "author": "mikal"
+    },
+    {
+      "path": ".claude/skills/add-source-type/SKILL.md",
+      "author": "mikal"
+    },
+    {
+      "path": ".claude/skills/add-source-type",
+      "author": "mikal"
+    },
+    {
+      "path": ".claude/skills",
+      "author": "mikal"
+    },
+    {
+      "path": ".claude/CLAUDE.md",
+      "author": "mikal"
+    },
+    {
+      "path": ".claude",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
