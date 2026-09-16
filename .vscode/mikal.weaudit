@@ -32,10 +32,6 @@
       "author": "mikal"
     },
     {
-      "path": "AUTHORS",
-      "author": "mikal"
-    },
-    {
       "path": "rust/kerbside-proxy/src/rpc.rs",
       "author": "mikal"
     },
@@ -81,10 +77,6 @@
     },
     {
       "path": "kerbside/rpc/__init__.py",
-      "author": "mikal"
-    },
-    {
-      "path": "kerbside/rpc/kerbside_pb2_grpc.pyi",
       "author": "mikal"
     },
     {

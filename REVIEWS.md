@@ -28,7 +28,6 @@ for how this works, including how to verify the attestations.
 | .github/workflows/pypi-storage-check.yml | mikal | 2026-08-24 | b4ea2a75e61a |
 | .github/workflows/rust.yml | mikal | 2026-08-18 | 5e419f673f63 |
 | .github/workflows/sf-e2e-functional.yml | mikal | 2026-08-18 | 9a54f8284dd2 |
-| AUTHORS | mikal | 2026-08-04 | 52747656c9ce |
 | demo/Dockerfile | mikal | 2026-08-18 | e94b4457477d |
 | demo/demo-env.sh | mikal | 2026-08-18 | a5cbc188afcb |
 | demo/entrypoint.sh | mikal | 2026-08-18 | 8401f99b8352 |
@@ -54,7 +53,6 @@ for how this works, including how to verify the attestations.
 | kerbside/migrations/versions/e1a4c7d2f9b6_auditevents_pid_as_string.py | mikal | 2026-08-18 | d5b53b8aede6 |
 | kerbside/migrations/versions/f7b2e9c4a1d8_drop_proxychannels_session_id_fk.py | mikal | 2026-08-18 | be35c384ab3c |
 | kerbside/rpc/__init__.py | mikal | 2026-08-07 | e69de29bb2d1 |
-| kerbside/rpc/kerbside_pb2_grpc.pyi | mikal | 2026-08-07 | 9e17e6659153 |
 | kerbside/rpc/server.py | mikal | 2026-08-07 | d6af35e9ff27 |
 | kerbside/rpc/servicer.py | mikal | 2026-08-07 | 0dcac8b48e87 |
 | kerbside/sources/base.py | mikal | 2026-08-07 | 950856916980 |

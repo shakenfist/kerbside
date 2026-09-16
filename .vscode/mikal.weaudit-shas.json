@@ -45,10 +45,6 @@
       "sha": "9a54f8284dd2c5875d6ea51f1c85e595a88c37e8",
       "date": "2026-08-18"
     },
-    "AUTHORS": {
-      "sha": "52747656c9ce3a27509516db50abacb7930c8ca2",
-      "date": "2026-08-04"
-    },
     "demo/Dockerfile": {
       "sha": "e94b4457477d238ad2f2f5cc143a8859eff0145a",
       "date": "2026-08-18"
@@ -147,10 +143,6 @@
     },
     "kerbside/rpc/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
-      "date": "2026-08-07"
-    },
-    "kerbside/rpc/kerbside_pb2_grpc.pyi": {
-      "sha": "9e17e6659153acb4da822eb9842a16ba4419b4d1",
       "date": "2026-08-07"
     },
     "kerbside/rpc/server.py": {
