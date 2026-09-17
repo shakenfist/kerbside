@@ -582,11 +582,27 @@ jobs:
           . $GITHUB_ENV
 
           # Use the pre-cached desktop image (with qemu-guest-agent and
-          # spice-vdagent pre-installed) from the CI runner
+          # spice-vdagent pre-installed) from the CI runner's
+          # dependencies disk. Accept either name: the snapshot is
+          # moving from Debian 12 to Debian 13 and the cached file is
+          # renamed with it, but each cluster only picks that up when it
+          # rebuilds its dependencies disk. Tolerating both names means
+          # this workflow works whether or not that rebuild has happened
+          # here yet, so the two changes can merge in either order.
+          #
+          # The debian-12 fallback is transitional: delete it once every
+          # cluster has rebuilt its dependencies disk onto the Debian 13
+          # snapshot. The local name is deliberately release-neutral so
+          # a future desktop bump does not touch this file at all.
+          image=/srv/ci/cached/debian-13-gnome-agents
+          if [ ! -f "$image" ]; then
+              image=/srv/ci/cached/debian-12-gnome-agents
+          fi
+
           scp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
-              /srv/ci/cached/debian-12-gnome-agents \
-              ${{ matrix.test.baseuser }}@10.0.2.2:/srv/debian-12-gnome-agents.qcow2
+              "$image" \
+              ${{ matrix.test.baseuser }}@10.0.2.2:/srv/desktop-agents.qcow2
 
       - name: Create SPICE test target VM
         run: |
@@ -606,7 +622,7 @@ jobs:
                   --host-address ${{ matrix.test.hostname }}.local \
                   --host-password foobar \
                   --storage-path /srv/ovirt-storage \
-                  --disk-image /srv/debian-12-gnome-agents.qcow2"
+                  --disk-image /srv/desktop-agents.qcow2"
 
       - name: Create a second VM with no SPICE console
         # kerbside's oVirt source must skip a VM it cannot broker and
