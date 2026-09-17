@@ -332,3 +332,33 @@ Whichever you pick, the pieces described in
 the same, and two references apply throughout:
 [configuration.md](configuration.md) for every setting, and
 [console-sources.md](console-sources.md) for configuring sources.
+
+## Upgrading
+
+`kerbside db upgrade` is the whole of a normal upgrade — see
+[What a running Kerbside needs](#what-a-running-kerbside-needs). This
+section records the upgrades which need something from you as well.
+
+### Upgrading past the source credential disclosure
+
+Before this release, `GET /source/<name>` returned the source record
+verbatim, including the cleartext password Kerbside uses to
+authenticate to the backend cloud, to any holder of a valid API token.
+The `.vv` handler for direct connections separately wrote the same
+credential into the daemon log on every request.
+
+Both are fixed in code, but code cannot reach backwards. If you ran an
+earlier release:
+
+- **Rotate the credentials in `sources.yaml`** — the oVirt, OpenStack
+  or Shaken Fist service account password for every configured source
+  — and restart the daemon so it picks them up. Anyone who held an API
+  token, and anyone who could read the daemon's log, could have read
+  the old ones.
+- **Scrub or expire the daemon logs** from before the upgrade,
+  including anywhere they were shipped: a log aggregator, a backup, a
+  support bundle, or CI artifacts from a deployment lane.
+
+The credentials being rotated are management plane accounts on the
+cloud Kerbside proxies for, so they are worth treating as a real
+exposure rather than a formality.

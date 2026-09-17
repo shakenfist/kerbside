@@ -49,20 +49,24 @@ class ReusedJti(Exception):
     ...
 
 
+# The source fields which may be returned to an API client, rendered in
+# a template, or logged. This is an allowlist, and that is the whole
+# point: a column added to the model and to Source.export() is private
+# until someone names it here, so the cost of forgetting a step is a
+# field which does not appear rather than a credential which does.
+# Issue #132 was a forgotten step in the other direction.
+SOURCE_PUBLIC_FIELDS = [
+    'name', 'type', 'last_seen', 'seen_by', 'errored', 'url', 'ca_cert',
+    'username', 'project_name', 'user_domain_id', 'project_domain_id',
+    'deleted'
+]
+
 # The source fields which are credentials. They are stored so that the
-# daemon can authenticate to the backend cloud, and must never reach an
-# API client, a rendered template or a log line. redact_source() and
-# Source.export_public() remove them; Source.export() keeps them and is
-# the deliberate exception for the code paths which do authenticate.
+# daemon can authenticate to the backend cloud. This list does not
+# decide what export_public() returns -- SOURCE_PUBLIC_FIELDS does --
+# it names the values which must not be written to a log line even
+# when the surrounding code legitimately holds them.
 SOURCE_SECRET_FIELDS = ['password']
-
-
-def redact_source(source: dict) -> dict:
-    """Return a copy of a source dict with the secret fields removed."""
-    out = dict(source)
-    for field in SOURCE_SECRET_FIELDS:
-        out.pop(field, None)
-    return out
 
 
 class Source(Base):
@@ -126,14 +130,17 @@ class Source(Base):
         }
 
     def export_public(self) -> dict:
-        """Export the source with SOURCE_SECRET_FIELDS removed.
+        """Export only the SOURCE_PUBLIC_FIELDS of the source.
 
-        ca_cert is deliberately retained. It is the public half of the
+        ca_cert is deliberately public. It is the public half of the
         backend's TLS identity rather than a credential, the sources
         page renders it, and a client needs it to validate the
-        connection it is being pointed at.
+        connection it is being pointed at. url and username are public
+        because the list endpoint has always returned them; narrowing
+        that is an API change rather than part of closing #132.
         """
-        return redact_source(self.export())
+        source = self.export()
+        return {field: source[field] for field in SOURCE_PUBLIC_FIELDS}
 
 
 def add_source(name, type, url, username, password, project_name=None,
@@ -165,11 +172,12 @@ def add_source(name, type, url, username, password, project_name=None,
             session.commit()
 
 
-def get_sources(*, include_secrets: bool = False) -> list:
+def get_sources(*, include_secrets: bool = False) -> list[dict]:
     """Fetch every source which has not been deleted.
 
-    The secret fields are removed unless include_secrets is set, which
-    only the code paths authenticating to a backend cloud may do.
+    Only SOURCE_PUBLIC_FIELDS are returned unless include_secrets is
+    set, which only the code paths authenticating to a backend cloud
+    may do.
     """
     out = []
     with Session(ENGINE) as session:
@@ -187,11 +195,13 @@ def get_sources(*, include_secrets: bool = False) -> list:
     return out
 
 
-def get_source(name, *, include_secrets: bool = False):
+def get_source(name: str, *, include_secrets: bool = False) -> dict | None:
     """Fetch a single source by name, or None.
 
-    The secret fields are removed unless include_secrets is set, which
-    only the code paths authenticating to a backend cloud may do.
+    Only SOURCE_PUBLIC_FIELDS are returned unless include_secrets is
+    set, which only the code paths authenticating to a backend cloud
+    may do. Soft deleted sources are returned; get_sources() hides
+    them, so the two do not agree on which sources exist.
     """
     with Session(ENGINE) as session:
         try:

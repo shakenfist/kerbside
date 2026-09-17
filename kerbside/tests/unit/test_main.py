@@ -172,6 +172,55 @@ class ParseSourcesTestCase(testtools.TestCase):
             main._parse_sources()
             # Should be called to update the source due to changed url and password
             self.mock_db_add_source.assert_called_once()
+            # The comparison loop reads stored_source['password'], so the
+            # opt in is required rather than tidy: without it get_source()
+            # returns a dict with no password key and the KeyError escapes
+            # _parse_sources() into the maintenance loop, taking every
+            # other source with it.
+            self.mock_db_get_source.assert_called_once_with(
+                'test-sf', include_secrets=True)
+
+    @mock.patch('os.path.exists', return_value=True)
+    def test_parse_sources_does_not_log_a_changed_password(self, mock_exists):
+        from kerbside import main
+
+        with self._create_sources_yaml([{
+            'source': 'test-sf',
+            'type': 'shakenfist',
+            'url': 'http://localhost:13000',
+            'username': 'admin',
+            'password': 'newsecret'
+        }]):
+            existing_source = {
+                'name': 'test-sf',
+                'type': 'shakenfist',
+                'url': 'http://localhost:13000',
+                'username': 'admin',
+                'password': 'oldsecret',
+                'project_name': None,
+                'user_domain_id': None,
+                'project_domain_id': None,
+                'deleted': False,
+                'ca_cert': None
+            }
+
+            self.mock_shakenfist_source.return_value = self._mock_source_lookup()
+            self.mock_db_get_source.return_value = existing_source
+
+            with mock.patch.object(main, 'LOG') as mock_log:
+                main._parse_sources()
+
+            logged = [c.args[0] for c in mock_log.with_fields.call_args_list]
+
+            # The change is reported...
+            self.assertIn(
+                {'field': 'password', 'old': '<redacted>',
+                 'new': '<redacted>'},
+                logged)
+            # ...but neither the credential it replaced nor the one it
+            # replaced it with appears anywhere in the log fields.
+            self.assertNotIn('oldsecret', repr(logged))
+            self.assertNotIn('newsecret', repr(logged))
 
     @mock.patch('os.path.exists', return_value=True)
     def test_parse_sources_openstack_skipped(self, mock_exists):

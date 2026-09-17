@@ -4,9 +4,9 @@
 
 {% block content %}
 {# Fields are named one by one, never iterated: db.get_sources()
-   removes the source secrets, but the dicts the view passes still
-   carry url, username, project_name, user_domain_id and
-   project_domain_id alongside what is rendered here. #}
+   returns only db.SOURCE_PUBLIC_FIELDS, but that still includes url,
+   username, project_name, user_domain_id and project_domain_id
+   alongside what is rendered here. #}
 <div class="sf-table-scroll">
     <table class="sf-table sf-table--striped">
         <thead>

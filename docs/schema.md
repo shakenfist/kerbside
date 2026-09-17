@@ -109,12 +109,27 @@ Console sources (cloud platforms) that provide virtual machines.
 
 `password` is a live credential for the backend cloud's management
 plane, and is never returned by the REST API or rendered by the web UI.
-`db.get_source()` and `db.get_sources()` remove the fields listed in
-`db.SOURCE_SECRET_FIELDS` unless a caller opts in with
+`db.get_source()` and `db.get_sources()` return only the fields listed
+in `db.SOURCE_PUBLIC_FIELDS` unless a caller opts in with
 `include_secrets=True`, which only the code paths that authenticate to
-a backend cloud do. `ca_cert` is deliberately not treated as a secret:
-it is the public half of the backend's TLS identity, the sources page
-renders it, and clients need it to validate the connection.
+a backend cloud do. That list is an allowlist rather than a list of
+things to strip, so a column added to the table is private until
+somebody decides otherwise.
+
+Three of the public fields are worth naming explicitly, because each
+could plausibly have gone the other way:
+
+- `ca_cert` is the public half of the backend's TLS identity rather
+  than a credential. The sources page renders it and clients need it
+  to validate the connection they are pointed at.
+- `url` is the backend's management plane endpoint. It is public
+  because the list endpoint has always returned it and because a
+  console client that cannot see which cloud a source is cannot do
+  much with it.
+- `username` is half of a credential pair. It is public for the same
+  historical reason as `url`. Narrowing either is an API behaviour
+  change rather than part of withholding the password, and is tracked
+  separately.
 
 ### consoles
 

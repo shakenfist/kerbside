@@ -217,18 +217,40 @@ class SourceSecretsDbTestCase(testtools.TestCase):
         self.assertEqual('https://sf.example.com/api', source['url'])
         self.assertEqual('sfvdi', source['username'])
 
-    def test_public_export_removes_every_secret_field(self):
-        # Guards a future secret being added to the model and to
-        # export() without being added to SOURCE_SECRET_FIELDS.
+    def test_public_export_is_exactly_this_field_set(self):
+        # Pinned rather than derived from SOURCE_PUBLIC_FIELDS on
+        # purpose. A test which walks the same list the code walks
+        # agrees with whatever the code does, including being wrong;
+        # this one fails when a column starts being returned to API
+        # clients, and the way to make it pass is to decide that it
+        # should be.
         source = db.get_source('sf1')
 
-        for field in db.SOURCE_SECRET_FIELDS:
-            self.assertNotIn(field, source)
+        self.assertEqual(
+            ['ca_cert', 'deleted', 'errored', 'last_seen', 'name',
+             'project_domain_id', 'project_name', 'seen_by', 'type', 'url',
+             'user_domain_id', 'username'],
+            sorted(source.keys()))
 
-    def test_redact_source_tolerates_an_already_redacted_dict(self):
-        redacted = db.redact_source(db.get_source('sf1'))
+    def test_every_exported_field_is_classified(self):
+        # The pair above and below this one only see fields somebody
+        # has already thought about. This one sees the fields nobody
+        # has: a column added to export() and to neither list fails
+        # here, which is the failure mode of issue #132.
+        exported = set(db.get_source('sf1', include_secrets=True).keys())
+        classified = (set(db.SOURCE_PUBLIC_FIELDS) |
+                      set(db.SOURCE_SECRET_FIELDS))
 
-        self.assertNotIn('password', redacted)
+        self.assertEqual(set(), exported - classified,
+                         'exported source fields are neither public nor '
+                         'secret')
+        self.assertEqual(set(), classified - exported,
+                         'classified source fields are not exported at all')
+
+    def test_secret_fields_are_never_public(self):
+        self.assertEqual(
+            set(),
+            set(db.SOURCE_PUBLIC_FIELDS) & set(db.SOURCE_SECRET_FIELDS))
 
     def test_get_source_returns_none_when_absent(self):
         self.assertIsNone(db.get_source('nosuch'))

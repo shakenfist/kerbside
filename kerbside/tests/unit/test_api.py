@@ -393,6 +393,8 @@ class SourceApiSecretsTestCase(testtools.TestCase):
     def test_both_endpoints_return_the_same_fields(self):
         # The two handlers drifting apart is the bug, so assert they
         # cannot: whatever one of them exposes, the other exposes too.
+        # This is about the shape of a source, not about which sources
+        # each endpoint returns -- see the soft delete test below.
         single = json.loads(self.client.get(
             '/source/sf1',
             headers={'Accept': 'application/json'}).get_data(as_text=True))
@@ -407,3 +409,125 @@ class SourceApiSecretsTestCase(testtools.TestCase):
             '/source/nosuch', headers={'Accept': 'application/json'})
 
         self.assertEqual(404, resp.status_code)
+
+    def test_soft_deleted_source_is_described_but_not_listed(self):
+        # The two endpoints agree on what a source looks like but not
+        # on which sources exist: a source dropped from sources.yaml is
+        # soft deleted, which removes it from the list and leaves it
+        # readable by name. Pinned because it is surprising, and
+        # because the thing which must not vary -- the password staying
+        # out of the response -- is asserted for this row too.
+        db.delete_source('sf1')
+
+        listed = json.loads(self.client.get(
+            '/source',
+            headers={'Accept': 'application/json'}).get_data(as_text=True))
+        self.assertEqual([], listed)
+
+        resp = self.client.get(
+            '/source/sf1', headers={'Accept': 'application/json'})
+        self.assertEqual(200, resp.status_code)
+        self.assertNotIn('sekrit-source-password', resp.get_data(as_text=True))
+        source = json.loads(resp.get_data(as_text=True))
+        self.assertTrue(source['deleted'])
+        self.assertNotIn('password', source)
+
+
+class VirtViewerSecretsTestCase(testtools.TestCase):
+    """The .vv handlers hold a credential only when they spend one.
+
+    ConsolesDirectVirtViewer.get() used to log the whole source dict,
+    password included, on every request. Both handlers now fetch the
+    public source and re-fetch with include_secrets=True inside the
+    oVirt branch, which is the only branch that authenticates to a
+    backend, so there is nothing to remember to scrub on the way out.
+    """
+
+    def setUp(self):
+        super().setUp()
+
+        self.engine = create_engine('sqlite://')
+        db.Base.metadata.create_all(
+            self.engine, tables=[db.Source.__table__, db.Console.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+        db.add_source(
+            'sf1', 'shakenfist', 'https://sf.example.com/api', 'sfvdi',
+            'sekrit-source-password', ca_cert='CA-CERT-MARKER')
+        db.add_console(
+            source='sf1', uuid='console-1', hypervisor='hv1',
+            hypervisor_ip='10.0.0.1', insecure_port=5900, secure_port=5901,
+            name='a console', host_subject='CN=hv1')
+
+        api.app.config['TESTING'] = True
+        self.client = api.app.test_client()
+        jwt_patch = mock.patch(
+            'kerbside.api.verify_jwt_in_request', return_value=(None, {}))
+        jwt_patch.start()
+        self.addCleanup(jwt_patch.stop)
+
+        config_patch = mock.patch.object(api.config, 'CACERT_PATH', None)
+        config_patch.start()
+        self.addCleanup(config_patch.stop)
+
+        self.logged = []
+        log_patch = mock.patch.object(api, 'LOG', self._recording_log())
+        log_patch.start()
+        self.addCleanup(log_patch.stop)
+
+    def _recording_log(self):
+        """A LOG stand in which remembers every field it is given."""
+        recorder = self
+
+        class RecordingLog:
+            def with_fields(self, fields):
+                recorder.logged.append(fields)
+                return self
+
+            def info(self, *args, **kwargs):
+                ...
+
+            def warning(self, *args, **kwargs):
+                ...
+
+            def error(self, *args, **kwargs):
+                ...
+
+        return RecordingLog()
+
+    def test_direct_vv_does_not_log_the_password(self):
+        resp = self.client.get('/console/direct/sf1/console-1/console.vv')
+
+        self.assertEqual(200, resp.status_code)
+        self.assertNotIn('sekrit-source-password', resp.get_data(as_text=True))
+        for fields in self.logged:
+            self.assertNotIn('password', fields)
+            self.assertNotIn('sekrit-source-password', repr(fields))
+
+    @mock.patch('kerbside.sources.ovirt.oVirtSource')
+    def test_ovirt_direct_vv_is_given_the_password(self, mock_ovirt):
+        # The opt in is load bearing rather than decorative: oVirt
+        # cannot acquire a ticket without the credential, so assert it
+        # arrives, and that it still does not reach the log.
+        db.add_source(
+            'ovirt1', 'ovirt', 'https://ovirt.example.com/ovirt-engine/api',
+            'admin@internal', 'sekrit-ovirt-password', ca_cert='CA')
+        db.add_console(
+            source='ovirt1', uuid='console-2', hypervisor='hv2',
+            hypervisor_ip='10.0.0.2', insecure_port=5900, secure_port=5901,
+            name='an ovirt console', host_subject='CN=hv2')
+        mock_ovirt.return_value.errored = False
+        mock_ovirt.return_value.get_console_for_vm.return_value = (
+            None, 'a-ticket')
+
+        resp = self.client.get('/console/direct/ovirt1/console-2/console.vv')
+
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual(
+            'sekrit-ovirt-password', mock_ovirt.call_args.kwargs['password'])
+        self.assertIn('a-ticket', resp.get_data(as_text=True))
+        for fields in self.logged:
+            self.assertNotIn('password', fields)
+            self.assertNotIn('sekrit-ovirt-password', repr(fields))

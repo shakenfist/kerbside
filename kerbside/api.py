@@ -392,10 +392,7 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
         if not c:
             return sf_api.error(404, 'console not found')
 
-        # This handler authenticates to the backend cloud to acquire an
-        # oVirt ticket, so it needs the source secrets. They must not
-        # leave this method.
-        s = db.get_source(source, include_secrets=True)
+        s = db.get_source(source)
         if not s:
             return sf_api.error(404, 'source not found')
 
@@ -412,7 +409,12 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
             ticket = c.get('ticket') or ''
         elif s['type'] == 'ovirt':
             ticket = ''
-            lookup = ovirt_source.oVirtSource(**s)
+            # Authenticating to oVirt is the only thing in this handler
+            # which is entitled to the source secrets, so it is the only
+            # thing which asks for them. s itself stays public, which is
+            # why it can be logged below without being scrubbed first.
+            authed = db.get_source(source, include_secrets=True)
+            lookup = ovirt_source.oVirtSource(**authed)
             if lookup.errored:
                 return sf_api.error(404, 'source error')
             _, ticket = lookup.get_console_for_vm(c['uuid'], acquire_ticket=True)
@@ -434,7 +436,7 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
                 ca_cert_data = f.read().replace('\n', '\\n')
             ca_cert = f'\nca={ca_cert_data}'
 
-        LOG.with_fields(c).with_fields(db.redact_source(s)).info(
+        LOG.with_fields(c).with_fields(s).info(
             'Providing virt-viewer direct configuration for console')
 
         vv = VIRTVIEWER_TEMPLATE % {
@@ -456,9 +458,7 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
 class ConsolesProxyVirtViewer(sf_api.Resource):
     @verify_token
     def get(self, source=None, uuid=None):
-        # As for the direct handler above, this one may authenticate to
-        # the backend cloud, so it needs the source secrets.
-        s = db.get_source(source, include_secrets=True)
+        s = db.get_source(source)
         if not s:
             return sf_api.error(404, 'source not found')
 
@@ -488,7 +488,11 @@ class ConsolesProxyVirtViewer(sf_api.Resource):
             pass
         elif s['type'] == 'ovirt':
             ticket = ''
-            lookup = ovirt_source.oVirtSource(**s)
+            # As in the direct handler above, only the oVirt ticket
+            # acquisition is entitled to the source secrets, so it is
+            # the only thing which asks for them.
+            authed = db.get_source(source, include_secrets=True)
+            lookup = ovirt_source.oVirtSource(**authed)
             if lookup.errored:
                 return sf_api.error(404, 'source error')
             _, ticket = lookup.get_console_for_vm(c['uuid'], acquire_ticket=True)
@@ -869,7 +873,11 @@ class Source(sf_api.Resource):
     def get(self, uuid):
         # This is a REST API only call. db.get_source() removes the
         # source secrets unless it is asked for them, so this handler
-        # and the list handler above cannot drift apart.
+        # and the list handler above return the same representation of
+        # a source without either of them having to remember to. They
+        # do not return the same set of sources: get_sources() hides
+        # soft deleted rows and this call does not, so a source dropped
+        # from sources.yaml is still described here, with deleted set.
         source = db.get_source(uuid)
         if not source:
             return sf_api.error(404, 'source not found')
