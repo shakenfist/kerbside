@@ -278,15 +278,29 @@ Each item is checkable by someone who did not write the page.
       the `sf-ctl ensure-kerbside-signing-key` 404, and the
       per-option table. The use-case page links to
       `console-sources.md#shaken-fist` for all six.
+- [ ] Omitting those six has not become *asserting their
+      negation*. Round 1 of review caught exactly this: the page
+      said "the verification path does not call Shaken Fist",
+      which the rotation refetch at
+      `kerbside/sf_token.py:185-193` makes false, and the false
+      claim was load-bearing for both the availability argument
+      and the "offline" security property. The rule forbids
+      describing a mechanism; it does not licence denying that
+      the mechanism exists. Where an exception is material, name
+      that it exists and link. Phases 2 to 4 inherit this.
 - [ ] "Status and limitations" is a table, one row per unproven
       claim, each naming why — and one of the rows is the
       single-node limit of the sf-e2e lane.
 - [ ] `tools/mermaid-lint.sh` exits zero, and the page has at
       least one diagram.
-- [ ] `grep -rn 'use-cases/shaken-fist' docs/ README.md` returns
-      hits in all four of `docs/index.md`,
-      `docs/console-sources.md`, `docs/use-cases/ovirt.md` and
-      `README.md`.
+- [ ] `grep -rln 'shaken-fist\.md' docs/ README.md` returns all
+      four of `docs/index.md`, `docs/console-sources.md`,
+      `docs/use-cases/ovirt.md` and `README.md`. Match on the
+      bare filename, not on `use-cases/shaken-fist`: a sibling
+      link from inside `docs/use-cases/` is correctly written
+      with no directory prefix, so the longer pattern can never
+      hit `ovirt.md` and reports a false failure. Phases 2 to 4
+      copy this check, so they should copy this form of it.
 - [ ] Every relative link in the new page resolves to an existing
       file, and every anchor to an existing heading in that file.
 - [ ] `README.md` no longer calls the oVirt page "the first of

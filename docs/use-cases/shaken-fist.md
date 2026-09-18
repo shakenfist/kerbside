@@ -27,11 +27,13 @@ it *is* the second half of it:
 - **Verification is offline, and single use.** Kerbside checks
   the token's signature against the cluster's published signing
   public keys, which it caches when the source is initialised.
-  The verification path does not call Shaken Fist, and a token
-  is accepted exactly once. Two things follow that are worth
-  having: a console still opens while the Shaken Fist API is
-  unavailable, and a token that leaks after use is worth
-  nothing to whoever leaked it. The mechanism is in
+  On the normal path verification touches nothing but those
+  cached keys, and a token is accepted exactly once. Two things
+  follow that are worth having: a console opens even while the
+  Shaken Fist API is busy or restarting, and a token that leaks
+  after use is worth nothing to whoever leaked it. A signing-key
+  rotation is the one exception that reaches back to the
+  cluster. The mechanism is in
   [console-sources.md](../console-sources.md#shaken-fist).
 - **The SPICE firewall is on by default.** Kerbside terminates
   the client's connection, drives the SPICE link handshake
@@ -102,9 +104,12 @@ user may have a console. It mints a short-lived Ed25519-signed
 JWT naming the instance and hands out
 `<KERBSIDE_URL>/sf-console.vv?token=<jwt>`. Kerbside verifies
 that token entirely offline against the cluster's signing public
-keys and accepts it exactly once, then looks the instance up in
-the inventory the scrape built and confirms it belongs to the
-source whose key verified the token.
+keys, looks the instance up in the inventory the scrape built,
+confirms it belongs to the source whose key verified the token,
+and only then consumes the token's single use. That order is
+deliberate: a token for an instance the scrape has not reached
+yet is refused without being spent, so a retry can still
+succeed.
 
 That is as far as this page goes. The per-claim checks, what is
 and is not recorded as an audit event, how a signing-key
@@ -132,10 +137,13 @@ table below.
 
 **No per-connection call to the cloud.** Unlike the oVirt path,
 which acquires a ticket from the engine at the moment a `.vv` is
-generated, nothing in the Shaken Fist connect path asks the
-cluster anything. The inventory is up to a scrape interval old
-and the token verifies against cached keys, so the connection
-survives a control plane that is busy, restarting, or down.
+generated, the Shaken Fist connect path normally asks the cluster
+nothing: the inventory is up to a scrape interval old and the
+token verifies against cached keys, so a connection survives a
+control plane that is busy or restarting. The exception is a
+token signed by a key Kerbside has not cached, which is what a
+signing-key rotation produces; `console-sources.md` describes how
+that is handled.
 
 ## How to set it up
 
@@ -160,10 +168,13 @@ command and describes exactly what Kerbside does when a cluster
 has no key yet.
 
 **Credentials.** Kerbside authenticates with a namespace name
-and its key. Use the `system` namespace: listing nodes is an
-administrative operation, and it is also what makes the scrape
-cluster-wide. Any other namespace yields consoles for that
-namespace alone.
+and its key, and in practice that namespace must be `system`.
+Only the instance listing uses the namespace you configure; the
+CA fetch, the signing-key fetch and the node listing are always
+made as `system` with the same key, so a credential that cannot
+authenticate as `system` fails at startup rather than narrowing
+the scrape to its own namespace. Using `system` is also what
+makes the scrape cluster-wide. See the limitations table.
 
 **Instances.** An instance is only brokerable while it is in the
 `created` state and was booted with a SPICE video model. Install
@@ -218,12 +229,11 @@ explicitly if in any doubt, because a mismatch rejects every
 token.
 
 One other thing bites people: **`ca_cert` is inline PEM, not a
-path**, and it is checked for equality. At initialisation
-Kerbside fetches the cluster's advertised CA and marks the
-source errored unless the two match once trailing whitespace is
-stripped. A source that errors immediately usually means the
-pasted CA is stale or truncated, not that the cluster is
-unreachable.
+path**, and it must match the CA the cluster advertises. A
+source that errors immediately usually means the pasted CA is
+stale or truncated, not that the cluster is unreachable;
+[console-sources.md](../console-sources.md#shaken-fist) has the
+check and what it does on a mismatch.
 
 The full option table, including the optional knob for clusters
 whose nodes publish no certificate subject, is in
@@ -245,7 +255,9 @@ cluster side, `gen-sources.py` writes the `sources.yaml` above
 construction — `deploy-kerbside.sh` installs and starts
 Kerbside, `drive-happy-path.py` exchanges a token and drives a
 session, and `drive-adversarial.py` asserts five rejections
-against the live application.
+across the joined flow — four at Kerbside's exchange endpoint,
+and one at the Shaken Fist mint, where a namespace asking for
+another namespace's instance is refused a token at all.
 
 This is a stronger worked example than the oVirt lane's. It is a
 **smoke-tier gate**, so it runs on every pull request as well as
@@ -298,6 +310,7 @@ Not covered, and worth knowing before you deploy:
 | Backend pinning depends on the cluster | A node that publishes no `spice_server_cert_subject` leaves `host_subject` unset, and the proxy relays that backend without host-subject enforcement rather than refusing it. Whether your cluster publishes one depends on its version and node configuration. The optional knob for turning enforcement on anyway, and the PKI assumption it makes, are in [console-sources.md](../console-sources.md#shaken-fist). |
 | Off-box deployment untested in CI | The lane runs Kerbside on the Shaken Fist primary over loopback. The real topology — Kerbside on its own host, reaching the API by name and the nodes by address — is the shape the oVirt lane proves, not this one. |
 | Token exchange can be unavailable while scraping is fine | A cluster Kerbside scrapes happily is not necessarily one it can exchange tokens for; the two capabilities fail independently by design. The causes and the operator fix are in [console-sources.md](../console-sources.md#shaken-fist). |
+| Non-`system` namespaces | A source configured with any other namespace is untested and is not expected to work: only the instance listing uses the configured namespace, while the CA fetch, the signing-key fetch and the node listing are always made as `system` with the same key. The unit tests cover the branch with a namespace-to-mock map, which proves the branch and not that a non-`system` credential works against a real cluster. Tracked as #444. |
 | Shaken Fist client version | The `shakenfist_client` library is imported by name rather than being a runtime dependency, so any version at all can be installed alongside Kerbside. Versions older than 0.8.3 cannot fetch signing keys, which leaves token exchange unavailable for every Shaken Fist source. |
 | Freshly created consoles | The inventory is a scrape, not a subscription, so a console can be up to a minute old. A token minted for an instance Kerbside has not yet scraped is rejected and must be retried once the scrape catches up. |
 | Live migration during a session | Not characterised. The console's node, address, ports, and certificate subject are captured at scrape time; an instance that moves between nodes mid-session has not been tested. |
