@@ -86,6 +86,24 @@ if [ -n "${TLS_PORT}" ] || [ -n "${X509_DIR}" ]; then
     done
 fi
 
+# Assert SPICE support before doing any work. Debian trixie moved SPICE
+# out of qemu-system-x86 into the qemu-system-modules-spice package and
+# made it a Recommends, so a qemu that runs perfectly well can still
+# have no -spice at all. Without this check the lane discovers that from
+# a qemu startup error several steps in; with it, the missing package is
+# named where it can be acted on. `-spice help` lists the option group
+# on a qemu that has it and says "There is no option group 'spice'" on
+# one that does not; it exits non-zero either way, so match the output
+# rather than the status.
+SPICE_HELP="$(qemu-system-x86_64 -spice help 2>&1 || true)"
+if ! echo "${SPICE_HELP}" | grep -q 'spice options:'; then
+    echo "ERROR: this qemu has no SPICE support -- install the" >&2
+    echo "       qemu-system-modules-spice package (Debian 13 and" >&2
+    echo "       later ship SPICE as a module, recommended but not" >&2
+    echo "       depended on by qemu-system-x86)." >&2
+    exit 1
+fi
+
 # Copy OVMF_VARS to a writable location (qemu writes to it at runtime)
 VARS_DIR="$(dirname "${PID_FILE}")"
 VARS_COPY="${VARS_DIR}/ovmf-vars-copy.fd"
@@ -129,9 +147,10 @@ qemu-system-x86_64 \
 # The SPICE ticket is supplied via `-object secret` +
 # `password-secret=` because the legacy inline `password=` parameter
 # was removed in newer QEMU releases (it fails on QEMU 10 with
-# "Invalid parameter 'password'").  `password-secret` has been
-# supported since QEMU 5.2, so this form works on the debian-12 CI
-# runner (QEMU 7.2) and on newer developer hosts alike.
+# "Invalid parameter 'password'").  Trixie ships QEMU 10, so on the
+# debian-13 CI runner `password-secret` is required rather than merely
+# compatible.  It has been supported since QEMU 5.2, so this form also
+# works on older developer hosts.
 # `-nodefaults` was previously set but removes the implicit AHCI
 # controller on q35.  With a bare `-drive format=qcow2,file=...`
 # (no `if=` modifier, so QEMU defaults to `if=ide`), there is no

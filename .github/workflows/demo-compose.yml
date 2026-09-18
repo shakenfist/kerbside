@@ -86,7 +86,7 @@ jobs:
     # ryll 1.7, stack up 1.6, docker install 0.2, assertions 0.3. So `l`
     # is right, and caching cargo or the probe's base image would be
     # optimising a lane that finishes in under five minutes.
-    runs-on: [self-hosted, vm, debian-12, l]
+    runs-on: [self-hosted, vm, debian-13, l]
     timeout-minutes: 60
 
     # The runner image exports http_proxy/https_proxy at an upstream
@@ -110,11 +110,13 @@ jobs:
           # and sf-e2e-functional.yml:113 do this.
           fetch-depth: 0
 
-      # The runner image ships no docker, and Debian 12 cannot supply a
-      # usable one either -- the script explains both halves and
-      # configures the daemon and builds for the runner's proxy.
-      # Idempotent, so if the image ever grows a new enough docker this
-      # stops costing anything.
+      # The runner image ships no docker at all. Trixie's archive would
+      # now clear both the engine and the compose-plugin bars that
+      # bookworm's could not, so Docker's own repository is convention
+      # rather than necessity here -- install-docker.sh explains which
+      # bar was which, and configures the daemon and builds for the
+      # runner's proxy. Idempotent, so if the image ever grows a usable
+      # docker this stops costing anything.
       - name: Install docker
         run: tools/demo/install-docker.sh
 

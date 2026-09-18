@@ -26,7 +26,7 @@
       "datasourceTemplate": "pypi"
     },
     {
-      "description": "Pick up the skillsaw pin in functional-tests.yml's sanity_checks job. The linter is installed into the test venv rather than run as stbenjam/skillsaw@v0, whose composite action pins actions/setup-python to a version with no Debian 12 build, so Renovate's github-actions manager never sees it. Without this the pre-commit manager would bump the hook alone, leaving CI and developers disagreeing about what passes. The skillsaw group below lands both in one pull request.",
+      "description": "Pick up the skillsaw pin in functional-tests.yml's sanity_checks job. The linter is installed into the test venv rather than run as stbenjam/skillsaw@v0, whose composite action pins actions/setup-python to a version with no Debian build, so Renovate's github-actions manager never sees it. Without this the pre-commit manager would bump the hook alone, leaving CI and developers disagreeing about what passes. The skillsaw group below lands both in one pull request.",
       "customType": "regex",
       "fileMatch": [
         "^\\.github/workflows/functional-tests\\.yml$"

@@ -1,9 +1,11 @@
 # ── Stage 1: Build ryll from upstream main ───────────────────────────────────
-# No rust-toolchain.toml in the ryll repo; use rust:1.83-bookworm per
-# the phase-4 plan.  Clone from main HEAD — no pinned ref, by design.
+# No rust-toolchain.toml in the ryll repo; use a pinned rust image per the
+# phase-4 plan.  The plan named a bookworm tag; bookworm is now end of
+# life, so this tracks trixie like the stage 2 runtime below.  Clone from
+# main HEAD — no pinned ref, by design.
 # See docs/plans/PLAN-test-harness-phase-04-port-latency.md (decisions
 # section: "The ryll source is not pinned in this phase").
-FROM rust:1.97-bookworm AS builder
+FROM rust:1.97-trixie AS builder
 
 # System build dependencies required by the ryll workspace:
 #   pkg-config    — locates system libs for build scripts

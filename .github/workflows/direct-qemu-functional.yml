@@ -80,7 +80,7 @@ jobs:
     if: >-
       github.event_name != 'merge_group'
       && needs.check_paths.outputs.code_changed != 'false'
-    runs-on: [self-hosted, vm, debian-12, l]
+    runs-on: [self-hosted, vm, debian-13, l]
     timeout-minutes: 60
 
     # The runner image exports http_proxy/https_proxy pointing at an
@@ -106,6 +106,19 @@ jobs:
         run: sudo chmod a+rw /dev/kvm
 
       - name: Install system packages
+        # qemu-system-modules-spice is named explicitly. Debian trixie
+        # moved SPICE out of qemu-system-x86 into a module package and
+        # made it a Recommends rather than a Depends, and a Recommends
+        # is not enough here: on the debian-13 runner, installing plain
+        # qemu-system-x86 produced a qemu that starts and then dies
+        # with "There is no option group 'spice'" (first seen in run
+        # 35078680967, the move off Debian 12). Whether recommends are
+        # on is a property of the runner image rather than of this
+        # lane, so the lane names what it needs.
+        # demo/spice-target/Dockerfile carries the same note, and
+        # tools/direct-qemu/start-qemu.sh checks for the module before
+        # launching so a host missing it says so by name.
+        #
         # `cargo build --no-default-features -p ryll` no longer
         # links eframe/egui-winit/cpal/opus-decoder, so the runtime
         # libraries libgl1/libx11-6/libxcb1/libxkbcommon0/
@@ -116,7 +129,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            qemu-system-x86 ovmf openssl curl jq \
+            qemu-system-x86 qemu-system-modules-spice ovmf openssl curl jq \
             mariadb-server \
             build-essential cmake pkg-config \
             libasound2-dev libxcb1-dev libxkbcommon-dev libwayland-dev \

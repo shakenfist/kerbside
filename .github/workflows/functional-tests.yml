@@ -105,15 +105,15 @@ jobs:
   # rewriting pre-commit hooks deliberately leave alone so that a
   # content scanner can see them.
   #
-  # gitleaks is downloaded rather than apt-installed: the package first
-  # appears in Debian 13 while these runners are Debian 12, and the
-  # shared static pool grants no passwordless sudo either way. Version
-  # and checksum are both pinned, because .gitleaks.toml is written
-  # against 8.16's schema (per-rule allowlists changed shape in a later
-  # release) and a detector which silently changes behaviour under us is
-  # worse than no detector. To move the pin, run tools/gitleaks-scan.sh
-  # against the new version locally first and check that the positive
-  # control still passes.
+  # gitleaks is downloaded with a pinned version and sha256 rather than
+  # apt-installed, because the version has to be ours to choose:
+  # .gitleaks.toml is written against 8.16's schema (per-rule allowlists
+  # changed shape in a later release) and a detector which silently
+  # changes behaviour under us is worse than no detector. The shared
+  # static pool granting no passwordless sudo is a second reason. To
+  # move the pin, run tools/gitleaks-scan.sh against the new version
+  # locally first and check that the positive control still passes.
+  # docs/testing.md carries the same reasoning at length.
   credential_scan:
     name: "Credential scan"
     runs-on: [self-hosted, static]
@@ -159,7 +159,7 @@ jobs:
     # The bindep step below needs passwordless sudo for apt, which the
     # shared static pool does not grant, so this stays on an ephemeral vm
     # runner. m: light lint + unit tests + coverage.
-    runs-on: [self-hosted, vm, debian-12, m]
+    runs-on: [self-hosted, vm, debian-13, m]
     env:
       PIP_INDEX_URL: http://192.168.1.15:3141/root/pypi/+simple/
       # Fall back to pypi so a devpi cold-cache miss (empty index on a
@@ -256,8 +256,8 @@ jobs:
       # Installed into the test venv rather than run as
       # stbenjam/skillsaw@v0. That composite action opens with
       # actions/setup-python pinned to 3.11, actions/python-versions
-      # publishes no Debian 12 build, and these runners carry no tool
-      # cache -- so the action fails before it lints anything.
+      # publishes no Debian build at all, and these runners carry no
+      # tool cache -- so the action fails before it lints anything.
       # shakenfist/actions reaches the same linter through pre-commit
       # rather than the action, for the same reason.
       #
@@ -379,7 +379,7 @@ jobs:
     # source, and runs MariaDB plus kerbside on the runner itself, which
     # is heavier than the environment-provisioning work the m runner was
     # sized for.
-    runs-on: [self-hosted, vm, debian-12, l]
+    runs-on: [self-hosted, vm, debian-13, l]
     needs: [sanity_checks, check_paths]
     timeout-minutes: 120
     # The runner image exports http_proxy/https_proxy pointing at an
@@ -734,8 +734,8 @@ jobs:
       - name: Build the PR's proxy wheel (manylinux, matches the PyPI artifact)
         # Reuse the release lane's build-proxy-wheel.sh so the CI wheel is the
         # same portable manylinux_2_28 artifact production pulls from PyPI --
-        # correct across the runner (bookworm) -> trixie image glibc boundary,
-        # unlike a host-native build.
+        # zig pins it to glibc 2.28, so it is correct whatever the runner and
+        # the target image carry, unlike a host-native build.
         run: |
           WHEEL_OUT="${GITHUB_WORKSPACE}/kerbside/dist/proxy-wheels" \
               "${GITHUB_WORKSPACE}/kerbside/tools/build-proxy-wheel.sh" "$(uname -m)"
@@ -895,7 +895,7 @@ jobs:
             'baseuser': 'debian'
           },
         ]
-    runs-on: [self-hosted, vm, debian-12, m]
+    runs-on: [self-hosted, vm, debian-13, m]
     needs: [sanity_checks, check_paths]
     timeout-minutes: 120
     # See sanity_checks above for why merge_group is keyed on the base
@@ -978,8 +978,8 @@ jobs:
       - name: Build the PR's proxy wheel (manylinux, matches the PyPI artifact)
         # Reuse the release lane's build-proxy-wheel.sh so the CI wheel is the
         # same portable manylinux_2_28 artifact production pulls from PyPI --
-        # correct across the runner (bookworm) -> trixie image glibc boundary,
-        # unlike a host-native build.
+        # zig pins it to glibc 2.28, so it is correct whatever the runner and
+        # the target image carry, unlike a host-native build.
         run: |
           WHEEL_OUT="${GITHUB_WORKSPACE}/kerbside/dist/proxy-wheels" \
               "${GITHUB_WORKSPACE}/kerbside/tools/build-proxy-wheel.sh" "$(uname -m)"

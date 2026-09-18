@@ -88,7 +88,7 @@ list_listeners() {
     fi
 }
 
-# netstat is NOT installed on a Debian 12 base, so the absence of both
+# netstat is NOT installed on a Debian 13 base, so the absence of both
 # tools is a real possibility and must not read as "all ports free".
 if ! LISTENERS="$(list_listeners)"; then
     echo "WARNING: neither ss nor netstat is available, so port collisions"

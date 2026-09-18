@@ -31,22 +31,23 @@ dependencies = [
     # readers). A dev checkout can still override resolution entirely via
     # KERBSIDE_PROXY_BIN or a locally built rust/kerbside-proxy tree
     # (find_proxy_bin()).
+    # not-imported: kerbside-proxy -- the wheel ships the proxy binary,
+    # which proxy_supervisor.find_proxy_bin() locates on PATH and execs.
     "kerbside-proxy>=0.4.0.dev0",       # apache2
     # KERBSIDE_PROXY_PIN
 
     "click==8.5.0",                     # bsd
     "cryptography==50.0.1",             # apache2
-    "pylogrus==0.4.0",                  # mit
-    "prometheus-client==0.26.0",        # apache2
     "Flask==3.1.3",                     # bsd
     "Flask-RESTful==0.3.10",            # bsd
-    "flasgger==0.9.7.1",                # mit
     "flask-jwt-extended==4.7.4",        # mit
-    "bcrypt==5.0.0",                    # apache2
+    # not-imported: gunicorn -- the WSGI server the API is served by, run
+    # as a command (see docs/installation.md), never imported.
     "gunicorn==26.2.0",                 # mit
     "flask-request-id-middleware==1.1", # mit
     "pyyaml==6.0.3",                    # mit
-    "psutil==7.2.2",                    # bsd
+    # not-imported: PyMySQL -- SQLAlchemy driver for the "mysql+pymysql://"
+    # form of SQL_URL, which etc/kerbside.conf.example ships.
     "PyMySQL==1.2.0",                   # mit
     "webargs==8.7.1",                   # mit
 
@@ -81,11 +82,16 @@ dependencies = [
     # never-pin: pydantic-core
     "pydantic==2.13.5",                 # mit
     "pydantic-settings==2.15.0",        # mit
+    # not-imported: typing-extensions -- pydantic's own requirement,
+    # pinned here so it moves in lockstep with the set above rather than
+    # drifting under the generated block.
     "typing-extensions==4.16.0",        # (indirect dependency)
 
     # These also move as a set
     "alembic==1.20.0",                  # mit
     "sqlalchemy==2.0.52",               # mit
+    # not-imported: mysqlclient -- SQLAlchemy driver for the bare
+    # "mysql://" form of SQL_URL, which is the configured default.
     "mysqlclient==2.2.8",               # gpl
 
     # gRPC service (KerbsideProxy) fronting the database for the proxy.
@@ -107,7 +113,6 @@ dependencies = [
     # START_OF_INDIRECT_DEPS
     "aniso8601==10.0.1",
     "annotated-types==0.8.0",
-    "attrs==26.1.0",
     "blinker==1.9.0",
     "certifi==2026.7.22",
     "cffi==2.1.1",
@@ -116,17 +121,12 @@ dependencies = [
     "idna==3.19",
     "itsdangerous==2.2.0",
     "Jinja2==3.1.6",
-    "jsonschema-specifications==2025.9.1",
-    "jsonschema==4.26.0",
     "Mako==1.4.1",
     "MarkupSafe==3.0.3",
     "marshmallow==4.3.1",
-    "mistune==3.3.4",
     "pycparser==3.0",
     "python-dotenv==1.2.3",
     "pytz==2026.3.post1",
-    "referencing==0.37.0",
-    "rpds-py==0.30.0",
     "setproctitle==1.3.7",
     "six==1.17.0",
     "typing-inspection==0.4.4",

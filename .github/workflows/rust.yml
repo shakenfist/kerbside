@@ -36,7 +36,7 @@ jobs:
     # xl: a cold `cargo build --release` of the ring/rustls/aws-lc-rs/ryll
     # chain is CPU-bound and parallelises well. Be explicit -- an unsized
     # vm label defaults to xs (1 core / 2 GB) in private-ci.
-    runs-on: [self-hosted, vm, debian-12, xl]
+    runs-on: [self-hosted, vm, debian-13, xl]
     defaults:
       run:
         # build.rs and the shakenfist-spice-protocol git dependency reference

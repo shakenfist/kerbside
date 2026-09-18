@@ -4,7 +4,7 @@
 # Runs LOCALLY on the runner -- there is no SSH anywhere in this script.
 # Kerbside deliberately does not live on the oVirt node: that node is Rocky 8
 # with a Python 3.6 system interpreter, and pyproject.toml sets
-# requires-python = ">=3.11". The runner is Debian 12, already carries the
+# requires-python = ">=3.11". The runner is Debian 13, already carries the
 # whole direct-qemu toolchain pattern, and is attached to the 10.0.2.0/24 test
 # network, so it reaches the engine at ovirt.local and the hypervisor's SPICE
 # ports at 10.0.2.2 directly. Running off-box also exercises the realistic
