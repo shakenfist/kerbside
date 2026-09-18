@@ -23,7 +23,7 @@ When creating a new Alembic database migration for Kerbside:
    that correspond to the schema change.
 
 5. If the migration adds or modifies tables, update `docs/schema.md`
-   and `docs/schema.html` to reflect the new schema.
+   to reflect the new schema.
 
 6. Add or update unit tests in `kerbside/tests/unit/` to cover any
    new database operations.
