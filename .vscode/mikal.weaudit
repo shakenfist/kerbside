@@ -532,10 +532,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/functional-tests.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/mermaid-lint.yml",
       "author": "mikal"
     },
@@ -549,10 +545,6 @@
     },
     {
       "path": ".github/workflows/renovate.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows",
       "author": "mikal"
     },
     {
