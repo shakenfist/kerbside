@@ -61,10 +61,6 @@
       "sha": "f137eedf566fcd074bd43730d13974795fcc3743",
       "date": "2026-08-18"
     },
-    "docs/use-cases/ovirt.md": {
-      "sha": "0e0902827c2bbbb08bacc3267ee3c565737a59be",
-      "date": "2026-08-13"
-    },
     "etc/example-static-sources.yaml": {
       "sha": "558621b0e5ee59b1a61c784a96ea9f7281d3dcd1",
       "date": "2026-08-18"

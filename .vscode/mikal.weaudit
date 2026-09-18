@@ -160,14 +160,6 @@
       "author": "mikal"
     },
     {
-      "path": "docs/use-cases/ovirt.md",
-      "author": "mikal"
-    },
-    {
-      "path": "docs/use-cases",
-      "author": "mikal"
-    },
-    {
       "path": "rust/kerbside-proxy/src/allowlist.rs",
       "author": "mikal"
     },
