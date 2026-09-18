@@ -462,6 +462,38 @@
     {
       "path": "docs/proxy-architecture.md",
       "author": "mikal"
+    },
+    {
+      "path": "tools/build-proxy-wheel.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/check-pypi-storage.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/file-pypi-storage-issue.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/flake8wrap.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/gitleaks-scan.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/mermaid-lint.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/preview-templates.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tools/shellcheck-wrap.sh",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

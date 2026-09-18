@@ -261,6 +261,14 @@
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-18"
     },
+    "tools/build-proxy-wheel.sh": {
+      "sha": "8518f3d3f40af01159cd35f86c121ca21c007d97",
+      "date": "2026-09-18"
+    },
+    "tools/check-pypi-storage.py": {
+      "sha": "0b9338af495617ba437b95feda3d9519126bed7c",
+      "date": "2026-09-18"
+    },
     "tools/check-required-checks.sh": {
       "sha": "dc86bff62d2de280a5da40d61385de27367b775d",
       "date": "2026-08-15"
@@ -345,9 +353,25 @@
       "sha": "645f302940ecf097535401095753c8f78bf09d6e",
       "date": "2026-08-15"
     },
+    "tools/file-pypi-storage-issue.sh": {
+      "sha": "9c16ea1489d31e2e26c99c309fe685d60c4e6bf1",
+      "date": "2026-09-18"
+    },
+    "tools/flake8wrap.sh": {
+      "sha": "019adfcb6fa59ff04ed28e14ab5a726f61d43425",
+      "date": "2026-09-18"
+    },
     "tools/gen-protos.sh": {
       "sha": "e56d238dbdaa31490f83a34766e73e2361b0c5df",
       "date": "2026-08-18"
+    },
+    "tools/gitleaks-scan.sh": {
+      "sha": "8b2625dca2a9c5f0c171086e87e154bff91a9afd",
+      "date": "2026-09-18"
+    },
+    "tools/mermaid-lint.sh": {
+      "sha": "e9f174d6d54ec1d6e38725a8b0a6de1998945cab",
+      "date": "2026-09-18"
     },
     "tools/ovirt-e2e/README.md": {
       "sha": "20e8fe84c47bc6851f0246d60057e4c5ae8d6027",
@@ -364,6 +388,10 @@
     "tools/pin-indirect-dependencies.sh": {
       "sha": "241b462c281d6e33fa1d4023d15762a95d69112a",
       "date": "2026-08-06"
+    },
+    "tools/preview-templates.py": {
+      "sha": "e1c001cf6ed50a8b02cac739193e204319113a73",
+      "date": "2026-09-18"
     },
     "tools/review-tracking.sh": {
       "sha": "e63705ac5c57fd6d9fd0da21e18f399e3f88e4a4",
@@ -396,6 +424,10 @@
     "tools/sf-e2e/provision-sf.sh": {
       "sha": "e8db5e0a6203e02464c53e3a8ffe74b31ff5b799",
       "date": "2026-08-15"
+    },
+    "tools/shellcheck-wrap.sh": {
+      "sha": "47ec81ad241f49e8b3e64107124617e38ddfa8ee",
+      "date": "2026-09-18"
     },
     "tools/stamp-dev-proxy-version.sh": {
       "sha": "8669f794ef3761bb20e245154a815beba2d5cf79",
