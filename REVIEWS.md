@@ -17,7 +17,7 @@ for how this works, including how to verify the attestations.
 
 | File | Reviewer | Date | Blob SHA | Source |
 |------|----------|------|----------|--------|
-| .claude/skills/add-database-migration/SKILL.md | mikal | 2026-09-17 | 1eff02777bc5 | - |
+| .claude/skills/add-database-migration/SKILL.md | mikal | 2026-09-18 | 16f2c1db4f57 | - |
 | .claude/skills/add-source-type/SKILL.md | mikal | 2026-09-17 | a8721f2f61e3 | - |
 | .github/workflows/codeql-analysis.yml | mikal | 2026-08-18 | 296eca7815ac | - |
 | .github/workflows/export-repo-config.yml | mikal | 2026-08-11 | 53b5d8eb46e8 | - |
