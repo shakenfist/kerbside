@@ -586,6 +586,45 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
         self.assertIn('password=\n', body)
         self.assertNotIn('password=None', body)
 
+    def test_static_vv_is_built_from_one_read_of_the_row(self):
+        """Every field in the file comes from the secret-bearing read.
+
+        The handler reads the console twice for a static source. If the
+        .vv body mixes the two, a discovery pass interleaving between
+        them yields a file pairing a fresh ticket with stale ports. The
+        second read is patched to return different ports so that a
+        mixed build is visible in the output.
+        """
+        db.add_source('static3', 'static', None, None, None, ca_cert=None)
+        db.add_console(
+            source='static3', uuid='console-6', hypervisor='hv6',
+            hypervisor_ip='10.0.0.6', insecure_port=5900, secure_port=5901,
+            name='a moving console', host_subject='CN=old',
+            ticket='sekrit-hypervisor-ticket')
+
+        public = db.get_console('static3', 'console-6')
+        moved = dict(public,
+                     insecure_port=5910, secure_port=5911,
+                     host_subject='CN=new', name='a moved console',
+                     ticket='sekrit-hypervisor-ticket')
+
+        with mock.patch.object(db, 'get_console',
+                               side_effect=[public, moved]):
+            resp = self.client.get(
+                '/console/direct/static3/console-6/console.vv')
+
+        self.assertEqual(200, resp.status_code)
+        body = resp.get_data(as_text=True)
+
+        # The ticket came from the second read, so every other field
+        # in the file must have come from it too.
+        self.assertIn('password=sekrit-hypervisor-ticket', body)
+        self.assertIn('port=5910', body)
+        self.assertIn('tls-port=5911', body)
+        self.assertIn('host-subject=CN=new', body)
+        self.assertNotIn('port=5900', body)
+        self.assertNotIn('CN=old', body)
+
     def test_console_endpoints_do_not_disclose_the_ticket(self):
         db.add_console(
             source='sf1', uuid='console-4', hypervisor='hv4',

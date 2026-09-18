@@ -2,6 +2,7 @@ from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 import click
 import datetime
+import hashlib
 import importlib.resources
 from shakenfist_utilities import logs
 import logging
@@ -47,6 +48,17 @@ def daemon():
 
 
 cli.add_command(daemon)
+
+
+def _digest(value):
+    # A short, stable stand in for a value too bulky to log. Not a
+    # security boundary: it is applied to public fields, so that a
+    # field which is merely large does not have to be either omitted
+    # or dumped in full.
+    if value is None:
+        return None
+    digest = hashlib.sha256(value.encode('utf-8')).hexdigest()[:12]
+    return '<%d bytes, sha256:%s>' % (len(value), digest)
 
 
 def _parse_sources():
@@ -117,6 +129,15 @@ def _parse_sources():
                         # Log that a secret changed, never its value.
                         if field in kerbside_db.SOURCE_SECRET_FIELDS:
                             old_logged = new_logged = '<redacted>'
+                        elif field == 'ca_cert':
+                            # Public, so this is volume rather than
+                            # disclosure -- but a rotation would put two
+                            # multi kilobyte PEMs, newlines and all, in
+                            # one record. A digest says the CA changed
+                            # and tells the two apart, which is all an
+                            # operator needs from a log line.
+                            old_logged = _digest(stored_source[field])
+                            new_logged = _digest(new_value)
                         else:
                             old_logged = stored_source[field]
                             # new_value, not source.get(field): the two
@@ -224,8 +245,17 @@ def _parse_sources():
             retained[source] = retained.get(source, 0) + 1
             continue
 
-        LOG.with_fields(extra_consoles[(source, uuid)]).info(
-            'Console is no longer available, cleaning up')
+        # Redacted for the same reason the discovery log above is,
+        # although this dict reaches us from db.get_consoles() and so
+        # is public already. Relying on that would couple this line's
+        # safety to the absence of an include_secrets=True two hundred
+        # lines away -- and the sibling get_source() call up there grew
+        # exactly that flag, for exactly the reason someone would later
+        # add it here.
+        LOG.with_fields(
+            {k: v for k, v in extra_consoles[(source, uuid)].items()
+             if k not in kerbside_db.CONSOLE_SECRET_FIELDS}
+            ).info('Console is no longer available, cleaning up')
         kerbside_db.remove_console(source=source, uuid=uuid)
         kerbside_db.add_audit_event(
             source, uuid, None, None, None, None, 'Console no longer available')

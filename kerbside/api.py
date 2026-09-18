@@ -388,9 +388,12 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
         if not s:
             return sf_api.error(404, 'source not found')
 
-        node = c['hypervisor']
-        if not node:
-            node = c['hypervisor_ip']
+        # The dict the .vv file is built from. It is the public read
+        # except in the static branch below, which replaces it with
+        # its own snapshot so that every field in the file comes from
+        # one read of the row. c stays public throughout and is what
+        # the log line uses.
+        vv_console = c
 
         # Acquire the ticket for embedding in the .vv file.  The
         # static driver persists its ticket at enumeration time; read
@@ -405,6 +408,11 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
             authed_console = db.get_console(source, uuid, include_secrets=True)
             if not authed_console:
                 return sf_api.error(404, 'console not found')
+            # Ports, host subject and ticket all come from this one
+            # read. Mixing them with c would let a discovery pass
+            # interleave between the two reads and emit a file pairing
+            # a fresh ticket with stale ports, or the reverse.
+            vv_console = authed_console
             ticket = authed_console.get('ticket') or ''
         elif s['type'] == 'ovirt':
             ticket = ''
@@ -423,13 +431,17 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
         else:
             ticket = ''
 
+        node = vv_console['hypervisor']
+        if not node:
+            node = vv_console['hypervisor_ip']
+
         tls_port = ''
-        if c['secure_port']:
-            tls_port = '\ntls-port=%s' % c['secure_port']
+        if vv_console['secure_port']:
+            tls_port = '\ntls-port=%s' % vv_console['secure_port']
 
         host_subject = ''
-        if c['host_subject']:
-            host_subject = '\nhost-subject=%s' % c['host_subject']
+        if vv_console['host_subject']:
+            host_subject = '\nhost-subject=%s' % vv_console['host_subject']
 
         ca_cert = ''
         if config.CACERT_PATH:
@@ -453,11 +465,11 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
 
         vv = VIRTVIEWER_TEMPLATE % {
             'node': node,
-            'port': c['insecure_port'],
+            'port': vv_console['insecure_port'],
             'tls_port': tls_port,
             'token': ticket,
             'ca_cert': ca_cert,
-            'name': '%s direct connection' % c['name'],
+            'name': '%s direct connection' % vv_console['name'],
             'host_subject': host_subject
         }
 

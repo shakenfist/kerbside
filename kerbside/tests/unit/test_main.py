@@ -264,6 +264,58 @@ class ParseSourcesTestCase(testtools.TestCase):
                 {'field': 'deleted', 'old': True, 'new': False}, logged)
 
     @mock.patch('os.path.exists', return_value=True)
+    def test_parse_sources_digests_a_changed_ca_cert(self, mock_exists):
+        """A CA rotation reports a digest rather than two PEMs.
+
+        ca_cert is public, so this is log volume rather than
+        disclosure -- but the .vv handler declines to log a PEM on
+        exactly these grounds, and the two sites should agree.
+        """
+        from kerbside import main
+
+        old_pem = '-----BEGIN CERTIFICATE-----\nOLD\n' + 'a' * 2000
+        new_pem = '-----BEGIN CERTIFICATE-----\nNEW\n' + 'b' * 2000
+
+        with self._create_sources_yaml([{
+            'source': 'test-sf',
+            'type': 'shakenfist',
+            'url': 'http://localhost:13000',
+            'username': 'admin',
+            'password': 'secret',
+            'ca_cert': new_pem
+        }]):
+            self.mock_shakenfist_source.return_value = self._mock_source_lookup()
+            self.mock_db_get_source.return_value = {
+                'name': 'test-sf',
+                'type': 'shakenfist',
+                'url': 'http://localhost:13000',
+                'username': 'admin',
+                'password': 'secret',
+                'project_name': None,
+                'user_domain_id': None,
+                'project_domain_id': None,
+                'deleted': False,
+                'ca_cert': old_pem
+            }
+
+            with mock.patch.object(main, 'LOG') as mock_log:
+                main._parse_sources()
+
+            logged = [c.args[0] for c in mock_log.with_fields.call_args_list]
+            ca = [fields for fields in logged
+                  if fields.get('field') == 'ca_cert']
+
+            # The change is reported, and the two are distinguishable...
+            self.assertEqual(1, len(ca))
+            self.assertNotEqual(ca[0]['old'], ca[0]['new'])
+            self.assertIn('sha256:', ca[0]['old'])
+            self.assertIn('sha256:', ca[0]['new'])
+
+            # ...without either PEM appearing in the record.
+            self.assertNotIn('a' * 100, repr(logged))
+            self.assertNotIn('b' * 100, repr(logged))
+
+    @mock.patch('os.path.exists', return_value=True)
     def test_parse_sources_openstack_skipped(self, mock_exists):
         from kerbside import main
 
@@ -380,6 +432,55 @@ class ParseSourcesTestCase(testtools.TestCase):
             # Should remove console that is no longer available
             self.mock_db_remove_console.assert_called_once_with(
                 source='test-sf', uuid='old-console-uuid')
+
+    @mock.patch('os.path.exists', return_value=True)
+    def test_cleanup_does_not_log_a_console_ticket(self, mock_exists):
+        """The cleanup line is redacted rather than trusting its source.
+
+        This dict does come from db.get_consoles(), so today it is
+        public before it arrives. Depending on that would couple the
+        line's safety to a default set two hundred lines away, which
+        is the coupling this change exists to remove -- and the
+        sibling get_source() call up there has already grown an
+        include_secrets=True for the same reason someone would later
+        add one here. The test passes a ticket through to pin the
+        redaction rather than the default.
+        """
+        from kerbside import main
+
+        with self._create_sources_yaml([{
+            'source': 'test-static',
+            'type': 'static',
+            'consoles': []
+        }]):
+            self.mock_db_get_source.return_value = None
+            self.mock_static_source.return_value = self._mock_source_lookup()
+            self.mock_db_get_consoles.return_value = [{
+                'source': 'test-static',
+                'uuid': 'old-console-uuid',
+                'name': 'old-vm',
+                'ticket': 'ci-spice-password',
+            }]
+
+            with mock.patch.object(main, 'LOG') as mock_log:
+                main._parse_sources()
+
+            logged = [c.args[0] for c in mock_log.with_fields.call_args_list]
+
+            # The cleanup is still reported, identifiably...
+            cleaned = [fields for fields in logged
+                       if fields.get('uuid') == 'old-console-uuid']
+            self.assertEqual(1, len(cleaned))
+            self.assertEqual('old-vm', cleaned[0]['name'])
+
+            # ...without the credential.
+            self.assertNotIn('ticket', cleaned[0])
+            self.assertNotIn('ci-spice-password', repr(logged))
+
+            # And the console really was cleaned up, so the assertions
+            # above are about a line which actually fired.
+            self.mock_db_remove_console.assert_called_once_with(
+                source='test-static', uuid='old-console-uuid')
 
     @mock.patch('os.path.exists', return_value=True)
     def test_source_construction_failure_retains_the_inventory(

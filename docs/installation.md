@@ -354,8 +354,17 @@ daemon log roughly once a minute whether or not anybody ever requested
 a console. Do not assume a log is clean because nothing connected to
 it.
 
-Those are fixed in code, but code cannot reach backwards. If you ran
-v0.6.0 or earlier:
+Those are fixed in code, but code cannot reach backwards.
+
+The first question is usually "was I affected?", and the honest answer
+is that you cannot tell. Kerbside writes no audit event when a source
+is read, so there is no record of who called `GET /source/<name>` or
+when. The audit trail can neither confirm nor exclude access, which is
+why the guidance below is to rotate rather than to investigate:
+rotation is the only action available that actually closes the
+exposure.
+
+If you ran v0.6.0 or earlier:
 
 - **Rotate the credentials in `sources.yaml`** — the oVirt, OpenStack
   or Shaken Fist service account password for every configured source
