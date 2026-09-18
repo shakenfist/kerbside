@@ -458,6 +458,10 @@
     {
       "path": "docs/spice",
       "author": "mikal"
+    },
+    {
+      "path": "docs/proxy-architecture.md",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

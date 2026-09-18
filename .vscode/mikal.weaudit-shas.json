@@ -57,6 +57,10 @@
       "sha": "b31de6116ea70559b0706b9512049fea6ce661cd",
       "date": "2026-08-18"
     },
+    "docs/proxy-architecture.md": {
+      "sha": "e98b04a2437d247bdbb101bb1c5d018cc77a156a",
+      "date": "2026-09-18"
+    },
     "docs/spice/capabilities.md": {
       "sha": "4cccf89b41c025072ecbd7bc1d2a8384f2274b09",
       "date": "2026-09-18"
