@@ -334,3 +334,4 @@ An example configuration follows:
 
 - [Configuration](configuration.md) - General configuration reference
 - [Proxy Architecture](proxy-architecture.md) - Internal proxy design
+- [Kerbside for Shaken Fist](use-cases/shaken-fist.md) - The Shaken Fist use-case guide: value proposition, setup, and the sf-e2e worked example
