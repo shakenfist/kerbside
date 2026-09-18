@@ -57,6 +57,42 @@
       "sha": "b31de6116ea70559b0706b9512049fea6ce661cd",
       "date": "2026-08-18"
     },
+    "docs/spice/capabilities.md": {
+      "sha": "4cccf89b41c025072ecbd7bc1d2a8384f2274b09",
+      "date": "2026-09-18"
+    },
+    "docs/spice/channel-protocols.md": {
+      "sha": "c51a719e76f1e6613d7b4408cf6f065227ee2695",
+      "date": "2026-09-18"
+    },
+    "docs/spice/compression-protocols.md": {
+      "sha": "31f502b7d486ba55d92d5acc0e2e4ae8bd4297dd",
+      "date": "2026-09-18"
+    },
+    "docs/spice/console-vv-extensions.md": {
+      "sha": "04de34ecbe3153d26409d6f4c30249e963097f44",
+      "date": "2026-09-18"
+    },
+    "docs/spice/protocol-overview.md": {
+      "sha": "2a49ba528c79e8980f59dc998eaab0daff16cd01",
+      "date": "2026-09-18"
+    },
+    "docs/spice/scancodes.md": {
+      "sha": "0bcdfd3b59f71bfddfbdd6eeb78738ced94dce39",
+      "date": "2026-09-18"
+    },
+    "docs/spice/spice-link-protocol.md": {
+      "sha": "298f5047309731226bacb15f20018415d7040541",
+      "date": "2026-09-18"
+    },
+    "docs/spice/usb-redirection.md": {
+      "sha": "fb19b4f045b178cd38da346940a25f6f29a64c0e",
+      "date": "2026-09-18"
+    },
+    "docs/spice/vd-agent-protocol.md": {
+      "sha": "c07088c165daeb718be4b23db70c3007215adc22",
+      "date": "2026-09-18"
+    },
     "etc/example-static-sources.yaml": {
       "sha": "558621b0e5ee59b1a61c784a96ea9f7281d3dcd1",
       "date": "2026-08-18"

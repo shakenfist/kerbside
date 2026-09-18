@@ -418,6 +418,46 @@
     {
       "path": ".github/workflows/pr-re-review.yml",
       "author": "mikal"
+    },
+    {
+      "path": "docs/spice/capabilities.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/spice/channel-protocols.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/spice/compression-protocols.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/spice/console-vv-extensions.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/spice/protocol-overview.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/spice/scancodes.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/spice/spice-link-protocol.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/spice/usb-redirection.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/spice/vd-agent-protocol.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/spice",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
