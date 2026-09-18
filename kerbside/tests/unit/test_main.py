@@ -223,6 +223,47 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.assertNotIn('newsecret', repr(logged))
 
     @mock.patch('os.path.exists', return_value=True)
+    def test_parse_sources_logs_the_value_it_compared(self, mock_exists):
+        from kerbside import main
+
+        with self._create_sources_yaml([{
+            'source': 'test-sf',
+            'type': 'shakenfist',
+            'url': 'http://localhost:13000',
+            'username': 'admin',
+            'password': 'secret'
+        }]):
+            # A source which was soft deleted and has reappeared in
+            # sources.yaml. 'deleted' is the one field compared against
+            # a hardcoded value rather than against the yaml, which has
+            # no such key, so logging source.get('deleted') reported the
+            # change as 'new': None -- a value being cleared rather than
+            # being set to False.
+            existing_source = {
+                'name': 'test-sf',
+                'type': 'shakenfist',
+                'url': 'http://localhost:13000',
+                'username': 'admin',
+                'password': 'secret',
+                'project_name': None,
+                'user_domain_id': None,
+                'project_domain_id': None,
+                'deleted': True,
+                'ca_cert': None
+            }
+
+            self.mock_shakenfist_source.return_value = self._mock_source_lookup()
+            self.mock_db_get_source.return_value = existing_source
+
+            with mock.patch.object(main, 'LOG') as mock_log:
+                main._parse_sources()
+
+            logged = [c.args[0] for c in mock_log.with_fields.call_args_list]
+
+            self.assertIn(
+                {'field': 'deleted', 'old': True, 'new': False}, logged)
+
+    @mock.patch('os.path.exists', return_value=True)
     def test_parse_sources_openstack_skipped(self, mock_exists):
         from kerbside import main
 

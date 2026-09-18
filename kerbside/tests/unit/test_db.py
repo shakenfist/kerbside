@@ -254,3 +254,97 @@ class SourceSecretsDbTestCase(testtools.TestCase):
 
     def test_get_source_returns_none_when_absent(self):
         self.assertIsNone(db.get_source('nosuch'))
+
+
+class ConsoleSecretsDbTestCase(testtools.TestCase):
+    """The database layer decides what a console looks like too.
+
+    The source fix left console tickets being stripped by each handler
+    which returned one, which is structurally the same arrangement that
+    produced #132. get_console() and get_consoles() now return the
+    non-secret representation by default, and the two callers which
+    spend the ticket opt in.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.engine = create_engine('sqlite://')
+        db.Base.metadata.create_all(
+            self.engine,
+            tables=[db.Console.__table__, db.ConsoleToken.__table__,
+                    db.ProxyChannel.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+        db.add_console(
+            source='sf1', uuid='console-1', hypervisor='hv1',
+            hypervisor_ip='10.0.0.1', insecure_port=5900, secure_port=5901,
+            name='a console', host_subject='CN=hv1',
+            ticket='sekrit-hypervisor-ticket')
+
+    def test_get_console_omits_secrets_by_default(self):
+        console = db.get_console('sf1', 'console-1')
+
+        self.assertNotIn('ticket', console)
+        self.assertEqual('console-1', console['uuid'])
+
+    def test_get_console_with_secrets_is_opt_in(self):
+        console = db.get_console('sf1', 'console-1', include_secrets=True)
+
+        self.assertEqual('sekrit-hypervisor-ticket', console['ticket'])
+
+    def test_get_console_detailed_omits_secrets_by_default(self):
+        # detailed=True takes a different path through get_console(),
+        # so it gets its own assertion rather than being assumed.
+        console = db.get_console('sf1', 'console-1', detailed=True)
+
+        self.assertNotIn('ticket', console)
+        self.assertEqual([], console['sessions'])
+
+    def test_get_consoles_omits_secrets_by_default(self):
+        # include_audit=False because the auditevents table's schema
+        # does not create under sqlite; the audit scan is orthogonal to
+        # what a console dict contains.
+        consoles = db.get_consoles(include_audit=False)
+
+        self.assertEqual(1, len(consoles))
+        self.assertNotIn('ticket', consoles[0])
+
+    def test_get_consoles_with_secrets_is_opt_in(self):
+        consoles = db.get_consoles(
+            include_audit=False, include_secrets=True)
+
+        self.assertEqual('sekrit-hypervisor-ticket', consoles[0]['ticket'])
+
+    def test_public_export_is_exactly_this_field_set(self):
+        # Pinned rather than derived from CONSOLE_PUBLIC_FIELDS, for
+        # the same reason as the source equivalent above: a test which
+        # walks the same list the code walks agrees with the code even
+        # when the code is wrong.
+        console = db.get_console('sf1', 'console-1')
+
+        self.assertEqual(
+            ['discovered', 'host_subject', 'hypervisor', 'hypervisor_ip',
+             'insecure_port', 'name', 'secure_port', 'source', 'uuid'],
+            sorted(console.keys()))
+
+    def test_every_exported_field_is_classified(self):
+        exported = set(
+            db.get_console('sf1', 'console-1', include_secrets=True).keys())
+        classified = (set(db.CONSOLE_PUBLIC_FIELDS) |
+                      set(db.CONSOLE_SECRET_FIELDS))
+
+        self.assertEqual(set(), exported - classified,
+                         'exported console fields are neither public nor '
+                         'secret')
+        self.assertEqual(set(), classified - exported,
+                         'classified console fields are not exported at all')
+
+    def test_secret_fields_are_never_public(self):
+        self.assertEqual(
+            set(),
+            set(db.CONSOLE_PUBLIC_FIELDS) & set(db.CONSOLE_SECRET_FIELDS))
+
+    def test_get_console_returns_none_when_absent(self):
+        self.assertIsNone(db.get_console('sf1', 'nosuch'))

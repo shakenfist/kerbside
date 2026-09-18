@@ -302,15 +302,11 @@ class Consoles(sf_api.Resource):
                     refresh=True, when=datetime.datetime.now()),
                 mimetype='text/html')
         else:
-            out_consoles = []
-            for console in db.get_consoles(include_audit=False):
-                # Remove the hypervisor auth ticket
-                if 'ticket' in console:
-                    del console['ticket']
-                out_consoles.append(console)
-
+            # No ticket to strip here: db.get_consoles() returns only
+            # CONSOLE_PUBLIC_FIELDS unless a caller asks otherwise.
             resp = flask.Response(
-                json.dumps(out_consoles, indent=4, sort_keys=True, cls=DateTimeEncoder),
+                json.dumps(db.get_consoles(include_audit=False), indent=4,
+                           sort_keys=True, cls=DateTimeEncoder),
                 mimetype='application/json')
         resp.status_code = 200
         return resp
@@ -323,10 +319,6 @@ class Console(sf_api.Resource):
         console = db.get_console(source, uuid, detailed=True)
         if not console:
             return sf_api.error(404, 'console not found')
-
-        # Remove the hypervisor auth ticket
-        if 'ticket' in console:
-            del console['ticket']
 
         resp = flask.Response(
             json.dumps(console, indent=4, sort_keys=True, cls=DateTimeEncoder),
@@ -406,7 +398,14 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
         # ticket on every request.  All other types (shakenfist,
         # openstack) use an empty string here.
         if s['type'] == 'static':
-            ticket = c.get('ticket') or ''
+            # The persisted ticket is this console's SPICE password, so
+            # it is read in the one branch which puts it in the .vv file
+            # and nowhere else. c itself stays public, which is why it
+            # can be logged below without being scrubbed first.
+            authed_console = db.get_console(source, uuid, include_secrets=True)
+            if not authed_console:
+                return sf_api.error(404, 'console not found')
+            ticket = authed_console.get('ticket') or ''
         elif s['type'] == 'ovirt':
             ticket = ''
             # Authenticating to oVirt is the only thing in this handler
@@ -414,6 +413,8 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
             # thing which asks for them. s itself stays public, which is
             # why it can be logged below without being scrubbed first.
             authed = db.get_source(source, include_secrets=True)
+            if not authed:
+                return sf_api.error(404, 'source not found')
             lookup = ovirt_source.oVirtSource(**authed)
             if lookup.errored:
                 return sf_api.error(404, 'source error')
@@ -492,6 +493,8 @@ class ConsolesProxyVirtViewer(sf_api.Resource):
             # acquisition is entitled to the source secrets, so it is
             # the only thing which asks for them.
             authed = db.get_source(source, include_secrets=True)
+            if not authed:
+                return sf_api.error(404, 'source not found')
             lookup = ovirt_source.oVirtSource(**authed)
             if lookup.errored:
                 return sf_api.error(404, 'source error')

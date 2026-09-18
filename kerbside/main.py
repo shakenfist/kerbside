@@ -119,7 +119,11 @@ def _parse_sources():
                             old_logged = new_logged = '<redacted>'
                         else:
                             old_logged = stored_source[field]
-                            new_logged = source.get(field)
+                            # new_value, not source.get(field): the two
+                            # differ for 'deleted', where the comparison
+                            # above is against a hardcoded False and the
+                            # yaml has no such key at all.
+                            new_logged = new_value
 
                         LOG.with_fields({
                             'field': field,

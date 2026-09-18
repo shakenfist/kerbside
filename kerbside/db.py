@@ -227,6 +227,25 @@ def delete_source(name):
         session.commit()
 
 
+# The console fields which may be returned to an API client, rendered
+# in a template, or logged. An allowlist for the same reason
+# SOURCE_PUBLIC_FIELDS is one: a column added to the model and to
+# Console.export() is private until someone names it here.
+CONSOLE_PUBLIC_FIELDS = [
+    'uuid', 'source', 'hypervisor', 'hypervisor_ip', 'insecure_port',
+    'secure_port', 'name', 'host_subject', 'discovered'
+]
+
+# The console fields which are credentials. The ticket is the password
+# the SPICE server on the hypervisor will accept for this console:
+# static sources persist theirs at enumeration time and oVirt mints a
+# fresh one per request. As with SOURCE_SECRET_FIELDS, this list does
+# not decide what export_public() returns -- CONSOLE_PUBLIC_FIELDS
+# does -- it names the values which must not be written to a log line
+# even when the surrounding code legitimately holds them.
+CONSOLE_SECRET_FIELDS = ['ticket']
+
+
 class Console(Base):
     __tablename__ = 'consoles'
 
@@ -268,6 +287,18 @@ class Console(Base):
             'discovered': self.discovered
         }
 
+    def export_public(self) -> dict:
+        """Export only the CONSOLE_PUBLIC_FIELDS of the console.
+
+        The ticket is withheld because it is a live credential: it is
+        the value a SPICE client presents to the hypervisor, and for a
+        static source it is the console password an operator wrote in
+        the source configuration. Only the two callers which are about
+        to spend it ask for it.
+        """
+        console = self.export()
+        return {field: console[field] for field in CONSOLE_PUBLIC_FIELDS}
+
 
 def add_console(source=None, uuid=None, hypervisor=None, hypervisor_ip=None,
                 insecure_port=None, secure_port=None, name=None, host_subject=None,
@@ -292,7 +323,12 @@ def add_console(source=None, uuid=None, hypervisor=None, hypervisor_ip=None,
     return False
 
 
-def get_consoles(include_audit=True):
+def get_consoles(include_audit=True, *, include_secrets: bool = False):
+    """Fetch every known console.
+
+    Only CONSOLE_PUBLIC_FIELDS are returned unless include_secrets is
+    set, which only the code paths spending the console ticket may do.
+    """
     sessions = defaultdict(list)
     out = []
     now = time.time()
@@ -304,7 +340,10 @@ def get_consoles(include_audit=True):
                     (channel.node, channel.connection_ref or channel.pid))
 
             for console in session.query(Console).order_by(Console.name).all():
-                c = console.export()
+                if include_secrets:
+                    c = console.export()
+                else:
+                    c = console.export_public()
                 c['sessions'] = []
                 c['token_count'] = 0
 
@@ -339,13 +378,22 @@ def get_consoles(include_audit=True):
     return out
 
 
-def get_console(source, uuid, detailed=False):
+def get_console(source, uuid, detailed=False, *,
+                include_secrets: bool = False):
+    """Fetch a single console by uuid, or None.
+
+    Only CONSOLE_PUBLIC_FIELDS are returned unless include_secrets is
+    set, which only the code paths spending the console ticket may do.
+    """
     now = time.time()
 
     with Session(ENGINE) as session:
         try:
             console = session.query(Console).filter(Console.uuid == uuid).one()
-            c = console.export()
+            if include_secrets:
+                c = console.export()
+            else:
+                c = console.export_public()
             if not detailed:
                 return c
 

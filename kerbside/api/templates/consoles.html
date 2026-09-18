@@ -83,10 +83,10 @@
             </tr>
         </thead>
         <tbody>
-            {# Fields are named one by one, never iterated: the
-               view passes db.get_consoles() dicts unfiltered, and
-               they carry the hypervisor ticket alongside what is
-               rendered here. #}
+            {# Fields are named one by one, never iterated.
+               db.get_consoles() returns only CONSOLE_PUBLIC_FIELDS,
+               so the hypervisor ticket is not in these dicts, and
+               naming the fields keeps it that way if one ever is. #}
             {% for console in consoles %}
             <tr>
                 <td>{{ console.name }}</td>

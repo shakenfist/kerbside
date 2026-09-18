@@ -472,6 +472,14 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
         config_patch.start()
         self.addCleanup(config_patch.stop)
 
+        # The proxy handler reads the CA unconditionally, so it needs a
+        # real file where the direct handler is happy with None.
+        cacert = tempfile.NamedTemporaryFile(suffix='.pem', delete=False)
+        cacert.write(b'CA-CERT-MARKER\n')
+        cacert.close()
+        self.cacert_path = cacert.name
+        self.addCleanup(os.unlink, self.cacert_path)
+
         self.logged = []
         log_patch = mock.patch.object(api, 'LOG', self._recording_log())
         log_patch.start()
@@ -505,6 +513,131 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
         for fields in self.logged:
             self.assertNotIn('password', fields)
             self.assertNotIn('sekrit-source-password', repr(fields))
+
+    def test_direct_vv_does_not_log_the_console_ticket(self):
+        # The same log line carries the console dict, and for a static
+        # source the ticket in it is the SPICE password this handler is
+        # about to write into the .vv file. It legitimately appears in
+        # the response body, so only the log fields are asserted on.
+        db.add_source(
+            'static1', 'static', None, None, None, ca_cert=None)
+        db.add_console(
+            source='static1', uuid='console-3', hypervisor='hv3',
+            hypervisor_ip='10.0.0.3', insecure_port=5900, secure_port=5901,
+            name='a static console', host_subject='CN=hv3',
+            ticket='sekrit-hypervisor-ticket')
+
+        resp = self.client.get(
+            '/console/direct/static1/console-3/console.vv')
+
+        self.assertEqual(200, resp.status_code)
+        # The ticket is spent, so it is in the file...
+        self.assertIn(
+            'password=sekrit-hypervisor-ticket', resp.get_data(as_text=True))
+        # ...and nowhere in the log.
+        for fields in self.logged:
+            self.assertNotIn('ticket', fields)
+            self.assertNotIn('sekrit-hypervisor-ticket', repr(fields))
+
+    def test_console_endpoints_do_not_disclose_the_ticket(self):
+        db.add_console(
+            source='sf1', uuid='console-4', hypervisor='hv4',
+            hypervisor_ip='10.0.0.4', insecure_port=5900, secure_port=5901,
+            name='another console', host_subject='CN=hv4',
+            ticket='sekrit-hypervisor-ticket')
+
+        # The single console endpoint uses detailed=True, which needs
+        # the token and channel tables.
+        db.Base.metadata.create_all(
+            self.engine,
+            tables=[db.ConsoleToken.__table__, db.ProxyChannel.__table__])
+
+        single = self.client.get('/console/sf1/console-4')
+        self.assertEqual(200, single.status_code)
+        self.assertNotIn(
+            'sekrit-hypervisor-ticket', single.get_data(as_text=True))
+        self.assertNotIn('ticket', json.loads(single.get_data(as_text=True)))
+
+        listed = self.client.get(
+            '/console', headers={'Accept': 'application/json'})
+        self.assertEqual(200, listed.status_code)
+        self.assertNotIn(
+            'sekrit-hypervisor-ticket', listed.get_data(as_text=True))
+        for console in json.loads(listed.get_data(as_text=True)):
+            self.assertNotIn('ticket', console)
+
+    def test_vv_handlers_404_when_the_source_vanishes_mid_request(self):
+        # Fetching the public source and then re-fetching it with the
+        # secrets opens a window the single fetch did not have: a hard
+        # delete between the two used to reach oVirtSource(**None) and
+        # return a 500. Both handlers now 404, which is what the first
+        # fetch would have done.
+        db.add_source(
+            'ovirt1', 'ovirt', 'https://ovirt.example.com/ovirt-engine/api',
+            'admin@internal', 'sekrit-ovirt-password', ca_cert='CA')
+        db.add_console(
+            source='ovirt1', uuid='console-6', hypervisor='hv6',
+            hypervisor_ip='10.0.0.6', insecure_port=5900, secure_port=5901,
+            name='an ovirt console', host_subject='CN=hv6')
+        public = db.get_source('ovirt1')
+
+        for url in ('/console/direct/ovirt1/console-6/console.vv',
+                    '/console/proxy/ovirt1/console-6/console.vv'):
+            with mock.patch('kerbside.api.db.get_source',
+                            side_effect=[public, None]):
+                with mock.patch.object(
+                        api.config, 'CACERT_PATH', self.cacert_path):
+                    resp = self.client.get(url)
+            self.assertEqual(404, resp.status_code, url)
+
+    def test_direct_vv_404s_when_the_console_vanishes_mid_request(self):
+        # The same window, for the static branch's ticket re-fetch.
+        db.add_source('static1', 'static', None, None, None, ca_cert=None)
+        db.add_console(
+            source='static1', uuid='console-7', hypervisor='hv7',
+            hypervisor_ip='10.0.0.7', insecure_port=5900, secure_port=5901,
+            name='a static console', host_subject='CN=hv7',
+            ticket='sekrit-hypervisor-ticket')
+        public = db.get_console('static1', 'console-7')
+
+        with mock.patch('kerbside.api.db.get_console',
+                        side_effect=[public, None]):
+            resp = self.client.get(
+                '/console/direct/static1/console-7/console.vv')
+
+        self.assertEqual(404, resp.status_code)
+
+    @mock.patch('kerbside.consoletoken.create_token',
+                return_value={'token': 'a-proxy-token', 'session_id': 'sess'})
+    @mock.patch('kerbside.sources.ovirt.oVirtSource')
+    def test_ovirt_proxy_vv_is_given_the_password(self, mock_ovirt,
+                                                  mock_create_token):
+        # The second .vv handler has its own opt in, and nothing else
+        # asserts it: without this, that re-fetch could regress to the
+        # public source dict and oVirtSource would simply be handed
+        # password=None, which only fails against a real engine.
+        db.add_source(
+            'ovirt1', 'ovirt', 'https://ovirt.example.com/ovirt-engine/api',
+            'admin@internal', 'sekrit-ovirt-password', ca_cert='CA')
+        db.add_console(
+            source='ovirt1', uuid='console-5', hypervisor='hv5',
+            hypervisor_ip='10.0.0.5', insecure_port=5900, secure_port=5901,
+            name='an ovirt console', host_subject='CN=hv5')
+        mock_ovirt.return_value.errored = False
+        mock_ovirt.return_value.get_console_for_vm.return_value = (
+            None, 'a-ticket')
+
+        with mock.patch.object(api.config, 'CACERT_PATH', self.cacert_path):
+            resp = self.client.get(
+                '/console/proxy/ovirt1/console-5/console.vv')
+
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual(
+            'sekrit-ovirt-password', mock_ovirt.call_args.kwargs['password'])
+        # The proxy .vv file carries the session token, never the
+        # hypervisor ticket.
+        self.assertIn('password=a-proxy-token', resp.get_data(as_text=True))
+        self.assertNotIn('a-ticket', resp.get_data(as_text=True))
 
     @mock.patch('kerbside.sources.ovirt.oVirtSource')
     def test_ovirt_direct_vv_is_given_the_password(self, mock_ovirt):

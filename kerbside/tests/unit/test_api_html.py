@@ -113,11 +113,14 @@ class HtmlPagesTestCase(testtools.TestCase):
     having a safety net that spanned the conversion. The rule stands for
     the rewrites that come after it.
 
-    Two of these tests (consoles, sources) also double as leak guards: the
-    HTML views pass raw db dicts straight to the template, unlike the JSON
-    views which strip 'ticket' and 'password' before serializing. The
-    fixtures include those sensitive fields and the tests assert they never
-    appear in the rendered page.
+    Two of these tests (consoles, sources) also double as leak guards.
+    db.get_consoles() and db.get_sources() now return only their
+    *_PUBLIC_FIELDS, so neither 'ticket' nor 'password' reaches a template
+    any more; these fixtures deliberately over-supply both, which proves
+    the templates render neither even when they are handed one. That is
+    the property worth pinning, because it is what stops a future change
+    to the db layer -- or a view which fetches with include_secrets -- from
+    quietly putting a credential on a page.
     """
 
     def setUp(self):

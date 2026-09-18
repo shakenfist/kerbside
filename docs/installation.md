@@ -341,20 +341,27 @@ section records the upgrades which need something from you as well.
 
 ### Upgrading past the source credential disclosure
 
-Before this release, `GET /source/<name>` returned the source record
-verbatim, including the cleartext password Kerbside uses to
-authenticate to the backend cloud, to any holder of a valid API token.
-The `.vv` handler for direct connections separately wrote the same
-credential into the daemon log on every request.
+In Kerbside v0.6.0 and earlier, `GET /source/<name>` returned the
+source record verbatim, including the cleartext password Kerbside uses
+to authenticate to the backend cloud, to any holder of a valid API
+token. The `.vv` handler for direct connections separately wrote the
+same credential into the daemon log on every request, along with the
+console's SPICE ticket.
 
-Both are fixed in code, but code cannot reach backwards. If you ran an
-earlier release:
+Those are fixed in code, but code cannot reach backwards. If you ran
+v0.6.0 or earlier:
 
 - **Rotate the credentials in `sources.yaml`** — the oVirt, OpenStack
   or Shaken Fist service account password for every configured source
   — and restart the daemon so it picks them up. Anyone who held an API
   token, and anyone who could read the daemon's log, could have read
   the old ones.
+- **Rotate the SPICE passwords of any static sources**, in
+  `sources.yaml` and on the SPICE servers themselves. A static
+  source's ticket is a console password you configured rather than one
+  minted per request, so unlike an oVirt ticket it does not expire on
+  its own. oVirt, OpenStack and Shaken Fist tickets need no action:
+  they are short lived and are reissued on every request.
 - **Scrub or expire the daemon logs** from before the upgrade,
   including anywhere they were shipped: a log aggregator, a backup, a
   support bundle, or CI artifacts from a deployment lane.

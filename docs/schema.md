@@ -148,6 +148,22 @@ Virtual machine consoles discovered from sources.
 | host_subject | string | Expected TLS certificate subject |
 | ticket | string | SPICE ticket for authentication |
 
+`ticket` is the password the SPICE server on the hypervisor will accept
+for this console, and it gets the same treatment as a source's
+`password`. `db.get_console()` and `db.get_consoles()` return only the
+fields in `db.CONSOLE_PUBLIC_FIELDS` unless a caller opts in with
+`include_secrets=True`, so it reaches neither the REST API, the web UI
+nor a log line. The ticket's lifetime depends on the source: oVirt
+mints a fresh one on every `.vv` request and expires it in about two
+minutes, while a static source persists the console password from its
+configuration indefinitely.
+
+There are exactly two callers entitled to it, and `git grep
+include_secrets` finds them alongside the source ones: the static
+branch of the direct `.vv` handler, which writes it into the file it
+returns, and the gRPC servicer, which hands it to the proxy to present
+to the hypervisor.
+
 ### consoletokens
 
 Time-limited access tokens for console connections.
