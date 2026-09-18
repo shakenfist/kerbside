@@ -348,6 +348,12 @@ token. The `.vv` handler for direct connections separately wrote the
 same credential into the daemon log on every request, along with the
 console's SPICE ticket.
 
+A static source's ticket was exposed more widely still: console
+discovery logged it on every maintenance pass, so it reached the
+daemon log roughly once a minute whether or not anybody ever requested
+a console. Do not assume a log is clean because nothing connected to
+it.
+
 Those are fixed in code, but code cannot reach backwards. If you ran
 v0.6.0 or earlier:
 

@@ -90,13 +90,19 @@ class StaticSource(base.BaseSource):
                 self.errored = True
                 return
 
-            # Validate required fields.
+            # Validate required fields. The entry itself is not logged:
+            # it is a raw sources.yaml console entry, so an entry which
+            # supplies 'ticket' but omits some other required field
+            # would write the operator's SPICE password to the daemon
+            # log. Naming the keys is what the operator needs to fix
+            # the file, and the uuid (when present) says which entry.
             missing = [f for f in _REQUIRED_FIELDS if f not in entry]
             if missing:
                 LOG.error(
                     'Static source %s: console entry missing required '
-                    'fields: %s (entry: %s)'
-                    % (source_name, missing, entry))
+                    'fields: %s (entry uuid: %s, keys present: %s)'
+                    % (source_name, missing, entry.get('uuid', '<absent>'),
+                       sorted(entry.keys())))
                 self.errored = True
                 return
 

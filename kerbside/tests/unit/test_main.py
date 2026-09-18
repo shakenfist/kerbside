@@ -770,6 +770,65 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_db_add_audit_event.assert_called()
 
     @mock.patch('os.path.exists', return_value=True)
+    def test_discovery_does_not_log_a_console_ticket(self, mock_exists):
+        """The 'Found console' line redacts the ticket, then stores it.
+
+        This dict arrives from the source driver rather than from
+        db.get_console(), so CONSOLE_PUBLIC_FIELDS has not filtered it
+        and nothing else will. A static source's ticket is the SPICE
+        password from sources.yaml and does not expire, and the
+        maintenance loop runs this every 60 seconds.
+        """
+        from kerbside import main
+
+        static_console = {
+            'source': 'test-static',
+            'uuid': _STATIC_CONSOLE_UUID,
+            'name': 'ci-vm',
+            'hypervisor': 'localhost',
+            'hypervisor_ip': '127.0.0.1',
+            'insecure_port': 5910,
+            'secure_port': None,
+            'host_subject': None,
+            'ticket': 'ci-spice-password',
+        }
+        with self._create_sources_yaml([{
+            'source': 'test-static',
+            'type': 'static',
+            'consoles': [{
+                'uuid': _STATIC_CONSOLE_UUID,
+                'name': 'ci-vm',
+                'hypervisor': 'localhost',
+                'hypervisor_ip': '127.0.0.1',
+                'insecure_port': 5910,
+                'ticket': 'ci-spice-password',
+            }]
+        }]):
+            self.mock_db_get_source.return_value = None
+            self.mock_static_source.return_value = self._mock_source_lookup(
+                consoles=[static_console])
+
+            with mock.patch.object(main, 'LOG') as mock_log:
+                main._parse_sources()
+
+            logged = [c.args[0] for c in mock_log.with_fields.call_args_list]
+
+            # The console is still reported, identifiably...
+            found = [fields for fields in logged
+                     if fields.get('uuid') == _STATIC_CONSOLE_UUID]
+            self.assertEqual(1, len(found))
+            self.assertEqual('ci-vm', found[0]['name'])
+
+            # ...with the ticket key gone rather than merely emptied,
+            # and the credential absent from every field of every line.
+            self.assertNotIn('ticket', found[0])
+            self.assertNotIn('ci-spice-password', repr(logged))
+
+            # The redaction is for the log only: the ticket is still
+            # what gets persisted, or no console would ever connect.
+            self.mock_db_add_console.assert_called_once_with(**static_console)
+
+    @mock.patch('os.path.exists', return_value=True)
     def test_parse_sources_static_and_other_source_coexist(self, mock_exists):
         """A static source does not break dispatch for other source types."""
         from kerbside import main

@@ -166,7 +166,17 @@ def _parse_sources():
                     continue
 
                 for console in lookup():
-                    LOG.with_fields(console).info('Found console')
+                    # This dict comes from the source driver, not from
+                    # db.get_console(), so the export_public() allowlist
+                    # has not been anywhere near it: a static source
+                    # yields the operator configured SPICE password here
+                    # and the maintenance loop runs every 60 seconds.
+                    # Redact the same way the source comparison above
+                    # does, then store the unredacted dict.
+                    LOG.with_fields(
+                        {k: v for k, v in console.items()
+                         if k not in kerbside_db.CONSOLE_SECRET_FIELDS}
+                        ).info('Found console')
                     console_is_new = kerbside_db.add_console(**console)
                     if console_is_new:
                         kerbside_db.add_audit_event(

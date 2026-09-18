@@ -152,17 +152,39 @@ Virtual machine consoles discovered from sources.
 for this console, and it gets the same treatment as a source's
 `password`. `db.get_console()` and `db.get_consoles()` return only the
 fields in `db.CONSOLE_PUBLIC_FIELDS` unless a caller opts in with
-`include_secrets=True`, so it reaches neither the REST API, the web UI
-nor a log line. The ticket's lifetime depends on the source: oVirt
-mints a fresh one on every `.vv` request and expires it in about two
-minutes, while a static source persists the console password from its
-configuration indefinitely.
+`include_secrets=True`, so it reaches neither the REST API nor the web
+UI. The ticket's lifetime depends on the source: oVirt mints a fresh
+one on every `.vv` request and expires it in about two minutes, while a
+static source persists the console password from its configuration
+indefinitely.
 
-There are exactly two callers entitled to it, and `git grep
-include_secrets` finds them alongside the source ones: the static
-branch of the direct `.vv` handler, which writes it into the file it
-returns, and the gRPC servicer, which hands it to the proxy to present
-to the hypervisor.
+There are exactly two callers entitled to read it back out of the
+database, and `git grep include_secrets` finds them alongside the
+source ones: the static branch of the direct `.vv` handler, which
+writes it into the file it returns, and the gRPC servicer, which hands
+it to the proxy to present to the hypervisor.
+
+The allowlist governs what leaves the database, which is not the whole
+story for logs. Discovery holds a ticket before there is a database row
+to read: the source driver yields it and `main._parse_sources()` passes
+it to `db.add_console()`. A static source's driver builds that dict
+straight from `sources.yaml`, so for the one source type whose ticket
+does not expire, the credential is in process memory every maintenance
+pass. Two log lines on that path are therefore redacted by hand rather
+than by the allowlist, and they are the reason
+`db.CONSOLE_SECRET_FIELDS` exists separately from
+`db.CONSOLE_PUBLIC_FIELDS`:
+
+- `main._parse_sources()` drops `CONSOLE_SECRET_FIELDS` from the
+  `Found console` line, which would otherwise write a static source's
+  SPICE password to the daemon log every 60 seconds.
+- The static driver reports a malformed console entry by naming the
+  keys it found rather than dumping the entry, which would otherwise
+  log the ticket of any entry that supplied one and omitted something
+  else.
+
+Both are pinned by unit tests, because neither is protected by the
+allowlist that protects everything else.
 
 ### consoletokens
 

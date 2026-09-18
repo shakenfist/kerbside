@@ -387,6 +387,43 @@ class AuthorizeConnectionRealDbTestCase(testtools.TestCase):
         # The source password is not, and is in no field of the reply.
         self.assertNotIn('sekrit-source-password', str(reply))
 
+    @mock.patch('kerbside.db.add_audit_event')
+    @mock.patch('kerbside.db.record_channel_info_by_ref')
+    @mock.patch('kerbside.db.get_token_by_token')
+    def test_the_source_lookup_stays_public(
+            self, mock_get_token, mock_record, mock_audit):
+        """The servicer opts in for the console, and only for the console.
+
+        Asserting the password is absent from the reply is the
+        important half but not the whole of it: the servicer could
+        fetch the secret-bearing source, never put it in the reply, and
+        still hold a credential it has no use for -- one log line away
+        from the bug this change exists to close. The proxy
+        authenticates to the SPICE server with the console ticket and
+        never with the source password, so the opt-in count here is
+        exactly one.
+        """
+        mock_get_token.return_value = {
+            'session_id': 's', 'source': 'src', 'uuid': 'u',
+            'created': 0, 'expires': 9999999999}
+
+        with mock.patch('kerbside.db.get_source',
+                        wraps=db.get_source) as spy_source, \
+                mock.patch('kerbside.db.get_console',
+                           wraps=db.get_console) as spy_console:
+            reply = self.stub.AuthorizeConnection(
+                kerbside_pb2.AuthorizeConnectionRequest(
+                    token='T', connection_ref='cr', channel_type='main'),
+                timeout=5)
+
+        self.assertEqual('target', reply.WhichOneof('result'))
+
+        spy_source.assert_called_once()
+        self.assertNotIn('include_secrets', spy_source.call_args.kwargs)
+
+        spy_console.assert_called_once()
+        self.assertTrue(spy_console.call_args.kwargs['include_secrets'])
+
 
 class BuildFirewallPolicyTestCase(testtools.TestCase):
     """Unit-test the config -> FirewallPolicy mapping in isolation.

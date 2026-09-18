@@ -539,6 +539,53 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
             self.assertNotIn('ticket', fields)
             self.assertNotIn('sekrit-hypervisor-ticket', repr(fields))
 
+    def test_direct_vv_log_line_names_its_fields(self):
+        """The log line is built from named fields, not from the dicts.
+
+        Both dicts are public, so splatting them would disclose
+        nothing -- but the source dict carries ca_cert, a multi
+        kilobyte PEM, and this line is emitted on every request. The
+        assertion is on the marker rather than the key, so it fails
+        whichever way the line regresses.
+        """
+        resp = self.client.get('/console/direct/sf1/console-1/console.vv')
+
+        self.assertEqual(200, resp.status_code)
+        for fields in self.logged:
+            self.assertNotIn('CA-CERT-MARKER', repr(fields))
+
+        # The console is still identifiable in the log, or the
+        # trimming has cost an operator the ability to find it.
+        vv_lines = [fields for fields in self.logged
+                    if fields.get('uuid') == 'console-1']
+        self.assertEqual(1, len(vv_lines))
+        self.assertEqual('sf1', vv_lines[0]['source'])
+        self.assertEqual('hv1', vv_lines[0]['hypervisor'])
+        self.assertEqual('shakenfist', vv_lines[0]['type'])
+
+    def test_static_console_without_a_ticket_serves_an_empty_password(self):
+        """A static console row may have a NULL ticket.
+
+        db.add_console() defaults ticket to None, so a static source
+        whose row predates a ticket, or whose yaml omitted one, reaches
+        the `authed_console.get('ticket') or \'\'` guard. Without it the
+        template renders password=None, which a SPICE client would send
+        as the literal string.
+        """
+        db.add_source('static2', 'static', None, None, None, ca_cert=None)
+        db.add_console(
+            source='static2', uuid='console-5', hypervisor='hv5',
+            hypervisor_ip='10.0.0.5', insecure_port=5900, secure_port=5901,
+            name='a ticketless console', host_subject='CN=hv5', ticket=None)
+
+        resp = self.client.get(
+            '/console/direct/static2/console-5/console.vv')
+
+        self.assertEqual(200, resp.status_code)
+        body = resp.get_data(as_text=True)
+        self.assertIn('password=\n', body)
+        self.assertNotIn('password=None', body)
+
     def test_console_endpoints_do_not_disclose_the_ticket(self):
         db.add_console(
             source='sf1', uuid='console-4', hypervisor='hv4',

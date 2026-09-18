@@ -116,6 +116,42 @@ class TestStaticSourceMissingRequiredField(unittest.TestCase):
                         msg=f'errored should be True when {field!r} is missing')
         mock_log_error.assert_called()
 
+        # An entry is rejected for missing one field while still
+        # carrying the others, so an entry which supplied a ticket and
+        # omitted something else must not put that ticket in the log.
+        # This is a raw sources.yaml entry: CONSOLE_PUBLIC_FIELDS never
+        # sees it, so nothing but this line protects it.
+        self.assertNotIn(_VALID_CONSOLE['ticket'], str(mock_log_error.call_args),
+                         msg=f'ticket logged while reporting missing {field!r}')
+
+    def test_error_names_the_problem_without_the_entry(self):
+        """Withholding the entry must not cost the operator the diagnostic.
+
+        The message has to say which entry and what is wrong with it,
+        or the redaction has traded a credential leak for an
+        unactionable error.
+        """
+        console = dict(_VALID_CONSOLE)
+        del console['hypervisor_ip']
+        with mock.patch.object(
+                static_source.LOG, 'error') as mock_log_error:
+            _make_source([console])
+
+        message = str(mock_log_error.call_args)
+        self.assertIn('hypervisor_ip', message)
+        self.assertIn(_VALID_CONSOLE['uuid'], message)
+        self.assertNotIn(_VALID_CONSOLE['ticket'], message)
+
+    def test_error_survives_an_entry_with_no_uuid(self):
+        """The uuid is itself a required field, so it may be absent."""
+        with mock.patch.object(
+                static_source.LOG, 'error') as mock_log_error:
+            _make_source([{'ticket': _VALID_CONSOLE['ticket']}])
+
+        message = str(mock_log_error.call_args)
+        self.assertIn('<absent>', message)
+        self.assertNotIn(_VALID_CONSOLE['ticket'], message)
+
     def test_missing_uuid(self):
         self._test_missing('uuid')
 

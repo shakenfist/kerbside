@@ -400,8 +400,8 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
         if s['type'] == 'static':
             # The persisted ticket is this console's SPICE password, so
             # it is read in the one branch which puts it in the .vv file
-            # and nowhere else. c itself stays public, which is why it
-            # can be logged below without being scrubbed first.
+            # and nowhere else. c itself stays public, which is why the
+            # log line below needs no scrubbing step.
             authed_console = db.get_console(source, uuid, include_secrets=True)
             if not authed_console:
                 return sf_api.error(404, 'console not found')
@@ -411,7 +411,7 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
             # Authenticating to oVirt is the only thing in this handler
             # which is entitled to the source secrets, so it is the only
             # thing which asks for them. s itself stays public, which is
-            # why it can be logged below without being scrubbed first.
+            # why the log line below needs no scrubbing step.
             authed = db.get_source(source, include_secrets=True)
             if not authed:
                 return sf_api.error(404, 'source not found')
@@ -437,7 +437,18 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
                 ca_cert_data = f.read().replace('\n', '\\n')
             ca_cert = f'\nca={ca_cert_data}'
 
-        LOG.with_fields(c).with_fields(s).info(
+        # Both dicts are public, so either could be splatted here
+        # without disclosing a credential. They are not, for a reason
+        # which outlives this change: s carries ca_cert, a multi
+        # kilobyte PEM, and this line is emitted on every request.
+        # Naming the fields also keeps the line stable if
+        # SOURCE_PUBLIC_FIELDS or CONSOLE_PUBLIC_FIELDS grows later.
+        LOG.with_fields({
+            'source': c['source'],
+            'uuid': c['uuid'],
+            'hypervisor': c['hypervisor'],
+            'type': s['type']
+            }).info(
             'Providing virt-viewer direct configuration for console')
 
         vv = VIRTVIEWER_TEMPLATE % {
