@@ -16,8 +16,10 @@ on:
         # kerbside-patches' trigger-downstream.yml dispatches this
         # workflow with the old name on every develop push, and a
         # choice input rejects a value that is not in this list. The
-        # openstack_matrix if: below accepts either spelling. Drop
-        # this option once that workflow asks for debian-13.
+        # openstack_matrix if: below accepts either spelling, and
+        # selecting this option runs the Debian 13 lane. Drop this
+        # option once shakenfist/kerbside-patches#1706 lands and that
+        # workflow asks for debian-13.
         - '["kolla-ansible-master-debian-12"]'
         default: '["kolla-ansible-master-debian-13"]'
         required: true
@@ -863,15 +865,19 @@ jobs:
     # selected, rather than running a step that calls core.setFailed --
     # which reported an unselected target as red and then left the
     # always() artifact steps to time out against a guest that was
-    # never provisioned. The target name is a literal because the
-    # matrix context is not available in a job-level if:; it matches
-    # the release rather than the distro so that both spellings of the
-    # single matrix entry below select it -- kerbside-patches still
-    # dispatches the retired 'kolla-ansible-master-debian-12' name.
+    # never provisioned. The target names are literals because the
+    # matrix context is not available in a job-level if:. The first
+    # mirrors the single matrix entry below; the second is the retired
+    # spelling kerbside-patches still dispatches, enumerated rather
+    # than matched by prefix so that a future lane for another release
+    # or topology has to opt in here deliberately. Drop the second
+    # clause together with the deprecated option above, once
+    # shakenfist/kerbside-patches#1706 lands.
     if: >-
       (github.event_name == 'merge_group'
        || (github.event_name == 'workflow_dispatch'
-           && contains(inputs.target, 'kolla-ansible-master')))
+           && (contains(inputs.target, 'kolla-ansible-master-debian-13')
+               || contains(inputs.target, 'kolla-ansible-master-debian-12'))))
       && needs.check_paths.outputs.code_changed != 'false'
     name: "${{ matrix.test.description }}"
     strategy:
