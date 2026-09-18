@@ -140,10 +140,6 @@
       "author": "mikal"
     },
     {
-      "path": "loadtests/latency/Dockerfile",
-      "author": "mikal"
-    },
-    {
       "path": "loadtests/latency/makeconsole.sh",
       "author": "mikal"
     },
@@ -157,10 +153,6 @@
     },
     {
       "path": ".github/workflows/export-repo-config.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/pin-indirect-dependencies.yml",
       "author": "mikal"
     },
     {
@@ -241,10 +233,6 @@
     },
     {
       "path": "tools/direct-qemu/start-kerbside.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/start-qemu.sh",
       "author": "mikal"
     },
     {
@@ -352,27 +340,7 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/direct-qemu-functional.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/pr-retest.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/rust.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/sf-e2e-functional.yml",
-      "author": "mikal"
-    },
-    {
-      "path": "demo/spice-target/Dockerfile",
-      "author": "mikal"
-    },
-    {
-      "path": "demo/spice-target",
       "author": "mikal"
     },
     {
@@ -420,10 +388,6 @@
       "author": "mikal"
     },
     {
-      "path": "rust/kerbside-proxy/Dockerfile",
-      "author": "mikal"
-    },
-    {
       "path": "rust/kerbside-proxy/build.rs",
       "author": "mikal"
     },
@@ -460,10 +424,6 @@
       "author": "mikal"
     },
     {
-      "path": "tools/ovirt-e2e/deploy-kerbside.sh",
-      "author": "mikal"
-    },
-    {
       "path": "tools/ovirt-e2e/drive-console.py",
       "author": "mikal"
     },
@@ -492,14 +452,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/demo-compose.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/dev-proxy-wheel.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/pypi-storage-check.yml",
       "author": "mikal"
     },
@@ -524,27 +476,7 @@
       "author": "mikal"
     },
     {
-      "path": ".claude/CLAUDE.md",
-      "author": "mikal"
-    },
-    {
-      "path": ".claude",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/mermaid-lint.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/pr-re-review.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/release.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/actionlint.yaml",
       "author": "mikal"
     }
   ],

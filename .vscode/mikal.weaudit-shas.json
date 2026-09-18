@@ -1,10 +1,6 @@
 {
   "version": 1,
   "files": {
-    ".claude/CLAUDE.md": {
-      "sha": "df3ebef567fb554bf8d05bc2e2df31b5ab9bf606",
-      "date": "2026-09-17"
-    },
     ".claude/skills/add-database-migration/SKILL.md": {
       "sha": "1eff02777bc5d05db960a82fc5dab8491ef4c207",
       "date": "2026-09-17"
@@ -13,36 +9,12 @@
       "sha": "a8721f2f61e3fc43ac7aa3739f13716a811f1b37",
       "date": "2026-09-17"
     },
-    ".github/actionlint.yaml": {
-      "sha": "5531ecd4f94cb8a0576a4c659125a29b8f9cb3fc",
-      "date": "2026-09-17"
-    },
     ".github/workflows/codeql-analysis.yml": {
       "sha": "296eca7815ac6582bf4fa9d0714869ac1eab574a",
       "date": "2026-08-18"
     },
-    ".github/workflows/demo-compose.yml": {
-      "sha": "b1b99f3990b7942a7c92a4b8d3d0b1d21ea204a2",
-      "date": "2026-08-24"
-    },
-    ".github/workflows/dev-proxy-wheel.yml": {
-      "sha": "478ee850295df9b82b59606d3386482d3114a329",
-      "date": "2026-08-24"
-    },
-    ".github/workflows/direct-qemu-functional.yml": {
-      "sha": "759758bc55f01acba338bae30710b03148d31610",
-      "date": "2026-08-18"
-    },
     ".github/workflows/export-repo-config.yml": {
       "sha": "53b5d8eb46e89e228dd88d42d7e1b0c3ea6694cd",
-      "date": "2026-08-11"
-    },
-    ".github/workflows/mermaid-lint.yml": {
-      "sha": "63fb934d2eef964e2c46a6945d006211e1213e4b",
-      "date": "2026-09-17"
-    },
-    ".github/workflows/pin-indirect-dependencies.yml": {
-      "sha": "0faad202ec3336b3fa8b6ed2787c557fc3172c24",
       "date": "2026-08-11"
     },
     ".github/workflows/pr-re-review.yml": {
@@ -60,18 +32,6 @@
     ".github/workflows/pypi-storage-check.yml": {
       "sha": "b4ea2a75e61abba4bcfd122d9f0d8222f1b25607",
       "date": "2026-08-24"
-    },
-    ".github/workflows/release.yml": {
-      "sha": "c9ce56abc473355175e176c1bd8adc5425f40bad",
-      "date": "2026-09-17"
-    },
-    ".github/workflows/rust.yml": {
-      "sha": "5e419f673f63263dff3953f237bb76b9f43e39a1",
-      "date": "2026-08-18"
-    },
-    ".github/workflows/sf-e2e-functional.yml": {
-      "sha": "9a54f8284dd2c5875d6ea51f1c85e595a88c37e8",
-      "date": "2026-08-18"
     },
     "demo/Dockerfile": {
       "sha": "e94b4457477d238ad2f2f5cc143a8859eff0145a",
@@ -99,10 +59,6 @@
     },
     "demo/sources.yaml": {
       "sha": "f137eedf566fcd074bd43730d13974795fcc3743",
-      "date": "2026-08-18"
-    },
-    "demo/spice-target/Dockerfile": {
-      "sha": "cd7c80a6bf0b5aaf393b3ce9a542c53e41b22ba9",
       "date": "2026-08-18"
     },
     "docs/use-cases/ovirt.md": {
@@ -221,10 +177,6 @@
       "sha": "dee99ff7370d039b7b6bc97654de54c1542ff949",
       "date": "2026-08-08"
     },
-    "loadtests/latency/Dockerfile": {
-      "sha": "d32a31d4f504020525a71a9ebf34209cfee4c81a",
-      "date": "2026-08-08"
-    },
     "loadtests/latency/cleanupconsoles.sh": {
       "sha": "181480700807e60a8b1ae31bbee4c175794375c6",
       "date": "2026-08-08"
@@ -232,10 +184,6 @@
     "loadtests/latency/makeconsole.sh": {
       "sha": "291f5057d4b3c808d60ca0e052975c79464e48b8",
       "date": "2026-08-08"
-    },
-    "rust/kerbside-proxy/Dockerfile": {
-      "sha": "9983de1064b7c477aa988cab490d34b2901556c1",
-      "date": "2026-08-18"
     },
     "rust/kerbside-proxy/README.md": {
       "sha": "e827f685f04ba9e4f951d6203f384be5db2bf918",
@@ -381,10 +329,6 @@
       "sha": "7b8048db87302f07ce6d81ce006d0c10827e847f",
       "date": "2026-08-15"
     },
-    "tools/direct-qemu/start-qemu.sh": {
-      "sha": "51b8f759796a65202812cebdf3cc0d17e208fb5c",
-      "date": "2026-08-15"
-    },
     "tools/direct-qemu/start-rust-proxy.sh": {
       "sha": "e768b49f4b9bcc1264f02ee76080b2dce25de373",
       "date": "2026-08-15"
@@ -415,10 +359,6 @@
     },
     "tools/ovirt-e2e/README.md": {
       "sha": "20e8fe84c47bc6851f0246d60057e4c5ae8d6027",
-      "date": "2026-08-18"
-    },
-    "tools/ovirt-e2e/deploy-kerbside.sh": {
-      "sha": "88df300309fac461076d44ad818d316a32073fe3",
       "date": "2026-08-18"
     },
     "tools/ovirt-e2e/drive-console.py": {
