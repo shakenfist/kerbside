@@ -72,7 +72,7 @@ dependencies = [
     "packaging==26.3",                  # apache2/bsd
     "PyJWT==2.14.0",                    # mit
     "requests==2.34.2",                 # apache2
-    "urllib3==2.7.0",                   # mit
+    "urllib3==2.8.0",                   # mit
 
     # These must move as a set. pydantic-core is deliberately NOT pinned
     # here: each pydantic release exact-pins its matching pydantic-core, so
