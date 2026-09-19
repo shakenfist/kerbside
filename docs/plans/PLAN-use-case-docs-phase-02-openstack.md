@@ -351,7 +351,11 @@ Each of these is falsifiable from the tree:
       and `README.md`.
 - [ ] `pre-commit run --all-files` passes, which includes
       `tox -e py3` and therefore `test_docs_links.py`.
-- [ ] An open GitHub issue exists for survey finding 6.
+- [x] An open GitHub issue exists for survey finding 6: #451,
+      filed by step 2d. Phase 1's two review findings were never
+      auto-filed, which is why this phase had to carry them, so
+      the issue number is recorded here rather than left to the
+      filing.
 - [ ] **The rule forbidding duplication has not been read as
       licence to deny.** No sentence in either page asserts the
       *absence* of a mechanism merely because this plan forbade

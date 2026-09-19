@@ -201,7 +201,7 @@ The following options are used to configure an OpenStack console source
 | url | The Keystone authentication URL (e.g., `http://keystone.example.org:5000`) |
 | username | The username for the service account |
 | password | The password for the service account |
-| verify | Optional: how to verify TLS certificates for the Keystone session, and only that session -- this is not `ca_cert`, which is the hypervisor VDI leg. Accepts a boolean, the strings `true`/`false` case-insensitively, or a path to a CA bundle on the Kerbside container's filesystem, which is what a deployment with a private Keystone CA usually wants. Defaults to true. Any other string is passed through as a bundle path and fails at connection time, so a typo disables nothing and breaks the exchange |
+| verify | Optional: how to verify TLS certificates on the session Kerbside uses to reach this cloud -- both the Keystone authentication and the Nova console token validation call, since they share one session. It does not affect `ca_cert`, which is the hypervisor VDI leg. Accepts a boolean, the strings `true`/`false` case-insensitively, or a path to a CA bundle on the Kerbside container's filesystem, which is what a deployment with a private Keystone CA usually wants. Defaults to true. Any other string is passed through as a bundle path and fails at connection time, so a typo disables nothing and breaks the exchange |
 | project_name | The OpenStack project name for the service account |
 | user_domain_id | The OpenStack user domain ID (typically "default") |
 | project_domain_id | The OpenStack project domain ID (typically "default") |

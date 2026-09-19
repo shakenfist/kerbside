@@ -67,7 +67,8 @@ someone else:
   than one OpenStack cloud can be configured at once — a
   presented token is offered to each in turn, in `sources.yaml`
   order, until one validates it. That means every configured
-  cloud sees tokens minted by the others, so this suits clouds
+  cloud sees tokens minted by the others, and that one broken
+  cloud stops the exchange for the rest, so this suits clouds
   under one operator rather than clouds in separate trust
   domains. See the limitations table.
 
@@ -100,7 +101,7 @@ flowchart TD
     kerbside -- "4. the console is recorded now,<br/>not by a scrape" --> kerbside
     kerbside -- "5. .vv file" --> user
     user -- "6. connect, Kerbside's own token" --> kerbside
-    kerbside -- "7. 5900 → NEED_SECURED → 5901 TLS<br/>where the hypervisor demands it" --> hypervisor
+    kerbside -- "7. console port → NEED_SECURED → TLS port<br/>where the hypervisor demands it" --> hypervisor
 ```
 
 **The request (1, 2).** Nova, not Kerbside, decides that a user
@@ -123,7 +124,12 @@ between oVirt's per-request ticket and Shaken Fist's entirely
 offline signature check: a Nova that is down means no *new*
 consoles, while sessions already running are untouched. Where
 several OpenStack clouds are configured, each is tried in turn,
-and a token none of them recognises ends as a 404.
+and a token none of them recognises ends as a 404. Only a clean
+"I do not know this token" moves on to the next cloud, though:
+a cloud that errors — bad credentials, an unreachable Keystone,
+a certificate problem — ends the whole request there, so a
+broken cloud early in `sources.yaml` takes out console access
+for every cloud listed after it.
 
 The validation answer carries the instance uuid, the compute
 node's address, and that console's plaintext and TLS ports.
@@ -152,8 +158,9 @@ Kolla-Ansible deployment turns it on with
 `nova_spice_require_secure`, which in turn requires libvirt TLS.
 Where qemu does not demand it the leg stays on the plaintext
 port, so both ports have to be reachable. Either way Kerbside
-presents no SPICE ticket on that leg, because Nova's validation
-response carries none — the console port is guarded by where it
+presents an empty SPICE ticket on that leg — the field is sent,
+with no ticket material in it — because Nova's validation
+response carries none. The console port is guarded by where it
 sits on the network, which is the assumption `spice-direct` is
 built on and precisely why Kerbside has to be between it and the
 user.
@@ -396,9 +403,10 @@ Not covered, and worth knowing before you deploy:
 | Least-privilege accounts untested | Only the deployment's admin account has been exercised. Validating another user's console token is an administrative call, so a project-scoped account is not expected to work; no minimal role has been built. |
 | Console rows are never reconciled | Nothing scrapes this cloud, so nothing ever removes a console it can no longer see. A row for a deleted instance stays listed until the cloud is removed from `sources.yaml`. Nova will not mint a token for it, so it is unreachable through the `spice-direct` path — but Kerbside's own administrative `.vv` download mints a token from the stored row without calling Nova, and will still open it. Since libvirt reuses console ports, the recorded address and ports may by then belong to a different instance, possibly another tenant's. Remove a decommissioned cloud from `sources.yaml` rather than leaving it configured. |
 | A token is offered to every configured cloud | The exchange presents the token it was handed to each configured OpenStack cloud in turn, in `sources.yaml` order, until one validates it. Every cloud therefore sees console tokens minted by the others, and a cloud earlier in the file sees every token destined for one later in it. Configuring clouds that are under separate operational control means each one's operators can observe the others' tokens. |
+| One broken cloud breaks the others | The exchange moves on to the next cloud only when a cloud cleanly reports the token as unknown. Any other failure — bad credentials, an unreachable Keystone, a certificate error — ends the request instead of being skipped, so a cloud that is down or misconfigured denies console access to every cloud after it in `sources.yaml`. Order therefore matters, and a cloud being removed from service should be removed from the file rather than left to fail. |
 | Single-node deployments only, in testing | The lane is all-in-one, so one compute node. Multiple compute nodes should work — the address and ports come from the token validation on every exchange rather than from a cached inventory — but no lane covers them. |
 | Deployment support is not upstream yet | As of 2026-09-20 the Kolla image build has merged and kolla-ansible change 976889 is still open, so a stock Kolla-Ansible cannot deploy Kerbside. `kerbside-patches` is the supported route until it lands. |
-| Keystone certificate verification | The Kolla-Ansible role in `kerbside-patches` turns verification off on the Keystone session, which is how a deployment using an internal CA the Kerbside container does not trust is made to work at all. Turning it off is not the only way to do that: the `verify` option also accepts a path to a CA bundle, so a production deployment should point it at the internal CA rather than inherit the CI default. See [console-sources.md](../console-sources.md#openstack). |
+| Certificate verification for the cloud | The Kolla-Ansible role in `kerbside-patches` turns `verify` off, which is how a deployment using an internal CA the Kerbside container does not trust is made to work at all. One session carries both the Keystone authentication and the Nova validation call, so turning it off also means the answer that decides a caller may reach a hypervisor console is accepted over an unverified connection. Turning it off is not the only way to solve the CA problem: `verify` also accepts a path to a CA bundle, so pointing it at the internal CA is a security fix rather than tidiness. See [console-sources.md](../console-sources.md#openstack). |
 | The exchange endpoint is unauthenticated and uncached | `/nova-console.vv` carries a Nova token instead of Kerbside credentials, so it has to be reachable by users without authenticating first. Every request re-reads `sources.yaml` and performs a fresh Keystone password authentication and Nova validation call for each configured cloud in turn, with no session reuse, caching or rate limiting. An unauthenticated caller can therefore drive repeated Keystone authentications, and exchange latency grows with the number of configured clouds. Rate limiting in front of Kerbside is a deployment concern. |
 | Live migration during a session | Not characterised. The compute node's address and the console ports are captured at exchange time; an instance that migrates mid-session has not been tested. |
 | Nova 2025.1 or newer only | No `spice-direct` console type exists before it, and no earlier release is tested. |
