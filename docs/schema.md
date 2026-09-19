@@ -129,7 +129,7 @@ could plausibly have gone the other way:
 - `username` is half of a credential pair. It is public for the same
   historical reason as `url`. Narrowing either is an API behaviour
   change rather than part of withholding the password, and is tracked
-  separately.
+  in [issue #449](https://github.com/shakenfist/kerbside/issues/449).
 
 ### consoles
 
