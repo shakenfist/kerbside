@@ -201,6 +201,7 @@ The following options are used to configure an OpenStack console source
 | url | The Keystone authentication URL (e.g., `http://keystone.example.org:5000`) |
 | username | The username for the service account |
 | password | The password for the service account |
+| verify | Optional: whether to verify TLS certificates for the Keystone session. Accepts a boolean or the strings `true`/`false`. Defaults to true |
 | project_name | The OpenStack project name for the service account |
 | user_domain_id | The OpenStack user domain ID (typically "default") |
 | project_domain_id | The OpenStack project domain ID (typically "default") |
@@ -335,3 +336,4 @@ An example configuration follows:
 - [Configuration](configuration.md) - General configuration reference
 - [Proxy Architecture](proxy-architecture.md) - Internal proxy design
 - [Kerbside for Shaken Fist](use-cases/shaken-fist.md) - The Shaken Fist use-case guide: value proposition, setup, and the sf-e2e worked example
+- [Kerbside for OpenStack](use-cases/openstack.md) - The OpenStack use-case guide: the spice-direct token exchange, setup, and the openstack_matrix worked example
