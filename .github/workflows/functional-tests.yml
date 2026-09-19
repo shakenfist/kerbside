@@ -585,18 +585,25 @@ jobs:
 
           # Use the pre-cached desktop image (with qemu-guest-agent and
           # spice-vdagent pre-installed) from the CI runner's
-          # dependencies disk. Accept either name: the snapshot is
-          # moving from Debian 12 to Debian 13 and the cached file is
-          # renamed with it, but each cluster only picks that up when it
-          # rebuilds its dependencies disk. Tolerating both names means
-          # this workflow works whether or not that rebuild has happened
-          # here yet, so the two changes can merge in either order.
+          # dependencies disk. That path is a cross-repository
+          # interface: shakenfist/actions publishes it from
+          # ci-dependencies.yml, and this is the only consumer.
           #
-          # The debian-12 fallback is transitional: delete it once every
-          # cluster has rebuilt its dependencies disk onto the Debian 13
-          # snapshot. The local name is deliberately release-neutral so
-          # a future desktop bump does not touch this file at all.
-          image=/srv/ci/cached/debian-13-gnome-agents
+          # The published name carries no release, deliberately. The
+          # disk is reformatted from scratch on every build, so a
+          # rename has no transition window -- the old name is gone the
+          # moment the dependencies label is republished -- which made
+          # every desktop bump a fleet change that broke these tests on
+          # a branch nobody touched. Whichever release the snapshot
+          # holds, it arrives under this one name.
+          #
+          # The debian-12 path is the transitional hardlink that
+          # shakenfist/actions still publishes to the same blob, and is
+          # here only for a cluster whose dependencies disk was built
+          # before the stable name existed. Delete this fallback once
+          # every cluster has rebuilt; the hardlink goes at the same
+          # time, from the other side.
+          image=/srv/ci/cached/debian-gnome-agents
           if [ ! -f "$image" ]; then
               image=/srv/ci/cached/debian-12-gnome-agents
           fi
