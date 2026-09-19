@@ -302,15 +302,11 @@ class Consoles(sf_api.Resource):
                     refresh=True, when=datetime.datetime.now()),
                 mimetype='text/html')
         else:
-            out_consoles = []
-            for console in db.get_consoles(include_audit=False):
-                # Remove the hypervisor auth ticket
-                if 'ticket' in console:
-                    del console['ticket']
-                out_consoles.append(console)
-
+            # No ticket to strip here: db.get_consoles() returns only
+            # CONSOLE_PUBLIC_FIELDS unless a caller asks otherwise.
             resp = flask.Response(
-                json.dumps(out_consoles, indent=4, sort_keys=True, cls=DateTimeEncoder),
+                json.dumps(db.get_consoles(include_audit=False), indent=4,
+                           sort_keys=True, cls=DateTimeEncoder),
                 mimetype='application/json')
         resp.status_code = 200
         return resp
@@ -323,10 +319,6 @@ class Console(sf_api.Resource):
         console = db.get_console(source, uuid, detailed=True)
         if not console:
             return sf_api.error(404, 'console not found')
-
-        # Remove the hypervisor auth ticket
-        if 'ticket' in console:
-            del console['ticket']
 
         resp = flask.Response(
             json.dumps(console, indent=4, sort_keys=True, cls=DateTimeEncoder),
@@ -396,9 +388,12 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
         if not s:
             return sf_api.error(404, 'source not found')
 
-        node = c['hypervisor']
-        if not node:
-            node = c['hypervisor_ip']
+        # The dict the .vv file is built from. It is the public read
+        # except in the static branch below, which replaces it with
+        # its own snapshot so that every field in the file comes from
+        # one read of the row. c stays public throughout and is what
+        # the log line uses.
+        vv_console = c
 
         # Acquire the ticket for embedding in the .vv file.  The
         # static driver persists its ticket at enumeration time; read
@@ -406,10 +401,29 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
         # ticket on every request.  All other types (shakenfist,
         # openstack) use an empty string here.
         if s['type'] == 'static':
-            ticket = c.get('ticket') or ''
+            # The persisted ticket is this console's SPICE password, so
+            # it is read in the one branch which puts it in the .vv file
+            # and nowhere else. c itself stays public, which is why the
+            # log line below needs no scrubbing step.
+            authed_console = db.get_console(source, uuid, include_secrets=True)
+            if not authed_console:
+                return sf_api.error(404, 'console not found')
+            # Ports, host subject and ticket all come from this one
+            # read. Mixing them with c would let a discovery pass
+            # interleave between the two reads and emit a file pairing
+            # a fresh ticket with stale ports, or the reverse.
+            vv_console = authed_console
+            ticket = authed_console.get('ticket') or ''
         elif s['type'] == 'ovirt':
             ticket = ''
-            lookup = ovirt_source.oVirtSource(**s)
+            # Authenticating to oVirt is the only thing in this handler
+            # which is entitled to the source secrets, so it is the only
+            # thing which asks for them. s itself stays public, which is
+            # why the log line below needs no scrubbing step.
+            authed = db.get_source(source, include_secrets=True)
+            if not authed:
+                return sf_api.error(404, 'source not found')
+            lookup = ovirt_source.oVirtSource(**authed)
             if lookup.errored:
                 return sf_api.error(404, 'source error')
             _, ticket = lookup.get_console_for_vm(c['uuid'], acquire_ticket=True)
@@ -417,13 +431,17 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
         else:
             ticket = ''
 
+        node = vv_console['hypervisor']
+        if not node:
+            node = vv_console['hypervisor_ip']
+
         tls_port = ''
-        if c['secure_port']:
-            tls_port = '\ntls-port=%s' % c['secure_port']
+        if vv_console['secure_port']:
+            tls_port = '\ntls-port=%s' % vv_console['secure_port']
 
         host_subject = ''
-        if c['host_subject']:
-            host_subject = '\nhost-subject=%s' % c['host_subject']
+        if vv_console['host_subject']:
+            host_subject = '\nhost-subject=%s' % vv_console['host_subject']
 
         ca_cert = ''
         if config.CACERT_PATH:
@@ -431,16 +449,27 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
                 ca_cert_data = f.read().replace('\n', '\\n')
             ca_cert = f'\nca={ca_cert_data}'
 
-        LOG.with_fields(c).with_fields(s).info(
+        # Both dicts are public, so either could be splatted here
+        # without disclosing a credential. They are not, for a reason
+        # which outlives this change: s carries ca_cert, a multi
+        # kilobyte PEM, and this line is emitted on every request.
+        # Naming the fields also keeps the line stable if
+        # SOURCE_PUBLIC_FIELDS or CONSOLE_PUBLIC_FIELDS grows later.
+        LOG.with_fields({
+            'source': c['source'],
+            'uuid': c['uuid'],
+            'hypervisor': c['hypervisor'],
+            'type': s['type']
+            }).info(
             'Providing virt-viewer direct configuration for console')
 
         vv = VIRTVIEWER_TEMPLATE % {
             'node': node,
-            'port': c['insecure_port'],
+            'port': vv_console['insecure_port'],
             'tls_port': tls_port,
             'token': ticket,
             'ca_cert': ca_cert,
-            'name': '%s direct connection' % c['name'],
+            'name': '%s direct connection' % vv_console['name'],
             'host_subject': host_subject
         }
 
@@ -483,7 +512,13 @@ class ConsolesProxyVirtViewer(sf_api.Resource):
             pass
         elif s['type'] == 'ovirt':
             ticket = ''
-            lookup = ovirt_source.oVirtSource(**s)
+            # As in the direct handler above, only the oVirt ticket
+            # acquisition is entitled to the source secrets, so it is
+            # the only thing which asks for them.
+            authed = db.get_source(source, include_secrets=True)
+            if not authed:
+                return sf_api.error(404, 'source not found')
+            lookup = ovirt_source.oVirtSource(**authed)
             if lookup.errored:
                 return sf_api.error(404, 'source error')
             _, ticket = lookup.get_console_for_vm(c['uuid'], acquire_ticket=True)
@@ -849,13 +884,11 @@ class Sources(sf_api.Resource):
                     refresh=True, when=datetime.datetime.now()),
                 mimetype='text/html')
         else:
-            sources = []
-            for source in db.get_sources():
-                del source['password']
-                sources.append(source)
-
+            # db.get_sources() has already removed the source secrets,
+            # for both this branch and the template above.
             resp = flask.Response(
-                json.dumps(sources, indent=4, sort_keys=True, cls=DateTimeEncoder),
+                json.dumps(db.get_sources(), indent=4, sort_keys=True,
+                           cls=DateTimeEncoder),
                 mimetype='application/json')
         resp.status_code = 200
         return resp
@@ -864,7 +897,13 @@ class Sources(sf_api.Resource):
 class Source(sf_api.Resource):
     @verify_token
     def get(self, uuid):
-        # This is a REST API only call
+        # This is a REST API only call. db.get_source() removes the
+        # source secrets unless it is asked for them, so this handler
+        # and the list handler above return the same representation of
+        # a source without either of them having to remember to. They
+        # do not return the same set of sources: get_sources() hides
+        # soft deleted rows and this call does not, so a source dropped
+        # from sources.yaml is still described here, with deleted set.
         source = db.get_source(uuid)
         if not source:
             return sf_api.error(404, 'source not found')

@@ -177,7 +177,10 @@ Guides for deploying and configuring Kerbside:
 
 - [Installation](installation.md) - From `pip install` to a proxied
   console: what a running Kerbside needs, the compose demo, and where to
-  go for your cloud
+  go for your cloud. Its
+  [Upgrading](installation.md#upgrading) section covers the upgrades
+  which need an operator action, including the credential rotation
+  required when coming from v0.6.0 or earlier
 
 - [Configuration](configuration.md) - Configuration reference for all Kerbside
   settings including TLS, Keystone, API, and monitoring options

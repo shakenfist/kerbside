@@ -49,6 +49,26 @@ class ReusedJti(Exception):
     ...
 
 
+# The source fields which may be returned to an API client, rendered in
+# a template, or logged. This is an allowlist, and that is the whole
+# point: a column added to the model and to Source.export() is private
+# until someone names it here, so the cost of forgetting a step is a
+# field which does not appear rather than a credential which does.
+# Issue #132 was a forgotten step in the other direction.
+SOURCE_PUBLIC_FIELDS = [
+    'name', 'type', 'last_seen', 'seen_by', 'errored', 'url', 'ca_cert',
+    'username', 'project_name', 'user_domain_id', 'project_domain_id',
+    'deleted'
+]
+
+# The source fields which are credentials. They are stored so that the
+# daemon can authenticate to the backend cloud. This list does not
+# decide what export_public() returns -- SOURCE_PUBLIC_FIELDS does --
+# it names the values which must not be written to a log line even
+# when the surrounding code legitimately holds them.
+SOURCE_SECRET_FIELDS = ['password']
+
+
 class Source(Base):
     __tablename__ = 'sources'
 
@@ -85,7 +105,14 @@ class Source(Base):
         self.project_domain_id = project_domain_id
         self.deleted = deleted
 
-    def export(self):
+    def export(self) -> dict:
+        """Export the source, secrets included.
+
+        This is only for the code which must authenticate to the
+        backend cloud. Anything which returns a source to an API
+        client, renders it in a template, or logs it must use
+        export_public() instead.
+        """
         return {
             'name': self.name,
             'type': self.type,
@@ -101,6 +128,19 @@ class Source(Base):
             'project_domain_id': self.project_domain_id,
             'deleted': self.deleted
         }
+
+    def export_public(self) -> dict:
+        """Export only the SOURCE_PUBLIC_FIELDS of the source.
+
+        ca_cert is deliberately public. It is the public half of the
+        backend's TLS identity rather than a credential, the sources
+        page renders it, and a client needs it to validate the
+        connection it is being pointed at. url and username are public
+        because the list endpoint has always returned them; narrowing
+        that is an API change rather than part of closing #132.
+        """
+        source = self.export()
+        return {field: source[field] for field in SOURCE_PUBLIC_FIELDS}
 
 
 def add_source(name, type, url, username, password, project_name=None,
@@ -132,7 +172,13 @@ def add_source(name, type, url, username, password, project_name=None,
             session.commit()
 
 
-def get_sources():
+def get_sources(*, include_secrets: bool = False) -> list[dict]:
+    """Fetch every source which has not been deleted.
+
+    Only SOURCE_PUBLIC_FIELDS are returned unless include_secrets is
+    set, which only the code paths authenticating to a backend cloud
+    may do.
+    """
     out = []
     with Session(ENGINE) as session:
         try:
@@ -140,17 +186,29 @@ def get_sources():
                     filter(Source.deleted == False).\
                     order_by(Source.name).\
                     all():                                          # noqa: E712
-                out.append(source.export())
+                if include_secrets:
+                    out.append(source.export())
+                else:
+                    out.append(source.export_public())
         except exc.NoResultFound:
             ...
     return out
 
 
-def get_source(name):
+def get_source(name: str, *, include_secrets: bool = False) -> dict | None:
+    """Fetch a single source by name, or None.
+
+    Only SOURCE_PUBLIC_FIELDS are returned unless include_secrets is
+    set, which only the code paths authenticating to a backend cloud
+    may do. Soft deleted sources are returned; get_sources() hides
+    them, so the two do not agree on which sources exist.
+    """
     with Session(ENGINE) as session:
         try:
             source = session.query(Source).filter(Source.name == name).one()
-            return source.export()
+            if include_secrets:
+                return source.export()
+            return source.export_public()
         except exc.NoResultFound:
             return None
 
@@ -167,6 +225,25 @@ def delete_source(name):
         source = session.query(Source).filter(Source.name == name).one()
         source.deleted = True
         session.commit()
+
+
+# The console fields which may be returned to an API client, rendered
+# in a template, or logged. An allowlist for the same reason
+# SOURCE_PUBLIC_FIELDS is one: a column added to the model and to
+# Console.export() is private until someone names it here.
+CONSOLE_PUBLIC_FIELDS = [
+    'uuid', 'source', 'hypervisor', 'hypervisor_ip', 'insecure_port',
+    'secure_port', 'name', 'host_subject', 'discovered'
+]
+
+# The console fields which are credentials. The ticket is the password
+# the SPICE server on the hypervisor will accept for this console:
+# static sources persist theirs at enumeration time and oVirt mints a
+# fresh one per request. As with SOURCE_SECRET_FIELDS, this list does
+# not decide what export_public() returns -- CONSOLE_PUBLIC_FIELDS
+# does -- it names the values which must not be written to a log line
+# even when the surrounding code legitimately holds them.
+CONSOLE_SECRET_FIELDS = ['ticket']
 
 
 class Console(Base):
@@ -210,6 +287,18 @@ class Console(Base):
             'discovered': self.discovered
         }
 
+    def export_public(self) -> dict:
+        """Export only the CONSOLE_PUBLIC_FIELDS of the console.
+
+        The ticket is withheld because it is a live credential: it is
+        the value a SPICE client presents to the hypervisor, and for a
+        static source it is the console password an operator wrote in
+        the source configuration. Only the two callers which are about
+        to spend it ask for it.
+        """
+        console = self.export()
+        return {field: console[field] for field in CONSOLE_PUBLIC_FIELDS}
+
 
 def add_console(source=None, uuid=None, hypervisor=None, hypervisor_ip=None,
                 insecure_port=None, secure_port=None, name=None, host_subject=None,
@@ -234,7 +323,12 @@ def add_console(source=None, uuid=None, hypervisor=None, hypervisor_ip=None,
     return False
 
 
-def get_consoles(include_audit=True):
+def get_consoles(include_audit=True, *, include_secrets: bool = False):
+    """Fetch every known console.
+
+    Only CONSOLE_PUBLIC_FIELDS are returned unless include_secrets is
+    set, which only the code paths spending the console ticket may do.
+    """
     sessions = defaultdict(list)
     out = []
     now = time.time()
@@ -246,7 +340,10 @@ def get_consoles(include_audit=True):
                     (channel.node, channel.connection_ref or channel.pid))
 
             for console in session.query(Console).order_by(Console.name).all():
-                c = console.export()
+                if include_secrets:
+                    c = console.export()
+                else:
+                    c = console.export_public()
                 c['sessions'] = []
                 c['token_count'] = 0
 
@@ -281,13 +378,22 @@ def get_consoles(include_audit=True):
     return out
 
 
-def get_console(source, uuid, detailed=False):
+def get_console(source, uuid, detailed=False, *,
+                include_secrets: bool = False):
+    """Fetch a single console by uuid, or None.
+
+    Only CONSOLE_PUBLIC_FIELDS are returned unless include_secrets is
+    set, which only the code paths spending the console ticket may do.
+    """
     now = time.time()
 
     with Session(ENGINE) as session:
         try:
             console = session.query(Console).filter(Console.uuid == uuid).one()
-            c = console.export()
+            if include_secrets:
+                c = console.export()
+            else:
+                c = console.export_public()
             if not detailed:
                 return c
 

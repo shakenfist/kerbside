@@ -3,9 +3,9 @@
 {% block title %}Kerbside console audit{% endblock %}
 
 {% block content %}
-{# The console dict is a raw Console export carrying the secret
-   ticket (and host_subject); only source, name and uuid are
-   rendered here, never iterated. #}
+{# db.get_console() returns only CONSOLE_PUBLIC_FIELDS, so the
+   secret ticket is not in this dict; only source, name and uuid are
+   rendered here, and the fields are named rather than iterated. #}
 {# The UUID sits outside the h2 deliberately: .sf-section-header h2
    applies text-transform: uppercase, and a UUID is an identifier an
    operator may read back or copy, so it must render in true case. #}

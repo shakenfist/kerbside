@@ -3,8 +3,10 @@ import shutil
 import tempfile
 
 import grpc
+from sqlalchemy import create_engine
 import testtools
 
+from kerbside import db
 from kerbside.rpc import kerbside_pb2
 from kerbside.rpc import kerbside_pb2_grpc
 from kerbside.rpc import server as rpc_server
@@ -306,6 +308,121 @@ class KerbsideProxyRpcTestCase(testtools.TestCase):
 
         self.assertTrue(
             all(e.WhichOneof('event') == 'heartbeat' for e in events))
+
+
+class AuthorizeConnectionRealDbTestCase(testtools.TestCase):
+    """AuthorizeConnection against the real database layer.
+
+    Every other test in this file mocks db.get_source() and
+    db.get_console(), so they keep passing whatever those functions
+    return. That hides the data plane's dependence on the public/secret
+    split: the proxy needs ca_cert to stay in SOURCE_PUBLIC_FIELDS and
+    needs the servicer to be one of the callers which opts in to the
+    console ticket. Narrow either and every proxy connection breaks,
+    with no gRPC test to say so. This one says so.
+
+    A file backed sqlite database rather than :memory: because the
+    servicer answers on a gRPC worker thread, and an in-memory sqlite
+    engine hands each thread its own empty database.
+    """
+
+    def setUp(self):
+        super().setUp()
+
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+
+        self.engine = create_engine('sqlite:///%s/test.db' % self.tmpdir)
+        db.Base.metadata.create_all(
+            self.engine,
+            tables=[db.Source.__table__, db.Console.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+        db.add_source(
+            'src', 'ovirt', 'https://ovirt.example.com/ovirt-engine/api',
+            'admin@internal', 'sekrit-source-password',
+            ca_cert='CA-CERT-MARKER')
+        db.add_console(
+            source='src', uuid='u', hypervisor='hv', hypervisor_ip='10.0.0.1',
+            insecure_port=5901, secure_port=5900, name='n',
+            host_subject='HS', ticket='sekrit-hypervisor-ticket')
+
+        self.sock = self.tmpdir + '/api.sock'
+        self.server = rpc_server.serve(socket_path=self.sock, workers=2)
+        self.addCleanup(rpc_server.stop, self.server, socket_path=self.sock)
+
+        self.channel = grpc.insecure_channel('unix:%s' % self.sock)
+        self.addCleanup(self.channel.close)
+        grpc.channel_ready_future(self.channel).result(timeout=5)
+        self.stub = kerbside_pb2_grpc.KerbsideProxyStub(self.channel)
+
+        node_patch = mock.patch.object(
+            servicer_module.config, 'NODE_NAME', 'test-node')
+        node_patch.start()
+        self.addCleanup(node_patch.stop)
+
+    @mock.patch('kerbside.db.add_audit_event')
+    @mock.patch('kerbside.db.record_channel_info_by_ref')
+    @mock.patch('kerbside.db.get_token_by_token')
+    def test_target_carries_the_ca_cert_and_ticket(
+            self, mock_get_token, mock_record, mock_audit):
+        mock_get_token.return_value = {
+            'session_id': 's', 'source': 'src', 'uuid': 'u',
+            'created': 0, 'expires': 9999999999}
+
+        reply = self.stub.AuthorizeConnection(
+            kerbside_pb2.AuthorizeConnectionRequest(
+                token='T', connection_ref='cr', channel_type='main'),
+            timeout=5)
+
+        self.assertEqual('target', reply.WhichOneof('result'))
+        # ca_cert is public, and the proxy validates the backend's TLS
+        # identity with it.
+        self.assertEqual('CA-CERT-MARKER', reply.target.ca_cert)
+        # The ticket is secret, and the servicer is entitled to it: it
+        # is what the proxy presents to the SPICE server.
+        self.assertEqual('sekrit-hypervisor-ticket', reply.target.ticket)
+        # The source password is not, and is in no field of the reply.
+        self.assertNotIn('sekrit-source-password', str(reply))
+
+    @mock.patch('kerbside.db.add_audit_event')
+    @mock.patch('kerbside.db.record_channel_info_by_ref')
+    @mock.patch('kerbside.db.get_token_by_token')
+    def test_the_source_lookup_stays_public(
+            self, mock_get_token, mock_record, mock_audit):
+        """The servicer opts in for the console, and only for the console.
+
+        Asserting the password is absent from the reply is the
+        important half but not the whole of it: the servicer could
+        fetch the secret-bearing source, never put it in the reply, and
+        still hold a credential it has no use for -- one log line away
+        from the bug this change exists to close. The proxy
+        authenticates to the SPICE server with the console ticket and
+        never with the source password, so the opt-in count here is
+        exactly one.
+        """
+        mock_get_token.return_value = {
+            'session_id': 's', 'source': 'src', 'uuid': 'u',
+            'created': 0, 'expires': 9999999999}
+
+        with mock.patch('kerbside.db.get_source',
+                        wraps=db.get_source) as spy_source, \
+                mock.patch('kerbside.db.get_console',
+                           wraps=db.get_console) as spy_console:
+            reply = self.stub.AuthorizeConnection(
+                kerbside_pb2.AuthorizeConnectionRequest(
+                    token='T', connection_ref='cr', channel_type='main'),
+                timeout=5)
+
+        self.assertEqual('target', reply.WhichOneof('result'))
+
+        spy_source.assert_called_once()
+        self.assertNotIn('include_secrets', spy_source.call_args.kwargs)
+
+        spy_console.assert_called_once()
+        self.assertTrue(spy_console.call_args.kwargs['include_secrets'])
 
 
 class BuildFirewallPolicyTestCase(testtools.TestCase):

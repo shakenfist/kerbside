@@ -104,7 +104,11 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
                 return kerbside_pb2.AuthorizeConnectionReply(
                     denied=kerbside_pb2.Denied(reason='source invalid'))
 
-            console = db.get_console(token['source'], token['uuid'])
+            # The proxy presents this console's ticket to the SPICE
+            # server on the hypervisor, so the data plane is entitled
+            # to the secret and asks for it explicitly.
+            console = db.get_console(
+                token['source'], token['uuid'], include_secrets=True)
             if not console:
                 LOG.warning('Requested console is invalid, denying connection')
                 db.add_audit_event(
