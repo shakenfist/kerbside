@@ -77,10 +77,6 @@
       "sha": "6811fdf54cb562806ab427ff9eaf826e96bedc1d",
       "date": "2026-08-06"
     },
-    "kerbside/db.py": {
-      "sha": "c3612a3f570288c42907bec0243701344acbe3a4",
-      "date": "2026-08-06"
-    },
     "kerbside/migrations/env.py": {
       "sha": "be576fb0b1e8709138b6d01074f657fc36edb76b",
       "date": "2026-08-18"
@@ -129,10 +125,6 @@
       "sha": "d6af35e9ff278f5672884ac2d340c40053aaf3ad",
       "date": "2026-08-07"
     },
-    "kerbside/rpc/servicer.py": {
-      "sha": "0dcac8b48e8743bd90994187a0b1b65ce5182729",
-      "date": "2026-08-07"
-    },
     "kerbside/sources/base.py": {
       "sha": "9508569169800aacfe7745b363175ac241ac6a7c",
       "date": "2026-08-07"
@@ -157,20 +149,8 @@
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-08"
     },
-    "kerbside/tests/unit/test_db.py": {
-      "sha": "5808da38cdd244412b6207148f92919c0d9df554",
-      "date": "2026-08-08"
-    },
-    "kerbside/tests/unit/test_rpc.py": {
-      "sha": "fd70252c5a1bb9fcfd95a6267c1cf6b66782e68a",
-      "date": "2026-08-08"
-    },
     "kerbside/tests/unit/test_sf_token.py": {
       "sha": "2b42aef35cbbaf8d8e7b15047604ba6ccba11776",
-      "date": "2026-08-08"
-    },
-    "kerbside/tests/unit/test_sources_static.py": {
-      "sha": "dee99ff7370d039b7b6bc97654de54c1542ff949",
       "date": "2026-08-08"
     },
     "loadtests/latency/cleanupconsoles.sh": {

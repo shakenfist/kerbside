@@ -48,10 +48,6 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/db.py",
-      "author": "mikal"
-    },
-    {
       "path": "tools/ci-prune-reviews.sh",
       "author": "mikal"
     },
@@ -84,10 +80,6 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/rpc/servicer.py",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/tests/functional/__init__.py",
       "author": "mikal"
     },
@@ -104,19 +96,7 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/tests/unit/test_db.py",
-      "author": "mikal"
-    },
-    {
-      "path": "kerbside/tests/unit/test_rpc.py",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/tests/unit/test_sf_token.py",
-      "author": "mikal"
-    },
-    {
-      "path": "kerbside/tests/unit/test_sources_static.py",
       "author": "mikal"
     },
     {
