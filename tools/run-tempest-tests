@@ -7,8 +7,10 @@ set -eo pipefail
 # shakenfist/kerbside-patches, but trimmed to what we need in
 # Kerbside's GitHub Actions CI: install Tempest plus the local
 # kerbside-tempest-plugin into a fresh venv, run discover-tempest-config
-# with spice_console forced on, then run the SPICE-via-Kerbside and
-# upstream spice-direct tests.
+# with spice_console forced on, then run the SPICE-via-Kerbside tests.
+# The upstream spice-direct tests are deliberately not in the default
+# selection: they bypass Kerbside and dial the libvirt console port
+# directly, so they prove nothing about the proxy.
 
 usage() {
     cat <<EOF
@@ -28,8 +30,9 @@ Options:
                          (default: kolla-admin).
   --cirros-image URL     Cirros image URL passed to
                          discover-tempest-config (default: 0.6.3 amd64).
-  --regex REGEX          Tempest --regex (default: kerbside plugin and
-                         upstream spice-direct tests).
+  --regex REGEX          Tempest --regex (default: the kerbside plugin
+                         tests only; the upstream spice-direct tests
+                         bypass Kerbside and are not included).
   --build-timeout SECS   compute.build_timeout override (default: 900).
   -h, --help             Show this help.
 EOF
