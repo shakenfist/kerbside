@@ -220,17 +220,16 @@ The static source driver (`type: static`) reads its VM-to-console
 mapping entirely from an inline `consoles:` list in the sources.yaml
 entry.  No external API calls are made and no control plane is needed.
 
-**Intended use-cases:**
+It is intended for CI pipelines that boot a QEMU guest directly and
+need kerbside to front it — the direct-qemu CI workflow uses this
+driver — and for ad-hoc debugging against a hand-rolled QEMU.  The
+case for the deployment, and what it can and cannot do, is in
+[Kerbside standalone](use-cases/standalone.md).
 
-- **CI pipelines** that boot a QEMU guest directly and need kerbside
-  to front it.  The direct-qemu CI workflow uses this driver.
-- **Ad-hoc debugging** where you want to point kerbside at a hand-
-  rolled QEMU without spinning up a full Shaken Fist or oVirt
-  deployment.
-
-**Not intended for production use.**  The console list is static —
-kerbside must be restarted to pick up changes, there is no polling,
-and there is no liveness check on the QEMU process behind the ticket.
+**Not intended for production use.**  There is no liveness check on
+the QEMU process behind the ticket, so kerbside will mint a `.vv`
+file for a target which is not listening and the user discovers it
+by failing to connect.
 
 The following options are used to configure a static console source
 (`type: static`).
@@ -337,3 +336,4 @@ An example configuration follows:
 - [Proxy Architecture](proxy-architecture.md) - Internal proxy design
 - [Kerbside for Shaken Fist](use-cases/shaken-fist.md) - The Shaken Fist use-case guide: value proposition, setup, and the sf-e2e worked example
 - [Kerbside for OpenStack](use-cases/openstack.md) - The OpenStack use-case guide: the spice-direct token exchange, setup, and the openstack_matrix worked example
+- [Kerbside standalone](use-cases/standalone.md) - The standalone use-case guide: the static source's no-control-plane model, setup, and the direct-qemu worked example

@@ -34,8 +34,9 @@
 # - Tickets are persisted to the Console DB at enumeration time via
 #   db.add_console(..., ticket=...).  No per-request driver
 #   instantiation is needed at .vv-generation time.
-# - Hot-reload is not supported.  Restart kerbside to pick up changes
-#   to the consoles list.
+# - The consoles list is re-read every 60 seconds by the maintenance
+#   loop in main.py, and in both directions: an entry added to the
+#   file is discovered, and one removed from it is deleted.
 # - Duplicate UUIDs within a single static source are tolerated with
 #   a warning; the last definition wins.
 
