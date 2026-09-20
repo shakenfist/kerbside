@@ -793,27 +793,26 @@ jobs:
           ${WORKDIR}/venv/bin/python3 \
               ${GITHUB_WORKSPACE}/kerbside/tools/ovirt-e2e/drive-console.py
 
+      # The guest-side bundle is built by a script that the "Copy tools
+      # and config to target" step delivers, so on a run which failed
+      # before that step there is nothing on the guest to run. This used
+      # to be four commands inline here, the first of which then exited
+      # 127 on "No such file or directory" and, under `bash -e`, took the
+      # rest of the step and the upload below with it. That is how six
+      # consecutive merge-queue failures produced no guest-side
+      # diagnostics at all (#446), on exactly the runs which needed them.
+      # gather-diagnostics.sh collects a fallback set over ssh in that
+      # case and always leaves a bundle behind, so if-no-files-found on
+      # the upload keeps its meaning: nothing there now means the gather
+      # itself did not run.
       - name: Gather artifacts
         if: always()
         run: |
           . $GITHUB_ENV
 
-          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null \
+          ${GITHUB_WORKSPACE}/kerbside/tools/ovirt-e2e/gather-diagnostics.sh \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              "bash /srv/ovirt-gather-artifacts.sh"
-
-          mkdir -p /srv/github/artifacts/bundle/
-          scp -rp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null \
-              ${{ matrix.test.baseuser }}@10.0.2.2:/tmp/bundle.zip \
-              /srv/github/artifacts/bundle/
-
-          cd /srv/github/artifacts/bundle/
-          unzip bundle.zip
-          rm bundle.zip
-          cd ..
-          zip -r bundle.zip bundle
+              /srv/github/artifacts
 
       - uses: actions/upload-artifact@v7
         if: always()
