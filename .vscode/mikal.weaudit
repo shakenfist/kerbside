@@ -60,10 +60,6 @@
       "author": "mikal"
     },
     {
-      "path": "tools/run-tempest-tests",
-      "author": "mikal"
-    },
-    {
       "path": "tools/test-ovirt-console.py",
       "author": "mikal"
     },

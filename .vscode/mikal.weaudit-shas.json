@@ -353,10 +353,6 @@
       "sha": "e63705ac5c57fd6d9fd0da21e18f399e3f88e4a4",
       "date": "2026-08-06"
     },
-    "tools/run-tempest-tests": {
-      "sha": "b17af445b479f810c2ea4e33eb26231ffeec8604",
-      "date": "2026-08-06"
-    },
     "tools/sf-e2e/README.md": {
       "sha": "6b5f0ebcbe1c086ef9de532c3b7e5b57be51d9b8",
       "date": "2026-08-15"
