@@ -432,8 +432,9 @@ Not covered, and worth knowing before you deploy:
 - [Testing](../testing.md#tempest-tests-against-a-kolla-ansible-deployment)
   — the CI lanes, including the Kolla-Ansible lane described
   above
-- [Kerbside for oVirt](ovirt.md) and
-  [Kerbside for Shaken Fist](shaken-fist.md) — the sibling
+- [Kerbside for oVirt](ovirt.md),
+  [Kerbside for Shaken Fist](shaken-fist.md) and
+  [Kerbside standalone](standalone.md) — the sibling
   deployment guides
 - [kerbside-patches](https://github.com/shakenfist/kerbside-patches)
   — the Kolla and Kolla-Ansible changes, until they are upstream

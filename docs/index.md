@@ -160,7 +160,7 @@ column names the CI lane that exercises the scenario end to end; see
 | Placement topologies | Kerbside instances placed by user population rather than by cloud — one per regional office, close to its users, with the WAN hop as the inspected backend leg | Not covered |
 | Proxmox | Deferred until a Proxmox source driver exists | No source yet |
 | [Shaken Fist](use-cases/shaken-fist.md) | Broker embedded in Shaken Fist itself; Ed25519 VDI console tokens exchanged offline at `/sf-console.vv` | `sf-e2e`, smoke tier and nightly |
-| Standalone / static source | The static driver (`kerbside/sources/static.py`) for labs, demos, and direct-qemu style fleets. The [compose demo](installation.md#try-it-the-demo-stack) is the worked example | `direct-qemu`, smoke tier and nightly |
+| [Standalone / static source](use-cases/standalone.md) | The static driver (`kerbside/sources/static.py`) for labs, demos, and direct-qemu style fleets. The [compose demo](installation.md#try-it-the-demo-stack) is the worked example | `direct-qemu`, smoke tier and nightly |
 
 Scenarios without a link are planned rather than written; see
 [plans/PLAN-use-case-docs.md](plans/PLAN-use-case-docs.md).
