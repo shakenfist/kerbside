@@ -32,6 +32,13 @@ gives every other source: a protocol-aware middle that
 inspects the session, host-subject pinning on the backend
 leg, and an audit trail.
 
+One part of this does reach past Proxmox. Phase 3 moves
+console-ticket minting into the authorize path, and the
+measurements below show that is an improvement the oVirt
+source wants on its own terms — so that phase changes
+`ovirt.py` too, deliberately, rather than leaving it on a
+7200-second default it never chose.
+
 Out of scope: PVE's VNC consoles, PVE clustering (a
 single-node source is enough to prove the model), and the
 Proxmox use-case documentation page, which belongs to
@@ -227,7 +234,8 @@ ticket minted at that moment rather than failing against a
 30 seconds is the obvious optimisation and should be
 measured, not assumed, against the added failure mode: PVE
 being unreachable now breaks connection setup, not just
-discovery.
+discovery — and against the supersession behaviour described
+below, which per-channel minting runs straight into.
 
 ### Three protocol details that cost an afternoon
 
@@ -253,6 +261,78 @@ the oVirt driver would expect: the node certificate verifies
 against the returned `ca`, and its subject matches the
 returned `host-subject`.
 
+### What oVirt does, measured the same way
+
+Phase 3 moves minting into the authorize path because
+Proxmox leaves no alternative. The obvious reading of that
+is that it is a Proxmox workaround bolted onto a path the
+other sources are happy with. Measuring oVirt the same way,
+on 2026-09-20 against a freshly deployed 4.5 engine on Rocky
+9, says otherwise.
+
+| | Proxmox VE | oVirt |
+|---|---|---|
+| Default lifetime | ~30s, not configurable | **7200s** |
+| Caller may request an expiry | no | yes, honoured |
+| Ceiling on a requested expiry | — | none found |
+| Channels served by one ticket | 6/6 | 6/6 |
+| A second mint revokes the first | — | **yes** |
+
+The engine grants 7200 seconds when the caller asks for
+nothing, which is exactly what `ovirt.py` does:
+`console_service.ticket()` with no `expiry`, taking
+`BackendGraphicsConsoleHelper.DEFAULT_TICKET_EXPIRY`. The
+expiry is honoured all the way down to qemu when it is asked
+for (valid at 30s, `PermissionDenied` at 40s), and no
+ceiling was found — a request for 99999 seconds was granted.
+
+So oVirt is not at risk of expiry; it has the inverse
+weakness. kerbside takes the most permissive expiry the API
+offers by not asking, discards the `.expiry` the call
+returns, and stores that eight-character hypervisor console
+password on the `Console` row, where `CONSOLE_PUBLIC_FIELDS`
+keeps it out of the API but nothing encrypts it at rest. A
+ten-second session leaves a live console password in the
+database for the remaining two hours.
+
+**That makes phase 3 a cross-source improvement that
+Proxmox happens to make unavoidable.** Once minting can
+happen at connect time, `ovirt.py` can pass a short explicit
+expiry and stop persisting a long-lived credential at all.
+Proxmox forces the pattern; oVirt would choose it. Phase 3
+should therefore be scoped and reviewed as a change to the
+minting path in general, not as a Proxmox prerequisite, and
+whoever schedules it should expect to touch `ovirt.py`.
+
+### A second mint revokes the first
+
+This was not what the oVirt measurement went looking for,
+and it is the part that matters beyond this plan.
+
+Minting a second ticket for a VM invalidates the first
+immediately: the engine sets the SPICE password on the
+running qemu, a password has one value, and the first ticket
+answers `PermissionDenied` the instant the second is issued.
+Two brokered sessions against one VM cannot overlap — a
+second viewer connecting does not merely get its own
+credential, it revokes the first viewer's.
+
+The same is structurally true of Proxmox, which also sets a
+single qemu password, but its 30-second window makes it
+nearly unobservable there.
+
+This is a live property of the oVirt path today, not a
+design input for a new driver, and it interacts badly with
+the per-channel minting proposed above: a channel opened
+late in a session would revoke the credential every earlier
+channel authenticated with. Whether that matters depends on
+whether qemu re-checks an established channel's password
+(it does not appear to — the six concurrent channels stayed
+up) but "appears not to" is not a foundation to build
+per-channel minting on. **Phase 3 cannot be designed without
+settling this**, so it belongs in that phase's scope rather
+than as an open question here.
+
 ## Proposed phases
 
 A sketch of the decomposition, not a schedule. Nothing is
@@ -263,7 +343,7 @@ because it can change everything after it.
 |-------|--------|
 | ~~1. Ticket semantics~~ | Done 2026-09-20, before the plan was scheduled, because it gated the design. See *What the measurements settled* |
 | 2. Tunnelled transport in ryll | CONNECT support on the backend dial, with the `ServerName` and no-`host_subject` refusal decided and tested both ways |
-| 3. Kerbside adoption | `Target`/proto change, minting moved into the authorize path, and `backend.rs` passing the tunnel through |
+| 3. Minting at connect time | `Target`/proto change, minting moved into the authorize path, and `backend.rs` passing the tunnel through. Not Proxmox-only: it is what lets `ovirt.py` stop taking a 7200s default, and it must settle the supersession behaviour above before per-channel minting is committed to |
 | 4. The source driver | `kerbside/sources/proxmox.py`: discovery over `/nodes/{node}/qemu`, console details over `spiceproxy`, CA and subject handling |
 | 5. CI lane | A lane that proves an end-to-end proxied session, per open question 7 |
 | 6. Docs | The use-case page PLAN-use-case-docs.md has been holding a row for, plus `console-sources.md` |
