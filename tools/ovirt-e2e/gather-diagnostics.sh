@@ -52,9 +52,13 @@ fi
 # were tested, and the only way they can be.
 SSH_KEY="${SSH_KEY:-/srv/github/id_ci}"
 
+# Extra ssh options are deliberately word split: the override is a single
+# environment variable which may carry several options.
+read -r -a SSH_EXTRA_OPTS_ARRAY <<< "${SSH_EXTRA_OPTS:-}"
+
 SSH_OPTS=(-i "${SSH_KEY}" -o StrictHostKeyChecking=no
           -o UserKnownHostsFile=/dev/null -o BatchMode=yes
-          -o ConnectTimeout=10 ${SSH_EXTRA_OPTS:-})
+          -o ConnectTimeout=10 "${SSH_EXTRA_OPTS_ARRAY[@]}")
 
 BUNDLE="${OUTDIR}/bundle"
 LOG="${BUNDLE}/gather.log"
