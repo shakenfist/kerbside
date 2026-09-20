@@ -55,12 +55,13 @@ someone else:
   discovery; this one has no discovery and nothing to learn a
   subject from. What still holds: the backend leg escalates to
   TLS when the hypervisor demands it, verified against the CA
-  you configure for the cloud, and the firewall still inspects
-  every message on it. And the *client-facing* leg is still
-  pinned, by `PROXY_HOST_SUBJECT` — which is Kerbside's own
-  certificate subject, written into the `.vv` file for the
-  client to check. That is a different leg: client to Kerbside,
-  not Kerbside to hypervisor. See the limitations table.
+  you configure for the cloud where you configure one, and the
+  firewall still inspects every message on it. And the
+  *client-facing* leg is still pinned, by `PROXY_HOST_SUBJECT` —
+  which is Kerbside's own certificate subject, written into the
+  `.vv` file for the client to check. That is a different leg:
+  client to Kerbside, not Kerbside to hypervisor. See the
+  limitations table.
 - **One entry point across clouds.** A single Kerbside can
   broker OpenStack alongside oVirt and Shaken Fist sources;
   users keep one console entry point as workloads move. More
@@ -152,7 +153,12 @@ reported — which is that compute node's
 port. If the hypervisor answers the link handshake with
 `NEED_SECURED`, Kerbside retries on the TLS port, verifying
 against the CA configured for the cloud where one is configured
-(`rust/kerbside-proxy/src/backend.rs`). Whether that escalation
+(`rust/kerbside-proxy/src/backend.rs`). Where none is, the proxy
+passes no CA to the protocol crate, and `create_tls_connector`
+in ryll's `shakenfist-spice-protocol` falls back to the public
+web trust store with hostname verification — which an internal
+hypervisor's certificate will not satisfy, so the escalation
+fails rather than proceeding unverified. Whether that escalation
 happens is the hypervisor's decision rather than Kerbside's: a
 Kolla-Ansible deployment turns it on with
 `nova_spice_require_secure`, which in turn requires libvirt TLS.
@@ -304,9 +310,11 @@ things about it are worth knowing here rather than there:
   the client's.** It is what the backend leg verifies against
   when a hypervisor escalates to TLS. Kerbside's own
   certificate, which the *client* verifies, is a separate
-  setting entirely. Configuring only the second leaves the
-  backend leg unverified rather than failing loudly, so it is
-  worth checking deliberately.
+  setting entirely. Configuring only the second does not leave
+  the backend leg unverified; it leaves it verifying against the
+  public web trust store, which an internal hypervisor's
+  certificate will not satisfy. A hypervisor that escalates then
+  fails the handshake — see **The backend leg** above.
 - **There is no discovery interval to tune, and no errored
   state to watch.** The entry is registered and appears in the
   administrative interface, and every scrape pass then skips it.
