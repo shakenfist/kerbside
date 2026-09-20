@@ -390,6 +390,50 @@ middle, so full inspection is preserved. The proxy's
 backend dialer will need HTTP CONNECT support; assess
 that when planning the source.
 
+**Updated 2026-09-20.** The install judgement held and is
+now exercised: a single-node PVE 9.2.20 on debian:13,
+built with Ansible and validated privately (fresh deploy
+in under ten minutes, survives a reboot, re-runs with
+`changed=0`). The answer-file installer has kept moving —
+first-boot hooks in 8.3, `reboot-mode` in 8.4, interface
+name pinning in 9.1, bearer-token auth for the HTTP fetch
+in 9.2 — so the ISO route is entirely viable now; it is
+simply still the worse fit, because apt-onto-Debian keeps
+cloud-init and the injected key alive and leaves the
+deployment an ordinary Ansible run.
+
+Both architecture claims above are confirmed against a
+live node rather than documentation. `POST
+/nodes/{node}/qemu/{vmid}/spiceproxy` returns `proxy`
+(`http://<node fqdn>:3128`), `host` (the
+`pvespiceproxy:<ticket>:<vmid>:<node>:<port>::<hash>`
+CONNECT pseudo-hostname, not a hostname), `tls-port`,
+`password`, `host-subject` and `ca` — so a source driver
+has everything it needs from one call, and the pinning
+material is the same shape the oVirt driver already
+consumes. The dialer gap is confirmed too:
+`rust/kerbside-proxy/src/backend.rs` builds a
+`ConnectionConfig` and hands it straight to `SpiceClient`
+with no CONNECT step anywhere in the path. That makes the
+transport work the gating item for a Proxmox source, and
+the driver itself the small half.
+
+One constraint the deployment surfaced that a source and
+its lane must both respect: the node's FQDN is
+load-bearing on the kerbside side, not merely cosmetic.
+PVE generates the node certificate from it and every
+ticket carries both a `proxy` URL naming it and a
+`host-subject` to pin against, so a node whose domain
+does not resolve for the broker hands out a proxy address
+that cannot be dialled and a subject that will not match.
+A lane must give the node a resolvable domain rather than
+an invented one.
+
+Still deferred, and the deferral is unchanged: there is
+no Proxmox source driver, so `docs/index.md`'s use-case
+row and PLAN-use-case-docs.md's Proxmox row both stay as
+they are.
+
 ## Agent guidance
 
 ### Execution model
