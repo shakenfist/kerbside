@@ -89,10 +89,10 @@ dependencies = [
 
     # These also move as a set
     "alembic==1.20.0",                  # mit
-    "sqlalchemy==2.0.52",               # mit
+    "sqlalchemy==2.0.54",               # mit
     # not-imported: mysqlclient -- SQLAlchemy driver for the bare
     # "mysql://" form of SQL_URL, which is the configured default.
-    "mysqlclient==2.2.8",               # gpl
+    "mysqlclient==2.3.0",               # gpl
 
     # gRPC service (KerbsideProxy) fronting the database for the proxy.
     # protobuf is pinned to the version the checked-in stubs were
