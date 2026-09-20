@@ -65,19 +65,22 @@ kerbside token the client will connect with
 (`api.py:480-527`). The authorize path never calls a driver,
 and on this design it does not need to.
 
-Proxmox should be able to reuse that shape, and this plan
-assumes it will. What it cannot reuse is the shape of what
-gets stored: PVE returns a SPICE password *and* a CONNECT
-pseudo-hostname naming the ticket, the vmid, the node and the
-port, so `Console.ticket` alone cannot carry a target.
+Proxmox cannot reuse that shape, and this is the finding that
+shapes the plan. The pattern has an unstated precondition
+oVirt's ticket lifetime satisfies: the credential must
+outlive the gap between the client fetching its `.vv` and
+actually connecting. A PVE ticket does not — it is good for
+about thirty seconds, measured, and that gap is user-paced.
+Minting has to move into `AuthorizeConnection`, which would
+be the first time that path ever called a source driver. See
+*What the measurements settled*.
 
-The pattern also has a precondition that oVirt's ticket
-lifetime evidently satisfies: the credential must outlive the
-gap between the client fetching its `.vv` and actually
-connecting. Whether a PVE ticket does is open question 2 —
-and if it does not, minting has to move into
-`AuthorizeConnection`, which would be the first time that
-path ever called a source driver.
+The shape of what gets stored does not fit either: PVE
+returns a SPICE password *and* a CONNECT pseudo-hostname
+naming the ticket, the vmid, the node and the port, so
+`Console.ticket` alone cannot carry a target — and with
+minting moved to connection time, the fresh half of it should
+not be stored on the row at all.
 
 Here is what the call actually returns, from the validated
 node:
@@ -116,24 +119,11 @@ source.
 
 These are ordered by how much they can move the design.
 
-**1. Does one PVE ticket authorise every channel of a
-session?** SPICE opens a separate TCP connection per channel,
-so a session is several CONNECTs. If a ticket is single-use,
-the authorize path must mint one per channel and questions 3
-and 4 change shape entirely. The inference from the outside
-is that it does not need to: `remote-viewer` works against
-PVE today and opens many channels from one `.vv`. That is
-evidence, not a measurement, and it must be measured before
-anything is designed on top of it.
+The first two questions this plan was written with have
+since been answered by measurement; see *What the
+measurements settled* below. The rest are open.
 
-**2. How long is a ticket valid?** This decides whether
-Proxmox can reuse the mint-at-token-issue pattern oVirt
-already uses, or whether minting must move into
-`AuthorizeConnection` and teach that path to call a driver.
-Measure it against a running node; do not take a number from
-a forum post.
-
-**3. Where does the CONNECT live — ryll or kerbside?** Either
+**1. Where does the CONNECT live — ryll or kerbside?** Either
 `ConnectionConfig` grows an optional proxy, and
 `connect_channel` performs the CONNECT before the TLS wrap;
 or the crate grows an entry point that accepts an
@@ -144,7 +134,7 @@ client that someone will eventually want to point at a
 Proxmox console directly. The cost is that a deployment
 concern lands in a protocol crate.
 
-**4. What is the TLS `ServerName` inside the tunnel?**
+**2. What is the TLS `ServerName` inside the tunnel?**
 `connect_channel` derives it from `config.host`, which under
 a tunnel is the CONNECT pseudo-hostname and not a DNS name at
 all. Host-subject pinning already substitutes for hostname
@@ -154,18 +144,18 @@ tunnelled connection that has no `host_subject`, rather than
 quietly ending up with no identity check on the backend leg.
 Both directions want a test, as PLAN-host-subject did.
 
-**5. Does `Target` grow a field or a transport sub-message?**
+**3. Does `Target` grow a field or a transport sub-message?**
 Either way it is a proto change, and proto changes carry the
 contract-hash handshake from PLAN-proxy-dev-releases phase 3,
 so the daemon and the proxy binary have to ship together.
 
-**6. What is the least-privileged API account?** The
+**4. What is the least-privileged API account?** The
 validated deployment uses `PVEVMUser` on `/vms` plus
 `PVEAuditor` on `/`, with a `privsep=0` API token. That works;
 it is not proven minimal, and the same honesty the oVirt
 use-case page applies to `SuperUser` applies here.
 
-**7. Where does a CI lane get a node?** PLAN-two-tier-ci's
+**5. Where does a CI lane get a node?** PLAN-two-tier-ci's
 future work puts a Proxmox lane in the merge tier. The
 Ansible that builds the validated node lives in a private
 repository, so a public lane needs either a public
@@ -181,6 +171,88 @@ subject that will not match. Any lane must give its node a
 resolvable domain rather than an invented one — which is a
 bug the private deployment hit, and fixed, before it worked.
 
+## What the measurements settled
+
+Measured on 2026-09-20 against the validated node, by
+minting a ticket and driving the full CONNECT -> TLS -> SPICE
+link -> auth path against it. Both numbers are also readable
+in PVE's own source, which is quoted here because it explains
+them.
+
+**A ticket authorises many channels.** Six simultaneous
+tunnels opened on one ticket all reached an authenticated
+SPICE link (6/6). A session does not need a ticket per
+channel, and `assemble_spice_ticket`'s "this should be used
+as one-time password" comment describes intent rather than
+enforcement.
+
+**Two credentials expire separately, and fast.** The SPICE
+password is qemu's, expired by `mon_cmd($vmid,
+"expire_password", protocol => 'spice', time => "+30")`
+(`PVE/QemuServer.pm:5934`, also `PVE/API2/Qemu.pm:3373`). The
+proxy ticket is checked by `verify_spice_connect_url`, which
+refuses it outside `-20 < age < 40` seconds
+(`PVE/Ticket.pm:166`, whose own comment reads "use very
+limited lifetime - is this enough?"). Neither is
+configurable without patching PVE.
+
+Probing one ticket every five seconds, and again with a
+single clean probe per fresh ticket to be sure the probing
+itself was not keeping anything alive:
+
+| Age | CONNECT | SPICE auth |
+|-----|---------|------------|
+| 0-31s | 200 OK | Ok |
+| 35-36s | 200 OK | PermissionDenied |
+| 41-45s | 401 invalid ticket | — |
+
+**So the usable window is about 30 seconds, and the
+mint-at-token-issue pattern does not survive it.** The gap
+between `ConsolesProxyVirtViewer` handing over a `.vv` and
+`remote-viewer` actually connecting is user-paced — a browser
+download prompt, an "open with" dialog, an application
+launch — and 30 seconds is not a safe budget for that. The
+same arithmetic makes the direct `.vv` path
+(`ConsolesDirectVirtViewer`) marginal for Proxmox.
+
+Minting therefore has to happen at connection time, which
+means `AuthorizeConnection` calling the source driver — the
+first time that path would do so. The shape that falls out
+is per-channel minting: each channel's authorize call mints
+its own ticket, which is a handful of PVE API calls per
+session and, usefully, means a channel opened late in a long
+session (a usbredir channel on a device plug, say) gets a
+ticket minted at that moment rather than failing against a
+30-second-old one. Caching one ticket per session for its
+30 seconds is the obvious optimisation and should be
+measured, not assumed, against the added failure mode: PVE
+being unreachable now breaks connection setup, not just
+discovery.
+
+### Three protocol details that cost an afternoon
+
+None of these are documented where a driver author would
+look, and each presents as something it is not:
+
+- **The connect string travels in the `Host:` header**, not
+  the CONNECT request line. `PVE/APIServer/AnyEvent.pm:1559`
+  reads `$request->header('Host')`. A CONNECT without it is
+  answered `401 invalid ticket`, which is indistinguishable
+  from an expired ticket.
+- **The CONNECT target is `<pseudo-hostname>:<tls-port>`**,
+  and the port is load-bearing: PVE signs it into the
+  pseudo-hostname and `Ticket.pm:168` refuses the tunnel
+  unless the two agree.
+- **The `ca` field has its newlines escaped**, because it is
+  written into a `.vv` file where a PEM has to survive as one
+  INI value. It is not a usable certificate until they are
+  put back.
+
+Host-subject pinning was exercised in passing and behaves as
+the oVirt driver would expect: the node certificate verifies
+against the returned `ca`, and its subject matches the
+returned `host-subject`.
+
 ## Proposed phases
 
 A sketch of the decomposition, not a schedule. Nothing is
@@ -189,9 +261,9 @@ because it can change everything after it.
 
 | Phase | Intent |
 |-------|--------|
-| 1. Ticket semantics | Measure ticket lifetime and whether one ticket serves every channel of a session. Answers open questions 1 and 2, and settles where minting has to happen |
+| ~~1. Ticket semantics~~ | Done 2026-09-20, before the plan was scheduled, because it gated the design. See *What the measurements settled* |
 | 2. Tunnelled transport in ryll | CONNECT support on the backend dial, with the `ServerName` and no-`host_subject` refusal decided and tested both ways |
-| 3. Kerbside adoption | `Target`/proto change, a console row that can carry a tunnel target and not just a password, and `backend.rs` passing the tunnel through |
+| 3. Kerbside adoption | `Target`/proto change, minting moved into the authorize path, and `backend.rs` passing the tunnel through |
 | 4. The source driver | `kerbside/sources/proxmox.py`: discovery over `/nodes/{node}/qemu`, console details over `spiceproxy`, CA and subject handling |
 | 5. CI lane | A lane that proves an end-to-end proxied session, per open question 7 |
 | 6. Docs | The use-case page PLAN-use-case-docs.md has been holding a row for, plus `console-sources.md` |
