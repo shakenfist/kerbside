@@ -57,10 +57,6 @@
       "sha": "b31de6116ea70559b0706b9512049fea6ce661cd",
       "date": "2026-08-18"
     },
-    "demo/sources.yaml": {
-      "sha": "f137eedf566fcd074bd43730d13974795fcc3743",
-      "date": "2026-08-18"
-    },
     "etc/example-static-sources.yaml": {
       "sha": "558621b0e5ee59b1a61c784a96ea9f7281d3dcd1",
       "date": "2026-08-18"

@@ -336,10 +336,6 @@
       "author": "mikal"
     },
     {
-      "path": "demo/sources.yaml",
-      "author": "mikal"
-    },
-    {
       "path": "etc/example-static-sources.yaml",
       "author": "mikal"
     },
