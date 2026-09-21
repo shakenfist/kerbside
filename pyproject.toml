@@ -48,7 +48,7 @@ dependencies = [
     "pyyaml==6.0.3",                    # mit
     # not-imported: PyMySQL -- SQLAlchemy driver for the "mysql+pymysql://"
     # form of SQL_URL, which etc/kerbside.conf.example ships.
-    "PyMySQL==1.2.0",                   # mit
+    "PyMySQL==1.2.3",                   # mit
     "webargs==8.7.1",                   # mit
 
     # All four of these are imported here but were, until now, declared
