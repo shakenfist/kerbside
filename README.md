@@ -43,6 +43,7 @@ directory:
 - [Kerbside for oVirt](https://github.com/shakenfist/kerbside/blob/develop/docs/use-cases/ovirt.md) - Per-deployment guide: what Kerbside replaces in an oVirt deployment, and how to set it up
 - [Kerbside for Shaken Fist](https://github.com/shakenfist/kerbside/blob/develop/docs/use-cases/shaken-fist.md) - Per-deployment guide: the broker embedded in Shaken Fist itself, offline VDI console tokens, and how to set it up
 - [Kerbside for OpenStack](https://github.com/shakenfist/kerbside/blob/develop/docs/use-cases/openstack.md) - Per-deployment guide: Nova's spice-direct consoles, the token exchange, and how to set it up
+- [Kerbside standalone](https://github.com/shakenfist/kerbside/blob/develop/docs/use-cases/standalone.md) - Per-deployment guide: the static source driver, no control plane, and how to set it up
 - [Installation](https://github.com/shakenfist/kerbside/blob/develop/docs/installation.md) - From `pip install` to a proxied console: what a running Kerbside needs, the compose demo, and where to go for your cloud
 - [Configuration](https://github.com/shakenfist/kerbside/blob/develop/docs/configuration.md) - Configuration reference, including the SPICE firewall knobs
 - [Console Sources](https://github.com/shakenfist/kerbside/blob/develop/docs/console-sources.md) - Configuring sources.yaml for Shaken Fist, OpenStack, and oVirt

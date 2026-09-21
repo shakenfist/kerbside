@@ -27,8 +27,12 @@
       insecure_port: 5910
       ticket: "demo-ticket"
 
-      # Deliberately absent: secure_port and host_subject, which would
-      # make kerbside's *backend* leg use TLS as well.
+      # Deliberately absent: secure_port and host_subject here, and
+      # ca_cert on the source above, which together would make
+      # kerbside's *backend* leg use TLS as well. All three are
+      # needed: without the CA the target is verified against the
+      # public web trust store, which this certificate will not
+      # satisfy, so the handshake fails rather than going unverified.
       #
       # generate-tls.sh does emit the qemu x509 material for this (in
       # qemu-x509/), and tools/direct-qemu/start-qemu.sh shows the
@@ -37,7 +41,9 @@
       # the leg that matters to them, client to proxy, is already TLS
       # and is verified against the CA embedded in the .vv.
       #
-      # A real deployment should set both. docs/use-cases/ovirt.md
-      # covers backend certificate pinning properly.
+      # A real deployment should set all three.
+      # docs/use-cases/standalone.md covers what each one does for a
+      # static source, and docs/use-cases/ovirt.md covers backend
+      # certificate pinning properly.
       # secure_port: 5911
       # host_subject: "C=US,O=Kerbside CI,CN=qemu-hv"

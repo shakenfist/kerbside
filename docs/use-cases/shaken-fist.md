@@ -351,6 +351,7 @@ Not covered, and worth knowing before you deploy:
 - [Testing](../testing.md#the-shaken-fist-end-to-end-lane-sf-e2e)
   — the CI lanes, including the Shaken Fist end-to-end lane
   described above
-- [Kerbside for oVirt](ovirt.md) and
-  [Kerbside for OpenStack](openstack.md) — the sibling
+- [Kerbside for oVirt](ovirt.md),
+  [Kerbside for OpenStack](openstack.md) and
+  [Kerbside standalone](standalone.md) — the sibling
   deployment guides

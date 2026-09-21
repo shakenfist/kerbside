@@ -37,6 +37,34 @@ class TestStaticSourceEmptyList(unittest.TestCase):
         self.assertEqual([], results)
 
 
+class TestStaticSourceAbsentConsolesKey(unittest.TestCase):
+    """An absent consoles key is not an error, and that is issue #464.
+
+    A change detector, like AddConsoleUpdateTestCase in test_db.py.
+    The key is read with a default, so leaving it out or misspelling
+    it yields an empty list rather than a validation failure: the
+    source constructs cleanly, is enumerated with nothing in it, and
+    the maintenance loop therefore deletes every console it had
+    published. That is the opposite of what a malformed entry does,
+    and it is asserted in docs/use-cases/standalone.md and in
+    kerbside/sources/static.py's header comment.
+
+    When #464 is fixed this test fails, and those two documents need
+    updating with it.
+    """
+
+    def test_absent_consoles_key_does_not_error(self):
+        src = static_source.StaticSource(source='lab', type='static')
+        self.assertFalse(src.errored)
+        self.assertEqual([], list(src()))
+
+    def test_misspelled_consoles_key_does_not_error(self):
+        src = static_source.StaticSource(
+            source='lab', type='static', console=[dict(_VALID_CONSOLE)])
+        self.assertFalse(src.errored)
+        self.assertEqual([], list(src()))
+
+
 class TestStaticSourceSingleEntry(unittest.TestCase):
     """A single valid console entry should construct and yield one dict."""
 
