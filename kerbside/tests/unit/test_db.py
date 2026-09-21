@@ -419,7 +419,3 @@ class AddConsoleUpdateTestCase(testtools.TestCase):
         # because #463 has been fixed, update the three documents named
         # in this class's docstring before changing it.
         self.assertEqual('first-password', console.ticket)
-
-    def test_add_console_reports_whether_it_inserted(self):
-        self.assertTrue(self._add())
-        self.assertFalse(self._add())

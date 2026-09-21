@@ -16,9 +16,11 @@ its SPICE firewall without standing anything else up first.
 
 - **There is nothing to stand up and nothing to authenticate
   to.** The driver makes no external call at all. There is no
-  service account to create, no CA to paste and have checked for
-  equality, no discovery interval to tune, and no platform
-  outage that can put the source into an errored state.
+  service account to create, no discovery CA to paste and have
+  checked for equality, no discovery interval to tune, and no
+  platform outage that can put the source into an errored state.
+  (Reaching a target over TLS still needs that target's CA; what
+  is absent is the second one, for talking to a platform.)
   Everything Kerbside knows comes from one local file, which is
   also the only thing that can be wrong.
 - **The console list reloads every sixty seconds, in both
@@ -126,9 +128,13 @@ Removing the entry, letting the removal land, and adding it back
 does apply it, because that takes the insert path — at a cost
 worth knowing before you rely on it: the console is deleted on
 the first pass and absent from the inventory, the API and the
-web UI until the second, it comes back as a new row with a new
-audit lineage rather than the old one continued, and rotating a
-password therefore takes two maintenance cycles rather than one.
+web UI until the second, it comes back as a fresh row with its
+discovery timestamp reset, and rotating a password therefore
+takes two maintenance cycles rather than one. The audit trail
+does survive, which is the one piece of good news here: audit
+events are keyed on the source and the identifier rather than
+on the console row, and nothing deletes them, so re-adding the
+same identifier picks the history back up.
 Tracked as
 [#463](https://github.com/shakenfist/kerbside/issues/463).
 
@@ -322,7 +328,7 @@ Not covered, and worth knowing before you deploy:
 | Nothing checks that the target is alive | There is no liveness check of any kind. An entry in the file is a console whether or not anything is listening on the port, so Kerbside will happily mint a `.vv` for a qemu that exited an hour ago and the user discovers it by the SPICE client failing to connect. Nothing in the console list, the web UI or the API distinguishes a live target from a dead one. This, rather than anything about the file format, is the honest reason the static source is not intended for production use. |
 | A changed SPICE password is never applied | Every other field of an entry which already exists is reassigned on the next pass; the password is not. It is set only when the console row is first inserted (`kerbside/db.py:303-318`), and the `.vv` handler leaves the stored value alone for a static source (`kerbside/api.py:509-512`), so an edit to it is parsed and discarded with no log line, no audit event and no errored source. The file and the database disagree and nothing says so; the first sign is the target refusing the handshake. Remove the entry, let the removal land, and add it back to change one. Tracked as [#463](https://github.com/shakenfist/kerbside/issues/463). |
 | The inventory is only as good as your editing | There is no discovery, so nothing ever corrects the file. A target rebuilt on a different port, or with a different SPICE password, is simply wrong until somebody edits it, and the wrongness shows up as a failed connection rather than as an errored source. The sixty-second reload makes the fix fast; it does not make it automatic. |
-| Backend TLS needs three things, and is untested through this source | A static entry is plaintext to the target unless you declare a TLS port, unverified unless the source carries a `ca_cert`, and unpinned unless you write a `host_subject`. The CA is the one most easily missed: without it the target is checked against the public web trust store, which an internal certificate will not satisfy, so the escalation fails the handshake. The proxy's enforcement of a pin is exercised both ways in CI — a matching pin accepted, a mismatched one refused — but by `run-host-subject-checks.sh`, which drives the proxy from a mock control plane rather than from a source; the `direct-qemu` lane's own static entry is plaintext, and the compose demo deliberately leaves all three out. So the enforcement is proven and the path that reaches it *from this source* is not. |
+| Backend TLS needs three things, and is untested through this source | A static entry is plaintext to the target unless you declare a TLS port, unverified unless the source carries a `ca_cert`, and unpinned unless you write a `host_subject`. The CA is the one most easily missed: without it the target is checked against the public web trust store, which an internal certificate will not satisfy, so the escalation fails the handshake. The proxy's enforcement of a pin is exercised both ways in CI — a matching pin accepted, a mismatched one refused — but by `tools/direct-qemu/run-host-subject-checks.sh`, which drives the proxy from a mock control plane rather than from a source; the `direct-qemu` lane's own static entry is plaintext, and the compose demo deliberately leaves all three out. So the enforcement is proven and the path that reaches it *from this source* is not. |
 | Nobody can log in | Interactive login is Keystone-only ([#300](https://github.com/shakenfist/kerbside/issues/300)), which a deployment with no OpenStack in it has nothing to point at, and the session JWT scheme has no revocation or issuance audit ([#301](https://github.com/shakenfist/kerbside/issues/301)). A standalone deployment therefore needs something else to hold credentials and call the API. |
 | Duplicate identifiers are tolerated | Two entries in one source sharing an identifier produce a warning and the last definition wins. Nothing errors and nothing is marked unhealthy, so a copy-paste mistake silently publishes one target and hides another. |
 | A bad edit is contained, unless it is not | Validation is per source rather than per entry, so one entry missing a required field marks the whole source errored and its published list is retained rather than refreshed — a stale list beside an errored source, not an empty one. Two edits escape that: removing or misspelling the key holding the entries enumerates the source successfully with nothing in it and deletes every console it had ([#464](https://github.com/shakenfist/kerbside/issues/464)), and a YAML syntax error exits the daemon into a restart loop because the parse is outside the per-source error handling ([#465](https://github.com/shakenfist/kerbside/issues/465)). |
