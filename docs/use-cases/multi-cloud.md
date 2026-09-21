@@ -177,6 +177,9 @@ Not covered, and worth knowing before you deploy:
 
 ## See also
 
+- [Placement topologies](placement.md) — the inverse
+  arrangement: several Kerbsides in front of one cloud, rather
+  than several sources behind one Kerbside
 - [Console Sources](../console-sources.md) — the option
   reference for every source type, and so for the contents of
   the second entry and the third

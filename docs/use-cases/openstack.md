@@ -62,16 +62,10 @@ someone else:
   `.vv` file for the client to check. That is a different leg:
   client to Kerbside, not Kerbside to hypervisor. See the
   limitations table.
-- **One entry point across clouds.** A single Kerbside can
-  broker OpenStack alongside oVirt and Shaken Fist sources;
-  users keep one console entry point as workloads move. More
-  than one OpenStack cloud can be configured at once — a
-  presented token is offered to each in turn, in `sources.yaml`
-  order, until one validates it. That means every configured
-  cloud sees tokens minted by the others, and that one broken
-  cloud stops the exchange for the rest, so this suits clouds
-  under one operator rather than clouds in separate trust
-  domains. See the limitations table.
+- **[One entry point across clouds.](multi-cloud.md)** A
+  single Kerbside can broker OpenStack alongside oVirt and
+  Shaken Fist sources; users keep one console entry point as
+  workloads move.
 
 Users get the SPICE features an HTML5 console cannot offer:
 high-resolution and multi-monitor desktops, USB passthrough,

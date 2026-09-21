@@ -60,9 +60,10 @@ it *is* the second half of it:
   TLS is relayed over the plaintext port instead, where there
   is no certificate to verify and no subject to pin; that is
   the node's configuration rather than Kerbside's.
-- **One entry point across clouds.** A single Kerbside can
-  broker Shaken Fist alongside oVirt and OpenStack sources;
-  users keep one console entry point as workloads move.
+- **[One entry point across clouds.](multi-cloud.md)** A
+  single Kerbside can broker Shaken Fist alongside oVirt and
+  OpenStack sources; users keep one console entry point as
+  workloads move.
 
 Users get the SPICE features an HTML5 console cannot offer:
 high-resolution and multi-monitor desktops, USB passthrough,

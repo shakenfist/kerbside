@@ -37,9 +37,10 @@ Kerbside replaces it with a protocol-aware front door:
   certificate subject it discovered from the engine, so a
   redirected backend connection fails rather than succeeding
   quietly.
-- **One entry point across clouds.** A single kerbside can
-  broker oVirt alongside Shaken Fist and OpenStack sources;
-  users keep one console entry point as workloads move.
+- **[One entry point across clouds.](multi-cloud.md)** A
+  single kerbside can broker oVirt alongside Shaken Fist and
+  OpenStack sources; users keep one console entry point as
+  workloads move.
 
 Users get the SPICE features an HTML5 console cannot offer:
 high-resolution and multi-monitor desktops, USB passthrough,
