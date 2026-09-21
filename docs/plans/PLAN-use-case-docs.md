@@ -114,7 +114,7 @@ the range is not reliably reconstructable afterwards.
 |-------|------|--------|--------|
 | 1. Shaken Fist | [PLAN-use-case-docs-phase-01-shaken-fist.md](PLAN-use-case-docs-phase-01-shaken-fist.md) | Complete | 2f0e526 |
 | 2. OpenStack | [PLAN-use-case-docs-phase-02-openstack.md](PLAN-use-case-docs-phase-02-openstack.md) | Complete | a7df5e5 |
-| 3. Standalone / static source | [PLAN-use-case-docs-phase-03-standalone.md](PLAN-use-case-docs-phase-03-standalone.md) | In progress | |
+| 3. Standalone / static source | [PLAN-use-case-docs-phase-03-standalone.md](PLAN-use-case-docs-phase-03-standalone.md) | Complete | 28efa6c |
 | 4. Multi-cloud aggregation and placement topologies | | Not started | |
 | 5. Index slim-down and closeout | | Not started | |
 | 6. Push audit | | Not started | |
