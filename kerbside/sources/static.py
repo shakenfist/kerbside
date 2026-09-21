@@ -37,6 +37,11 @@
 # - The consoles list is re-read every 60 seconds by the maintenance
 #   loop in main.py, and in both directions: an entry added to the
 #   file is discovered, and one removed from it is deleted.
+# - That reload does not carry a changed ticket, despite the note
+#   above: db.add_console() assigns the ticket only when it inserts
+#   the console, so editing the ticket of an entry which already
+#   exists is parsed and then discarded.  Remove the entry, let the
+#   removal land, and add it back.  See issue #463.
 # - Duplicate UUIDs within a single static source are tolerated with
 #   a warning; the last definition wins.
 
