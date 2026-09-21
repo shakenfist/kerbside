@@ -343,7 +343,10 @@ Each of these is falsifiable from the tree:
       `name`, `hypervisor`, `hypervisor_ip`, `insecure_port`,
       `ticket`, `secure_port`) appears in the new page, except
       `host_subject`, which survey finding 6 puts in the value
-      proposition as the contrast with the other three pages.
+      proposition as the contrast with the other three pages, and
+      `ca_cert`, which review round 2 established is the third
+      requirement for the backend leg and so cannot be omitted
+      from the setup section for the same reason.
 - [ ] The page states the sixty-second reload, in both
       directions, and names the two audit events.
 - [ ] `grep -in 'restart' docs/console-sources.md

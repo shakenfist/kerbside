@@ -348,3 +348,78 @@ class ConsoleSecretsDbTestCase(testtools.TestCase):
 
     def test_get_console_returns_none_when_absent(self):
         self.assertIsNone(db.get_console('sf1', 'nosuch'))
+
+
+class AddConsoleUpdateTestCase(testtools.TestCase):
+    """Pin which fields add_console() refreshes on an existing console.
+
+    This is a change detector, deliberately. The update branch assigns
+    every mutable field except the ticket, which is set only when the
+    row is first inserted, and three documents now state that as a
+    property an operator has to work around: the standalone use case
+    page, the static source section of docs/console-sources.md, and
+    the header comment in kerbside/sources/static.py. Issue #463 is
+    open to make the update branch carry the ticket like everything
+    else.
+
+    So the assertion below is not an endorsement. It exists so that
+    fixing #463 fails here rather than silently falsifying all three
+    documents, and so that someone extending the update branch cannot
+    quietly leave a new field out the way the ticket was left out.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.engine = create_engine('sqlite://')
+        db.Base.metadata.create_all(
+            self.engine, tables=[db.Console.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+    def _console(self, uuid='console-1'):
+        with Session(self.engine) as session:
+            return session.query(db.Console).filter(
+                db.Console.uuid == uuid).one()
+
+    def _add(self, **overrides):
+        kwargs = {
+            'source': 'lab',
+            'uuid': 'console-1',
+            'hypervisor': 'bench',
+            'hypervisor_ip': '10.0.0.1',
+            'insecure_port': 5900,
+            'secure_port': None,
+            'name': 'first name',
+            'host_subject': None,
+            'ticket': 'first-password',
+        }
+        kwargs.update(overrides)
+        return db.add_console(**kwargs)
+
+    def test_insert_then_update_keeps_the_original_ticket(self):
+        self.assertTrue(self._add())
+        self.assertEqual('first-password', self._console().ticket)
+
+        # Every field the caller passes changes, except the ticket.
+        self.assertFalse(self._add(
+            hypervisor='bench2', hypervisor_ip='10.0.0.2',
+            insecure_port=5901, secure_port=5902, name='second name',
+            host_subject='CN=bench2', ticket='second-password'))
+
+        console = self._console()
+        self.assertEqual('bench2', console.hypervisor)
+        self.assertEqual('10.0.0.2', console.hypervisor_ip)
+        self.assertEqual(5901, console.insecure_port)
+        self.assertEqual(5902, console.secure_port)
+        self.assertEqual('second name', console.name)
+        self.assertEqual('CN=bench2', console.host_subject)
+
+        # The documented gap, issue #463. When this assertion fails
+        # because #463 has been fixed, update the three documents named
+        # in this class's docstring before changing it.
+        self.assertEqual('first-password', console.ticket)
+
+    def test_add_console_reports_whether_it_inserted(self):
+        self.assertTrue(self._add())
+        self.assertFalse(self._add())

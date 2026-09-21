@@ -44,6 +44,10 @@
 #   removal land, and add it back.  See issue #463.
 # - Duplicate UUIDs within a single static source are tolerated with
 #   a warning; the last definition wins.
+# - Validation catches a malformed entry and errors the whole source,
+#   which retains what it had published.  It does not catch an absent
+#   consoles key: that reads as an empty list, enumerates cleanly and
+#   deletes every console the source had.  See issue #464.
 
 from shakenfist_utilities import logs
 

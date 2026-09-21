@@ -123,17 +123,38 @@ on the grounds that the driver persisted it at enumeration time
 parsed, yielded by the driver, passed to the database layer and
 dropped, with no log line, no audit event and no errored source.
 Removing the entry, letting the removal land, and adding it back
-does apply it, because that takes the insert path. Tracked as
+does apply it, because that takes the insert path — at a cost
+worth knowing before you rely on it: the console is deleted on
+the first pass and absent from the inventory, the API and the
+web UI until the second, it comes back as a new row with a new
+audit lineage rather than the old one continued, and rotating a
+password therefore takes two maintenance cycles rather than one.
+Tracked as
 [#463](https://github.com/shakenfist/kerbside/issues/463).
 
-**A bad edit fails closed.** The driver validates the source's
-entry in `sources.yaml` as it builds, and a malformed one marks
-the whole source errored for that pass. Because the pass then
-moves on without enumerating it, the source falls under the same
-retention rule as an unreachable cloud: what was already
-published stays published rather than being deleted by a typo,
-the source shows as errored, and the reason is in the daemon
-log.
+**What a bad edit does depends on how it is bad.** Three
+outcomes, and only one of them is the safe one. A console entry
+which is malformed — not a dict, or missing a required field —
+marks the whole source errored for that pass, so the source is
+never enumerated, falls under the same retention rule as an
+unreachable cloud, and what was already published stays
+published rather than being deleted by a typo. That is the
+fail-closed case, and it is the one to expect from a mistake
+*inside* an entry. Deleting or misspelling the key that holds
+the entries is not caught: the list is read with a default, so
+it comes back empty, nothing validates an empty list, the source
+is enumerated successfully with nothing in it, and every
+console it had published is deleted
+([#464](https://github.com/shakenfist/kerbside/issues/464)). And
+a YAML syntax error anywhere in the file is worse still, because
+the parse happens outside the per-source error handling and the
+maintenance loop does not guard the call: the daemon exits, and
+restarts into the same failure until the file is repaired
+([#465](https://github.com/shakenfist/kerbside/issues/465)). The
+rule of thumb until those are fixed is that the blast radius of
+an edit grows as the mistake moves outward — inside an entry it
+is contained, at the key above them it costs that source's
+inventory, and at the file's syntax it costs the daemon.
 
 **Nothing is fetched per request.** oVirt acquires a short-lived
 credential from the engine for every `.vv` file, and OpenStack
@@ -169,10 +190,21 @@ See the limitations table.
 
 The target needs a SPICE server listening on a port Kerbside can
 reach, with a password set — Kerbside always presents one, so an
-open SPICE server is not what this path expects. If you want the
-backend leg encrypted and pinned as well, qemu needs its TLS
-channel configured and its certificate's subject is what you
-will pin against.
+open SPICE server is not what this path expects.
+
+Encrypting the backend leg takes three separate things, and two
+of them are easy to mistake for the whole job. qemu needs its
+TLS channel configured. Kerbside needs the CA that signed the
+target's certificate, as `ca_cert` on the *source* rather than
+on the target's entry: the daemon reads it for every source type
+and forwards it to the proxy as the backend CA
+(`kerbside/rpc/servicer.py:136`). And `host_subject` on the
+entry pins which certificate is acceptable. The CA is not
+optional decoration on top of the other two — without it the
+protocol crate verifies the target against the public web trust
+store, which an internal certificate will not satisfy, so the
+escalation fails the handshake rather than proceeding
+unverified.
 
 Guests want `qemu-guest-agent` and `spice-vdagent` installed, as
 they would for any SPICE console — they are what give you
@@ -201,7 +233,9 @@ See the limitations table.
 Add a static entry to `sources.yaml`, with one block per target
 saying where it is, which port to reach it on, and which SPICE
 password to present — plus, optionally, a TLS port and the
-`host_subject` to pin the backend leg against. The option and
+`host_subject` to pin the backend leg against, and `ca_cert` on
+the source itself if any target is to be reached over TLS. The
+option and
 field reference, a worked example entry, and the ryll
 control-socket pairing for driving such a session headlessly are
 all in
@@ -288,10 +322,10 @@ Not covered, and worth knowing before you deploy:
 | Nothing checks that the target is alive | There is no liveness check of any kind. An entry in the file is a console whether or not anything is listening on the port, so Kerbside will happily mint a `.vv` for a qemu that exited an hour ago and the user discovers it by the SPICE client failing to connect. Nothing in the console list, the web UI or the API distinguishes a live target from a dead one. This, rather than anything about the file format, is the honest reason the static source is not intended for production use. |
 | A changed SPICE password is never applied | Every other field of an entry which already exists is reassigned on the next pass; the password is not. It is set only when the console row is first inserted (`kerbside/db.py:303-318`), and the `.vv` handler leaves the stored value alone for a static source (`kerbside/api.py:509-512`), so an edit to it is parsed and discarded with no log line, no audit event and no errored source. The file and the database disagree and nothing says so; the first sign is the target refusing the handshake. Remove the entry, let the removal land, and add it back to change one. Tracked as [#463](https://github.com/shakenfist/kerbside/issues/463). |
 | The inventory is only as good as your editing | There is no discovery, so nothing ever corrects the file. A target rebuilt on a different port, or with a different SPICE password, is simply wrong until somebody edits it, and the wrongness shows up as a failed connection rather than as an errored source. The sixty-second reload makes the fix fast; it does not make it automatic. |
-| Backend TLS and pinning are opt-in, and untested through this source | A static entry is plaintext to the target unless you declare a TLS port, and unpinned unless you write a `host_subject`. The proxy's enforcement of a pin is exercised both ways in CI — a matching pin accepted, a mismatched one refused — but by `run-host-subject-checks.sh`, which drives the proxy from a mock control plane rather than from a source; the `direct-qemu` lane's own static entry is plaintext, and the compose demo deliberately leaves both out. So the enforcement is proven and the path that reaches it *from this source* is not. |
+| Backend TLS needs three things, and is untested through this source | A static entry is plaintext to the target unless you declare a TLS port, unverified unless the source carries a `ca_cert`, and unpinned unless you write a `host_subject`. The CA is the one most easily missed: without it the target is checked against the public web trust store, which an internal certificate will not satisfy, so the escalation fails the handshake. The proxy's enforcement of a pin is exercised both ways in CI — a matching pin accepted, a mismatched one refused — but by `run-host-subject-checks.sh`, which drives the proxy from a mock control plane rather than from a source; the `direct-qemu` lane's own static entry is plaintext, and the compose demo deliberately leaves all three out. So the enforcement is proven and the path that reaches it *from this source* is not. |
 | Nobody can log in | Interactive login is Keystone-only ([#300](https://github.com/shakenfist/kerbside/issues/300)), which a deployment with no OpenStack in it has nothing to point at, and the session JWT scheme has no revocation or issuance audit ([#301](https://github.com/shakenfist/kerbside/issues/301)). A standalone deployment therefore needs something else to hold credentials and call the API. |
 | Duplicate identifiers are tolerated | Two entries in one source sharing an identifier produce a warning and the last definition wins. Nothing errors and nothing is marked unhealthy, so a copy-paste mistake silently publishes one target and hides another. |
-| One bad entry errors the whole source | Validation is per source, not per entry: a single entry missing a required field marks the entire source errored for that pass, and the console list it published is not refreshed until the file is fixed. It is retained rather than deleted, so the effect is a stale list beside an errored source rather than an empty one. |
+| A bad edit is contained, unless it is not | Validation is per source rather than per entry, so one entry missing a required field marks the whole source errored and its published list is retained rather than refreshed — a stale list beside an errored source, not an empty one. Two edits escape that: removing or misspelling the key holding the entries enumerates the source successfully with nothing in it and deletes every console it had ([#464](https://github.com/shakenfist/kerbside/issues/464)), and a YAML syntax error exits the daemon into a restart loop because the parse is outside the per-source error handling ([#465](https://github.com/shakenfist/kerbside/issues/465)). |
 | The SPICE passwords are in the file | Each target's SPICE password is written in `sources.yaml` in the clear, as the cloud sources' credentials are — but here there is one per target rather than one per platform, so the file grows in sensitivity with the fleet. File permissions are the whole of the protection. |
 | Scale is untested | The demo and the CI lane each declare a single target. Every pass re-parses the file and re-records every entry, and nothing bounds how that behaves at hundreds of them. No lane covers it. |
 

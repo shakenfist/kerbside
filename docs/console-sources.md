@@ -244,6 +244,7 @@ The following options are used to configure a static console source
 |--------|-------------|
 | source | The name of the source (used as an identifier) |
 | type | The type of the source: `static` |
+| ca_cert | PEM CA certificate used to verify the target's TLS certificate when the proxy escalates to the secure port.  Required for any console in this source which declares a `secure_port`; without it the target is verified against the public web trust store, which an internal certificate will not satisfy |
 | consoles | A list of console entry dicts (see fields below) |
 
 Each entry in the `consoles` list requires the following fields:
