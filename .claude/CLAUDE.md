@@ -106,7 +106,8 @@ jobs, and the required checks -- read it before changing any workflow.
 Smoke tier, on every pull request:
 
 - `functional-tests.yml` (`sanity_checks`) - lint (flake8,
-  shellcheck, skillsaw), unit tests, coverage
+  shellcheck, skillsaw, required-check names, backend TLS
+  claims in `docs/use-cases/`), unit tests, coverage
 - `functional-tests.yml` (`credential_scan`) - gitleaks over the
   history; the one job never skipped by the path filter
 - `direct-qemu-functional.yml` - the proxy against a local qemu SPICE

@@ -32,11 +32,16 @@ Kerbside replaces it with a protocol-aware front door:
 - **The hypervisor is never reachable from the client network.**
   Clients reach kerbside; kerbside reaches oVirt. The SPICE
   ports do not need a route to users at all.
-- **The backend leg is pinned.** Kerbside verifies the
-  hypervisor's certificate against the engine CA *and* pins the
-  certificate subject it discovered from the engine, so a
-  redirected backend connection fails rather than succeeding
-  quietly.
+- **The backend leg is pinned where the engine supplies a
+  subject.** Kerbside verifies the hypervisor's certificate
+  against the engine CA *and* pins the certificate subject it
+  discovered from the engine, so a redirected backend
+  connection fails rather than succeeding quietly. A VM the
+  engine reports with no host leaves that subject unset
+  (`kerbside/sources/ovirt.py:99-117`), and an unset subject
+  relays the leg unpinned rather than erroring. In an ordinary
+  cluster every running VM has a host, so this is the edge
+  rather than the case.
 - **[One entry point across clouds.](multi-cloud.md)** A
   single kerbside can broker oVirt alongside Shaken Fist and
   OpenStack sources; users keep one console entry point as
@@ -99,10 +104,11 @@ server side.
 
 **The backend leg (5).** Kerbside connects to the hypervisor's
 plaintext port, which answers the link handshake with
-`NEED_SECURED`, and escalates to `tls_port`, verifying against
-the engine CA and pinning the subject discovered in step A. It
-then authenticates with the oVirt ticket and relays — inspecting
-as it goes.
+`NEED_SECURED`, and escalates to `tls_port` where the engine
+gave one, verifying against the engine CA and pinning the
+subject discovered in step A where there is one. It then
+authenticates with the oVirt ticket and relays — inspecting as
+it goes.
 
 **One proxy layer, not two.** The chain people expect when they
 hear "SPICE proxy plus kerbside" —

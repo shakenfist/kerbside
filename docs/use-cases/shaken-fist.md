@@ -49,17 +49,19 @@ it *is* the second half of it:
   and can terminate in flight.
 - **The hypervisors are never reachable from the client
   network.** Clients reach Kerbside; Kerbside reaches the nodes.
-- **The backend leg is pinned when the node demands TLS.**
-  Kerbside dials the node's plaintext VDI port first and
-  escalates to `vdi_tls_port` only when the node answers the
-  link handshake with `NEED_SECURED`. On that escalated
-  connection it verifies the node's SPICE certificate against
-  the cluster CA and pins the certificate subject the node
-  publishes, so a redirected backend connection fails rather
-  than succeeding quietly. A node whose qemu does not require
-  TLS is relayed over the plaintext port instead, where there
-  is no certificate to verify and no subject to pin; that is
-  the node's configuration rather than Kerbside's.
+- **The backend leg is pinned when the node demands TLS and
+  publishes a subject.** Kerbside dials the node's plaintext
+  VDI port first and escalates to `vdi_tls_port` only when the
+  node answers the link handshake with `NEED_SECURED`. On that
+  escalated connection it verifies the node's SPICE certificate
+  against the cluster CA, and where the node publishes a
+  certificate subject it pins that subject too, so a redirected
+  backend connection fails rather than succeeding quietly;
+  where the node publishes none the subject is left unset and
+  that leg is relayed unpinned. A node whose qemu does not
+  require TLS is relayed over the plaintext port instead, where
+  there is no certificate to verify and no subject to pin; that
+  is the node's configuration rather than Kerbside's.
 - **[One entry point across clouds.](multi-cloud.md)** A
   single Kerbside can broker Shaken Fist alongside oVirt and
   OpenStack sources; users keep one console entry point as

@@ -172,6 +172,33 @@ asserts every required context in the exported ruleset
 `export-repo-config.yml`) still matches a job name in
 `.github/workflows/`.
 
+`sanity_checks` also runs `tools/check-backend-tls-claims.sh`, which
+fails when a sentence in `docs/use-cases/` claims the
+Kerbside-to-hypervisor leg is TLS'd or certificate-pinned without
+naming the condition that makes it so. Four consecutive phases of
+[PLAN-use-case-docs.md](plans/PLAN-use-case-docs.md) overstated that
+leg and three were caught by review rather than by writing, so the
+check exists to trip on the fifth.
+
+It is a tripwire and not a proof, and its limit is worth stating
+concretely rather than as a caveat. It works on blocks -- a bullet, a
+paragraph or a table row -- and any conditional word anywhere in the
+block satisfies it. So it catches a bald claim in a block of its own,
+which is what the first of those four phases wrote, and it does not
+catch a claim mixed into a block that names some *other* condition.
+Measured against the real case: the version of
+`docs/use-cases/shaken-fist.md` that said Kerbside "pins the
+certificate subject the node publishes" -- false when the node
+publishes none -- passes this check, because the same bullet
+correctly conditions the TLS escalation on `NEED_SECURED`. A green
+run here means nobody wrote a careless sentence, not that the prose
+is right. The
+conditions themselves are in `rust/kerbside-proxy/src/backend.rs`:
+TLS happens when the hypervisor rejects plaintext and a secure port
+is configured, the subject is pinned when the source supplied one,
+and a private CA has to be supplied or the handshake fails against
+the public web trust store.
+
 ### Merge queue concurrency
 
 Every job in `functional-tests.yml` carries a `concurrency` group so a
