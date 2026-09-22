@@ -106,9 +106,14 @@ jobs, and the required checks -- read it before changing any workflow.
 Smoke tier, on every pull request:
 
 - `functional-tests.yml` (`sanity_checks`) - lint (flake8,
-  shellcheck, skillsaw), unit tests, coverage
+  shellcheck, skillsaw, required-check names), unit tests,
+  coverage
 - `functional-tests.yml` (`credential_scan`) - gitleaks over the
-  history; the one job never skipped by the path filter
+  history; never skipped by the path filter
+- `functional-tests.yml` (`docs_checks`) - backend TLS claims in
+  `docs/use-cases/` and `docs/index.md`; also never skipped by
+  the path filter, because that filter excludes `docs/**` and
+  would skip this on every change it exists to check
 - `direct-qemu-functional.yml` - the proxy against a local qemu SPICE
   server; also nightly
 - `sf-e2e-functional.yml` - single-node Shaken Fist end to end; also

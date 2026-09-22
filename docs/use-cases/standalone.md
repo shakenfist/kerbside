@@ -48,9 +48,14 @@ its SPICE firewall without standing anything else up first.
   leg is relayed without host-subject enforcement. Here there is
   no platform to learn from, and the answer is that the operator
   writes `host_subject` into the target's entry. That is more
-  work and a better guarantee: the pin is exactly the value you
-  chose, and the proxy refuses a backend whose subject does not
-  match it.
+  work and a better guarantee where you write one: the pin is
+  exactly the value you chose, and the proxy refuses a backend
+  whose subject does not match it. It is also the only one of
+  the four that can be left out by accident — the field is
+  optional, an omitted `host_subject` leaves the leg unpinned
+  rather than erroring, and the pin is only reached at all on a
+  leg that escalated to TLS. See
+  [Status and limitations](#status-and-limitations).
 - **The SPICE firewall is on by default.** Kerbside terminates
   the client's connection, drives the SPICE link handshake
   itself, and classifies every framed message against a
@@ -352,6 +357,10 @@ Not covered, and worth knowing before you deploy:
 - [The direct-qemu harness](../direct-qemu-harness.md) — the
   daemon-less local harness for driving the proxy against qemu
 - [Kerbside for oVirt](ovirt.md),
-  [Kerbside for Shaken Fist](shaken-fist.md) and
+  [Kerbside for Shaken Fist](shakenfist.md) and
   [Kerbside for OpenStack](openstack.md) — the sibling
   deployment guides
+- [Multi-cloud aggregation](multi-cloud.md) and
+  [Placement topologies](placement.md) — the two topology
+  pages: several sources behind one Kerbside, and several
+  Kerbsides in front of one cloud
