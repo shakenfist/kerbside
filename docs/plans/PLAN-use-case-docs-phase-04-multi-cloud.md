@@ -650,13 +650,58 @@ miss things in the first place. `docs/index.md` was added on
 its own instead, because its Use Cases table describes these
 pages and had drifted the same way.
 
-**Deferred to phase 5, not dropped:**
+**Filed as #472, not deferred to a plan section.**
 `docs/proxy-architecture.md:62` says the Shaken Fist
 `host_subject` "is pinned at scrape time from the hosting
 node's published SPICE server certificate subject" -- the sixth
 instance of the same overstatement, in a reference page this
 phase's sweep did not scope. It is the one real hit the
-widening experiment found.
+widening experiment found. Round two of review pointed out
+that recording it in a plan file, with nothing in the tree
+tripping on it, is the exact situation that produced the five
+previous instances, which is right.
+
+### Round two, and a sentence this branch got wrong
+
+One `fix`, one `document`, four `consider`, four `none` -- down
+from three `fix`. All six actionable items taken.
+
+The `fix` is the one worth recording, because round one caused
+it. Narrowing the conditional vocabulary correctly tripped on a
+run-on in `shakenfist.md` that mixed hypervisor reachability
+with the API certificate, and the sentence written to split it
+was wrong in both halves. It said the API certificate "is
+checked against the CA named in the source configuration",
+where `_build_client` (`kerbside/sources/shakenfist.py:19-23`)
+hands the client no CA at all. And it said that CA "has nothing
+to do with the backend leg above", where it is precisely the
+backend leg's CA: `kerbside/rpc/servicer.py:136` carries it
+into `Target.ca_cert` and `rust/kerbside-proxy/src/backend.rs:
+198-202` uses it there. The configured `ca_cert` is instead
+compared for equality against the CA the API publishes
+(`shakenfist.py:70-78`).
+
+That is the error class this phase exists to eliminate,
+introduced by the commit that eliminates it, in prose reworded
+to satisfy the guard rather than to state what the code does.
+The guard did not catch it, because `checked` is outside the
+crypto vocabulary. The lesson is the one the phase kept
+learning: read the code for the sentence you are writing, not
+only for the sentence you are fixing.
+
+The rest were defects in what round one added. The guard
+skipped headings entirely, so a claim written as one was never
+examined -- a hole outside the limits the docstring states,
+which is worse than a stated one. `default_paths()` globbed
+bare relative patterns while `main()` did the `chdir`, so it
+returned `[]` from any other working directory and its test
+passed only because stestr runs from the root. The mutation
+tool raised `FileNotFoundError` when `.tox/py3` was not built,
+and `docs/testing.md` named the test without naming the tool
+that proves it. And `multi-cloud.md`'s failure-mode row cited
+only the SSL path, where every exception but `NotFoundException`
+ends the request -- the page that owns the mechanism stating it
+more narrowly than the page linking to it.
 
 ## Registration
 

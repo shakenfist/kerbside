@@ -212,7 +212,11 @@ needs a case in
 `kerbside/tests/unit/test_check_backend_tls_claims.py` that fails
 without it. That file is the reason a regex edit here cannot quietly
 neuter the check: it asserts the known-bad sentences still fail and
-the current tree still passes.
+the current tree still passes. `tools/mutate-backend-tls-claims.py`
+is what proves that file -- it breaks the guard eleven ways and
+asserts the suite notices each one, so a vocabulary change is only
+covered once a mutation for it fails without the test. Two of the
+eleven exist because its first run reported them uncaught.
 
 A green run means nobody wrote a careless sentence, not that the
 prose is right. The conditions themselves are in

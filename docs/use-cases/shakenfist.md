@@ -219,10 +219,18 @@ Kerbside needs direct L3 reachability to **every hypervisor
 node's VDI ports**, both the plaintext and TLS ports the
 instance record reports.
 
-It also needs the Shaken Fist API URL. That is a separate
-endpoint and a separate trust decision: its certificate is
-checked against the CA named in the source configuration, and
-has nothing to do with the backend leg above.
+It also needs the Shaken Fist API URL, which is a separate
+endpoint but not a separate trust decision. Kerbside hands the
+API client no CA at all (`_build_client` in
+`kerbside/sources/shakenfist.py`), so that connection is
+verified against whatever trust store the client defaults to.
+
+The `ca_cert` in the source configuration does two other jobs.
+It is compared for equality against the cluster CA the API
+publishes, and the source is marked errored if the two differ.
+And where a backend leg escalates to TLS, it is the CA the
+proxy verifies the hypervisor's certificate against — the same
+value, carried through as `Target.ca_cert`.
 
 This is the prerequisite most likely to be missed, because
 discovery works over the API alone: a firewall between Kerbside

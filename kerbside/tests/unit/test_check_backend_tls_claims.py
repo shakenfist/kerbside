@@ -131,6 +131,18 @@ class ClaimDetectionTestCase(testtools.TestCase):
             'The full detail of backend pinning is in the proxy\n'
             'architecture reference.\n')))
 
+    def test_a_claim_in_a_heading_is_caught(self):
+        """Headings used to be blanked before they were examined.
+
+        That made a claim written as a heading invisible, which was
+        not among the limits the docstring states -- an unknown gap
+        rather than a known one.
+        """
+        found = _claims(
+            '## The backend leg is pinned to the hypervisor always\n')
+
+        self.assertEqual(1, len(found))
+
     def test_fenced_blocks_are_skipped(self):
         """Diagram labels state an outcome the prose conditions."""
         self.assertEqual([], _claims(
@@ -179,6 +191,22 @@ class SentenceSplittingTestCase(testtools.TestCase):
 
 class RepositoryTestCase(testtools.TestCase):
     """The check against the tree it ships with."""
+
+    def test_paths_resolve_without_relying_on_the_working_directory(self):
+        """default_paths() globbed bare relative patterns.
+
+        From any cwd but the repository root it returned [], so the
+        coverage assertion below passed only because stestr happens to
+        run from the root.
+        """
+        original = os.getcwd()
+        try:
+            os.chdir(tempfile.gettempdir())
+            paths = check_backend_tls_claims.default_paths()
+        finally:
+            os.chdir(original)
+
+        self.assertIn('docs/index.md', paths)
 
     def test_the_use_cases_pages_and_the_index_are_covered(self):
         """docs/index.md is in scope, not only docs/use-cases/.

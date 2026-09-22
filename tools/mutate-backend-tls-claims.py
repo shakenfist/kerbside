@@ -20,6 +20,7 @@ import tempfile
 
 
 GUARD = 'tools/check-backend-tls-claims.py'
+TOX_PYTHON = '.tox/py3/bin/python'
 
 # (name, the text to replace, what to replace it with). Each is applied
 # to a fresh copy of the guard, so they do not interact.
@@ -43,15 +44,41 @@ MUTATIONS = [
     ('index.md dropped from the scanned set',
      "DOC_PATHS = ('docs/use-cases/*.md', 'docs/index.md')",
      "DOC_PATHS = ('docs/use-cases/*.md',)"),
+    ('headings blanked before they are examined again',
+     "        if stripped.startswith('#'):\n"
+     '            if block:\n'
+     '                yield block\n'
+     '            yield [(number, stripped)]\n'
+     '            block = []\n'
+     '            continue',
+     "        if stripped.startswith('#'):\n"
+     "            stripped = ''"),
+    ('paths resolved against the working directory again',
+     "glob.glob(os.path.join(root, pattern))", 'glob.glob(pattern)'),
     ('findings no longer deduplicated per block',
      '                yield number, sentence\n                break',
      '                yield number, sentence'),
 ]
 
 
+def interpreter():
+    """The tox environment if it is built, else this interpreter.
+
+    stestr and testtools live in .tox/py3, so a bare sys.executable
+    usually cannot run the suite -- but failing with an ImportError is
+    a better answer than FileNotFoundError on a path the reader has to
+    guess the meaning of.
+    """
+    if os.path.exists(TOX_PYTHON):
+        return TOX_PYTHON
+    print('%s is not built; falling back to %s. Run "tox -e py3" first '
+          'if this cannot import stestr.' % (TOX_PYTHON, sys.executable))
+    return sys.executable
+
+
 def suite_passes():
     return subprocess.run(
-        ['.tox/py3/bin/python', '-m', 'stestr', 'run',
+        [interpreter(), '-m', 'stestr', 'run',
          'test_check_backend_tls_claims'],
         capture_output=True).returncode == 0
 

@@ -118,7 +118,7 @@ SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
 # tuning the regexes is how a guard stops catching anything, which is
 # the failure this check already exists to prevent. The one real hit,
 # docs/proxy-architecture.md:62 on the Shaken Fist scrape-time subject,
-# is recorded in the phase plan for phase 5 instead.
+# is tracked as issue #472 rather than left to a plan section.
 DOC_PATHS = ('docs/use-cases/*.md', 'docs/index.md')
 
 
@@ -127,11 +127,17 @@ def repository_root():
 
 
 def default_paths():
-    """The documentation files this check covers."""
+    """The documentation files this check covers.
+
+    Resolved against the repository rather than the working directory,
+    and returned relative to it. Globbing the bare patterns returned []
+    from anywhere but the root, which a unit test cannot rely on.
+    """
+    root = repository_root()
     paths = []
     for pattern in DOC_PATHS:
-        paths.extend(glob.glob(pattern))
-    return sorted(paths)
+        paths.extend(glob.glob(os.path.join(root, pattern)))
+    return sorted(os.path.relpath(p, root) for p in paths)
 
 
 def blocks(path):
@@ -149,8 +155,18 @@ def blocks(path):
         if stripped.startswith('```'):
             fenced = not fenced
             stripped = ''
-        if fenced or stripped.startswith('#'):
+        if fenced:
             stripped = ''
+        # A heading is its own block. Blanking it, as this did until
+        # review of #469 found it, means "## The backend leg is pinned"
+        # is never examined -- a hole that was not among the limits the
+        # docstring states, which is worse than a stated one.
+        if stripped.startswith('#'):
+            if block:
+                yield block
+            yield [(number, stripped)]
+            block = []
+            continue
         starts = (
             not stripped
             or stripped.startswith('|')
@@ -208,13 +224,13 @@ def claims(path):
 
 
 def main(paths=None):
-    os.chdir(repository_root())
+    root = repository_root()
     if not paths:
         paths = default_paths()
 
     failures = 0
     for path in paths:
-        for number, sentence in claims(path):
+        for number, sentence in claims(os.path.join(root, path)):
             print('%s:%d: backend TLS or pinning is claimed with no '
                   'condition named:' % (path, number), file=sys.stderr)
             print('  %s' % sentence, file=sys.stderr)
