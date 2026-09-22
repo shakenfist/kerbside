@@ -156,7 +156,7 @@ column names the CI lane that exercises the scenario end to end; see
 |----------|-------------|-----------------------|
 | [Multi-cloud aggregation](use-cases/multi-cloud.md) | One Kerbside brokering several sources at once, so users keep a single console entry point as workloads move between providers | Not covered |
 | [OpenStack](use-cases/openstack.md) | Nova 2025.1 spice-direct consoles, deployed alongside the cluster with Kolla-Ansible via kerbside-patches | `openstack_matrix`, merge tier |
-| [oVirt](use-cases/ovirt.md) | Replaces oVirt's SPICE proxy (squid) with a protocol-aware front door: discovery via the engine API, host-subject pinned TLS to the hypervisor, and the engine, network, and account prerequisites | `ovirt_matrix`, merge tier |
+| [oVirt](use-cases/ovirt.md) | Replaces oVirt's SPICE proxy (squid) with a protocol-aware front door: discovery via the engine API, TLS to the hypervisor with the engine-supplied subject pinned where the engine supplies one, and the engine, network, and account prerequisites | `ovirt_matrix`, merge tier |
 | [Placement topologies](use-cases/placement.md) | Kerbside instances placed by user population rather than by cloud — one per regional office, close to its users, with the WAN hop as the inspected backend leg | Not covered |
 | Proxmox | Deferred until a Proxmox source driver exists | No source yet |
 | [Shaken Fist](use-cases/shakenfist.md) | Broker embedded in Shaken Fist itself; Ed25519 VDI console tokens exchanged offline at `/sf-console.vv` | `sf-e2e`, smoke tier and nightly |

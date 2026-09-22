@@ -151,6 +151,36 @@ jobs:
       - name: Scan history for credentials
         run: tools/gitleaks-scan.sh --gitleaks /tmp/gitleaks
 
+  docs_checks:
+    name: "Documentation checks"
+    # Deliberately NOT gated on check_paths.code_changed. The filter
+    # that computes it excludes docs/**, so gating this job would skip
+    # it on exactly the documentation-only pull requests these checks
+    # exist to police -- the failure review of #469 found, when the
+    # backend TLS guard was a step in sanity_checks. credential_scan
+    # above is ungated for the same class of reason. This is seconds of
+    # python on a static runner, so running it on every pull request
+    # including code-only ones costs nothing worth saving.
+    runs-on: [self-hosted, static]
+    timeout-minutes: 5
+    concurrency:
+      group: >-
+        ${{ github.workflow }}-docs-${{
+        github.event_name == 'merge_group'
+        && format('merge_group-{0}', github.event.merge_group.base_ref)
+        || github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # Five phases of the use-case docs overstated the backend leg's
+      # TLS and pinning; this trips on the sixth rather than leaving it
+      # to review.
+      - name: Check the backend TLS claims in the documentation
+        run: tools/check-backend-tls-claims.py
+
   sanity_checks:
     # Runs in both tiers: on pull_request as the core of the smoke
     # gate, and again in the merge group because it is minutes of m
@@ -205,12 +235,6 @@ jobs:
       # rather than when merges stop working.
       - name: Verify required-check names against the exported ruleset
         run: tools/check-required-checks.sh
-
-      # Four phases of the use-case docs overstated the backend leg's
-      # TLS and pinning; this trips on the fifth rather than leaving it
-      # to review.
-      - name: Check the backend TLS claims in docs/use-cases
-        run: tools/check-backend-tls-claims.sh
 
       - name: Install additional dependencies not tracked by pip
         timeout-minutes: 5
@@ -1174,6 +1198,7 @@ jobs:
     needs:
       - check_paths
       - credential_scan
+      - docs_checks
       - sanity_checks
     if: always() && github.event_name != 'merge_group'
     permissions:
@@ -1195,6 +1220,7 @@ jobs:
     needs:
       - check_paths
       - credential_scan
+      - docs_checks
       - sanity_checks
       - ovirt_matrix
       - openstack_matrix

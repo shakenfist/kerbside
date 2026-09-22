@@ -429,5 +429,9 @@ Not covered, and worth knowing before you deploy:
   [Kerbside for Shaken Fist](shakenfist.md) and
   [Kerbside standalone](standalone.md) — the sibling
   deployment guides
+- [Multi-cloud aggregation](multi-cloud.md) and
+  [Placement topologies](placement.md) — the two topology
+  pages: several sources behind one Kerbside, and several
+  Kerbsides in front of one cloud
 - [kerbside-patches](https://github.com/shakenfist/kerbside-patches)
   — the Kolla and Kolla-Ansible changes, until they are upstream

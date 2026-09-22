@@ -360,3 +360,7 @@ Not covered, and worth knowing before you deploy:
   [Kerbside for Shaken Fist](shakenfist.md) and
   [Kerbside for OpenStack](openstack.md) — the sibling
   deployment guides
+- [Multi-cloud aggregation](multi-cloud.md) and
+  [Placement topologies](placement.md) — the two topology
+  pages: several sources behind one Kerbside, and several
+  Kerbsides in front of one cloud

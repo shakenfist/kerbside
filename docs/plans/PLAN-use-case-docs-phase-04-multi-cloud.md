@@ -416,14 +416,27 @@ tree, not a claim about effort.
       does not restate the mechanism is not the duplication
       this item exists to prevent. `openstack.md` keeps exactly
       one such row, per the finding below.
-- [ ] `tools/check-backend-tls-claims.sh` exists, is executable,
-      is wired into the lint job the way the other `tools/`
-      checks are, and exits non-zero when a sentence in
-      `docs/use-cases/` asserts backend TLS or certificate
-      pinning without a conditional word near it. Proved by
-      mutation: add an unconditional claim to a page, confirm
-      the script fails and names the file and line, then
-      restore from a copy -- not with `git checkout`.
+- [ ] `tools/check-backend-tls-claims.py` exists, is
+      executable, runs in a CI job that a documentation-only
+      pull request does **not** skip, and exits non-zero when a
+      sentence in `docs/use-cases/` or the Use Cases table in
+      `docs/index.md` asserts backend TLS or certificate pinning
+      without a conditional word near it. Proved by mutation,
+      and the mutations are a committed tool rather than a
+      session: `tools/mutate-backend-tls-claims.py` breaks the
+      guard nine ways and asserts
+      `kerbside/tests/unit/test_check_backend_tls_claims.py`
+      catches each, restoring from a copy -- not with `git
+      checkout`.
+
+      Amended 2026-09-23, after review. As first written this
+      item said "wired into the lint job the way the other
+      `tools/` checks are", and that was satisfied and wrong:
+      `sanity_checks` is gated on `check_paths`, whose filter
+      excludes `docs/**`, so the guard was invisible to every
+      documentation-only pull request -- the entire class it
+      exists for. The criterion now names the property rather
+      than the placement.
 - [ ] Neither new page names a configuration key or a database
       field, with one recorded exception. These are topology
       pages; `docs/console-sources.md` owns the option tables.
@@ -583,6 +596,67 @@ them to match a later rename would make the record less true
 rather than more. The `console-sources.md#shaken-fist` anchor
 is untouched -- it is generated from a heading that still reads
 "Shaken Fist", and no file was renamed under it.
+
+### What review found, and what it cost the guard
+
+One round, nine items, all taken: three `fix`, two `document`
+and four `consider`. Taking every `consider` is unusual and was
+not a failure to triage -- each was a defect in something this
+phase added, which is the test for taking an optional item,
+rather than an observation about code that was already there.
+
+Two of the three were about the guard, and both are worse than
+the limitation this plan had already recorded:
+
+- **It never ran on the pull requests it was for.** The step
+  sat in `sanity_checks`, which is gated on
+  `check_paths.code_changed`, and that filter excludes
+  `docs/**`. A documentation-only pull request skipped the job
+  entirely. This one ran it only incidentally, because it also
+  touches `tools/` and `.github/`. It is now its own ungated
+  `docs_checks` job, for the same class of reason
+  `credential_scan` is ungated.
+- **The conditional vocabulary was hollow.** `configured` named
+  no condition but exempted every block containing it, on pages
+  that say "configured cloud" and "configured source"
+  constantly. Review demonstrated it with a bald claim that the
+  guard passed. `should` and `none` went with it.
+
+The deeper problem was that neither could have been caught,
+because roughly 110 lines of Python lived in a shell heredoc:
+flake8 never saw it and nothing could import it, so the proof
+was a one-off manual mutation that did not survive into CI. It
+is now `tools/check-backend-tls-claims.py` with
+`kerbside/tests/unit/test_check_backend_tls_claims.py` beside
+it, following `tools/check-pypi-storage.py` and its test.
+
+Writing that test found four more things the review had not,
+which is the argument for it: the guard still double-reported
+one bullet as two findings, an inherited comment claimed an
+exclusion that never worked, stripping underscore emphasis
+turned `host_subject` into `hostsubject` in both the matching
+and the output, and nothing at all proved `should`, `none` or
+`docs/index.md`'s inclusion mattered. The mutation tool exists
+so the next regex edit cannot quietly undo any of it.
+
+The glob was **not** widened to `docs/**/*.md`, which review
+offered as an alternative. Measured: it produces six hits on a
+clean tree of which one is a real claim, because
+`verify-terminate-live.sh` matches the crypto vocabulary, a
+task "pinned forever" matches the pinning vocabulary, and a
+list of `Target` fields matches both. Silencing five false
+positives by loosening regexes is exactly how the guard came to
+miss things in the first place. `docs/index.md` was added on
+its own instead, because its Use Cases table describes these
+pages and had drifted the same way.
+
+**Deferred to phase 5, not dropped:**
+`docs/proxy-architecture.md:62` says the Shaken Fist
+`host_subject` "is pinned at scrape time from the hosting
+node's published SPICE server certificate subject" -- the sixth
+instance of the same overstatement, in a reference page this
+phase's sweep did not scope. It is the one real hit the
+widening experiment found.
 
 ## Registration
 

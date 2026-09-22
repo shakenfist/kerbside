@@ -216,9 +216,13 @@ for those backends.
 ### Network
 
 Kerbside needs direct L3 reachability to **every hypervisor
-node's VDI ports** — both the plaintext and TLS ports the
-instance record reports — and to the Shaken Fist API URL, whose
-certificate it verifies against the configured CA.
+node's VDI ports**, both the plaintext and TLS ports the
+instance record reports.
+
+It also needs the Shaken Fist API URL. That is a separate
+endpoint and a separate trust decision: its certificate is
+checked against the CA named in the source configuration, and
+has nothing to do with the backend leg above.
 
 This is the prerequisite most likely to be missed, because
 discovery works over the API alone: a firewall between Kerbside
@@ -358,3 +362,7 @@ Not covered, and worth knowing before you deploy:
   [Kerbside for OpenStack](openstack.md) and
   [Kerbside standalone](standalone.md) — the sibling
   deployment guides
+- [Multi-cloud aggregation](multi-cloud.md) and
+  [Placement topologies](placement.md) — the two topology
+  pages: several sources behind one Kerbside, and several
+  Kerbsides in front of one cloud
