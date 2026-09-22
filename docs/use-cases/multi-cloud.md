@@ -188,7 +188,7 @@ Not covered, and worth knowing before you deploy:
 - [Testing](../testing.md) — the CI lanes, each of which runs
   exactly one source
 - [Kerbside for oVirt](ovirt.md),
-  [Kerbside for Shaken Fist](shaken-fist.md),
+  [Kerbside for Shaken Fist](shakenfist.md),
   [Kerbside for OpenStack](openstack.md) and
   [Kerbside standalone](standalone.md) — the four source pages
   this one puts behind a single proxy

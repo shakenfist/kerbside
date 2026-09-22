@@ -187,7 +187,7 @@ block satisfies it. So it catches a bald claim in a block of its own,
 which is what the first of those four phases wrote, and it does not
 catch a claim mixed into a block that names some *other* condition.
 Measured against the real case: the version of
-`docs/use-cases/shaken-fist.md` that said Kerbside "pins the
+`docs/use-cases/shakenfist.md` that said Kerbside "pins the
 certificate subject the node publishes" -- false when the node
 publishes none -- passes this check, because the same bullet
 correctly conditions the TLS escalation on `NEED_SECURED`. A green

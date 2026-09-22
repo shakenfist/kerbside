@@ -183,7 +183,7 @@ Not covered, and worth knowing before you deploy:
   firewall, the connection state machine, the relay, and the
   distributed-deployment constraint
 - [Kerbside for oVirt](ovirt.md),
-  [Kerbside for Shaken Fist](shaken-fist.md),
+  [Kerbside for Shaken Fist](shakenfist.md),
   [Kerbside for OpenStack](openstack.md) and
   [Kerbside standalone](standalone.md) — the source pages, one
   of which describes the deployment you are placing

@@ -426,7 +426,7 @@ Not covered, and worth knowing before you deploy:
   — the CI lanes, including the Kolla-Ansible lane described
   above
 - [Kerbside for oVirt](ovirt.md),
-  [Kerbside for Shaken Fist](shaken-fist.md) and
+  [Kerbside for Shaken Fist](shakenfist.md) and
   [Kerbside standalone](standalone.md) — the sibling
   deployment guides
 - [kerbside-patches](https://github.com/shakenfist/kerbside-patches)

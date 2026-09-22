@@ -25,7 +25,7 @@
 # The limit, concretely. It works on blocks -- a bullet, a paragraph or
 # a table row -- and a block naming its condition anywhere satisfies
 # it, so a claim mixed into a block that conditions something else
-# passes. The version of docs/use-cases/shaken-fist.md that said
+# passes. The version of docs/use-cases/shakenfist.md that said
 # Kerbside "pins the certificate subject the node publishes" -- false
 # when the node publishes none -- passes this check, because the same
 # bullet correctly conditions the escalation on NEED_SECURED. Making

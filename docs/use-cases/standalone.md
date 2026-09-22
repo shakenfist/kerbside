@@ -357,6 +357,6 @@ Not covered, and worth knowing before you deploy:
 - [The direct-qemu harness](../direct-qemu-harness.md) — the
   daemon-less local harness for driving the proxy against qemu
 - [Kerbside for oVirt](ovirt.md),
-  [Kerbside for Shaken Fist](shaken-fist.md) and
+  [Kerbside for Shaken Fist](shakenfist.md) and
   [Kerbside for OpenStack](openstack.md) — the sibling
   deployment guides

@@ -20,7 +20,7 @@ The master plan sets no review effort for any page.
 Four use-case pages exist and agree on a format.
 `docs/use-cases/ovirt.md` landed 2026-08-10 as
 [PLAN-two-tier-ci-phase-04-docs.md](PLAN-two-tier-ci-phase-04-docs.md)'s
-deliverable and settles it; `shaken-fist.md` followed
+deliverable and settles it; `shakenfist.md` followed
 2026-09-18 as phase 1, merge commit `2f0e526`; `openstack.md`
 2026-09-20 as phase 2, merge commit `a7df5e5`; and
 `standalone.md` 2026-09-21 as phase 3, merge commit `28efa6c`.
@@ -98,7 +98,7 @@ The master plan's proposed-page row says aggregation is
 `docs/index.md` Use Cases row, and one bullet of
 `docs/use-cases/ovirt.md`". That was true when phase 1 was
 planned. It is now the index row plus **three** bullets, one on
-each cloud page: `ovirt.md:40`, `shaken-fist.md:63` and
+each cloud page: `ovirt.md:40`, `shakenfist.md:63` and
 `openstack.md:65`.
 
 The three are not equivalent. oVirt's and Shaken Fist's are
@@ -260,7 +260,7 @@ aggregation page's subject. So the material moves, and
 `openstack.md`'s bullet shrinks to the two sentences its
 siblings carry plus a link.
 
-The two three-line bullets on `ovirt.md` and `shaken-fist.md`
+The two three-line bullets on `ovirt.md` and `shakenfist.md`
 stay as they are, with a link added. A reader on the oVirt page
 should not have to leave it to learn that Kerbside can front
 more than one cloud; they should have to leave it to learn what
@@ -325,7 +325,7 @@ back brief.
 |------|--------|-------|-----------|---------------------|
 | 4a | high | opus | none | Write `docs/use-cases/multi-cloud.md`. Six `##` headings byte-identical to `docs/use-cases/ovirt.md` -- check with `diff <(grep '^## ' docs/use-cases/ovirt.md) <(grep '^## ' docs/use-cases/multi-cloud.md)`. Prose wraps at 64 columns, matching the other four pages. Subject: one Kerbside brokering several sources at once. Source the content from survey findings 1 and 6 in this plan, not from a fresh reading: the offering-order material moves here verbatim in substance from `docs/use-cases/openstack.md:65`, and `kerbside/api.py:612-645` is the code that backs it. The value proposition is that users keep one console entry point as workloads move between providers, and that all of it lands in one audit trail and one firewall policy. The limitations table's first row is that nothing in CI runs two sources at once -- cite `tools/ovirt-e2e/gen-sources.py:4`, `tools/sf-e2e/deploy-kerbside.sh:8` and `tools/direct-qemu/lane-up.sh:48`. The second is the shared trust domain: every configured OpenStack cloud sees tokens minted by the others and one broken cloud stops the exchange for the rest, so this suits clouds under one operator. "How to set it up" is a `sources.yaml` with more than one entry and a link to `docs/console-sources.md`; do not restate any option table. Do not invent a configuration key -- there is no new one. Commit subject: `docs: add the multi-cloud aggregation page.` |
 | 4b | high | opus | none | Write `docs/use-cases/placement.md`, same six headings and same 64-column wrap. Subject: several Kerbsides placed by user population rather than by cloud, one per regional office, so the WAN hop is the Kerbside-to-hypervisor backend leg. **Read `rust/kerbside-proxy/src/backend.rs:85-115` and `:190-215` before writing a word about that leg**, and state the conditions survey finding 3 sets out: the proxy dials the insecure port first and escalates only when the hypervisor rejects plaintext with NEED_SECURED *and* a secure port is configured, and it pins the certificate subject only when the source supplied one -- an empty subject maps to `None` and disables verification silently. Do not write that the backend leg is TLS'd or pinned without naming the condition; that error has been made in each of the three previous phases. The rest of the page comes from survey finding 4: every `.vv` carries this Kerbside's own `PUBLIC_FQDN` (`kerbside/api.py:533`, `:686`, `:814`), so an office instance needs no special configuration to hand out its own address, and the axis that actually matters is who tells the user which Kerbside to use. Shaken Fist verifies its token offline (`kerbside/sf_token.py`, and `api.py:707-711` explains the absent decorator) so any instance serves any token; oVirt and static users authenticate directly; Nova is configured with one Kerbside URL by kerbside-patches, so per-office placement there needs routing that Kerbside does not provide. Per decision 5, that goes in the limitations table as a gap, with no proposed workaround. First limitation row is that no CI lane runs two Kerbsides. Commit subject: `docs: add the placement topologies page.` |
-| 4c | medium | sonnet | none | Wire both pages in and reconcile the three existing aggregation bullets. In `docs/index.md`, link the `Multi-cloud aggregation` row (line 157) to `use-cases/multi-cloud.md` and the `Placement topologies` row (line 160) to `use-cases/placement.md`, matching the link style of the five linked rows. Leave both "Tested in Kerbside CI" cells reading `Not covered` -- survey finding 5 verified that is still true. Then, per decision 3: shorten the nine-line bullet at `docs/use-cases/openstack.md:65` to the two-sentence form its siblings carry at `ovirt.md:40` and `shaken-fist.md:63`, and add a link to the new multi-cloud page; the material you remove must already be present on that page, so read it first and do not delete anything that did not survive the move. Add the same link to the `ovirt.md` and `shaken-fist.md` bullets without otherwise changing them. Every page's 64-column wrap must survive: reflow any paragraph you touch. Commit subject: `docs: wire the two topology pages in.` |
+| 4c | medium | sonnet | none | Wire both pages in and reconcile the three existing aggregation bullets. In `docs/index.md`, link the `Multi-cloud aggregation` row (line 157) to `use-cases/multi-cloud.md` and the `Placement topologies` row (line 160) to `use-cases/placement.md`, matching the link style of the five linked rows. Leave both "Tested in Kerbside CI" cells reading `Not covered` -- survey finding 5 verified that is still true. Then, per decision 3: shorten the nine-line bullet at `docs/use-cases/openstack.md:65` to the two-sentence form its siblings carry at `ovirt.md:40` and `shakenfist.md:63`, and add a link to the new multi-cloud page; the material you remove must already be present on that page, so read it first and do not delete anything that did not survive the move. Add the same link to the `ovirt.md` and `shakenfist.md` bullets without otherwise changing them. Every page's 64-column wrap must survive: reflow any paragraph you touch. Commit subject: `docs: wire the two topology pages in.` |
 | 4d | high | opus | none | The consistency sweep, decision 4. Read every sentence in `docs/use-cases/*.md` that describes the Kerbside-to-hypervisor leg, backend TLS, certificate pinning, `host_subject` or `ca_cert`, and make each one name its condition, using `rust/kerbside-proxy/src/backend.rs:85-115` and `:190-215` as the authority. The conditions are: TLS happens when the hypervisor rejects plaintext with NEED_SECURED and a secure port is configured; subject pinning happens when the source supplied a subject, and an empty one silently disables verification; a private CA must be supplied or the target is verified against the public web trust store and the handshake fails. Change only sentences that are unconditional or wrong -- this is a correction pass over merged documents, not a rewrite, and each hunk will be diffed individually. `openstack.md` already states that Nova never supplies a subject; do not duplicate that onto the other pages. This brief also told the sub-agent that `ovirt.md` documents pinning properly and was not to be weakened, which turned out to be wrong -- see the second finding below. Then add the check to the definition of done as a runnable script under `tools/`, per the falsifiable-verification habit. Commit subject: `docs: state the backend TLS conditions once.` |
 
 ## Risks and mitigations
@@ -484,9 +484,24 @@ row, which is about one source's own list.
 Out of scope for this phase on the plan's own rule -- a
 documentation phase records a bug and files it rather than
 fixing it -- and the multi-cloud page documents the behaviour
-with the citations above rather than waiting on a fix. It wants
-a tracking issue; verified in the six code sites named here
-before being written down.
+with the citations above rather than waiting on a fix. Filed as
+#468, which re-verified the six sites and found two things this
+section had not.
+
+The keying is a schema decision rather than a query habit:
+`Console.uuid` is declared `primary_key=True` with `source` an
+ordinary column, where `AuditEvent` in the same file makes both
+columns primary. A fix therefore needs a migration, not four
+edited filters. And the workaround at `kerbside/api.py:781` --
+which asserts the row's source matches the token's, and whose
+comment already names the keying as its reason -- does not
+cover the overwrite direction, because the update path never
+assigns `source`. The row still reads as the first source's
+while pointing at the second's hypervisor, so the guard passes
+and a single-use Shaken Fist console token is relayed to the
+wrong hypervisor. The five other `get_console()` callers carry
+no such check at all, `kerbside/rpc/servicer.py:110` among
+them.
 
 ### ovirt.md overstated it too, which makes five
 
@@ -525,7 +540,7 @@ block naming any condition anywhere satisfies it. So it catches
 a bald claim in a block of its own, which is the error phase 1
 made. It does **not** catch a claim mixed into a block that
 conditions something else, which is the error phase 3 made and
-which step 4d found in `shaken-fist.md`: that bullet correctly
+which step 4d found in `shakenfist.md`: that bullet correctly
 conditioned the TLS escalation on `NEED_SECURED` while
 asserting the pinning unconditionally, and it passes the guard.
 Verified by restoring the pre-sweep text and running the guard
@@ -540,9 +555,34 @@ trade; the limit is inherent, not a tuning failure.
 
 The guard is therefore worth having and worth not trusting.
 Its header comment and the `docs/testing.md` passage both name
-the `shaken-fist.md` miss specifically rather than carrying a
+the `shakenfist.md` miss specifically rather than carrying a
 general caveat, so the next person reads the limit rather than
 a reassurance.
+
+### shaken-fist.md became shakenfist.md
+
+Not a phase 4 finding. Asked for directly while the branch was
+still open, and taken here rather than on a branch of its own
+because most of the files that reference the page are files
+this phase already touches. The new name matches
+`kerbside/sources/shakenfist.py` and the GitHub organisation;
+the prose name "Shaken Fist" is unchanged.
+
+Every reference a reader would follow to find the page now
+points at the new name: `README.md`, `docs/index.md`,
+`docs/console-sources.md`, `docs/testing.md`, the See also
+section of all five sibling pages, the guard script's header
+comment, and the master plan's survey citation. This plan is
+rewritten with them, because it ships in the same pull request.
+
+The phase 1 to 3 plan files are not, and neither is
+`PLAN-use-case-docs-phase-01-shaken-fist.md`'s own name. Those
+are merged history describing a file that was called
+`shaken-fist.md` at the time they described it, and rewriting
+them to match a later rename would make the record less true
+rather than more. The `console-sources.md#shaken-fist` anchor
+is untouched -- it is generated from a heading that still reads
+"Shaken Fist", and no file was renamed under it.
 
 ## Registration
 
