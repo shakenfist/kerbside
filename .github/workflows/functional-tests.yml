@@ -156,9 +156,10 @@ jobs:
     # Deliberately NOT gated on check_paths.code_changed. The filter
     # that computes it excludes docs/**, so gating this job would skip
     # it on exactly the documentation-only pull requests these checks
-    # exist to police -- the failure review of #469 found, when the
-    # backend TLS guard was a step in sanity_checks. credential_scan
-    # above is ungated for the same class of reason. This is seconds of
+    # exist to police. Review of #469 found exactly that: the backend
+    # TLS guard started life as a step in sanity_checks, and so never
+    # ran on a documentation-only pull request. credential_scan above
+    # is ungated for the same class of reason. This is seconds of
     # python on a static runner, so running it on every pull request
     # including code-only ones costs nothing worth saving.
     runs-on: [self-hosted, static]

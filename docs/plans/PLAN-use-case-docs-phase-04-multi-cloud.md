@@ -424,10 +424,13 @@ tree, not a claim about effort.
       without a conditional word near it. Proved by mutation,
       and the mutations are a committed tool rather than a
       session: `tools/mutate-backend-tls-claims.py` breaks the
-      guard nine ways and asserts
+      guard once per rule and asserts
       `kerbside/tests/unit/test_check_backend_tls_claims.py`
       catches each, restoring from a copy -- not with `git
-      checkout`.
+      checkout`. The criterion is satisfied by every mutation
+      being caught, not by their number, which is deliberately
+      not written down here: an earlier draft said "nine ways"
+      and was stale within a round.
 
       Amended 2026-09-23, after review. As first written this
       item said "wired into the lint job the way the other
@@ -702,6 +705,35 @@ that proves it. And `multi-cloud.md`'s failure-mode row cited
 only the SSL path, where every exception but `NotFoundException`
 ends the request -- the page that owns the mechanism stating it
 more narrowly than the page linking to it.
+
+### Round three, and stopping
+
+Zero `fix`, one `document`, five `consider`, four `none`. Six
+actionable items, all taken, none of them about the prose: the
+mutation tool reported eleven false "caught" lines when the tox
+environment was not built and then blamed the backup, an
+explicit path argument that did not exist traced back rather
+than naming itself, the `docs_checks` rationale comment read as
+a fragment, `openstack.md` kept "Order therefore matters" after
+the antecedent moved to `multi-cloud.md`, and this plan said
+the mutation tool breaks the guard "nine ways" when it is
+eleven. That count is now gone rather than corrected, so it
+cannot drift again.
+
+The one judgement call is item 4, which offered a choice: run
+the mutation tool in CI, or say in `docs/testing.md` that it is
+manual. Taken as the documentation half. `docs/testing.md` now
+says plainly that no lane runs it, because claiming an
+enforcement that does not exist is exactly the round-one
+mistake, and adding a CI lane in the third review round of a
+documentation phase is how a review loop stops converging.
+
+Stopping here. The exit rule is no `fix` items rather than the
+reviewer running out of things to say, and this round met it
+while the remaining items are all `consider`. Trajectory across
+the three rounds: three `fix`, then one, then none; the middle
+round's `fix` was caused by the first round's change, which is
+the signal that mattered.
 
 ## Registration
 

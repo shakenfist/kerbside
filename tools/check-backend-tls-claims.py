@@ -228,6 +228,15 @@ def main(paths=None):
     if not paths:
         paths = default_paths()
 
+    # Arguments are interpreted relative to the repository root, not
+    # the working directory, so name the ones that are not there rather
+    # than tracing back from open().
+    missing = [p for p in paths if not os.path.exists(os.path.join(root, p))]
+    if missing:
+        print('no such file, relative to %s: %s'
+              % (root, ', '.join(missing)), file=sys.stderr)
+        return 2
+
     failures = 0
     for path in paths:
         for number, sentence in claims(os.path.join(root, path)):

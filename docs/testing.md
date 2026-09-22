@@ -213,10 +213,17 @@ needs a case in
 without it. That file is the reason a regex edit here cannot quietly
 neuter the check: it asserts the known-bad sentences still fail and
 the current tree still passes. `tools/mutate-backend-tls-claims.py`
-is what proves that file -- it breaks the guard eleven ways and
+is what proves that file -- it breaks the guard once per rule and
 asserts the suite notices each one, so a vocabulary change is only
-covered once a mutation for it fails without the test. Two of the
-eleven exist because its first run reported them uncaught.
+covered once a mutation for it fails without the test. Four of its
+mutations exist because a run reported them uncaught.
+
+**It is a manual proof and no CI lane runs it**, which matters
+because the point of the section above is that a claim of
+enforcement should name where. Run it by hand whenever you change
+the guard's vocabulary or its matching, and add a mutation for the
+rule you changed. What CI enforces is the unit test; the mutation
+tool is how you find out whether that test would have failed.
 
 A green run means nobody wrote a careless sentence, not that the
 prose is right. The conditions themselves are in

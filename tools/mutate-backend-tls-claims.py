@@ -103,6 +103,14 @@ def main():
     shutil.copy(GUARD, backup)
 
     try:
+        # Without this, an unbuilt tox environment makes every mutation
+        # look caught -- suite_passes() cannot tell "the test noticed"
+        # from "stestr is not importable" -- and the run then fails at
+        # the end blaming the backup.
+        if not suite_passes():
+            sys.exit('the suite does not pass before any mutation was '
+                     'applied; run "tox -e py3" first')
+
         missed = []
         for name, old, new in MUTATIONS:
             apply_mutation(backup, old, new)
