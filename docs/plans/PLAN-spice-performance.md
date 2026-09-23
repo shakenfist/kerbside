@@ -104,6 +104,55 @@ claims against source. What follows is the result, ranked.
      stable ABI of about 99 symbols. It would still receive
      drawables that qemu has already mangled in finding 2.
 
+### What the first measurements changed
+
+The findings above are the research as written on 2026-09-23.
+Measurement the same day overturned two of them and sharpened a
+third. They are left in place so that the correction stays
+visible.
+
+- **Finding 1 does not hold. Phase 1's result is null.** At
+  80 ms / 10 Mbit with a busy display, a keypress takes about
+  2.1 s to draw, so the symptom is real. But capping the
+  proxy's buffers made no measurable difference to latency or
+  throughput. The reason is spice-server's per-channel ACK
+  window: it stops sending once twice its window (20 messages,
+  or 40 in low-bandwidth mode) is unacknowledged
+  (`red-channel-client.cpp:636-641,1142`). The acknowledgements
+  come end to end from the client, so the proxy's buffers only
+  change *where* the roughly 2.5 MiB backlog sits (proxy or
+  qemu), not how large it is. Frame dropping also engages while
+  waiting for an ACK, so no socket stall is needed for it. The
+  window also caps throughput on high-BDP links: 80 ms / 50 Mbit
+  carried only 17.9 Mbit/s of an activity that fills the link at
+  20 ms. The lever that could matter is the size of that window:
+  byte- or RTT-aware ACK pacing, either in Kerbside (which
+  relays the client's ACKs) or upstream. See
+  `docs/performance/proxy-backpressure.md`.
+- **Finding 2 was right about fragmentation and wrong about
+  its shape.**
+  - `RED_STREAM_MIN_SIZE` is an *area* (96x96 pixels), not a
+    per-dimension minimum. So qemu's 32x360 columns do become
+    streams, just 18-19 separate 32-pixel-wide ones rather than
+    none.
+  - qemu also defaults to `streaming-video=off`
+    (`ui/spice-core.c:811`). Out of the box nothing streams, so
+    deployments should set `filter`.
+  - The phase 2 prototype replaced those 19 slivers with a single
+    480x360 stream. It cut display bytes about 4x, halved qemu's
+    CPU use, and took damage-to-command latency inside qemu from
+    a 14 ms p50 to 0.2 ms.
+- **A kernel bug sits underneath finding 2.**
+  - From 6.8 onwards, Linux virtio-gpu guests report the whole
+    plane as damage on every commit. `virtgpu_plane.c:119` sets
+    `ignore_damage_clips` whenever the framebuffer changes, the
+    duplicate-state helper copies it forward
+    (`drm_atomic_state_helper.c:353`), and nothing clears it.
+  - vmwgfx has the same pattern (`vmwgfx_kms.c:121`).
+  - A one-line fix was verified with a rebuilt module.
+  - This, not qxl damage clips (ranked item 5), is the kernel
+    change that matters.
+
 ### The wider ranked list
 
 These are not all phases of this plan; see Execution and
@@ -157,17 +206,27 @@ first phase.
 
 ## Open questions
 
-1. **How do we measure a WAN link?** Phase 1's problem does not
-   exist on loopback. The measurement needs a shaped client leg
-   (`tc` netem plus tbf on a veth pair or network namespace),
-   which needs `CAP_NET_ADMIN`. The first phase decides whether
-   that stays a local procedure or can run in the direct-qemu
-   lane.
-2. **Where do upstream patch series and a helper binary live?**
-   Out-of-tree qemu work needs a home that is not
-   kerbside-patches (which targets OpenStack). The son-of-SPICE
-   spike likely wants its own repository if it survives. This
-   is decided when phase 2 or 3 is planned.
+1. **How do we measure a WAN link?** Answered by phase 1: see
+   `tools/shaped-link/`. The rig runs entirely inside an
+   unprivileged user network namespace, with netem on both ends
+   of a veth pair. It also needs `gso_max_size 1500
+   gso_max_segs 1`, or netem counts 64 KiB GSO packets as
+   single packets. Running it in CI is still an open choice.
+2. **Where do upstream patch series live?** Decided on
+   2026-09-23: in shakenfist/kerbside-patches, next to the
+   patches we already carry.
+   - That repository's tooling is shaped around OpenStack.
+     `_build/assemble-source.sh` applies every project whose
+     `release` matches the build target, so a `qemu/` or
+     `linux/` project needs a release value of its own to keep
+     it out of the Kolla image build.
+   - Those projects also need a non-OpenStack test path
+     (build, then the measurement rig) and a mailing-list
+     submission path (`git send-email`/b4, not Gerrit).
+   - Adapting kerbside-patches is planned in that repository.
+   - The son-of-SPICE helper, being a program rather than a
+     patch series, will still want its own repository if phase 3
+     says go.
 3. **Does Kerbside's role change if phase 3 succeeds?** A helper
    that owns ticketing and speaks SPICE could enforce the
    firewall itself, or Kerbside could stay in front of it.
@@ -185,21 +244,84 @@ first phase.
 
 **Phase 1** sets `TCP_NOTSENT_LOWAT` on the client leg and caps
 the backend leg's receive buffer, with the values made
-configurable. It measures keypress-to-draw latency with the
-existing loadtest over a shaped link, before and after. That
-produces Kerbside's first recorded latency figures. The
-per-socket congestion control choice (BBR) is measured, not
-assumed.
+configurable. It measures keypress-to-draw latency over a shaped
+link, before and after, which produces Kerbside's first recorded
+latency figures.
+- The result is null (see "What the first measurements
+  changed"). The options ship defaulted off.
+- The lasting outputs are the shaped-link rig and
+  `docs/performance/proxy-backpressure.md`.
+- BBR was not measured: the host has no `tcp_bbr` module, and
+  an unprivileged namespace cannot load one.
 
 **Phase 2** started on 2026-09-23 as an out-of-tree prototype.
 It is a patch series against qemu `ui/spice-display.c`,
-measured with Ryll in headless mode against a virtio-gpu guest
-on stream creation, `DRAW_COPY` shapes and display-channel
-bytes. The phase plan is written once the prototype has
-reported; it covers where the series lives and the qemu-devel
-submission. Its `Merged` cell records `qemu <sha>`, and the
-push audit cites the upstream review rather than re-running
-it.
+measured with Ryll in headless mode against a virtio-gpu guest.
+The prototype has reported (results above). A v2 that adds a
+pacing option, unit tests, worst-case benchmarks and std-vga,
+qxl-VGA and multi-head coverage is being prepared. A companion
+kernel patch for the virtio-gpu damage-clip bug is being drafted
+alongside it. The phase plan covers:
+- landing both series in kerbside-patches;
+- the qemu-devel and dri-devel submissions.
+
+Its `Merged` cell records `qemu <sha>` and `linux <sha>`, and
+the push audit cites the upstream reviews rather than
+re-running them.
+
+Both have now reported, and each upstream has its own
+contribution rule.
+
+- **qemu v2 is finished, but it cannot go upstream as written.**
+  - What v2 contains:
+    - four patches, with the damage list split out into
+      `ui/spice-damage.c`;
+    - a 12-case unit test;
+    - pacing through the existing `max-refresh-rate` option;
+    - a new split on column gaps.
+  - How it performs:
+    - it is as fast as or faster than upstream's column diff in
+      every worst case benchmarked;
+    - it improves std-vga, qxl-VGA and two-head virtio, with no
+      regressions.
+  - The blocker is policy. qemu's
+    `docs/devel/code-provenance.rst:293-297` declines any
+    contribution believed to include or derive from AI-generated
+    content, and names Claude. Research use is explicitly
+    allowed.
+  - The routes open are:
+    - send the problem statement and measurements, and let a
+      human write the code;
+    - rewrite the series by hand, using this as a reference;
+    - ask qemu-devel for an exception.
+  - The SPICE section of qemu's MAINTAINERS is orphaned. The only
+    recipient `get_maintainer.pl` returns is Marc-André Lureau,
+    as Graphics "odd fixer".
+- **The kernel accepts AI-assisted patches under conditions.**
+  - `Documentation/process/coding-assistants.rst` accepts them
+    with an `Assisted-by:` tag, provided the human adds their own
+    `Signed-off-by`.
+  - drm-misc-next already fixes virtio-gpu: a9cc9905ddb7, which
+    depends on 730f8554f35c. Neither commit is tagged for stable,
+    so 6.8-7.3 stay broken, and vmwgfx is still affected.
+  - The drafted patch is a one-line core fix: clear the flag in
+    `__drm_atomic_helper_plane_duplicate_state`, as that helper
+    already does for `fb_damage_clips`. It is tagged Fixes
+    35ed38d58257 and Cc stable v6.8+.
+  - It was verified on 6.12.101 with a rebuilt
+    `drm_kms_helper.ko`. With the fix, the plane flushes 480x360
+    and 80x28 regions instead of the full 1280x800.
+  - Maintainers may prefer a vmwgfx-only patch plus a stable
+    backport request for the misc-next pair.
+
+The prototype also turned up these problems:
+- spice-server 0.15.2 crashes in `VideoStreamClipItem`'s
+  destructor when a client connects while streams already
+  exist.
+- Ryll has three issues: H.264 streams from spice-server never
+  decode (ryll#398, openh264 `dsNoParamSets`); `--capture`
+  panics outside a runtime (ryll#399); and `display.pcap` loses
+  message alignment (ryll#400).
 
 **Phase 3** is a time-boxed spike, with three steps:
 1. confirm that D-Bus `Update` rectangles for virtio-gpu
@@ -354,6 +476,23 @@ Other deferred items:
   Kerbside;
 - TLS session resumption on the proxy's backend leg, which
   needs no upstream change.
+- **ACK pacing, the lever phase 1 found.** Kerbside relays the
+  client's display-channel ACKs, so it could hold them back
+  against its measured client-leg backlog and effectively shrink
+  spice-server's message window on slow links. The upstream
+  equivalent is a byte- or RTT-aware ACK window in
+  spice-server. Either needs measuring on the shaped-link rig
+  before it is believed, and throughput on high-BDP links is
+  the trade-off to watch.
+- Recommend `streaming-video=filter` in the use-case pages and
+  Ryll's libvirt recommendations, since qemu defaults it to off.
+- Upstream the rig's small Ryll patch, which adds a `rect` to the
+  control socket's `surface_drawn` event
+  (`tools/shaped-link/ryll-surface-drawn-rect.patch`). Until
+  then the rig carries it as a patch.
+- Report spice-server 0.15.2's crash when a client connects
+  while streams already exist, once it has been reproduced
+  against spice-server's current master.
 
 ## Bugs fixed during this work
 
