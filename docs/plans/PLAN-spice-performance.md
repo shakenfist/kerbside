@@ -294,6 +294,13 @@ contribution rule.
       human write the code;
     - rewrite the series by hand, using this as a reference;
     - ask qemu-devel for an exception.
+  - Decided 2026-09-24: carry the series downstream in
+    kerbside-patches (`upstream/qemu/`, per its
+    `docs/plans/upstream-series.md`) while Michael gets familiar
+    with qemu. A hand rewrite for upstream stays possible later,
+    and phase 3 may make it moot: a D-Bus helper bypasses
+    `ui/spice-display.c` entirely, although Nova and oVirt
+    deployments would keep running in-qemu SPICE.
   - The SPICE section of qemu's MAINTAINERS is orphaned. The only
     recipient `get_maintainer.pl` returns is Marc-André Lureau,
     as Graphics "odd fixer".
