@@ -168,6 +168,11 @@ Guides for working on Kerbside itself:
   proxy locally against qemu with a mock control plane: end-to-end
   relay, firewall capture, and session-termination checks
 
+- [Proxy backpressure on a shaped link](performance/proxy-backpressure.md) -
+  The shaped-link keypress-to-draw rig (`tools/shaped-link/`) and its
+  first results: where the display backlog sits on a slow client link,
+  and why the proxy's socket options do not shorten it
+
 ### Architecture Documentation
 
 Internal design of the Kerbside proxy:

@@ -60,6 +60,46 @@ fn set_client_keepalive(stream: &TcpStream, peer: SocketAddr) {
     }
 }
 
+/// Set `TCP_NOTSENT_LOWAT` on an accepted client socket, bounding how much
+/// *unsent* data the kernel will queue in the send buffer before the socket
+/// stops reporting writable. Without it the send buffer autotunes up to
+/// `net.ipv4.tcp_wmem`'s maximum (commonly 4 MiB). With it, the relay's
+/// write blocks sooner and the relay stops reading the backend, so the
+/// display backlog on a slow link sits in spice-server's socket instead of
+/// the proxy's. Measured on a shaped link, that saves proxy memory but not
+/// latency: spice-server's per-channel ACK window bounds the backlog either
+/// way (docs/performance/proxy-backpressure.md).
+///
+/// `lowat` of 0 leaves the kernel default in place. Best-effort, like
+/// keepalive: a failure is logged and NON-fatal. Called before the TLS
+/// accept so it covers the whole session.
+fn set_client_notsent_lowat(stream: &TcpStream, peer: SocketAddr, lowat: u32) {
+    if lowat == 0 {
+        return;
+    }
+    if let Err(e) = apply_notsent_lowat(&SockRef::from(stream), lowat) {
+        warn!(
+            %peer,
+            lowat,
+            error = %e,
+            "setting client TCP_NOTSENT_LOWAT failed; continuing"
+        );
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn apply_notsent_lowat(sock: &SockRef<'_>, lowat: u32) -> std::io::Result<()> {
+    sock.set_tcp_notsent_lowat(lowat)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn apply_notsent_lowat(_sock: &SockRef<'_>, _lowat: u32) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "TCP_NOTSENT_LOWAT is not supported on this platform",
+    ))
+}
+
 /// Run the insecure (plaintext) SPICE listener forever.
 ///
 /// Per accepted connection: set `TCP_NODELAY`, read the client's link
@@ -111,7 +151,8 @@ async fn handle_insecure(mut stream: TcpStream) -> Result<()> {
 
 /// Run the secure (TLS) SPICE listener forever.
 ///
-/// Per accepted connection: set `TCP_NODELAY`, complete the TLS accept
+/// Per accepted connection: set `TCP_NODELAY`, keepalive and (unless
+/// `client_notsent_lowat` is 0) `TCP_NOTSENT_LOWAT`, complete the TLS accept
 /// (under the same handshake timeout as the insecure listener), then call
 /// `handler(SpiceStream::TlsServer(tls_stream), peer)` in its own spawned
 /// task.
@@ -125,7 +166,12 @@ async fn handle_insecure(mut stream: TcpStream) -> Result<()> {
 /// connection so each spawned task owns its own handle. Errors and TLS
 /// accept timeouts are logged at debug and drop the connection; only a bind
 /// failure returns an error.
-pub async fn run_secure<F, Fut>(addr: SocketAddr, acceptor: TlsAcceptor, handler: F) -> Result<()>
+pub async fn run_secure<F, Fut>(
+    addr: SocketAddr,
+    acceptor: TlsAcceptor,
+    client_notsent_lowat: u32,
+    handler: F,
+) -> Result<()>
 where
     F: Fn(SpiceStream, SocketAddr) -> Fut + Clone + Send + 'static,
     Fut: Future<Output = ()> + Send + 'static,
@@ -148,7 +194,7 @@ where
         let handler = handler.clone();
 
         tokio::spawn(async move {
-            match accept_tls(&acceptor, stream, peer).await {
+            match accept_tls(&acceptor, stream, peer, client_notsent_lowat).await {
                 Ok(tls_stream) => {
                     debug!(%peer, "secure connection: TLS accepted");
                     handler(SpiceStream::TlsServer(tls_stream), peer).await;
@@ -165,11 +211,15 @@ async fn accept_tls(
     acceptor: &TlsAcceptor,
     stream: TcpStream,
     peer: SocketAddr,
+    client_notsent_lowat: u32,
 ) -> Result<tokio_rustls::server::TlsStream<TcpStream>> {
     stream.set_nodelay(true).context("setting TCP_NODELAY")?;
     // Enable keepalive on the client leg before TLS so a silent/vanished client
     // is detected and cannot pin a concurrency permit (mirrors the backend leg).
     set_client_keepalive(&stream, peer);
+    // Bound the unsent send-buffer backlog before TLS too, so the whole
+    // session (handshake included) runs with it.
+    set_client_notsent_lowat(&stream, peer, client_notsent_lowat);
 
     let tls_stream = tokio::time::timeout(HANDSHAKE_TIMEOUT, acceptor.accept(stream))
         .await
@@ -208,5 +258,38 @@ mod tests {
 
         // And the production helper must not panic.
         set_client_keepalive(&server, peer);
+    }
+
+    /// The not-sent low-water mark must apply on a real loopback socket and
+    /// read back as set (Linux reports TCP_NOTSENT_LOWAT verbatim).
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[tokio::test]
+    async fn set_client_notsent_lowat_on_loopback_takes_effect() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("binding a loopback listener");
+        let addr = listener.local_addr().expect("local_addr");
+        let connect = tokio::spawn(async move { TcpStream::connect(addr).await });
+        let (server, peer) = listener.accept().await.expect("accept");
+        let _client = connect.await.expect("connect task").expect("connect");
+
+        let sock = SockRef::from(&server);
+        let before = sock.tcp_notsent_lowat().expect("reading TCP_NOTSENT_LOWAT");
+
+        // 0 means "leave the kernel default alone".
+        set_client_notsent_lowat(&server, peer, 0);
+        assert_eq!(
+            sock.tcp_notsent_lowat().expect("reading TCP_NOTSENT_LOWAT"),
+            before
+        );
+
+        // Directly assert the set succeeds (the production helper swallows
+        // errors), then that the helper applies and the value reads back.
+        apply_notsent_lowat(&sock, 65_536).expect("set_tcp_notsent_lowat");
+        set_client_notsent_lowat(&server, peer, 131_072);
+        assert_eq!(
+            sock.tcp_notsent_lowat().expect("reading TCP_NOTSENT_LOWAT"),
+            131_072
+        );
     }
 }

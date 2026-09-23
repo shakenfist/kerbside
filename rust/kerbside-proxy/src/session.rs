@@ -130,6 +130,9 @@ pub struct SharedState {
     /// `Arc` so it can be cloned into the ProxyControl consumer task and the
     /// shutdown drain independently of the rest of `SharedState`.
     pub sessions: Arc<SessionRegistry>,
+    /// `SO_RCVBUF` cap applied to each backend-leg socket once connected
+    /// (`--backend-rcvbuf-bytes`); 0 leaves the kernel's autotuning alone.
+    pub backend_rcvbuf_bytes: usize,
 }
 
 /// Overall time budget for the client-facing handshake reads/writes (link

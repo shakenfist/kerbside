@@ -119,6 +119,25 @@ struct Args {
     #[arg(long, default_value = "/run/kerbside/api.sock")]
     api_socket: PathBuf,
 
+    /// `TCP_NOTSENT_LOWAT` for each accepted client-leg socket, in bytes: the
+    /// most unsent data the kernel queues before the relay's writes block.
+    /// Off (0) by default: on a shaped link it moves the display backlog out
+    /// of the proxy into spice-server's own socket buffer without making
+    /// keypress-to-draw latency any better, because spice-server's per-channel
+    /// ACK window, not the proxy, bounds the backlog. It does cut the kernel
+    /// memory the proxy holds per session. See
+    /// docs/performance/proxy-backpressure.md.
+    #[arg(long, default_value_t = 0)]
+    client_notsent_lowat_bytes: u32,
+
+    /// `SO_RCVBUF` for each backend-leg (hypervisor) socket, in bytes. Caps the
+    /// backlog the proxy accepts from spice-server while the client is slow.
+    /// Linux clamps it to `net.core.rmem_max` and doubles it. Off (0) by
+    /// default, leaving the kernel's receive autotuning alone, for the same
+    /// reason as `--client-notsent-lowat-bytes`.
+    #[arg(long, default_value_t = 0)]
+    backend_rcvbuf_bytes: usize,
+
     /// Enable debug-level logging.
     #[arg(long)]
     verbose: bool,
@@ -172,6 +191,8 @@ async fn main() -> Result<()> {
         cert_key = %args.cert_key.display(),
         cacert = %args.cacert.display(),
         host_subject = %args.host_subject,
+        client_notsent_lowat_bytes = args.client_notsent_lowat_bytes,
+        backend_rcvbuf_bytes = args.backend_rcvbuf_bytes,
         "kerbside-proxy starting"
     );
 
@@ -184,6 +205,7 @@ async fn main() -> Result<()> {
         rpc,
         node_name: args.node_name.clone(),
         sessions: Arc::new(session::SessionRegistry::default()),
+        backend_rcvbuf_bytes: args.backend_rcvbuf_bytes,
     });
 
     // Drop any stale channel rows this node left behind (e.g. from a crash or
@@ -275,7 +297,12 @@ async fn main() -> Result<()> {
         res = listen::run_insecure(insecure_addr) => {
             res.context("insecure SPICE listener failed")?;
         }
-        res = listen::run_secure(secure_addr, acceptor, secure_handler) => {
+        res = listen::run_secure(
+            secure_addr,
+            acceptor,
+            args.client_notsent_lowat_bytes,
+            secure_handler,
+        ) => {
             res.context("secure SPICE listener failed")?;
         }
         res = metrics::serve(metrics_addr) => {

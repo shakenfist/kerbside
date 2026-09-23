@@ -15,8 +15,12 @@
 #   [--node-name NAME] \
 #   [--host-subject SUBJECT] \
 #   [--binary PATH] \
-#   [--verbose]
+#   [--verbose] \
+#   [-- EXTRA_PROXY_ARGS...]
 #
+# Anything after a literal `--` is passed through to the proxy binary
+# unchanged, e.g. `-- --client-notsent-lowat-bytes 0` (the shaped-link
+# rig in tools/shaped-link/ uses this to compare socket settings).
 # --tls-dir must contain ca-cert.pem, proxy-cert.pem, and proxy-key.pem, as
 # produced by generate-tls.sh. --api-socket is the unix domain socket the
 # KerbsideProxy gRPC control service listens on -- point it at the same
@@ -67,6 +71,7 @@ NODE_NAME='kerbside-proxy-verify'
 HOST_SUBJECT='C=US,O=Kerbside CI,CN=kerbside-ci'
 BINARY=''
 VERBOSE='0'
+EXTRA_ARGS=()
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -82,6 +87,7 @@ while [ $# -gt 0 ]; do
         --host-subject)     HOST_SUBJECT="$2";    shift 2 ;;
         --binary)           BINARY="$2";          shift 2 ;;
         --verbose)          VERBOSE='1';          shift 1 ;;
+        --)                 shift; EXTRA_ARGS=("$@"); break ;;
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
@@ -150,6 +156,7 @@ ARGS=(
 if [ "${VERBOSE}" = '1' ]; then
     ARGS+=(--verbose)
 fi
+ARGS+=("${EXTRA_ARGS[@]}")
 
 echo "[start-rust-proxy] Launching: ${BINARY} ${ARGS[*]}"
 

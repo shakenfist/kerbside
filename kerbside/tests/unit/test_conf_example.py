@@ -125,9 +125,13 @@ class ConfExampleCoverageTestCase(testtools.TestCase):
 
             # configparser has no types: everything in the file is a
             # string. Booleans are written the way pydantic parses
-            # them back, and an empty default is an empty value.
+            # them back, and an empty default is an empty value. A None
+            # default (optional, "unset") is also written empty; the
+            # fields that allow it treat an empty value as unset.
             if isinstance(default, bool):
                 expected = str(default).lower()
+            elif default is None:
+                expected = ''
             else:
                 expected = str(default)
 

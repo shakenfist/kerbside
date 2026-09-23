@@ -54,6 +54,8 @@ These settings configure Keystone integration for OpenStack deployments.
 | VDI_ADDRESS | String (default 0.0.0.0) | The IPv4 address to bind the SPICE proxy to. |
 | VDI_SECURE_PORT | Integer (default 5900) | The port the VDI proxy will serve TLS SPICE sessions over. |
 | VDI_INSECURE_PORT | Integer (default 5901) | The port the VDI proxy will serve insecure SPICE sessions over. These insecure sessions are only used to redirect the user to the secure port. |
+| PROXY_CLIENT_NOTSENT_LOWAT_BYTES | Integer (default unset) | `TCP_NOTSENT_LOWAT` on each client-leg SPICE socket, in bytes: the most unsent data the kernel queues before the proxy stops relaying from the hypervisor. On a slow client link this moves the display backlog out of the proxy's send buffer and into spice-server's socket, which cuts the kernel memory the proxy holds per session, but it does not reduce keypress-to-draw latency: spice-server's per-channel ACK window bounds the backlog either way. See [the shaped-link measurement](performance/proxy-backpressure.md). Unset uses the proxy's default (0, off); 0 disables the option. |
+| PROXY_BACKEND_RCVBUF_BYTES | Integer (default unset) | `SO_RCVBUF` on each hypervisor-leg SPICE socket, in bytes, capping the backlog the proxy accepts from spice-server while a client is slow. Linux clamps the value to `net.core.rmem_max` (commonly 212992) and doubles it, and setting it turns off receive autotuning for that socket. The same trade-off as PROXY_CLIENT_NOTSENT_LOWAT_BYTES applies. Unset uses the proxy's default (0, off); 0 disables the option. |
 
 ## Shaken Fist console tokens
 
