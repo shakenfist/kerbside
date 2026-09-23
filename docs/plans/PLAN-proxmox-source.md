@@ -17,13 +17,13 @@ nowhere to test it. There is now: a single-node PVE 9.2.20 on
 idempotently). Everything below is measured against that node
 rather than read.
 
-This is a standalone plan because the shape of the work is
-understood but none of it is scheduled. The two questions
-that could have invalidated the design have since been
-answered by measurement. It becomes a master plan when its first
-phase is planned, which brings the mandatory push-audit phase
-with it — the same promotion PLAN-use-case-docs.md went
-through on 2026-09-18.
+This was written as a standalone plan, and was promoted to a
+master plan on 2026-09-24 when phase 2 was planned. The two
+questions that could have invalidated the design had by then
+been answered by measurement. Promotion brings the mandatory
+push-audit phase with it, the same promotion
+PLAN-use-case-docs.md went through on 2026-09-18; see
+*Execution*.
 
 ## Mission
 
@@ -130,7 +130,12 @@ These are ordered by how much they can move the design.
 
 The first two questions this plan was written with have
 since been answered by measurement; see *What the
-measurements settled* below. The rest are open.
+measurements settled* below. Questions 1 and 2 below are
+settled by
+[the phase 2 plan](PLAN-proxmox-source-phase-02-ryll-connect.md)
+(decisions 1 and 4), and are kept here with their answers
+because the reasoning is what later phases build on. The
+rest are open.
 
 **1. Where does the CONNECT live — ryll or kerbside?** Either
 `ConnectionConfig` grows an optional proxy, and
@@ -141,7 +146,9 @@ itself. The recommendation is ryll: it keeps every way of
 reaching a SPICE server in one place, and ryll is itself a
 client that someone will eventually want to point at a
 Proxmox console directly. The cost is that a deployment
-concern lands in a protocol crate.
+concern lands in a protocol crate. **Settled: ryll.** The
+proxy is a typed `ConnectionConfig` field, parsed where the
+string arrives rather than at connect time.
 
 Putting the CONNECT in ryll does not weaken kerbside's
 inspection. The CONNECT is a transport step beneath TLS: once
@@ -164,6 +171,15 @@ is the identity check — but the crate must then *refuse* a
 tunnelled connection that has no `host_subject`, rather than
 quietly ending up with no identity check on the backend leg.
 Both directions want a test, as PLAN-host-subject did.
+
+**Settled**, and more pressing than it read here: the phase
+2 survey found that `ServerName::try_from` rejects a
+pseudo-hostname outright, because of its colons, so without
+an answer every tunnelled handshake fails before it starts.
+`SpiceClient::new` refuses a tunnel with no `host_subject` or
+no `tls_port`. With a pin, the verifier forgives the name,
+so under a tunnel the `ServerName` is the proxy's host and
+serves only as SNI.
 
 **3. Does `Target` grow a field or a transport sub-message?**
 Either way it is a proto change, and proto changes carry the
@@ -365,16 +381,15 @@ open question here.
 
 ## Proposed phases
 
-A sketch of the decomposition, not a schedule. Nothing is
-scheduled until the plan is promoted, and phase 1 exists
-because it can change everything after it.
+The decomposition, with each phase's intent. Status and
+phase plan links are tracked under *Execution*.
 
 | Phase | Intent |
 |-------|--------|
 | ~~1. Ticket semantics~~ | Done 2026-09-20, before the plan was scheduled, because it gated the design. See *What the measurements settled* |
 | 2. Tunnelled transport in ryll | CONNECT support on the backend dial, with the `ServerName` and no-`host_subject` refusal decided and tested both ways |
 | 3a. Minting at connect time | Minting moved into the authorize path through a source-driver hook, with one ticket per session held in daemon memory, and `ovirt.py` converted to request a short explicit expiry and stop persisting the ticket on the `Console` row. Settles the supersession behaviour above first. Not Proxmox-only, and needs nothing from ryll |
-| 3b. Tunnel transport | `Target`/proto change (open question 3), an Alembic migration giving the `Console` row somewhere to record the node and the `spiceproxy` URL (the columns it has today assume a direct address), and `backend.rs` passing the tunnel through. Needs phase 2 released |
+| 3b. Tunnel transport | `Target`/proto change (open question 3), an Alembic migration giving the `Console` row somewhere to record the node and the `spiceproxy` URL (the columns it has today assume a direct address), and `backend.rs` passing the tunnel through. `build_config` (`backend.rs:183`) builds `ConnectionConfig` by struct literal with `tls_port: None` and escalates to TLS only on `NEED_SECURED`, but phase 2 refuses a tunnel without a TLS port, so a tunnelled target must set `tls_port` from the start. Needs phase 2 merged and the pin bumped |
 | 4. The source driver | `kerbside/sources/proxmox.py`: discovery over `/nodes/{node}/qemu`, console details over `spiceproxy`, CA and subject handling, and the direct `.vv` handler refusing Proxmox sources |
 | 5. CI lane | A lane that proves an end-to-end proxied session, per open question 5 |
 | 6. Docs | The use-case page PLAN-use-case-docs.md has been holding a row for, plus `console-sources.md` |
@@ -390,6 +405,32 @@ Phase 1 was carried out against a deployment rather than in
 this repository. Phase 2 lands in `shakenfist/ryll`, and a
 phase that lands in another repository is audited there, as
 the push-audit block requires.
+
+## Execution
+
+Promoted from a standalone plan on 2026-09-24, when phase 2
+was planned. Promotion brings the `plan-push-audit-phase`
+obligation from `PLAN-TEMPLATE.md` with it, which is phase 7
+and is not optional. Each row records what landed it as it
+lands. A phase that lands in ryll records
+`ryll <sha> (#pr)` and is audited in ryll, in the pull
+request that lands it.
+
+Phase 1 has no plan file and no `Merged` cell. It was a
+measurement against a deployment, it changed no code, and
+its results are the *What the measurements settled* section
+above. The push audit has nothing of it to read.
+
+| Phase | Plan | Status | Merged |
+|-------|------|--------|--------|
+| 1. Ticket semantics | | Complete | |
+| 2. Tunnelled transport in ryll | [PLAN-proxmox-source-phase-02-ryll-connect.md](PLAN-proxmox-source-phase-02-ryll-connect.md) | Not started | |
+| 3a. Minting at connect time | | Not started | |
+| 3b. Tunnel transport | | Not started | |
+| 4. The source driver | | Not started | |
+| 5. CI lane | | Not started | |
+| 6. Docs | | Not started | |
+| 7. Push audit | | Not started | |
 
 ## Relationship to other plans
 
@@ -407,4 +448,6 @@ the push-audit block requires.
 
 ## Status
 
-Proposed. No phase is scheduled and no work has begun.
+In progress. Phase 1 is complete, and phase 2 is planned
+but not started. The Execution table is the authority on
+each phase's status.
