@@ -441,7 +441,7 @@ loadtests/             # Load testing tools
   latency/             # Latency loadtest (orchestrator.py + Dockerfile)
 docs/                  # Operator, developer, and protocol documentation
   spice/               # SPICE protocol reference
-  use-cases/           # Per-deployment operator guides (oVirt today)
+  use-cases/           # Per-deployment and topology guides
   plans/               # Point-in-time plan records, not living docs
 ```
 
@@ -474,4 +474,4 @@ For detailed SPICE protocol documentation, see the
 - [Channel Protocols](docs/spice/channel-protocols.md) - Per-channel message formats
 - [Capabilities](docs/spice/capabilities.md) - Feature negotiation
 - [Proxy Architecture](docs/proxy-architecture.md) - Internal proxy design details
-- [Use Cases](docs/use-cases/ovirt.md) - Per-deployment operator guides
+- [Use Cases](docs/index.md#use-cases) - Per-deployment and topology guides

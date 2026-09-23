@@ -94,8 +94,9 @@ edit `REVIEWS.md` by hand. See `docs/development.md` for details.
 Protocol documentation lives in `docs/`. When making user-visible changes,
 check whether `docs/` needs updating. See `docs/index.md` for the full
 documentation index. Per-deployment operator guides live in
-`docs/use-cases/` (oVirt today; the remaining pages are tracked in
-`docs/plans/PLAN-use-case-docs.md`).
+`docs/use-cases/`, one page per deployment permutation; only Proxmox
+is deferred, until a source driver exists
+(`docs/plans/PLAN-use-case-docs.md`).
 
 ## CI Workflows
 
