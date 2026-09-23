@@ -18,9 +18,9 @@ idempotently). Everything below is measured against that node
 rather than read.
 
 This is a standalone plan because the shape of the work is
-understood but none of it is scheduled, and because two of
-the open questions below can invalidate the design before any
-of it is written. It becomes a master plan when its first
+understood but none of it is scheduled. The two questions
+that could have invalidated the design have since been
+answered by measurement. It becomes a master plan when its first
 phase is planned, which brings the mandatory push-audit phase
 with it — the same promotion PLAN-use-case-docs.md went
 through on 2026-09-18.
@@ -32,7 +32,7 @@ gives every other source: a protocol-aware middle that
 inspects the session, host-subject pinning on the backend
 leg, and an audit trail.
 
-One part of this does reach past Proxmox. Phase 3 moves
+One part of this does reach past Proxmox. Phase 3a moves
 console-ticket minting into the authorize path, and the
 measurements below show that is an improvement the oVirt
 source wants on its own terms — so that phase changes
@@ -40,7 +40,9 @@ source wants on its own terms — so that phase changes
 7200-second default it never chose.
 
 Out of scope: PVE's VNC consoles, PVE clustering (a
-single-node source is enough to prove the model), and the
+single-node source is enough to prove the model), direct
+(unbrokered) `.vv` files for Proxmox consoles, for the reason
+given under *What the measurements settled*, and the
 Proxmox use-case documentation page, which belongs to
 PLAN-use-case-docs.md's table and stays deferred until this
 plan produces something to document.
@@ -69,7 +71,7 @@ token-issue time rather than at discovery. For oVirt,
 `ConsolesProxyVirtViewer` fetches a fresh ticket, writes it
 with `db.store_console_ticket()`, and only then mints the
 kerbside token the client will connect with
-(`api.py:480-527`). The authorize path never calls a driver,
+(`api.py:482-527`). The authorize path never calls a driver,
 and on this design it does not need to.
 
 Proxmox cannot reuse that shape, and this is the finding that
@@ -140,6 +142,18 @@ reaching a SPICE server in one place, and ryll is itself a
 client that someone will eventually want to point at a
 Proxmox console directly. The cost is that a deployment
 concern lands in a protocol crate.
+
+Putting the CONNECT in ryll does not weaken kerbside's
+inspection. The CONNECT is a transport step beneath TLS: once
+`spiceproxy` answers `200 OK` it relays opaque bytes, the TLS
+session runs end to end between kerbside and qemu (pinned by
+`host-subject`), and `connect_channel` still returns kerbside
+a plaintext `SpiceStream` for the relay and firewall, exactly
+as it does today. `spiceproxy` sees only ciphertext. What
+would bypass kerbside is a client doing the CONNECT itself,
+which is the direct `.vv` path this plan rules out for
+Proxmox; a standalone ryll pointed at Proxmox is that case by
+choice, not kerbside's brokered path.
 
 **2. What is the TLS `ServerName` inside the tunnel?**
 `connect_channel` derives it from `config.host`, which under
@@ -219,23 +233,38 @@ between `ConsolesProxyVirtViewer` handing over a `.vv` and
 `remote-viewer` actually connecting is user-paced — a browser
 download prompt, an "open with" dialog, an application
 launch — and 30 seconds is not a safe budget for that. The
-same arithmetic makes the direct `.vv` path
-(`ConsolesDirectVirtViewer`) marginal for Proxmox.
+same arithmetic rules out the direct `.vv` path
+(`ConsolesDirectVirtViewer`) for Proxmox: the ticket is
+embedded in the file, so the same user-paced gap applies, and
+there is no broker in the path to mint a fresh one. A
+Proxmox source therefore offers proxied consoles only, and
+the direct handler refuses it with an explicit error rather
+than handing out a file that works only if opened quickly.
 
 Minting therefore has to happen at connection time, which
 means `AuthorizeConnection` calling the source driver — the
-first time that path would do so. The shape that falls out
-is per-channel minting: each channel's authorize call mints
-its own ticket, which is a handful of PVE API calls per
-session and, usefully, means a channel opened late in a long
-session (a usbredir channel on a device plug, say) gets a
-ticket minted at that moment rather than failing against a
-30-second-old one. Caching one ticket per session for its
-30 seconds is the obvious optimisation and should be
-measured, not assumed, against the added failure mode: PVE
-being unreachable now breaks connection setup, not just
-discovery — and against the supersession behaviour described
-below, which per-channel minting runs straight into.
+first time that path would do so.
+
+The obvious shape, a fresh ticket per channel, does not
+work, and the reason is in the supersession finding below:
+each mint sets a new qemu password, and a SPICE client opens
+its secondary channels in parallel once the main channel
+reports them. Channel B's mint lands between channel A's mint
+and channel A's auth, and A fails. Per-channel minting is a
+race the client wins only by luck.
+
+So the default is **one ticket per session**: the first
+channel's authorize call mints, and later channels in the
+same session reuse that ticket for as long as it is valid.
+A channel that arrives after the ticket has aged out (a
+usbredir channel on a device plug, say) mints a replacement.
+That is safe only if qemu does not re-check an established
+channel's password when it changes, which is what the
+supersession section says has not been proven. The ticket is
+held in the daemon's memory, keyed by session, and never
+written to the `Console` row. The failure mode this adds is
+unavoidable whichever shape is chosen: PVE being unreachable
+now breaks connection setup, not just discovery.
 
 ### Three protocol details that cost an afternoon
 
@@ -263,7 +292,7 @@ returned `host-subject`.
 
 ### What oVirt does, measured the same way
 
-Phase 3 moves minting into the authorize path because
+Phase 3a moves minting into the authorize path because
 Proxmox leaves no alternative. The obvious reading of that
 is that it is a Proxmox workaround bolted onto a path the
 other sources are happy with. Measuring oVirt the same way,
@@ -295,11 +324,11 @@ keeps it out of the API but nothing encrypts it at rest. A
 ten-second session leaves a live console password in the
 database for the remaining two hours.
 
-**That makes phase 3 a cross-source improvement that
+**That makes phase 3a a cross-source improvement that
 Proxmox happens to make unavoidable.** Once minting can
 happen at connect time, `ovirt.py` can pass a short explicit
 expiry and stop persisting a long-lived credential at all.
-Proxmox forces the pattern; oVirt would choose it. Phase 3
+Proxmox forces the pattern; oVirt would choose it. Phase 3a
 should therefore be scoped and reviewed as a change to the
 minting path in general, not as a Proxmox prerequisite, and
 whoever schedules it should expect to touch `ovirt.py`.
@@ -322,16 +351,17 @@ single qemu password, but its 30-second window makes it
 nearly unobservable there.
 
 This is a live property of the oVirt path today, not a
-design input for a new driver, and it interacts badly with
-the per-channel minting proposed above: a channel opened
-late in a session would revoke the credential every earlier
-channel authenticated with. Whether that matters depends on
-whether qemu re-checks an established channel's password
-(it does not appear to — the six concurrent channels stayed
-up) but "appears not to" is not a foundation to build
-per-channel minting on. **Phase 3 cannot be designed without
-settling this**, so it belongs in that phase's scope rather
-than as an open question here.
+design input for a new driver. It is why per-channel minting
+was rejected above, and it still constrains the
+session-scoped design that replaced it: a replacement ticket
+minted for a late channel revokes the credential every
+earlier channel authenticated with. Whether that matters
+depends on whether qemu re-checks an established channel's
+password (it does not appear to — the six concurrent
+channels stayed up) but "appears not to" is not a foundation
+to build on. **Phase 3a cannot be designed without settling
+this**, so it belongs in that phase's scope rather than as an
+open question here.
 
 ## Proposed phases
 
@@ -343,13 +373,21 @@ because it can change everything after it.
 |-------|--------|
 | ~~1. Ticket semantics~~ | Done 2026-09-20, before the plan was scheduled, because it gated the design. See *What the measurements settled* |
 | 2. Tunnelled transport in ryll | CONNECT support on the backend dial, with the `ServerName` and no-`host_subject` refusal decided and tested both ways |
-| 3. Minting at connect time | `Target`/proto change, minting moved into the authorize path, and `backend.rs` passing the tunnel through. Not Proxmox-only: it is what lets `ovirt.py` stop taking a 7200s default, and it must settle the supersession behaviour above before per-channel minting is committed to |
-| 4. The source driver | `kerbside/sources/proxmox.py`: discovery over `/nodes/{node}/qemu`, console details over `spiceproxy`, CA and subject handling |
-| 5. CI lane | A lane that proves an end-to-end proxied session, per open question 7 |
+| 3a. Minting at connect time | Minting moved into the authorize path through a source-driver hook, with one ticket per session held in daemon memory, and `ovirt.py` converted to request a short explicit expiry and stop persisting the ticket on the `Console` row. Settles the supersession behaviour above first. Not Proxmox-only, and needs nothing from ryll |
+| 3b. Tunnel transport | `Target`/proto change (open question 3), an Alembic migration giving the `Console` row somewhere to record the node and the `spiceproxy` URL (the columns it has today assume a direct address), and `backend.rs` passing the tunnel through. Needs phase 2 released |
+| 4. The source driver | `kerbside/sources/proxmox.py`: discovery over `/nodes/{node}/qemu`, console details over `spiceproxy`, CA and subject handling, and the direct `.vv` handler refusing Proxmox sources |
+| 5. CI lane | A lane that proves an end-to-end proxied session, per open question 5 |
 | 6. Docs | The use-case page PLAN-use-case-docs.md has been holding a row for, plus `console-sources.md` |
 
-Phases 1 and 2 land in other places than kerbside — phase 1
-against a deployment, phase 2 in `shakenfist/ryll` — and a
+Phases 2 and 3a are independent and can run in parallel.
+Phase 3a is the natural first kerbside phase: it has value on
+its own, since it removes a two-hour console password from
+the oVirt path, and it tests the session-scoped ticket design
+against a source that already exists before Proxmox depends
+on it.
+
+Phase 1 was carried out against a deployment rather than in
+this repository. Phase 2 lands in `shakenfist/ryll`, and a
 phase that lands in another repository is audited there, as
 the push-audit block requires.
 
