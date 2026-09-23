@@ -1,0 +1,17 @@
+# skillsaw configuration. See .pre-commit-config.yaml for why skillsaw
+# runs at all.
+#
+# Setting `exclude` replaces skillsaw's built-in exclude list, so the
+# first four entries restate those defaults.
+#
+# The Rust proxy's Docker build keeps its cargo home in the git-ignored
+# rust/kerbside-proxy/.cargo-cache/, which holds a full checkout of the
+# ryll git dependency, AGENTS.md included. skillsaw does not consult
+# .gitignore, so without this exclude it lints ryll's agent context as
+# if it were ours, and fails any clone that has run `make build`.
+exclude:
+  - "**/template/**"
+  - "**/templates/**"
+  - "**/_template/**"
+  - "**/__pycache__/**"
+  - "rust/kerbside-proxy/.cargo-cache/**"
