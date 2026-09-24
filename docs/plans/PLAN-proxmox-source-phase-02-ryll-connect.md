@@ -60,6 +60,9 @@ and is the protocol-level half of a two-repository change.
   request that lands it. Ryll has a `PUSH-AUDIT.md`; step 2g
   runs it. The master plan's own push-audit phase cites that
   audit rather than repeating it.
+- Phase 1b's steps 1b.7–1b.10 land on this branch between 2e
+  and 2g. This pull request cannot go green until 1b's
+  actions pull request has merged.
 
 ## Scope
 
@@ -82,8 +85,8 @@ In:
   the work in ryll at all.
 - Keeping the pseudo-hostname, which carries a signed ticket,
   out of ryll's logs, capture metadata and bug reports.
-- Fuzz targets for both new parsers, and a manual end-to-end
-  proof against the validated PVE node.
+- Fuzz targets for both new parsers, and an end-to-end proof
+  against a PVE node deployed in CI by phase 1b.
 
 Out:
 
@@ -133,13 +136,19 @@ findings go beyond it.
    expires in about 40 seconds, so the exposure is small,
    but it is a signed credential and it should not be
    there.
-3. **The address format breaks on IPv6 literals.**
-   `format!("{}:{}", host, port)` (`client.rs:357`) produces
-   `::1:5900` for an IPv6 host, which `TcpStream::connect`
-   cannot parse. This is a pre-existing bug in the direct
-   path. Step 2b rewrites that line anyway, and switching to
-   the `(host, port)` tuple form fixes it for both paths.
-   Recorded under *Bugs fixed during this work*.
+3. **The address format was suspected to break on IPv6
+   literals, and does not.** `format!("{}:{}", host, port)`
+   (`client.rs:357`) produces `::1:5900` for an IPv6 host.
+   This survey claimed `TcpStream::connect` cannot parse
+   that. Step 2b disproved it by reverting to the formatted
+   dial under its new `::1` test, which still passed: the
+   standard library's string lookup falls back to splitting
+   at the last `:`. Step 2b dials the `(host, port)` tuple
+   anyway, which parses an IP literal directly, and its test
+   pins that. One side effect is recorded in the 2b commit:
+   a bracketed `host=[::1]` used to parse and now fails in
+   the resolver. It could never pass the TLS `ServerName`
+   check, and no known caller produces it.
 4. **`ConnectionConfig` is built by struct literal in three
    places**, which a new field breaks: ryll's
    `From<&Config>` (`ryll/src/config.rs:412-422`), two tests
@@ -225,6 +234,25 @@ at their source.
      `HTTP/1.x`, and a header block over the cap are all
      errors.
 
+   *As built (step 2a, operator-accepted 2026-09-24).* GIO's
+   `ghttpproxy.c` differs from the recollection above in two
+   ways, and the crate follows GIO in both: any `2xx` status
+   establishes the tunnel (as RFC 9110 section 9.3.6 also
+   says), and the request carries `Proxy-Connection:
+   keep-alive`. `HTTP/1.0` and the `Host:` header were right.
+   The crate is stricter than GIO where GIO is lax: EOF before
+   the blank line is an error (GIO parses what arrived), the
+   cap stays at 16 KiB (GIO's is 96 KiB), an IPv6-literal
+   target is bracketed, the status code must be exactly three
+   digits, and a target host containing whitespace or control
+   characters is refused before anything is written, so a
+   hostile `.vv` `host=` cannot inject headers. The URI parser
+   accepts a bare `host:port`, which spice-gtk refuses because
+   `g_uri_parse_scheme` reads the host as a scheme; Proxmox
+   `.vv` files always carry `http://`, so this only widens
+   what a hand-written `.vv` may say. Errors are split into
+   `ProxyError` (URI) and `ConnectError` (exchange).
+
 4. **Tunnels are TLS-only and must be pinned, enforced at
    construction.** This settles open question 2.
    `SpiceClient::new` refuses a config where `proxy` is set
@@ -258,10 +286,10 @@ at their source.
    Result<SpiceStream>` (TCP dial, `nodelay`, keepalive,
    optional CONNECT, optional TLS wrap), then the existing
    link and auth. Behaviour without a proxy is byte-for-byte
-   unchanged, apart from finding 3's fix. The split lets the
-   tests drive the transport against a fake proxy and a
-   rustls server without writing a fake SPICE server as
-   well.
+   unchanged, apart from finding 3's tuple dial. The split
+   lets the tests drive the transport against a fake proxy
+   and a rustls server without writing a fake SPICE server
+   as well.
 
    Keepalive and `nodelay` apply to the socket to the proxy,
    which is the only socket there is.
@@ -296,7 +324,8 @@ at their source.
    `delete-this-file=1` handling already stops auto-reconnect
    for a single-use ticket, and a Proxmox `.vv` sets it, so a
    dropped session does not retry against a dead ticket.
-   Step 2f confirms this rather than assuming it.
+   Phase 1b's lane (step 1b.7) confirms this rather than
+   assuming it.
 
 8. **Fuzzing.** Two new targets, `fuzz_parse_proxy_uri` and
    `fuzz_parse_connect_response`. Both parse bytes that come
@@ -369,12 +398,12 @@ One commit per step, in order:
 | Step | Effort | Model | Isolation | Brief for sub-agent |
 |------|--------|-------|-----------|---------------------|
 | 2a | high | opus | none | In the ryll checkout, create `shakenfist-spice-protocol/src/proxy.rs`, exported as `pub mod proxy` following the crate's style for `host_subject`. Implement decision 2 (`HttpProxy`, `parse_proxy_uri`, `ProxyError`) and decision 3's exchange as three functions: `write_connect_request(stream, target_host, target_port)`, `read_connect_response(stream)` (byte-at-a-time to `\r\n\r\n`, 16 KiB cap) and the pure `parse_connect_response(&[u8])`. First fetch GLib's `gio/ghttpproxy.c` and confirm the request line version, headers and accepted statuses GIO uses; follow it, and record in the commit message what you found. Derive the URI rules from `spice-uri.c:108-215`, not from this brief. Unit tests in the same file cover: URI parsing (bare `host`, `host:port`, `http://host:port`, default port 3128, trailing slashes, `[::1]:3128`, and errors for `https://`, `user:pass@host`, a `socks5://` scheme, a port of 0 or above 65535, a non-numeric port, an empty host, and a missing `]`); request bytes, asserted exactly, including the `Host:` header; responses over `tokio::io::duplex` (200 accepted; 401 with the ticket hint; 407; 502; EOF mid-headers; oversize header block; a non-HTTP status line); and **no over-read**, where the peer writes the response and then extra bytes, and the test asserts the extra bytes are still readable after `read_connect_response` returns. No wiring into `SpiceClient` in this step. `make lint && make test` must pass. |
-| 2b | high | opus | none | Wire the proxy into the crate per decisions 4, 5, 6 and 9. Add `pub proxy: Option<HttpProxy>` to `ConnectionConfig` (`lib.rs:77-117`), documented at the density of its neighbours, including that a tunnel requires `tls_port` and `host_subject`. Add `display_target()`. In `SpiceClient::new` (`client.rs:279`), add the two refusals after the pin parse, with errors naming the missing field. Split `connect_channel` into `open_transport` plus link and auth (decision 5). Dial `(host, port)` as a tuple, not a formatted string, which fixes IPv6 literals (survey finding 3). With a proxy, dial the proxy, run the 2a exchange targeting `(config.host, tls_port)`, then wrap in TLS with `ServerName` taken from the proxy host, with a comment explaining it is SNI only and why that is safe (decision 4). Replace the debug log's `addr` with `display_target()`. Update ryll's `From<&Config>` (`ryll/src/config.rs:412`) with `proxy: None` for now; step 2c fills it in. Add tests to `client.rs`'s `mod tests`: the two refusals and their positive counterpart; `display_target()` both ways; and transport integration through a fake CONNECT proxy (a `TcpListener` task that reads the request, asserts the `Host:` header, answers 200 and splices bytes to a `TlsAcceptor` server whose leaf is minted by rcgen). The integration cases are: a matching pin completes `open_transport`; a mismatched pin fails the handshake; the proxy answering 401 surfaces the 2a error. The commit message states the breaking API change (decision 9). `make lint && make test` must pass. |
+| 2b | high | opus | none | Wire the proxy into the crate per decisions 4, 5, 6 and 9. Add `pub proxy: Option<HttpProxy>` to `ConnectionConfig` (`lib.rs:77-117`), documented at the density of its neighbours, including that a tunnel requires `tls_port` and `host_subject`. Add `display_target()`. In `SpiceClient::new` (`client.rs:279`), add the two refusals after the pin parse, with errors naming the missing field. Split `connect_channel` into `open_transport` plus link and auth (decision 5). Dial `(host, port)` as a tuple, not a formatted string (survey finding 3). With a proxy, dial the proxy, run the 2a exchange targeting `(config.host, tls_port)`, then wrap in TLS with `ServerName` taken from the proxy host, with a comment explaining it is SNI only and why that is safe (decision 4). Replace the debug log's `addr` with `display_target()`. Update ryll's `From<&Config>` (`ryll/src/config.rs:412`) with `proxy: None` for now; step 2c fills it in. Add tests to `client.rs`'s `mod tests`: the two refusals and their positive counterpart; `display_target()` both ways; and transport integration through a fake CONNECT proxy (a `TcpListener` task that reads the request, asserts the `Host:` header, answers 200 and splices bytes to a `TlsAcceptor` server whose leaf is minted by rcgen). The integration cases are: a matching pin completes `open_transport`; a mismatched pin fails the handshake; the proxy answering 401 surfaces the 2a error. The commit message states the breaking API change (decision 9). `make lint && make test` must pass. |
 | 2c | medium | sonnet | none | In the `ryll` binary, add `proxy: Option<HttpProxy>` to `Config` (`config.rs:387`), parse the `proxy` key in `parse_vv_content` (`config.rs:523-574`) via `filter_none` then `shakenfist_spice_protocol::proxy::parse_proxy_uri`, and fail the load with an error naming the `proxy` key on a parse error. `--direct` configs get `None`. Carry it through `From<&Config>`, replacing 2b's `proxy: None`. Move every place ryll prints the target onto `ConnectionConfig::display_target()`: the info log at `main.rs:231-236`, the capture metadata host at `main.rs:247-252`, and the bug-report target at `main.rs:386-389` and `app.rs:1121`. First confirm that none of these consumers use the value to connect (read `capture.rs:710+` and the bug-report observer); stop and report if one does. Add `.vv` parser tests next to the existing ones: a Proxmox-shaped `.vv` (pseudo-hostname `host`, `tls-port`, `proxy=http://pve1.example:3128`, `host-subject`, `ca`, `delete-this-file=1`) parses with the proxy set; an absent `proxy` gives `None`; a `proxy=https://...` fails naming the key. `make lint && make test` must pass. |
 | 2d | medium | sonnet | none | Add cargo-fuzz targets `fuzz_parse_proxy_uri` (feed `String::from_utf8_lossy(data)` to `parse_proxy_uri`) and `fuzz_parse_connect_response` (feed raw bytes to `parse_connect_response`). Put new files in `shakenfist-spice-protocol/fuzz/fuzz_targets/`, with `[[bin]]` blocks in `fuzz/Cargo.toml` matching the existing four exactly. Do not edit any workflow. Instead run `tools/fuzz-targets.sh` and confirm both names appear, and run `tools/test-fuzz-targets.sh`. Build both targets the way nightly does (`make fuzz-devcontainer`, then `cargo fuzz build <target>` inside it, per the existing Makefile targets), run each for 100,000 iterations, and report the command used and the result. |
 | 2e | low | sonnet | none | Documentation, in ryll. In `docs/configuration.md` under *.vv File Format* (`:139+`), document the `proxy` key: the forms accepted (optional `http://`, default port 3128, bracketed IPv6), the forms refused (`https`, credentials), and that a tunnelled connection requires `tls-port` and `host-subject`. Add a short Proxmox example `.vv` with the ticket and password redacted, plus one sentence that Proxmox tickets are valid for about 30 seconds, so a Proxmox `.vv` must be opened promptly. Update the crate `README.md` only if it describes the connect path. Match the surrounding prose and keep it factual. |
-| 2f | high | opus | none | **Operator-assisted validation against the private PVE 9.2.20 node.** This is not a CI step: the node is private (master plan open question 5). With a release build of the branch, use the script in *Validation against a real node* below to mint a fresh `.vv` and open it with `ryll --file <vv> --headless` inside 30 seconds. Assert that the main, display, inputs and cursor channels all authenticate. Keep the session up for 120 seconds, well past ticket expiry, and confirm it stays up. Then run the three negative checks from that section. Record each result, with timestamps, under *Outcome* in this plan file in kerbside, which becomes its own small kerbside commit. |
-| 2g | high | opus | none | Run ryll's `PUSH-AUDIT.md` over the phase's branch diff against ryll `develop` before the pull request is marked ready. Fix findings on the branch, or decline them in writing in this plan's *Outcome* section with the reason. Record the result, including "no findings", in one sentence there. |
+| 2f | — | — | — | **Replaced by phase 1b steps 1b.7–1b.10**, which add proxmox-functional.yml to this branch and run the four checks against a PVE node deployed in CI. Record the lane's run URL and per-check summary lines under *Outcome*. |
+| 2g | high | opus | none | Run ryll's `PUSH-AUDIT.md` over the phase's branch diff against ryll `develop` before the pull request is marked ready. Fix findings on the branch, or decline them in writing in this plan's *Outcome* section with the reason. Record the result, including "no findings", in one sentence there. The branch diff includes phase 1b's lane commits; audit them as part of it. |
 
 After each step the management session reviews against the
 master plan's checklist. It also re-reads 2a's URI rules line
@@ -384,43 +413,24 @@ decision 5's "byte-for-byte unchanged" claim held.
 
 ## Validation against a real node
 
-Step 2f runs these from a host that resolves the node's FQDN
-(see the master plan's settled FQDN constraint). The token
-is the validated deployment's API token. Nothing here is
-committed to either repository.
-
-```bash
-#!/bin/bash
-# Mint a Proxmox SPICE ticket as a .vv and open it with ryll.
-# Usage: pve-spice-smoke.sh <node> <vmid> [delay-seconds]
-set -euo pipefail
-node="$1"; vmid="$2"; delay="${3:-0}"
-vv="$(mktemp --suffix=.vv)"
-curl -sf --cacert "${PVE_CA}" \
-    -H "Authorization: PVEAPIToken=${PVE_TOKEN}" \
-    -X POST "https://${node}:8006/api2/json/nodes/${node}/qemu/${vmid}/spiceproxy" \
-  | jq -r '.data | "[virt-viewer]", (to_entries[] | "\(.key)=\(.value)")' > "${vv}"
-sleep "${delay}"
-exec ryll --file "${vv}" --headless --verbose
-```
-
-- **Positive:** delay 0. All channels authenticate, and the
-  session survives 120 seconds.
-- **Expired ticket:** delay 45. The `.vv` load succeeds, and
-  the connection fails with the 401 error and its ticket
-  hint from decision 3. It must not fail with a TLS or link
-  error.
-- **Wrong pin:** delay 0, with `host-subject` edited in the
-  `.vv` (change the `CN`). The TLS handshake fails, and the
-  warning names both subjects.
-- **Missing pin:** delay 0, with `host-subject` removed. ryll
-  refuses before dialling, with decision 4's error.
+Phase 1b's `proxmox-functional.yml` runs these four checks;
+see
+[the phase 1b plan](PLAN-proxmox-source-phase-01b-ci-substrate.md),
+decision 10: positive (all channels authenticate, session
+survives 120 seconds), expired ticket (401 with the ticket
+hint, not a TLS or link error), wrong pin (TLS handshake
+fails, warning names both subjects), missing pin (refused
+before dialling). The expired check waits 50 seconds rather
+than 45, clear of the first 401 row. Minting is by actions'
+`tools/proxmox-mint-vv.sh`, and ryll's
+`tools/proxmox-smoke.py` drives the checks, so the script
+formerly here is superseded.
 
 The `ca` value in the API response has escaped newlines
 (master plan, *Three protocol details*). ryll's
 `build_root_store` already unescapes `\n` (`client.rs:218`),
-so the value is passed through as-is. Check that during the
-positive run rather than assuming it.
+so the value is passed through as-is. Phase 1b's positive
+check confirms that rather than assuming it.
 
 ## Risks and mitigations
 
@@ -428,18 +438,18 @@ positive run rather than assuming it.
   is the failure the phase exists to prevent, and it is
   silent. Mitigation: the refusals live in `SpiceClient::new`
   and not the dial path, so every caller passes through
-  them. 2b tests both refusals, and 2f's missing-pin check
-  proves them against the real node. The management session
-  confirms the refusal comes before `create_tls_connector`
-  can run.
+  them. 2b tests both refusals, and the phase 1b lane's
+  missing-pin check proves them against the real node. The
+  management session confirms the refusal comes before
+  `create_tls_connector` can run.
 - **An over-read swallows the first TLS bytes.** This would
   present as an intermittent handshake failure that reads
   like a certificate problem. Mitigation: byte-at-a-time
   reads and 2a's explicit no-over-read test.
 - **GIO's request format differs from this plan's
   recollection.** Mitigation: 2a reads `ghttpproxy.c` before
-  writing the request, and 2f proves the result against
-  Proxmox, which is the peer that matters.
+  writing the request, and the phase 1b lane proves the
+  result against Proxmox, which is the peer that matters.
 - **Redaction misses a place the target is printed.**
   Mitigation: 2c's brief enumerates the four sites the
   survey found. The management session greps the ryll
@@ -471,8 +481,9 @@ positive run rather than assuming it.
       100,000 iterations without a crash.
 - [ ] `docs/configuration.md` documents `proxy`, and nothing
       in ryll's docs says a `.vv`'s proxy is ignored.
-- [ ] All four checks in *Validation against a real node*
-      are recorded under *Outcome* with their results.
+- [ ] `proxmox-functional.yml` is green on this pull
+      request, and its run URL and four summary lines are
+      recorded under *Outcome*.
 - [ ] Ryll's `PUSH-AUDIT.md` has been run over the branch,
       and its result is recorded under *Outcome*.
 - [ ] The ryll pull request is merged to `develop`, and the
@@ -481,10 +492,8 @@ positive run rather than assuming it.
 
 ## Bugs fixed during this work
 
-- IPv6-literal hosts could not be dialled directly, because
-  `connect_channel` formatted the address as `host:port`
-  (survey finding 3). Fixed in 2b as a side effect of the
-  tuple dial; 2b adds a test that dials `::1`.
+None. The IPv6-literal dial bug this plan expected to fix
+(survey finding 3) did not exist; see that finding.
 
 ## Future work
 
@@ -501,7 +510,19 @@ positive run rather than assuming it.
 
 ## Outcome
 
-Not started.
+In progress. On ryll branch `spice-http-connect`, not yet
+pushed:
+
+| Step | Commit | Notes |
+|------|--------|-------|
+| 2a | `9a5d1a9` | Proxy module. GIO deviations accepted; see decision 3's *As built* note. |
+| 2b | `337c942` | Wiring. 179 pre-existing crate tests pass unchanged; 11 added. Survey finding 3 disproved. |
+| 2c | `ffd8e7d` | `.vv` `proxy=`, redaction via `display_target()`. Capture `metadata.json` now has one `target` field. |
+| 2d | `32e7e56` | Two fuzz targets, 100,000 runs each, no crash. |
+| 2e | `2c99faa` | Docs. |
+| — | `189bff3` | Found by 1b.7: headless ryll exited 0 on a failed connect, and a `select!` race could drop the error unlogged. Both fixed, operator-approved. |
+
+Steps 2f (replaced by phase 1b's lane) and 2g remain.
 
 ## Back brief
 

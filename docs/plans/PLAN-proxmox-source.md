@@ -11,11 +11,14 @@ footnote it had outgrown. It moved here on 2026-09-20, and
 that section now points at this plan.
 
 That research was done from documentation, because there was
-nowhere to test it. There is now: a single-node PVE 9.2.20 on
-`debian:13`, built with Ansible and validated privately
-(deploys in under ten minutes, survives a reboot, re-runs
-idempotently). Everything below is measured against that node
-rather than read.
+nowhere to test it. There is now a way to build one: a
+single-node PVE 9.2.20 on `debian:13`, deployed by prototype
+Ansible in a private repository (under ten minutes, survives
+a reboot, re-runs idempotently) and torn down after use.
+Everything below was measured against such a deployment on
+2026-09-20 rather than read. There is no standing node. Phase
+1b ports that Ansible to `shakenfist/actions` so CI can build
+one on demand.
 
 This was written as a standalone plan, and was promoted to a
 master plan on 2026-09-24 when phase 2 was planned. The two
@@ -91,8 +94,7 @@ naming the ticket, the vmid, the node and the port, so
 minting moved to connection time, the fresh half of it should
 not be stored on the row at all.
 
-Here is what the call actually returns, from the validated
-node:
+Here is what the call actually returns, from that deployment:
 
 ```json
 {
@@ -134,8 +136,10 @@ measurements settled* below. Questions 1 and 2 below are
 settled by
 [the phase 2 plan](PLAN-proxmox-source-phase-02-ryll-connect.md)
 (decisions 1 and 4), and are kept here with their answers
-because the reasoning is what later phases build on. The
-rest are open.
+because the reasoning is what later phases build on. Question
+5 is settled by
+[the phase 1b plan](PLAN-proxmox-source-phase-01b-ci-substrate.md).
+The rest are open.
 
 **1. Where does the CONNECT live — ryll or kerbside?** Either
 `ConnectionConfig` grows an optional proxy, and
@@ -187,16 +191,18 @@ contract-hash handshake from PLAN-proxy-dev-releases phase 3,
 so the daemon and the proxy binary have to ship together.
 
 **4. What is the least-privileged API account?** The
-validated deployment uses `PVEVMUser` on `/vms` plus
+prototype deployment uses `PVEVMUser` on `/vms` plus
 `PVEAuditor` on `/`, with a `privsep=0` API token. That works;
 it is not proven minimal, and the same honesty the oVirt
 use-case page applies to `SuperUser` applies here.
 
-**5. Where does a CI lane get a node?** PLAN-two-tier-ci's
-future work puts a Proxmox lane in the merge tier. The
-Ansible that builds the validated node lives in a private
-repository, so a public lane needs either a public
-equivalent or a different approach.
+**5. Where does a CI lane get a node?** **Settled by phase
+1b.** A composite action in `shakenfist/actions`,
+`deploy-proxmox-on-shakenfist`, builds a node inside the
+calling job. It is ported from the private prototype with its
+private parts removed, and has its own weekly lane for
+upstream drift. Ryll's lane uses it first and kerbside's
+follows.
 
 One constraint is already settled and is not an open
 question: **the node's FQDN is load-bearing on our side.**
@@ -207,11 +213,14 @@ broker hands out a proxy address that cannot be dialled and a
 subject that will not match. Any lane must give its node a
 resolvable domain rather than an invented one — which is a
 bug the private deployment hit, and fixed, before it worked.
+Phase 1b asserts at deploy time that `hostname -f`, the node
+certificate and the ticket agree, and maps the FQDN on the
+runner from the ticket itself.
 
 ## What the measurements settled
 
-Measured on 2026-09-20 against the validated node, by
-minting a ticket and driving the full CONNECT -> TLS -> SPICE
+Measured on 2026-09-20 against that deployment, by minting a
+ticket and driving the full CONNECT -> TLS -> SPICE
 link -> auth path against it. Both numbers are also readable
 in PVE's own source, which is quoted here because it explains
 them.
@@ -387,6 +396,7 @@ phase plan links are tracked under *Execution*.
 | Phase | Intent |
 |-------|--------|
 | ~~1. Ticket semantics~~ | Done 2026-09-20, before the plan was scheduled, because it gated the design. See *What the measurements settled* |
+| 1b. CI substrate | A Proxmox deployment action in shakenfist/actions with its own lane, and a ryll lane on it that replaces phase 2's operator-assisted step 2f. Kerbside's lane follows on the same action |
 | 2. Tunnelled transport in ryll | CONNECT support on the backend dial, with the `ServerName` and no-`host_subject` refusal decided and tested both ways |
 | 3a. Minting at connect time | Minting moved into the authorize path through a source-driver hook, with one ticket per session held in daemon memory, and `ovirt.py` converted to request a short explicit expiry and stop persisting the ticket on the `Console` row. Settles the supersession behaviour above first. Not Proxmox-only, and needs nothing from ryll |
 | 3b. Tunnel transport | `Target`/proto change (open question 3), an Alembic migration giving the `Console` row somewhere to record the node and the `spiceproxy` URL (the columns it has today assume a direct address), and `backend.rs` passing the tunnel through. `build_config` (`backend.rs:183`) builds `ConnectionConfig` by struct literal with `tls_port: None` and escalates to TLS only on `NEED_SECURED`, but phase 2 refuses a tunnel without a TLS port, so a tunnelled target must set `tls_port` from the start. Needs phase 2 merged and the pin bumped |
@@ -400,6 +410,11 @@ its own, since it removes a two-hour console password from
 the oVirt path, and it tests the session-scoped ticket design
 against a source that already exists before Proxmox depends
 on it.
+
+Phase 1b lands in `shakenfist/actions` and ryll, and its ryll
+half lands inside phase 2's pull request. Whether kerbside's
+first Proxmox lane lands in phase 3b (a tunnel-dial lane) or
+phase 5 (the end-to-end lane) is settled when 3b is planned.
 
 Phase 1 was carried out against a deployment rather than in
 this repository. Phase 2 lands in `shakenfist/ryll`, and a
@@ -421,10 +436,15 @@ measurement against a deployment, it changed no code, and
 its results are the *What the measurements settled* section
 above. The push audit has nothing of it to read.
 
+Phase 1b's `Merged` cell holds `actions <sha> (#pr)`; its
+ryll half lands inside phase 2's merge and carries no
+separate `Merged` entry of its own.
+
 | Phase | Plan | Status | Merged |
 |-------|------|--------|--------|
 | 1. Ticket semantics | | Complete | |
-| 2. Tunnelled transport in ryll | [PLAN-proxmox-source-phase-02-ryll-connect.md](PLAN-proxmox-source-phase-02-ryll-connect.md) | Not started | |
+| 1b. CI substrate | [PLAN-proxmox-source-phase-01b-ci-substrate.md](PLAN-proxmox-source-phase-01b-ci-substrate.md) | In progress | |
+| 2. Tunnelled transport in ryll | [PLAN-proxmox-source-phase-02-ryll-connect.md](PLAN-proxmox-source-phase-02-ryll-connect.md) | In progress | |
 | 3a. Minting at connect time | | Not started | |
 | 3b. Tunnel transport | | Not started | |
 | 4. The source driver | | Not started | |
@@ -448,6 +468,7 @@ above. The push audit has nothing of it to read.
 
 ## Status
 
-In progress. Phase 1 is complete, and phase 2 is planned
-but not started. The Execution table is the authority on
-each phase's status.
+In progress. Phase 1 is complete, and phases 1b and 2 are
+planned. Phase 2 is in progress in ryll (steps 2a and 2b
+committed on `spice-http-connect`); its validation waits on
+phase 1b.
