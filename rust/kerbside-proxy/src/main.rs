@@ -136,7 +136,7 @@ struct Args {
     /// default, leaving the kernel's receive autotuning alone, for the same
     /// reason as `--client-notsent-lowat-bytes`.
     #[arg(long, default_value_t = 0)]
-    backend_rcvbuf_bytes: usize,
+    backend_rcvbuf_bytes: u32,
 
     /// Enable debug-level logging.
     #[arg(long)]
@@ -196,17 +196,8 @@ async fn main() -> Result<()> {
         "kerbside-proxy starting"
     );
 
-    // gRPC client for the control service over the UDS. The channel is lazy,
-    // so this is infallible and only dials the socket on first use.
-    let rpc = rpc::KerbsideRpc::connect(&args.api_socket);
-
     // Shared, cheaply-cloneable state cloned into each connection task.
-    let state = Arc::new(session::SharedState {
-        rpc,
-        node_name: args.node_name.clone(),
-        sessions: Arc::new(session::SessionRegistry::default()),
-        backend_rcvbuf_bytes: args.backend_rcvbuf_bytes,
-    });
+    let state = Arc::new(shared_state(&args));
 
     // Drop any stale channel rows this node left behind (e.g. from a crash or
     // an unclean restart) before accepting new connections, via the
@@ -393,8 +384,62 @@ async fn shutdown_signal() {
     }
 }
 
+/// Build the state shared by every connection task from the parsed flags.
+/// The gRPC channel to the control service is lazy, so this is infallible
+/// and only dials the socket on first use.
+fn shared_state(args: &Args) -> session::SharedState {
+    session::SharedState {
+        rpc: rpc::KerbsideRpc::connect(&args.api_socket),
+        node_name: args.node_name.clone(),
+        sessions: Arc::new(session::SessionRegistry::default()),
+        backend_rcvbuf_bytes: args.backend_rcvbuf_bytes,
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::{shared_state, Args};
+    use clap::Parser;
+
+    /// Both socket-tuning flags default to 0 (off), and a value given on the
+    /// command line reaches the place that applies it: `SharedState` for the
+    /// backend leg, and the parsed flag `main` passes to `run_secure` for the
+    /// client leg. Both defaults are no-ops, so a mis-wiring would otherwise
+    /// be invisible.
+    #[tokio::test]
+    async fn socket_tuning_flags_reach_shared_state() {
+        let args = Args::try_parse_from(["kerbside-proxy"]).expect("defaults parse");
+        assert_eq!(args.client_notsent_lowat_bytes, 0);
+        assert_eq!(shared_state(&args).backend_rcvbuf_bytes, 0);
+
+        let args = Args::try_parse_from([
+            "kerbside-proxy",
+            "--client-notsent-lowat-bytes",
+            "131072",
+            "--backend-rcvbuf-bytes",
+            "212992",
+        ])
+        .expect("tuning flags parse");
+        assert_eq!(args.client_notsent_lowat_bytes, 131_072);
+        assert_eq!(shared_state(&args).backend_rcvbuf_bytes, 212_992);
+    }
+
+    /// Both flags are u32, the bound `kerbside/config.py` validates against,
+    /// so a value the daemon's config accepts is never one clap rejects.
+    #[test]
+    fn socket_tuning_flags_share_the_config_bound() {
+        for flag in ["--client-notsent-lowat-bytes", "--backend-rcvbuf-bytes"] {
+            assert!(
+                Args::try_parse_from(["kerbside-proxy", flag, "4294967295"]).is_ok(),
+                "{flag} rejected u32::MAX"
+            );
+            assert!(
+                Args::try_parse_from(["kerbside-proxy", flag, "4294967296"]).is_err(),
+                "{flag} accepted u32::MAX + 1"
+            );
+        }
+    }
+
     /// The contract hash build.rs embeds must be a bare lowercase-hex sha256:
     /// the daemon's handshake compares it verbatim against the Python
     /// constant, so any stray formatting would be an unconditional mismatch.

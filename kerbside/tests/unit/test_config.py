@@ -55,3 +55,13 @@ class ProxySocketTuningConfigTestCase(testtools.TestCase):
         self.assertRaises(
             pydantic.ValidationError, self._config,
             PROXY_BACKEND_RCVBUF_BYTES='-1')
+
+    def test_values_beyond_the_proxy_flag_width_are_rejected(self):
+        # The proxy's flags are u32; its own test pins the same bound.
+        for name in ('PROXY_CLIENT_NOTSENT_LOWAT_BYTES',
+                     'PROXY_BACKEND_RCVBUF_BYTES'):
+            self.assertEqual(
+                2**32 - 1, getattr(self._config(**{name: '4294967295'}), name))
+            self.assertRaises(
+                pydantic.ValidationError, self._config,
+                **{name: '4294967296'})

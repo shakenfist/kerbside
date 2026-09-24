@@ -10,7 +10,8 @@ activity's frame interval rather than the key's latency.
 
 The `rect` field of `surface_drawn` is not in the ryll control socket
 protocol (v1.2); it comes from ryll-surface-drawn-rect.patch, which
-build-ryll.sh applies. This script refuses to run without it.
+build-ryll.sh applies. This script refuses to run without it: an
+unmeasured probe press after warmup must produce a key-box draw.
 
 One key press is outstanding at a time: press, wait for its draw (or
 time out), then pause a random interval so presses do not phase-lock
@@ -120,6 +121,15 @@ class Client:
                 self.cond.wait(left)
 
 
+def press(c, scancode):
+    """Press and release a key; return the press time in microseconds."""
+    press_us = int(time.time() * 1_000_000)
+    c.send('send_key', {'scancode': scancode, 'state': 'down'})
+    time.sleep(0.05)
+    c.send('send_key', {'scancode': scancode, 'state': 'up'})
+    return press_us
+
+
 def main():
     args = _parse_args()
     box = tuple(int(v) for v in args.box.split(','))
@@ -135,9 +145,17 @@ def main():
     threading.Thread(target=c.reader, daemon=True).start()
 
     time.sleep(args.warmup)
-    if c.missing_rect and not c.draw_events:
-        sys.exit('surface_drawn has no rect field: ryll lacks '
-                 'ryll-surface-drawn-rect.patch (see build-ryll.sh)')
+    # Probe with one unmeasured press: its key-box draw is the only event
+    # guaranteed to arrive whatever the activity, so it is what proves the
+    # rect patch is present (an idle guest draws nothing during warmup).
+    probe_us = press(c, args.scancode)
+    if c.wait_box_draw_after(probe_us, args.timeout) is None:
+        if c.missing_rect:
+            sys.exit('surface_drawn has no rect field: ryll lacks '
+                     'ryll-surface-drawn-rect.patch (see build-ryll.sh)')
+        sys.exit(f'the probe key press drew nothing in the key box within '
+                 f'{args.timeout:.0f}s; is the keydraw guest running?')
+    time.sleep(random.uniform(args.interval_min, args.interval_max))
 
     samples = []
     timeouts = 0
@@ -146,10 +164,7 @@ def main():
     while len(samples) < args.samples and not c.eof:
         with c.cond:
             c.box_draws.clear()
-        press_us = int(time.time() * 1_000_000)
-        c.send('send_key', {'scancode': args.scancode, 'state': 'down'})
-        time.sleep(0.05)
-        c.send('send_key', {'scancode': args.scancode, 'state': 'up'})
+        press_us = press(c, args.scancode)
         drawn = c.wait_box_draw_after(press_us, args.timeout)
         if drawn is None:
             timeouts += 1

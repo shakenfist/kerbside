@@ -261,6 +261,21 @@ stop_pid() {
     wait "$1" 2>/dev/null || true
 }
 
+# Record why a case produced no measurement, stop what it started, and
+# fail. summarise.py counts setup-failed repeats instead of pooling them,
+# so a systematic setup fault shows as failures rather than as thin data.
+fail_case() {
+    local out="$1" reason="$2"
+    shift 2
+    log "${reason}; case recorded as failed"
+    echo "${reason}" > "${out}/setup-failed"
+    local pid
+    for pid in "$@"; do
+        stop_pid "${pid}"
+    done
+    return 1
+}
+
 # ── One case ─────────────────────────────────────────────────────────────────
 
 run_case() {
@@ -282,8 +297,11 @@ run_case() {
         -serial "file:${out}/serial.log" -display none \
         > "${out}/qemu.log" 2>&1 &
     local qemu_pid=$!
-    wait_port "${SPICE_PORT}" || { log 'qemu SPICE port never opened'; return 1; }
+    wait_port "${SPICE_PORT}" ||
+        { fail_case "${out}" 'qemu SPICE port never opened' "${qemu_pid}"; return 1; }
 
+    # start-rust-proxy.sh waits for every listener and fails if one never
+    # comes up (including a binary that rejects the tuning flags).
     "${DQ}/start-rust-proxy.sh" --tls-dir "${WORKDIR}/tls" \
         --api-socket "${GRPC_SOCKET}" --pid-file "${out}/proxy.pid" \
         --log-path "${out}/proxy.log" --binary "${PROXY_BIN}" \
@@ -291,7 +309,13 @@ run_case() {
         --insecure-port "${PROXY_INSECURE_PORT}" \
         --prometheus-port "${PROM_PORT}" --host-subject "${PROXY_SUBJECT}" \
         -- --client-notsent-lowat-bytes "${lowat}" \
-        --backend-rcvbuf-bytes "${rcvbuf}" > "${out}/start-proxy.log" 2>&1
+        --backend-rcvbuf-bytes "${rcvbuf}" > "${out}/start-proxy.log" 2>&1 || {
+        local failed_pid
+        failed_pid="$(cat "${out}/proxy.pid" 2>/dev/null)"
+        fail_case "${out}" "proxy did not start; see ${out}/start-proxy.log" \
+            "${qemu_pid}" ${failed_pid:+"${failed_pid}"}
+        return 1
+    }
     local proxy_pid
     proxy_pid="$(cat "${out}/proxy.pid")"
 
@@ -302,9 +326,15 @@ run_case() {
     in_client "${RYLL_BIN}" --headless --file "${CONSOLE_VV}" \
         --control-socket "${ryll_sock}" "${RYLL_EXTRA[@]}" > "${out}/ryll.out" 2> "${out}/ryll.err" &
     local ryll_pid=$!
-    for _ in $(seq 80); do
-        [ -S "${ryll_sock}" ] && break
+    local waited=0
+    until [ -S "${ryll_sock}" ]; do
+        if [ "${waited}" -ge 80 ] || ! kill -0 "${ryll_pid}" 2>/dev/null; then
+            fail_case "${out}" "ryll control socket never appeared; see ${out}/ryll.err" \
+                "${ryll_pid}" "${proxy_pid}" "${qemu_pid}"
+            return 1
+        fi
         sleep 0.25
+        waited=$((waited + 1))
     done
 
     (

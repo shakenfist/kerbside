@@ -185,11 +185,15 @@ class Config(BaseSettings):
     # SPICE proxy socket tuning. Both are passed to the Rust proxy only when
     # set, so that a newer daemon can still launch an older proxy binary that
     # predates the flags. Unset (None) means "use the proxy's own default";
-    # 0 turns the option off entirely.
+    # 0 turns the option off entirely. The upper bound is the proxy's: both
+    # flags are u32, so a larger value would fail its argument parsing at
+    # startup rather than here, with the setting's name attached.
     PROXY_CLIENT_NOTSENT_LOWAT_BYTES: int | None = Field(
         None,
         ge=0,
-        description=('TCP_NOTSENT_LOWAT for each client-leg SPICE socket, in '
+        le=2**32 - 1,
+        description=('TCP_NOTSENT_LOWAT for each accepted TLS client-leg '
+                     'SPICE socket, in '
                      'bytes: the most unsent data the kernel queues before '
                      'the proxy stops relaying from the hypervisor. Moves '
                      'the display backlog on a slow link from the proxy to '
@@ -198,6 +202,7 @@ class Config(BaseSettings):
     PROXY_BACKEND_RCVBUF_BYTES: int | None = Field(
         None,
         ge=0,
+        le=2**32 - 1,
         description=('SO_RCVBUF for each hypervisor-leg SPICE socket, in '
                      'bytes, capping the backlog the proxy accepts from '
                      'spice-server while a client is slow. Linux clamps it '

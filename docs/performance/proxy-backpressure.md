@@ -120,7 +120,10 @@ the display data waiting behind a key press sat, as the median KiB
 at each of the three places:
 
 - **client**: the proxy's client-leg Send-Q;
-- **proxy rcvq**: the proxy's backend-leg receive queue;
+- **proxy rcvq**: the proxy's backend-leg Recv-Q, the payload bytes
+  spice-server has sent that the proxy has not yet read (the kernel
+  memory charged for them, `skmem` `r`, is higher by the per-packet
+  overhead; `summarise.py` prints both);
 - **qemu**: spice-server's Send-Q.
 
 | Link (RTT / rate) | Activity | Proxy | p50 ms | p95 ms | max ms | Display Mbit/s | Backlog: client / proxy rcvq / qemu (KiB) |
@@ -129,32 +132,36 @@ at each of the three places:
 | | | tuned | 36 | 50 | 52 | 0.0 | 0 / 0 / 0 |
 | | | small | 37 | 49 | 52 | 0.0 | 0 / 0 / 0 |
 | | busy | stock | 138 | 180 | 191 | 47.8 | 646 / 0 / 0 |
-| | | tuned | 134 | 173 | 178 | 47.8 | 320 / 381 / 124 |
-| | | small | 137 | 175 | 214 | 47.8 | 247 / 93 / 353 |
-| | heavy | stock | 251 | 323 | 340 | 47.8 | 764 / 577 / 0 |
-| | | tuned | 262 | 326 | 353 | 47.8 | 320 / 386 / 731 |
-| | | small | 246 | 324 | 350 | 47.8 | 250 / 93 / 994 |
+| | | tuned | 134 | 173 | 178 | 47.8 | 320 / 181 / 124 |
+| | | small | 137 | 175 | 214 | 47.8 | 247 / 28 / 353 |
+| | heavy | stock | 251 | 323 | 340 | 47.8 | 764 / 394 / 0 |
+| | | tuned | 262 | 326 | 353 | 47.8 | 320 / 257 / 731 |
+| | | small | 246 | 324 | 350 | 47.8 | 250 / 28 / 994 |
 | 80 ms / 10 Mbit | idle | stock | 97 | 111 | 112 | 0.1 | 0 / 0 / 0 |
 | | | tuned | 97 | 110 | 111 | 0.1 | 0 / 0 / 0 |
 | | | small | 98 | 110 | 112 | 0.1 | 0 / 0 / 0 |
 | | busy | stock | 189 | 219 | 532 | 9.5 | 201 / 0 / 0 |
 | | | tuned | 184 | 223 | 229 | 9.5 | 198 / 0 / 0 |
 | | | small | 186 | 224 | 248 | 9.5 | 188 / 0 / 0 |
-| | heavy | stock | 2109 | 2386 | 2686 | 9.6 | 614 / 1954 / 0 |
-| | | tuned | 2094 | 2440 | 2715 | 9.6 | 277 / 386 / 1995 |
-| | | small | 2024 | 2343 | 2429 | 9.6 | 205 / 93 / 1952 |
+| | heavy | stock | 2109 | 2386 | 2686 | 9.6 | 614 / 1835 / 0 |
+| | | tuned | 2094 | 2440 | 2715 | 9.6 | 277 / 255 / 1995 |
+| | | small | 2024 | 2343 | 2429 | 9.6 | 205 / 28 / 1952 |
 | 80 ms / 50 Mbit | idle | stock | 97 | 110 | 112 | 0.1 | 0 / 0 / 0 |
 | | | tuned | 96 | 109 | 111 | 0.1 | 0 / 0 / 0 |
 | | | small | 96 | 110 | 112 | 0.1 | 0 / 0 / 0 |
 | | busy | stock | 100 | 111 | 113 | 17.9 | 190 / 0 / 9 |
 | | | tuned | 99 | 113 | 118 | 17.9 | 192 / 0 / 16 |
 | | | small | 99 | 112 | 115 | 17.9 | 190 / 0 / 0 |
-| | heavy | stock | 473 | 580 | 613 | 47.6 | 2027 / 150 / 0 |
-| | | tuned | 457 | 580 | 608 | 47.6 | 928 / 386 / 1264 |
-| | | small | 465 | 563 | 594 | 47.6 | 843 / 93 / 1517 |
+| | heavy | stock | 473 | 580 | 613 | 47.6 | 2027 / 128 / 0 |
+| | | tuned | 457 | 580 | 608 | 47.6 | 928 / 292 / 1264 |
+| | | small | 465 | 563 | 594 | 47.6 | 843 / 28 / 1517 |
 
 `summarise.py` prints the fuller table, which adds p95 queue depths,
-the client-leg sRTT and cwnd, and the backend receive buffer size.
+the client-leg sRTT and cwnd, the backend receive buffer size and the
+kernel memory charged to it, the repeat counts, and the display
+throughput a second time from the proxy's own `/metrics` relay counter
+(it agrees with the `ss` figure above to within 0.8 Mbit/s in every
+row).
 
 ## What the numbers say
 
@@ -162,10 +169,11 @@ the client-leg sRTT and cwnd, and the backend receive buffer size.
   display updates.** At 80 ms / 10 Mbit with incompressible activity,
   a key press waits about 2.1 s (p50) to be drawn, against 97 ms idle.
   The same activity at 20 ms / 50 Mbit costs about 250 ms.
-- **The proxy's buffers are not what makes it that long.** Stock puts
-  about 2.5 MiB of backlog in the proxy (client Send-Q plus backend
-  receive queue). Tuned and small cut that to about 0.3-0.7 MiB.
-  spice-server's Send-Q then grows by almost exactly the difference.
+- **The proxy's buffers are not what makes it that long.** With
+  heavy activity on the 80 ms links, stock puts about 2.1-2.4 MiB of
+  backlog in the proxy (client Send-Q plus backend Recv-Q). Tuned and
+  small cut that to 0.2-0.5 MiB at 10 Mbit and 0.9-1.2 MiB at
+  50 Mbit, and spice-server's Send-Q grows by roughly the difference.
   The total, and with it the latency, stays the same within noise in
   every row.
 - **Why: spice-server's ACK window is the binding limit.** A display

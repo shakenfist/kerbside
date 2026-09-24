@@ -132,7 +132,7 @@ pub struct SharedState {
     pub sessions: Arc<SessionRegistry>,
     /// `SO_RCVBUF` cap applied to each backend-leg socket once connected
     /// (`--backend-rcvbuf-bytes`); 0 leaves the kernel's autotuning alone.
-    pub backend_rcvbuf_bytes: usize,
+    pub backend_rcvbuf_bytes: u32,
 }
 
 /// Overall time budget for the client-facing handshake reads/writes (link

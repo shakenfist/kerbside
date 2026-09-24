@@ -280,11 +280,11 @@ fn tcp_of(stream: &SpiceStream) -> &TcpStream {
 ///
 /// `bytes` of 0 leaves the kernel default in place. Best-effort, like the
 /// client-leg options: a failure is logged and NON-fatal.
-fn set_backend_rcvbuf(stream: &SpiceStream, bytes: usize, connection_ref: &str) {
+fn set_backend_rcvbuf(stream: &SpiceStream, bytes: u32, connection_ref: &str) {
     if bytes == 0 {
         return;
     }
-    if let Err(e) = SockRef::from(tcp_of(stream)).set_recv_buffer_size(bytes) {
+    if let Err(e) = SockRef::from(tcp_of(stream)).set_recv_buffer_size(bytes as usize) {
         warn!(
             %connection_ref,
             bytes,
@@ -484,10 +484,15 @@ mod tests {
         let after = SockRef::from(tcp_of(&stream))
             .recv_buffer_size()
             .expect("reading SO_RCVBUF");
-        // Linux doubles the requested value on read-back; other platforms
-        // report it as set.
+        // Linux clamps the request to net.core.rmem_max, then doubles it on
+        // read-back; other platforms report it as set.
         if cfg!(target_os = "linux") {
-            assert_eq!(after, 262_144);
+            let rmem_max: usize = std::fs::read_to_string("/proc/sys/net/core/rmem_max")
+                .expect("reading net.core.rmem_max")
+                .trim()
+                .parse()
+                .expect("parsing net.core.rmem_max");
+            assert_eq!(after, 2 * rmem_max.min(131_072));
         } else {
             assert!(after >= 131_072, "SO_RCVBUF read back as {after}");
         }
