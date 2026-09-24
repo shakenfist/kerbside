@@ -1,10 +1,10 @@
 # Proxy backpressure on a shaped client link
 
 This page records Kerbside's first keypress-to-draw latency figures
-over a shaped (WAN-like) client link. It also records the result of
-phase 1 of [PLAN-spice-performance](../plans/PLAN-spice-performance.md):
-whether bounding the proxy's own socket buffers shortens the display
-backlog on a slow link.
+over a shaped (WAN-like) client link, and whether bounding the proxy's
+own socket buffers shortens the display backlog on a slow link. The
+wider SPICE performance work is tracked in
+[PLAN-spice-performance](../plans/PLAN-spice-performance.md).
 
 **The result is null.** `TCP_NOTSENT_LOWAT` on the client leg and a
 capped `SO_RCVBUF` on the backend leg make no measurable difference
@@ -165,8 +165,7 @@ row).
 
 ## What the numbers say
 
-- **The plan's premise holds: slow links do build seconds of stale
-  display updates.** At 80 ms / 10 Mbit with incompressible activity,
+- **Slow links do build seconds of stale display updates.** At 80 ms / 10 Mbit with incompressible activity,
   a key press waits about 2.1 s (p50) to be drawn, against 97 ms idle.
   The same activity at 20 ms / 50 Mbit costs about 250 ms.
 - **The proxy's buffers are not what makes it that long.** With
@@ -209,8 +208,8 @@ row).
 ## Recommended defaults
 
 Both options are **off** by default (0). The measurement gives no
-latency or throughput reason to turn them on, and the plan's rule for
-a null result is to ship them disabled. The flags and the
+latency or throughput reason to turn them on, so they ship
+disabled. The flags and the
 `PROXY_CLIENT_NOTSENT_LOWAT_BYTES` / `PROXY_BACKEND_RCVBUF_BYTES`
 settings remain, because they have one real effect: they move up to
 about 2.5 MiB per busy session of kernel socket memory off the proxy
@@ -240,6 +239,6 @@ These are follow-ups, not work done here:
   proxy's client-leg sockets. On these profiles BBR could only trim
   the bottleneck queue (about 20 ms at 20 ms RTT, one BDP), which is
   small next to the ACK-window backlog.
-- **qemu's damage path (phase 2) changes the message sizes** that
-  the ACK window counts. The rig should be rerun against that
-  prototype.
+- **qemu's damage-path series changes the message sizes** that
+  the ACK window counts. [The streaming re-baseline](streaming-rebaseline.md)
+  reruns the rig against it.

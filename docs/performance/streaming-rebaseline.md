@@ -1,19 +1,19 @@
 # Streaming and the qemu damage series on a shaped link
 
-This page records step 0 of phase 3 in
-[the SPICE performance plan](../plans/PLAN-spice-performance.md):
-a re-baseline of keypress-to-draw latency through Kerbside with
-spice-server's video streaming turned on, and with the qemu
-damage-path series and the Linux damage-clip fix that the plan's
-phase 2 produced. It follows
+This page records a re-baseline of keypress-to-draw latency through
+Kerbside with spice-server's video streaming turned on, and with the
+qemu damage-path series and the Linux damage-clip fix carried in
+kerbside-patches. It follows
 [Proxy backpressure on a shaped link](proxy-backpressure.md), whose
-rig, guest and link profiles it reuses. Measured on 2026-09-24.
+rig, guest and link profiles it reuses, and it sizes the transcoding
+work in [the SPICE performance plan](../plans/PLAN-spice-performance.md).
+Measured on 2026-09-24.
 
 ## Summary
 
 - **Most of the 2.1 s baseline was qemu's default configuration.**
-  Phase 1 ran with `streaming-video` at qemu's default, off, which
-  leaves spice-server nothing it can drop. With
+  The backpressure measurement ran with `streaming-video` at qemu's
+  default, off, which leaves spice-server nothing it can drop. With
   `streaming-video=all`, stock Debian qemu draws a keypress at
   80 ms / 10 Mbit under heavy activity in a 166 ms p50 (389 ms p95),
   against 2136 ms (2453 ms) with streaming off. No code changes are
@@ -39,15 +39,15 @@ rig, guest and link profiles it reuses. Measured on 2026-09-24.
     before creating a stream (the first eight presses have a p50
     near 1 s). With `filter` and non-streamable content it costs
     8 s in steady state, against 2.1 s for stock.
-  - This is also the most direct evidence so far for phase 1's
-    explanation: the ACK window bounds the backlog in messages.
+  - This is also the most direct evidence so far for the
+    backpressure page's explanation: the ACK window bounds the
+    backlog in messages.
 - **The kernel damage-clip fix made no difference here.** The
   keydraw guest flushes with `DRM_IOCTL_MODE_DIRTYFB` rectangles,
   and its results are the same with and without the rebuilt
   `drm_kms_helper.ko`. The fix matters for atomic-commit
   compositors, which this guest does not model.
-- **What is left for transcoding (phase 3) is much smaller than
-  2 s.** The idle floor at 80 ms RTT is about 97 ms. With
+- **What is left for transcoding is much smaller than 2 s.** The idle floor at 80 ms RTT is about 97 ms. With
   `streaming-video=all`, heavy activity at 80 ms / 10 Mbit sits
   about 70-100 ms above that floor at p50 and about 200-300 ms at
   p95. At 80 ms / 50 Mbit and at 20 ms / 50 Mbit it is at the
@@ -74,10 +74,9 @@ rig, guest and link profiles it reuses. Measured on 2026-09-24.
   to a VM that is playing video crashes the VM's qemu. It is not
   yet reproduced against spice-server's current master.
 - The rig runs Ryll with `-v` for the stream counts below, which
-  costs a little client CPU. The phase 1 runs did not.
+  costs a little client CPU. The backpressure runs did not.
 - One host, CUBIC, two passes of 40 presses per cell. The v2 and
-  q11 qemu builds are 11.0.50 from the plan's phase 2 scratch
-  builds; the Debian qemu is 10.0.13. The rows `q11-all` and
+  q11 qemu builds are 11.0.50 scratch builds; the Debian qemu is 10.0.13. The rows `q11-all` and
   `sys-all` agree, so the version difference does not explain the
   v2 results.
 
@@ -85,7 +84,7 @@ rig, guest and link profiles it reuses. Measured on 2026-09-24.
 
 | Name | qemu | `streaming-video` | Guest `drm_kms_helper` |
 |------|------|-------------------|------------------------|
-| sys-off | Debian 10.0.13 | off (phase 1's configuration) | stock |
+| sys-off | Debian 10.0.13 | off (the backpressure page's configuration) | stock |
 | sys-filter | Debian 10.0.13 | filter | stock |
 | sys-all | Debian 10.0.13 | all | stock |
 | q11-all | 11.0.50 at 30e8a06b64, unpatched | all | stock |
@@ -96,7 +95,7 @@ rig, guest and link profiles it reuses. Measured on 2026-09-24.
 
 The qemu series and the kernel patch are in kerbside-patches under
 `upstream/qemu/` and `upstream/linux/`. The proxy socket options
-from phase 1 are off in every case.
+from the backpressure measurement are off in every case.
 
 ## Results
 
