@@ -176,7 +176,20 @@ int main(void)
 
     uint32_t conns[8], crtcs[8], encs[8];
     struct drm_mode_card_res res = { 0 };
-    ioctl(dfd, DRM_IOCTL_MODE_GETRESOURCES, &res);
+    if (ioctl(dfd, DRM_IOCTL_MODE_GETRESOURCES, &res) < 0) {
+        die("GETRESOURCES count");
+    }
+    if (!res.count_connectors) {
+        die("no connector");
+    }
+    if (!res.count_crtcs) {
+        die("no crtc");
+    }
+    /* The arrays below hold eight of each; the kernel fills in at most
+     * the counts passed, so clamp them rather than trust the device. */
+    res.count_connectors = res.count_connectors > 8 ? 8 : res.count_connectors;
+    res.count_crtcs = res.count_crtcs > 8 ? 8 : res.count_crtcs;
+    res.count_encoders = res.count_encoders > 8 ? 8 : res.count_encoders;
     res.connector_id_ptr = (uintptr_t)conns;
     res.crtc_id_ptr = (uintptr_t)crtcs;
     res.encoder_id_ptr = (uintptr_t)encs;
@@ -186,7 +199,9 @@ int main(void)
     }
     struct drm_mode_modeinfo modes[32];
     struct drm_mode_get_connector conn = { .connector_id = conns[0] };
-    ioctl(dfd, DRM_IOCTL_MODE_GETCONNECTOR, &conn);
+    if (ioctl(dfd, DRM_IOCTL_MODE_GETCONNECTOR, &conn) < 0) {
+        die("GETCONNECTOR count");
+    }
     conn.count_props = 0;
     conn.count_encoders = 0;
     conn.count_modes = conn.count_modes > 32 ? 32 : conn.count_modes;

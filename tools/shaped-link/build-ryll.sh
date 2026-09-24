@@ -20,10 +20,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 OUTDIR="${1:?usage: build-ryll.sh OUTDIR}"
-RYLL_SRC="${RYLL_SRC:-${REPO_ROOT}/../ryll}"
-if [ ! -d "${RYLL_SRC}" ]; then
-    RYLL_SRC='https://github.com/shakenfist/ryll.git'
+# Fall back to upstream only when RYLL_SRC was not given: an explicit URL or
+# path is used as is, so a typo fails at the clone instead of quietly
+# building upstream ryll.
+if [ -z "${RYLL_SRC:-}" ]; then
+    RYLL_SRC="${REPO_ROOT}/../ryll"
+    [ -d "${RYLL_SRC}" ] || RYLL_SRC='https://github.com/shakenfist/ryll.git'
 fi
+echo "build-ryll.sh: building ryll from ${RYLL_SRC}"
 RYLL_REF="${RYLL_REF:-HEAD}"
 
 mkdir -p "${OUTDIR}"

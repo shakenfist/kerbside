@@ -401,11 +401,11 @@ mod tests {
     use super::{shared_state, Args};
     use clap::Parser;
 
-    /// Both socket-tuning flags default to 0 (off), and a value given on the
-    /// command line reaches the place that applies it: `SharedState` for the
-    /// backend leg, and the parsed flag `main` passes to `run_secure` for the
-    /// client leg. Both defaults are no-ops, so a mis-wiring would otherwise
-    /// be invisible.
+    /// Both socket-tuning flags default to 0 (off) and parse from the command
+    /// line, and the backend value reaches `SharedState`, where each backend
+    /// connection reads it. Both defaults are no-ops, so a mis-wiring would
+    /// otherwise be invisible. The client value's path into `run_secure` is
+    /// not covered here.
     #[tokio::test]
     async fn socket_tuning_flags_reach_shared_state() {
         let args = Args::try_parse_from(["kerbside-proxy"]).expect("defaults parse");

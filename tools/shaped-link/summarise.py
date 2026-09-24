@@ -81,15 +81,26 @@ def parse_ss(path, t0, t1):
 
 
 def metric(path, direction):
+    """Return the relay counter from a /metrics scrape, or None if unknown.
+
+    A labelled counter has no series until its first increment, so a
+    successful scrape without one means zero bytes (the usual state at t0,
+    before the display channel has relayed a frame). run-matrix.sh also
+    tolerates a failed scrape, which leaves an empty file: that is unknown,
+    not zero, so it returns None.
+    """
+    scraped = False
     try:
         with open(path) as f:
             for line in f:
+                if line.startswith('kerbside_proxy_'):
+                    scraped = True
                 if (line.startswith('kerbside_proxy_bytes_relayed_total{')
                         and direction in line):
                     return int(line.split()[-1])
     except OSError:
         pass
-    return 0
+    return 0 if scraped else None
 
 
 def case_stats(rep_dirs):
@@ -117,10 +128,10 @@ def case_stats(rep_dirs):
             failed += 1
             continue
         good += 1
-        relayed.append(
-            (metric(os.path.join(d, 'metrics-1.txt'), 'server_to_client')
-             - metric(os.path.join(d, 'metrics-0.txt'), 'server_to_client'))
-            * 8 / (t1 - t0) / 1e6)
+        m0 = metric(os.path.join(d, 'metrics-0.txt'), 'server_to_client')
+        m1 = metric(os.path.join(d, 'metrics-1.txt'), 'server_to_client')
+        if m0 is not None and m1 is not None:
+            relayed.append((m1 - m0) * 8 / (t1 - t0) / 1e6)
         socks = parse_ss(os.path.join(d, 'ss.txt'), t0, t1)
         client = {k: v for k, v in socks.items() if k[0].endswith(':5900')}
         backend = {k: v for k, v in socks.items() if k[1].endswith(':5910')}

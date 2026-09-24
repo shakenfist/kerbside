@@ -135,6 +135,8 @@ def main():
     box = tuple(int(v) for v in args.box.split(','))
     c = Client(args.socket, box)
 
+    # 1.1 is the oldest protocol with surface_drawn, the only event this
+    # needs; ryll accepts a lower minor version than it speaks.
     resp = c.request('hello', {'client_name': 'kerbside-shaped-link',
                                'protocol_version': '1.1'})
     if not resp.get('ok'):

@@ -47,8 +47,13 @@ Everything runs unprivileged, inside a user plus network namespace
 one side of a veth pair. ryll sits in a nested network namespace on
 the other side:
 
-```
-ryll --(veth, netem delay + rate, both directions)--> kerbside-proxy --(loopback)--> qemu
+```mermaid
+flowchart TD
+    ryll["ryll (nested namespace)"]
+    proxy[kerbside-proxy]
+    qemu["qemu (keydraw guest)"]
+    ryll -->|"veth, netem delay + rate, both directions"| proxy
+    proxy -->|loopback| qemu
 ```
 
 Only the client leg is shaped. Each direction gets
