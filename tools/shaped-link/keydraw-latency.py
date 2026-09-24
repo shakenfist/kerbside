@@ -21,6 +21,9 @@ Outputs, under --output-prefix:
   <prefix>.json  counts, timeouts, dropped events, draw event totals
 """
 
+# audit-allow-print: this is a measurement CLI -- run-matrix.sh captures
+# its progress lines and JSON summary on stdout into keydraw.log.
+
 import argparse
 import json
 import random

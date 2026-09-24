@@ -15,6 +15,9 @@ occupancy (bytes the proxy has not yet read from spice-server), and
 spice-server's own Send-Q on that connection.
 """
 
+# audit-allow-print: this is a reporting CLI -- its markdown tables on
+# stdout are the output (see run-matrix.sh).
+
 import collections
 import json
 import os
