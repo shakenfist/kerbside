@@ -160,7 +160,7 @@ Future work for what is scheduled.
 
 | # | Change | Where | Upstream odds |
 |---|--------|-------|---------------|
-| 0 | Proxy socket backpressure | Kerbside | Ours |
+| 0 | Proxy socket backpressure (disproven by phase 1) | Kerbside | Ours |
 | 1 | Rect-list damage, damage-driven pacing, no column slicing, one copy | qemu `ui/spice-display.c` | Good |
 | 2 | Per-session, scoped, one-time tickets; secondary channels authenticate by `connection_id` | spice-server, qemu, libvirt | Medium |
 | 3 | Lossless refinement when idle, and real damage for remote `gl=on` | spice-server, qemu | Plausible |
@@ -216,11 +216,12 @@ first phase.
 2. **Where do upstream patch series live?** Decided on
    2026-09-23: in shakenfist/kerbside-patches, next to the
    patches we already carry.
-   - That repository's tooling is shaped around OpenStack.
-     `_build/assemble-source.sh` applies every project whose
-     `release` matches the build target, so a `qemu/` or
-     `linux/` project needs a release value of its own to keep
-     it out of the Kolla image build.
+   - That repository's tooling is shaped around OpenStack and
+     discovers projects as `./<project>/config.yaml`. The
+     series therefore live one level deeper, under
+     `upstream/qemu/` and `upstream/linux/`, where none of it
+     looks. A `release` value of their own was considered and
+     rejected, because not every tool filters on release.
    - Those projects also need a non-OpenStack test path
      (build, then the measurement rig) and a mailing-list
      submission path (`git send-email`/b4, not Gerrit).
@@ -236,21 +237,28 @@ first phase.
    phase 4, not an input.
 4. **Transcode or relay: who decides, and when?** Phase 3's
    question. Once Kerbside re-encodes a display channel it owns
-   the client's cache state, so a session cannot drop back to
-   plain relay mid-flight. The choice is made per session at
-   connect time; how (measured RTT, a client hint, operator
-   policy per source, or some mix) is for phase 3 to answer.
+   the client's cache state (pixmap cache, GLZ dictionary,
+   stream IDs). The plan does not yet know whether a session
+   can move back to relay mid-flight: reconnecting the backend
+   display channel, plus `INVAL_ALL_PIXMAPS` and a surface
+   destroy and recreate on the client, might do it. If it
+   cannot, the choice is made per session at connect, from
+   measured RTT, a client hint, operator policy per source, or
+   some mix, and a session that moves from office Wi-Fi to LTE
+   keeps its first choice for its lifetime. The alternative,
+   always transcoding with a near-lossless LAN mode, removes
+   the choice at the cost of CPU on every session.
 
 ## Execution
 
 | Phase | Plan | Status | Merged |
 |-------|------|--------|--------|
 | 1. Proxy backpressure and a WAN baseline | [PLAN-spice-performance-phase-01-proxy-backpressure.md](PLAN-spice-performance-phase-01-proxy-backpressure.md) | In progress | |
-| 2. qemu damage path: prototype, measure, send upstream | | In progress | |
+| 2. qemu damage path: prototype and measure; carry qemu, submit the kernel fix | | In progress | |
 | 3. Display transcoding in Kerbside: feasibility spike | | Not started | |
 | 4. Son of SPICE: D-Bus display feasibility spike | | Not started | |
-| 5. Small spice-server patches (items 4 and 9) | | Not started | |
-| 6. Push audit | | Not started | |
+| 5. Small spice-server patches (item 9, and item 4 if still wanted) | | Not started | |
+| 6. Push audit (kerbside and kerbside-patches) | | Not started | |
 
 **Phase 1** sets `TCP_NOTSENT_LOWAT` on the client leg and caps
 the backend leg's receive buffer, with the values made
@@ -267,17 +275,21 @@ latency figures.
 **Phase 2** started on 2026-09-23 as an out-of-tree prototype.
 It is a patch series against qemu `ui/spice-display.c`,
 measured with Ryll in headless mode against a virtio-gpu guest.
-The prototype has reported (results above). A v2 that adds a
-pacing option, unit tests, worst-case benchmarks and std-vga,
-qxl-VGA and multi-head coverage is being prepared. A companion
-kernel patch for the virtio-gpu damage-clip bug is being drafted
-alongside it. The phase plan covers:
-- landing both series in kerbside-patches;
-- the qemu-devel and dri-devel submissions.
+The prototype, its v2 and a companion kernel patch for the
+virtio-gpu damage-clip bug have all reported (below). Both
+series and their rigs were imported into kerbside-patches on
+2026-09-24 (`upstream/`, commit 0b5163bf on its
+`upstream-series` branch). The phase plan still to be written
+covers:
+- landing that import;
+- the dri-devel submission of the kernel fix. qemu is carried
+  downstream, not submitted (below).
 
-Its `Merged` cell records `qemu <sha>` and `linux <sha>`, and
-the push audit cites the upstream reviews rather than
-re-running them.
+Its `Merged` cell records `kerbside-patches <sha> (#pr)` for the
+import, and `linux <sha>` once the kernel fix lands. The push
+audit cites kerbside-patches' own audit for the import and the
+dri-devel review for the kernel fix. The carried qemu series
+has no upstream review, so its audit is kerbside-patches' own.
 
 Both have now reported, and each upstream has its own
 contribution rule.
@@ -373,11 +385,16 @@ Most of the pieces exist in Ryll:
 - `shakenfist-spice-webrtc` is the browser bridge `ryll --web`
   uses.
 
-Kerbside already depends on Ryll's protocol crate, and it
-already answers the client's link itself with its own caps
-(`session.rs`), so the two legs are negotiated separately
-today. The new code is the half that emits a SPICE display
-channel to the client.
+Kerbside already depends on Ryll's protocol crate, and the two
+legs are already negotiated separately, but not usefully. The
+client leg answers with fixed caps (`session.rs`), and the
+backend leg always advertises Ryll's `DEFAULT_DISPLAY`
+(`shakenfist-spice-protocol/src/link.rs:596`), whatever the real
+client said. That is a bug in today's product (#477), and every
+measurement so far used Ryll's capabilities. Transcoding needs
+the same fix: capabilities chosen per connection, which the ryll
+crate cannot take today. The new code beyond that is the half
+that emits a SPICE display channel to the client.
 
 Output modes, in the order to build them:
 
@@ -391,49 +408,112 @@ Output modes, in the order to build them:
    - Only display channels are terminated. Cursor, inputs,
      audio and USB stay plain relays, so this is much smaller
      than `ryll --web`.
-   - On the backend leg Kerbside advertises no stream codecs,
-     so spice-server sends lossless drawing over the LAN and
-     the picture is compressed lossily only once. That also
-     sidesteps ryll#398, the broken H.264 decode.
+   - On the backend leg Kerbside advertises `MULTI_CODEC` with
+     no `CODEC_*` bits, so spice-server has no stream encoder to
+     pick and the picture is compressed lossily only once. This
+     has to be precise: a client without `MULTI_CODEC` still
+     gets MJPEG (`server/video-stream.cpp:801-835`). What
+     spice-server does when no encoder is available, which is
+     presumably to keep sending plain drawing, is not yet
+     verified. It also sidesteps ryll#398, the broken H.264
+     decode.
 3. **WebRTC out,** for browsers: `ryll --web` moved into
    Kerbside. It brings UDP and loss handling, but Kerbside
    would have to terminate every channel, so it is a later
-   step and is not in this spike.
+   step and is not in this spike. It raises the same UDP
+   exposure question as phase 4's QUIC design input (ports,
+   NAT and TURN, firewall operations). That is one transport
+   decision for Kerbside, to be made once for both phases.
 
 The spike:
-1. terminate one display channel in the proxy with Ryll's
+0. **Validate the premise and build a fair baseline** before
+   building anything.
+   - Phase 1's 2.1 s p50 (80 ms / 10 Mbit, heavy activity) was
+     measured with qemu's `streaming-video` at its default, off
+     (`docs/performance/proxy-backpressure.md:112`). Without
+     streams nothing is droppable: spice-server's frame dropping
+     while it waits for an ACK applies only to stream frames.
+     Re-measure the rig with `streaming-video=filter`, and again
+     with the phase 2 qemu series and the kernel fix. If those
+     close most of the gap, the case for transcoding is
+     re-argued before continuing.
+   - Phase 1 attributes the throughput cap to spice-server's ACK
+     window from reading the code, not from observing it.
+     Confirm it directly, either by tracing `waiting_for_ack` or
+     by having Kerbside acknowledge on the client's behalf in
+     relay mode on the rig. That cap lifting at 80 ms / 50 Mbit
+     would confirm the mechanism transcoding depends on.
+1. make capabilities per connection (#477), in the ryll crate
+   and in Kerbside;
+2. terminate one display channel in the proxy with Ryll's
    renderer, and re-emit it as SPICE: an MJPEG stream (which
    remote-viewer decodes without GStreamer) for the busy region
    plus JPEG drawing, paced by the client socket;
-2. measure it on the shaped-link rig against phase 1's
-   baseline, which is a 2.1 s p50 keypress-to-draw time at
-   80 ms / 10 Mbit with heavy screen activity. Record image
-   quality and CPU per session alongside latency;
-3. check that remote-viewer and Ryll both render the result
-   correctly.
+3. measure it against step 0's baseline matrix. Record per
+   session:
+   - keypress-to-draw latency;
+   - CPU on the Kerbside host, including on an unshaped LAN
+     link, which is the cost of the always-transcode option in
+     Open question 4;
+   - image quality as SSIM and PSNR against a lossless capture
+     of the same run, plus a check that text stays legible;
+   - the guest's damage path (atomic damage clips or DIRTYFB),
+     because of the kernel bug in finding 2.
+   H.264 output cannot be measured this way until ryll#398 is
+   fixed, and remote-viewer reports no timings, so the spike
+   measures MJPEG only;
+4. check that remote-viewer and Ryll both render the result
+   correctly;
+5. test whether a session can move between relay and
+   transcoding mid-flight (Open question 4).
+
+Out of scope for the spike, and each needs an answer before a
+productising plan:
+- multiple monitors, meaning several display channels;
+- remote `gl=on`, where spice-server sends only a video
+  stream, so Kerbside would have to decode H.264 (ryll#398) and
+  the picture would be compressed lossily twice;
+- QXL off-screen surfaces;
+- seamless migration. Kerbside's allowlist relays the
+  `MIGRATE*` messages, and a transcoder that holds state must
+  either handle them or refuse them;
+- how the firewall policy's L0 size and rate caps apply once
+  the display channel is terminated rather than relayed, and to
+  which leg.
 
 Risks the spike must report on:
 
 - **Mode switching.** Once Kerbside re-encodes, the client's
   pixmap cache, GLZ dictionary and stream IDs belong to
-  Kerbside. SPICE gives the server no way to resend that
-  state, so a session cannot drop back to relay. The spike
-  proposes how the mode is chosen at connect (Open question 4).
-  Adapting codec, quality and frame rate within a transcoded
-  session is unaffected.
+  Kerbside. Whether a session can go back to relay is step 5's
+  question, not an assumption. The spike proposes how the mode
+  is chosen (Open question 4). Adapting codec, quality and frame
+  rate within a transcoded session is unaffected either way.
 - **CPU and capacity.** Software H.264 at 1080p30 costs about a
   core per busy session. Idle desktops cost almost nothing,
   because the encoder only runs on damage. Kerbside nodes are
   not hypervisors, so a GPU for VA-API or NVENC there is an
   easier ask than in the compute fleet. Either way, Kerbside
-  would need capacity planning per node for the first time.
+  would need capacity planning per node for the first time. That
+  includes what happens on a saturated node (refuse the session,
+  or fall back to relay at connect) and how a multi-node
+  deployment places sessions by CPU.
 - **Security.** It suits the inspection-first firewall: the
   client receives only pixels Kerbside produced, which is
   content disarm by re-rendering. In exchange, Kerbside decodes
   compressed images (LZ, GLZ, QUIC, JPEG, LZ4) from
-  spice-server, whose content the guest influences, so those
-  decoders need fuzzing before this ships. Kerbside already
+  spice-server, whose content the guest influences. Fuzzing is
+  necessary but not sufficient. The decoders would otherwise run
+  in the process that holds every session and the TLS keys, so a
+  productised design runs one sandboxed transcoder worker per
+  session: a separate process under seccomp, which also gives
+  CPU accounting and a clean kill on overload. Kerbside already
   sees plaintext traffic, so it learns nothing new.
+- **H.264 patent licensing.** Cisco's openh264 licence covers
+  only Cisco's own binary. A build from source, shipped in the
+  kerbside-proxy wheels on PyPI, would have no such cover. MJPEG
+  and VP8 avoid the question. The spike can use openh264, but
+  shipping H.264 output needs a licensing decision first.
 - **Rendering accuracy.** A bug in Ryll's renderer becomes a
   visible artefact for every transcoded user, not only for Ryll
   users.
@@ -490,11 +570,16 @@ them out:
   Input travels on its own low-latency path.
 
 **Phase 5** takes the upstream items that are cheap and
-server-internal: vendor-neutral hardware encoder probing,
-enabling H.265, 60 fps ceilings, a larger stream trace ring
-and GLZ invalidations. It is scheduled after phases 3 and 4,
-because a go in either would reduce the value of patching
-spice-server's encoder.
+server-internal, in two parts:
+- **Item 9, a larger stream trace ring and GLZ
+  invalidations,** does not depend on either spike. Relay
+  sessions keep using spice-server, and under transcoding
+  spice-server still encodes the LAN leg. It can start
+  whenever there is capacity.
+- **Item 4, vendor-neutral hardware encoder probing, H.265
+  and 60 fps ceilings,** waits for phases 3 and 4, because a
+  go in either moves encoding for slow links out of
+  spice-server and reduces its value.
 
 <!-- shared-block: plan-push-audit-phase v3 -->
 Push audit phase (shared block; do not edit -- the canonical
