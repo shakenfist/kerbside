@@ -22,7 +22,8 @@
 #   WORKDIR        results and scratch (default ./shaped-link-results)
 #   PROXY_BIN      kerbside-proxy binary (default: release build in-tree)
 #   RYLL_BIN       ryll built by build-ryll.sh (required)
-#   GUEST_DIR      vmlinuz + initrd.gz from build-guest.sh (required)
+#   GUEST_DIR      vmlinuz + initrd.gz from build-guest.sh (required
+#                  unless DISPLAYS names a guest per display)
 #   MOCK_PYTHON    python with grpcio and kerbside importable
 #                  (default: .tox/py3/bin/python)
 #   PROFILES       "rtt_ms:rate_mbit ..." (default "20:50 80:10"; a
@@ -31,10 +32,30 @@
 #                  default "idle:0:0 busy:30:3")
 #   CONFIGS        "name:notsent_lowat:backend_rcvbuf ..." (0 disables;
 #                  default "stock:0:0 tuned:131072:262144")
+#   DISPLAYS       "name:qemu_bin:streaming_video:guest_dir ..." -- the
+#                  display side of each case, interleaved with CONFIGS.
+#                  streaming_video is off, all, filter or "default"
+#                  (qemu's own default, which is off); guest_dir holds
+#                  a build-guest.sh output, so a guest with a patched
+#                  drm_kms_helper.ko (build-guest.sh KMS_HELPER=) can be
+#                  compared with a stock one. Default: one display,
+#                  qemu-system-x86_64 from PATH, qemu's default
+#                  streaming, GUEST_DIR. Case names gain a "<name>-"
+#                  prefix only when DISPLAYS is set.
 #   REPEATS        passes over the matrix (default 2); configs are
 #                  interleaved inside each pass to spread drift evenly
 #   SAMPLES        key presses per case (default 40)
+#   ACTIVITY_DELAY seconds after guest boot before the activity starts
+#                  (default 0). Set it when a display streams, because
+#                  spice-server 0.15.2 segfaults when a client connects
+#                  while streams exist; about 8 s puts the start after
+#                  ryll has connected
+#   WARMUP         seconds between ryll connecting and the first key
+#                  press (default 5); keep it past ACTIVITY_DELAY
 #   BUFFER_BDP     bottleneck queue per direction in BDPs (default 1)
+#   RYLL_ARGS      extra ryll arguments, e.g. -v to log display
+#                  traffic for upstream/qemu/rig/tools/ryllana.py in
+#                  kerbside-patches (default none; -v costs client CPU)
 #   CC             congestion control for the server namespace, which
 #                  is the sender of display traffic on the shaped leg
 #                  (default: the kernel's; "bbr" needs the tcp_bbr
@@ -54,15 +75,22 @@ DQ="${REPO_ROOT}/tools/direct-qemu"
 WORKDIR="$(realpath -m "${WORKDIR:-./shaped-link-results}")"
 PROXY_BIN="${PROXY_BIN:-${REPO_ROOT}/rust/kerbside-proxy/target/release/kerbside-proxy}"
 RYLL_BIN="${RYLL_BIN:?set RYLL_BIN to a ryll built by build-ryll.sh}"
-GUEST_DIR="${GUEST_DIR:?set GUEST_DIR to build-guest.sh output}"
+if [ -z "${DISPLAYS:-}" ]; then
+    GUEST_DIR="${GUEST_DIR:?set GUEST_DIR to build-guest.sh output, or set DISPLAYS}"
+fi
 MOCK_PYTHON="${MOCK_PYTHON:-${REPO_ROOT}/.tox/py3/bin/python}"
 PROFILES="${PROFILES:-20:50 80:10}"
 ACTIVITIES="${ACTIVITIES:-idle:0:0 busy:30:3}"
 CONFIGS="${CONFIGS:-stock:0:0 tuned:131072:262144}"
+DISPLAYS_SET="${DISPLAYS:+1}"
+DISPLAYS="${DISPLAYS:-default:qemu-system-x86_64:default:${GUEST_DIR}}"
 REPEATS="${REPEATS:-2}"
 SAMPLES="${SAMPLES:-40}"
+ACTIVITY_DELAY="${ACTIVITY_DELAY:-0}"
+WARMUP="${WARMUP:-5}"
 BUFFER_BDP="${BUFFER_BDP:-1}"
 CC="${CC:-}"
+read -r -a RYLL_EXTRA <<< "${RYLL_ARGS:-}"
 TC=/usr/sbin/tc
 ETHTOOL=/usr/sbin/ethtool
 
@@ -82,12 +110,23 @@ log() { echo "[shaped-link] $*" >&2; }
 # ── Re-exec inside a user + network namespace ────────────────────────────────
 
 if [ -z "${SHAPED_LINK_INNER:-}" ]; then
-    for f in "${PROXY_BIN}" "${RYLL_BIN}" "${GUEST_DIR}/vmlinuz" \
-            "${GUEST_DIR}/initrd.gz" "${MOCK_PYTHON}"; do
+    for f in "${PROXY_BIN}" "${RYLL_BIN}" "${MOCK_PYTHON}"; do
         if [ ! -e "${f}" ]; then
             echo "ERROR: ${f} not found" >&2
             exit 1
         fi
+    done
+    for display in ${DISPLAYS}; do
+        IFS=: read -r _ dqemu dstream dguest <<< "${display}"
+        case "${dstream}" in
+            default|off|all|filter) ;;
+            *) echo "ERROR: streaming_video ${dstream} is not off, all, filter or default" >&2
+               exit 1 ;;
+        esac
+        command -v "${dqemu}" >/dev/null || { echo "ERROR: ${dqemu} not found" >&2; exit 1; }
+        for f in "${dguest}/vmlinuz" "${dguest}/initrd.gz"; do
+            [ -e "${f}" ] || { echo "ERROR: ${f} not found" >&2; exit 1; }
+        done
     done
     mkdir -p "${WORKDIR}"
     rmdir "${SOCK_DIR}"
@@ -145,7 +184,11 @@ done
             net/ipv4/tcp_congestion_control; do
         echo "${s}: $(tr '\t' ' ' < "/proc/sys/${s}")"
     done
-    echo "qemu: $(qemu-system-x86_64 --version | head -1)"
+    for display in ${DISPLAYS}; do
+        IFS=: read -r dname dqemu dstream dguest <<< "${display}"
+        echo "display ${dname}: $("${dqemu}" --version | head -1)," \
+            "streaming-video ${dstream}, guest ${dguest}"
+    done
     echo "ryll: ${RYLL_BIN}"
     echo "proxy: ${PROXY_BIN}"
     if [ -w /dev/kvm ]; then echo 'accel: kvm'; else echo 'accel: tcg'; fi
@@ -222,15 +265,20 @@ stop_pid() {
 
 run_case() {
     local out="$1" fps="$2" noise="$3" lowat="$4" rcvbuf="$5"
+    local qemu="$6" streaming="$7" guest="$8"
     mkdir -p "${out}"
     log "case ${out#"${WORKDIR}"/}"
 
-    qemu-system-x86_64 -machine accel=kvm:tcg -m 512 -smp 2 \
-        -kernel "${GUEST_DIR}/vmlinuz" -initrd "${GUEST_DIR}/initrd.gz" \
-        -append "console=ttyS0 loglevel=4 rdinit=/init kd.fps=${fps} kd.noise=${noise}" \
+    local spice="port=${SPICE_PORT},addr=127.0.0.1,password-secret=spice-ticket"
+    if [ "${streaming}" != 'default' ]; then
+        spice="${spice},streaming-video=${streaming}"
+    fi
+    "${qemu}" -machine accel=kvm:tcg -m 512 -smp 2 \
+        -kernel "${guest}/vmlinuz" -initrd "${guest}/initrd.gz" \
+        -append "console=ttyS0 loglevel=4 rdinit=/init kd.fps=${fps} kd.noise=${noise} kd.delay=${ACTIVITY_DELAY}" \
         -vga none -device virtio-vga \
         -object "secret,id=spice-ticket,data=${TICKET}" \
-        -spice "port=${SPICE_PORT},addr=127.0.0.1,password-secret=spice-ticket" \
+        -spice "${spice}" \
         -serial "file:${out}/serial.log" -display none \
         > "${out}/qemu.log" 2>&1 &
     local qemu_pid=$!
@@ -252,7 +300,7 @@ run_case() {
     local ryll_sock="${SOCK_DIR}/ryll.sock"
     rm -f "${ryll_sock}"
     in_client "${RYLL_BIN}" --headless --file "${CONSOLE_VV}" \
-        --control-socket "${ryll_sock}" > "${out}/ryll.out" 2> "${out}/ryll.err" &
+        --control-socket "${ryll_sock}" "${RYLL_EXTRA[@]}" > "${out}/ryll.out" 2> "${out}/ryll.err" &
     local ryll_pid=$!
     for _ in $(seq 80); do
         [ -S "${ryll_sock}" ] && break
@@ -273,6 +321,7 @@ run_case() {
     local rc=0
     python3 "${SCRIPT_DIR}/keydraw-latency.py" --socket "${ryll_sock}" \
         --output-prefix "${out}/keydraw" --samples "${SAMPLES}" \
+        --warmup "${WARMUP}" \
         > "${out}/keydraw.log" 2>&1 || rc=$?
     date +%s.%N > "${out}/t1"
     {
@@ -281,6 +330,10 @@ run_case() {
     } > "${out}/tc.txt" 2>&1
     curl -s "http://127.0.0.1:${PROM_PORT}/metrics" > "${out}/metrics-1.txt" || true
 
+    if ! kill -0 "${qemu_pid}" 2>/dev/null; then
+        log "qemu exited during the case; see ${out}/qemu.log"
+        echo 'qemu exited during the case' > "${out}/qemu-died"
+    fi
     stop_pid "${ss_pid}"
     stop_pid "${ryll_pid}"
     stop_pid "${proxy_pid}"
@@ -300,10 +353,16 @@ for rep in $(seq "${REPEATS}"); do
         shape "${rtt}" "${rate}"
         for activity in ${ACTIVITIES}; do
             IFS=: read -r aname fps noise <<< "${activity}"
-            for config in ${CONFIGS}; do
-                IFS=: read -r cname lowat rcvbuf <<< "${config}"
-                run_case "${WORKDIR}/${rtt}ms-${rate}mbit/${aname}/${cname}-r${rep}" \
-                    "${fps}" "${noise}" "${lowat}" "${rcvbuf}" || true
+            for display in ${DISPLAYS}; do
+                IFS=: read -r dname dqemu dstream dguest <<< "${display}"
+                for config in ${CONFIGS}; do
+                    IFS=: read -r cname lowat rcvbuf <<< "${config}"
+                    case_name="${cname}"
+                    [ -n "${DISPLAYS_SET}" ] && case_name="${dname}-${cname}"
+                    run_case "${WORKDIR}/${rtt}ms-${rate}mbit/${aname}/${case_name}-r${rep}" \
+                        "${fps}" "${noise}" "${lowat}" "${rcvbuf}" \
+                        "${dqemu}" "${dstream}" "${dguest}" || true
+                done
             done
         done
     done

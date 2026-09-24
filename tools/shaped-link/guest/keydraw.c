@@ -19,6 +19,11 @@
  *   kd.w=W      activity width  (default 640)
  *   kd.h=H      activity height (default 480)
  *   kd.noise=B  low bits of per-pixel noise, 0..8 (default 3)
+ *   kd.delay=S  seconds after boot before the activity starts
+ *               (default 0). spice-server 0.15.2 segfaults if a client
+ *               connects while video streams already exist, so a run
+ *               that lets spice-server stream the activity starts it
+ *               only after the client has connected.
  *
  * The box and the activity are more than 32 pixels apart horizontally,
  * so qemu's column-sliced update path never emits a single drawable
@@ -150,6 +155,7 @@ int main(void)
     uint32_t vw = param(cmdline, "kd.w=", 640);
     uint32_t vh = param(cmdline, "kd.h=", 480);
     int noise = param(cmdline, "kd.noise=", 3);
+    int delay = param(cmdline, "kd.delay=", 0);
     uint32_t noise_mask = noise <= 0 ? 0 : noise >= 8 ? 0xff : (1u << noise) - 1;
 
     for (int i = 0; mods[i]; i++) {
@@ -248,8 +254,8 @@ int main(void)
         vh = H - 32;
     }
     uint32_t vx = W - vw - 16, vy = (H - vh) / 2;
-    printf("KEYDRAW START %ux%u box %ux%u@%u,%u activity %ux%u@%u,%u fps=%d noise=%d\n",
-           W, H, BOX_W, BOX_H, BOX_X, BOX_Y, vw, vh, vx, vy, fps, noise);
+    printf("KEYDRAW START %ux%u box %ux%u@%u,%u activity %ux%u@%u,%u fps=%d noise=%d delay=%d\n",
+           W, H, BOX_W, BOX_H, BOX_X, BOX_Y, vw, vh, vx, vy, fps, noise, delay);
     fflush(stdout);
 
     float *st = malloc(sizeof(float) * 1024);
@@ -258,10 +264,11 @@ int main(void)
     }
     struct timespec next;
     clock_gettime(CLOCK_MONOTONIC, &next);
+    time_t activity_from = next.tv_sec + delay;
     long period = fps > 0 ? 1000000000L / fps : 0;
     uint32_t rng = 0x9e3779b9;
     for (unsigned f = 0;; f++) {
-        if (fps > 0) {
+        if (fps > 0 && next.tv_sec >= activity_from) {
             for (uint32_t y = 0; y < vh; y++) {
                 uint32_t *row = fb + (vy + y) * pitch_px + vx;
                 float a = st[(y * 3 + f * 7) & 1023];
@@ -280,6 +287,8 @@ int main(void)
                 }
             }
             dirty(vx, vy, vw, vh);
+        }
+        if (fps > 0) {
             next.tv_nsec += period;
             while (next.tv_nsec >= 1000000000L) {
                 next.tv_nsec -= 1000000000L;

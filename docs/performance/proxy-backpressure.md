@@ -109,7 +109,7 @@ Run on 2026-09-23 with KVM acceleration and CUBIC congestion control:
 | `net.ipv4.tcp_rmem` | 4096 131072 6291456 |
 | `net.core.rmem_max` / `wmem_max` | 212992 / 212992 |
 | `net.ipv4.tcp_notsent_lowat` | 4294967295 (unlimited) |
-| qemu | 10.0.13 (Debian 13), `-device virtio-vga`, SPICE `streaming-video` left at qemu's default (off) |
+| qemu | 10.0.13 (Debian 13), `-device virtio-vga`, SPICE `streaming-video` left at qemu's default (off); see [the streaming re-baseline](streaming-rebaseline.md) for why that matters |
 | ryll | ryll `ff10a17` plus `tools/shaped-link/ryll-surface-drawn-rect.patch` |
 
 ## Results

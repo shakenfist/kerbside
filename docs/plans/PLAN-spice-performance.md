@@ -152,6 +152,25 @@ visible.
   - A one-line fix was verified with a rebuilt module.
   - This, not qxl damage clips (ranked item 5), is the kernel
     change that matters.
+- **Most of the 2.1 s was qemu's default configuration**
+  (re-baseline, 2026-09-24,
+  `docs/performance/streaming-rebaseline.md`).
+  - With `streaming-video=all`, stock qemu draws a keypress at
+    80 ms / 10 Mbit under heavy activity in 166 ms p50 (389 ms
+    p95), against 2136 ms with streaming off. At 80 ms / 50 Mbit
+    and 20 ms / 50 Mbit it reaches the idle floor.
+  - `filter` does not help. It never streams the pure-noise
+    activity, and on the smoother one at 80 ms / 10 Mbit it was
+    worse than streaming off (399 ms against 183 ms).
+  - The qemu v2 series regresses whenever content is not
+    streamed. Its whole-region drawables are about 1.2 MB each,
+    and spice-server's ACK window counts messages, not bytes, so
+    the backlog grows about twentyfold: about 5 s at the start of
+    every stream at 80 ms / 10 Mbit, and 8 s in steady state for
+    non-streamable content. That is the most direct evidence yet
+    for phase 1's ACK-window explanation.
+  - The kernel fix made no difference to this DIRTYFB-based
+    guest.
 
 ### The wider ranked list
 
@@ -343,10 +362,22 @@ contribution rule.
   - Maintainers may prefer a vmwgfx-only patch plus a stable
     backport request for the misc-next pair.
 
+**The v2 series needs a size cap before anyone runs it on a
+slow link.** The re-baseline showed it regressing badly whenever
+a large region is sent as a bitmap rather than a stream (see
+"What the first measurements changed"). Splitting damage larger
+than some byte budget into bands would keep v2's single stream
+while bounding what one ACK-window message can carry. This
+applies to the series carried in kerbside-patches.
+
 The prototype also turned up these problems:
 - spice-server 0.15.2 crashes in `VideoStreamClipItem`'s
   destructor when a client connects while streams already
-  exist.
+  exist. The re-baseline hit it on every streaming case until
+  the rig delayed the guest's activity past the connect. In
+  production it means a user reconnecting to a VM that is
+  playing video crashes that VM's qemu, which matters more now
+  that streaming is the main lever (Future work).
 - Ryll has three issues: H.264 streams from spice-server never
   decode (ryll#398, openh264 `dsNoParamSets`); `--capture`
   panics outside a runtime (ryll#399); and `display.pcap` loses
@@ -375,6 +406,29 @@ Son of SPICE spike for three reasons:
   link is the same one a D-Bus helper needs. With it in hand,
   phase 4 reduces to swapping the input side: D-Bus scanouts
   instead of a SPICE display channel.
+
+**Re-scoped on 2026-09-24** after step 0's re-baseline
+(`docs/performance/streaming-rebaseline.md`). The second reason
+above is much weaker than it was written: `streaming-video=all`
+on stock qemu already takes the 2.1 s case to 166 ms p50, leaving
+transcoding about 70-100 ms of p50 and 200-300 ms of p95 to win
+on the worst link measured. The phase stays, argued instead on:
+- **image quality:** `all` streams animated text lossily, while
+  a transcoder can send text losslessly and video lossily;
+- **codec choice that does not depend on what spice-server and
+  the client negotiate,** including when the client cannot
+  decode what the server would pick (ryll#398, #477);
+- **links slower than 10 Mbit,** which the rig has not measured
+  yet;
+- the second half of Son of SPICE, unchanged.
+
+Cheaper work comes first, because the re-baseline showed where
+it pays: fixing #477; a band-size cap for the carried v2 qemu
+series; reproducing the spice-server 0.15.2 connect crash on
+spice-server master; and a `streaming-video` recommendation for
+operators (Future work). The spike's measurements add a
+sub-10 Mbit profile and an image-quality score for `all` against
+transcoding, since those are now its case.
 
 Most of the pieces exist in Ryll:
 - `shakenfist-spice-renderer` keeps SPICE surfaces current (its
@@ -437,6 +491,16 @@ The spike:
      with the phase 2 qemu series and the kernel fix. If those
      close most of the gap, the case for transcoding is
      re-argued before continuing.
+   - **Done 2026-09-24**
+     (`docs/performance/streaming-rebaseline.md`). They close
+     most of it: `streaming-video=all` on stock qemu takes heavy
+     activity at 80 ms / 10 Mbit from 2136 ms to 166 ms p50.
+     What remains for transcoding is about 70-100 ms above the
+     97 ms idle floor at p50 and 200-300 ms at p95, on that
+     profile only. Transcoding's remaining case is image quality
+     (`all` makes animated text lossy), codec control that does
+     not depend on the client, and links worse than 10 Mbit,
+     rather than latency on the links measured here.
    - Phase 1 attributes the throughput cap to spice-server's ACK
      window from reading the code, not from observing it.
      Confirm it directly, either by tracing `waiting_for_ack` or
@@ -694,8 +758,12 @@ Other deferred items:
   the trade-off to watch. Phase 3's transcoding makes it moot
   for transcoded sessions, so it matters only for sessions left
   in relay mode.
-- Recommend `streaming-video=filter` in the use-case pages and
-  Ryll's libvirt recommendations, since qemu defaults it to off.
+- Recommend a `streaming-video` setting in the use-case pages
+  and Ryll's libvirt recommendations, since qemu defaults it to
+  off. The re-baseline favours `all` over `filter` for latency,
+  but `all` makes animated text lossy and needs the spice-server
+  0.15.2 connect crash fixed or avoided first, so the
+  recommendation should state both.
 - Upstream the rig's small Ryll patch, which adds a `rect` to the
   control socket's `surface_drawn` event
   (`tools/shaped-link/ryll-surface-drawn-rect.patch`). Until

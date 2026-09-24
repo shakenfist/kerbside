@@ -173,6 +173,11 @@ Guides for working on Kerbside itself:
   first results: where the display backlog sits on a slow client link,
   and why the proxy's socket options do not shorten it
 
+- [Streaming and the qemu damage series on a shaped link](performance/streaming-rebaseline.md) -
+  The same rig with spice-server streaming on and the qemu and Linux
+  damage patches: most of the slow-link latency was qemu's default
+  `streaming-video=off`
+
 ### Architecture Documentation
 
 Internal design of the Kerbside proxy:

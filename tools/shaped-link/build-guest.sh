@@ -9,6 +9,11 @@
 # evdev) from /lib/modules/$(uname -r), so there is nothing to download.
 # It needs gcc with a static glibc, and cpio. Writes OUTDIR/vmlinuz and
 # OUTDIR/initrd.gz.
+#
+# KMS_HELPER=path/to/drm_kms_helper.ko substitutes a rebuilt helper for
+# the host's, for example one carrying the ignore_damage_clips fix from
+# kerbside-patches' upstream/linux series. It must be built for the same
+# kernel; it is xz-compressed with the CRC32 check the kernel requires.
 
 set -euo pipefail
 
@@ -46,6 +51,10 @@ for mod in "${MODULES[@]}"; do
     fi
     cp "${MODDIR}/${mod}" "${ROOT}/m/"
 done
+if [ -n "${KMS_HELPER:-}" ]; then
+    xz --check=crc32 -c "${KMS_HELPER}" > "${ROOT}/m/drm_kms_helper.ko.xz"
+    echo "[build-guest] using ${KMS_HELPER} for drm_kms_helper"
+fi
 
 (cd "${ROOT}" && find . | cpio --quiet -o -H newc -R 0:0) \
     | gzip -9 > "${OUTDIR}/initrd.gz"
