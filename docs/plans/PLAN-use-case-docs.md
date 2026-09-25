@@ -65,11 +65,12 @@ phase 1 (`2f0e526`), `openstack.md` 2026-09-20 as phase 2
 (`28efa6c`), and `multi-cloud.md` with `placement.md`
 2026-09-22 as phase 4 (`8c5c042`). All six carry identical
 section headings, so the format is a convention rather than
-a coincidence. What remains is phase 5, the index slim-down
-and closeout, and phase 6, the push audit. Proxmox is still
-blocked and still has no source driver (`kerbside/sources/`
-holds `base.py`, `ovirt.py`, `shakenfist.py` and `static.py`
-and nothing else, rechecked 2026-09-23).
+a coincidence. Phase 5, the index slim-down and closeout,
+landed 2026-09-24 (`073603b`), so what remains is phase 6,
+the push audit. Proxmox is still blocked and still has no
+source driver (`kerbside/sources/` holds `base.py`,
+`ovirt.py`, `shakenfist.py` and `static.py` and nothing
+else, rechecked 2026-09-25).
 
 One fact about the backend leg cost four phases to settle
 and is now guarded rather than remembered. Phases 1, 2 and 3
@@ -130,7 +131,7 @@ the range is not reliably reconstructable afterwards.
 | 2. OpenStack | [PLAN-use-case-docs-phase-02-openstack.md](PLAN-use-case-docs-phase-02-openstack.md) | Complete | a7df5e5 |
 | 3. Standalone / static source | [PLAN-use-case-docs-phase-03-standalone.md](PLAN-use-case-docs-phase-03-standalone.md) | Complete | 28efa6c |
 | 4. Multi-cloud aggregation and placement topologies | [PLAN-use-case-docs-phase-04-multi-cloud.md](PLAN-use-case-docs-phase-04-multi-cloud.md) | Complete | 8c5c042 |
-| 5. Index slim-down and closeout | [PLAN-use-case-docs-phase-05-index-slimdown.md](PLAN-use-case-docs-phase-05-index-slimdown.md) | In progress | |
+| 5. Index slim-down and closeout | [PLAN-use-case-docs-phase-05-index-slimdown.md](PLAN-use-case-docs-phase-05-index-slimdown.md) | Complete | 073603b |
 | 6. Push audit | | Not started | |
 
 The oVirt page is not a phase: it landed 2026-08-10 as
