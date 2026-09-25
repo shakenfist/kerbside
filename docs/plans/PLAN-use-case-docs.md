@@ -132,11 +132,17 @@ the range is not reliably reconstructable afterwards.
 | 3. Standalone / static source | [PLAN-use-case-docs-phase-03-standalone.md](PLAN-use-case-docs-phase-03-standalone.md) | Complete | 28efa6c |
 | 4. Multi-cloud aggregation and placement topologies | [PLAN-use-case-docs-phase-04-multi-cloud.md](PLAN-use-case-docs-phase-04-multi-cloud.md) | Complete | 8c5c042 |
 | 5. Index slim-down and closeout | [PLAN-use-case-docs-phase-05-index-slimdown.md](PLAN-use-case-docs-phase-05-index-slimdown.md) | Complete | 073603b |
-| 6. Push audit | | Not started | |
+| 6. Push audit | [PLAN-use-case-docs-phase-06-push-audit.md](PLAN-use-case-docs-phase-06-push-audit.md) | In progress | |
 
 The oVirt page is not a phase: it landed 2026-08-10 as
-`PLAN-two-tier-ci-phase-04-docs.md`'s deliverable, and is
-audited by that plan rather than this one.
+`PLAN-two-tier-ci-phase-04-docs.md`'s deliverable. That plan
+predates the `plan-push-audit-phase` shared block, carries
+neither the phase nor a `Merged` column, and is already
+`Complete`; by the block's own rule such a plan is not
+reopened to acquire one. The page's creation is therefore
+push-audited nowhere, which the block permits rather than
+forbids. What phases 1 to 5 changed in the page is in this
+plan's audit range, and is audited here.
 
 Proxmox is not a phase either. It stays deferred until a
 source driver exists, and acquires a phase then.
@@ -154,3 +160,16 @@ introduction once the OpenStack page exists to receive
 Bumblebee?` — plus the README collapse that phase 1's risk
 table flags: one link to the Use Cases section rather than
 a bullet per page.
+
+**Phase 6 — push audit.** Work through `PUSH-AUDIT.md` over
+the accumulated diff of phases 1 to 5, deriving the range
+from the merge commits above with
+`tools/audit/plan-range.sh`, which gives
+`2f0e526^1..073603b` over 31 paths. The diff is not
+documentation-only, and the audit is not vacuous: it carries
+roughly 970 lines of Python that did not exist before this
+plan, the `docs_checks` CI job, and a change to
+`kerbside/sources/static.py`, so every judgment agent in the
+runbook has material. Findings land in this phase's own
+pull request, and the plan is not complete until each is
+fixed or declined in writing.
