@@ -1,6 +1,10 @@
 {
   "version": 1,
   "files": {
+    ".claude/CLAUDE.md": {
+      "sha": "403ec4e2f6524ed002f3bf7192624fdd94295a54",
+      "date": "2026-09-26"
+    },
     ".claude/skills/add-database-migration/SKILL.md": {
       "sha": "16f2c1db4f57ad49772cfb806e19df2708f3176c",
       "date": "2026-09-18"
@@ -32,6 +36,14 @@
     ".github/workflows/pypi-storage-check.yml": {
       "sha": "b4ea2a75e61abba4bcfd122d9f0d8222f1b25607",
       "date": "2026-08-24"
+    },
+    "AGENTS.md": {
+      "sha": "ed4434b32651f8232faa390c80fc1a6cb61bee09",
+      "date": "2026-09-26"
+    },
+    "alembic.ini": {
+      "sha": "0f1d2d9085e55974a6763b7501bbe7161ef52076",
+      "date": "2026-09-26"
     },
     "demo/Dockerfile": {
       "sha": "e94b4457477d238ad2f2f5cc143a8859eff0145a",
