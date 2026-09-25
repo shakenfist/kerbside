@@ -11,6 +11,7 @@ server.
 ## High-Level Architecture
 
 ```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 60, "rankSpacing": 70}}}%%
 graph TD
     browser["Web Browser / Broker<br/>(admin UI, REST, .vv exchange)"]
     client["SPICE Client<br/>(remote-viewer, ryll)"]
@@ -22,13 +23,11 @@ graph TD
     hv["Hypervisors<br/>(Shaken Fist, OpenStack,<br/>oVirt, static)"]
 
     browser -->|"HTTP(S) :13002<br/>(gunicorn --bind)"| kerbside
-    client -->|"plaintext :5901<br/>answered NEED_SECURED, closed"| proxy
-    client -->|"TLS :5900<br/>all SPICE sessions"| proxy
-    prom -->|"HTTP :13003<br/>loopback by default"| proxy
+    client -->|"TLS :5900 (all sessions)<br/>plaintext :5901<br/>(NEED_SECURED only)"| proxy
+    prom -->|"HTTP :13003<br/>(loopback)"| proxy
     kerbside <-->|"SQL :3306"| db
     kerbside -->|"discovery, token<br/>validation"| clouds
-    kerbside -.->|supervises| proxy
-    proxy <-->|"gRPC over UDS<br/>/run/kerbside/api.sock"| kerbside
+    kerbside <-->|"supervises;<br/>gRPC over UDS<br/>/run/kerbside/api.sock"| proxy
     proxy -->|"plaintext port first,<br/>TLS port on NEED_SECURED"| hv
 ```
 
