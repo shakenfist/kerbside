@@ -13,6 +13,10 @@
       "sha": "a8721f2f61e3fc43ac7aa3739f13716a811f1b37",
       "date": "2026-09-17"
     },
+    ".dockerignore": {
+      "sha": "efb2e768654f6bfa32d5a35d84891d2f0e6ab610",
+      "date": "2026-09-26"
+    },
     ".github/workflows/codeql-analysis.yml": {
       "sha": "296eca7815ac6582bf4fa9d0714869ac1eab574a",
       "date": "2026-08-18"
@@ -37,12 +41,56 @@
       "sha": "b4ea2a75e61abba4bcfd122d9f0d8222f1b25607",
       "date": "2026-08-24"
     },
+    ".gitignore": {
+      "sha": "45c7b4061c76ee62e15d7efceb2cc2f53451b12e",
+      "date": "2026-09-26"
+    },
+    ".gitleaks.toml": {
+      "sha": "9cb3943ca56de7ec27c6090195989f2b98100e10",
+      "date": "2026-09-26"
+    },
+    ".pre-commit-config.yaml": {
+      "sha": "20d82a6704e052e7717d5d7444f9164e1f1978d5",
+      "date": "2026-09-26"
+    },
+    ".skillsaw.yaml": {
+      "sha": "7f2245e1fb8311d66a1aac849346283ee7441425",
+      "date": "2026-09-26"
+    },
+    ".stestr.conf": {
+      "sha": "6c68d8e253a301c9792a546f9e41045aeff4f1f6",
+      "date": "2026-09-26"
+    },
     "AGENTS.md": {
       "sha": "ed4434b32651f8232faa390c80fc1a6cb61bee09",
       "date": "2026-09-26"
     },
+    "ARCHITECTURE.md": {
+      "sha": "1cbc2a7d1b33da33ab671e3e5ce91b15d55c956e",
+      "date": "2026-09-26"
+    },
+    "PLAN-TEMPLATE.md": {
+      "sha": "e3999ece5e54b53dbb7d5d039c801d1c1157e873",
+      "date": "2026-09-26"
+    },
+    "PUSH-AUDIT.md": {
+      "sha": "b7f2aa7b97ae8f13214430d9b6db2819d3c2d635",
+      "date": "2026-09-26"
+    },
+    "README.md": {
+      "sha": "3e30f25f4d7a68f8dfb4aff5e24bd14aecfe2601",
+      "date": "2026-09-26"
+    },
+    "RELEASE-SETUP.md": {
+      "sha": "ec35cb4f3fbafce57b2718cfa6bceeff893423a7",
+      "date": "2026-09-26"
+    },
     "alembic.ini": {
       "sha": "0f1d2d9085e55974a6763b7501bbe7161ef52076",
+      "date": "2026-09-26"
+    },
+    "bindep.txt": {
+      "sha": "028f6e239f525fa47bc96c5c283d9774661536db",
       "date": "2026-09-26"
     },
     "demo/Dockerfile": {
@@ -69,10 +117,6 @@
       "sha": "b31de6116ea70559b0706b9512049fea6ce661cd",
       "date": "2026-08-18"
     },
-    "docs/proxy-architecture.md": {
-      "sha": "e98b04a2437d247bdbb101bb1c5d018cc77a156a",
-      "date": "2026-09-18"
-    },
     "docs/spice/capabilities.md": {
       "sha": "4cccf89b41c025072ecbd7bc1d2a8384f2274b09",
       "date": "2026-09-18"
@@ -95,10 +139,6 @@
     },
     "docs/spice/scancodes.md": {
       "sha": "0bcdfd3b59f71bfddfbdd6eeb78738ced94dce39",
-      "date": "2026-09-18"
-    },
-    "docs/spice/spice-link-protocol.md": {
-      "sha": "298f5047309731226bacb15f20018415d7040541",
       "date": "2026-09-18"
     },
     "docs/spice/usb-redirection.md": {
@@ -208,6 +248,14 @@
     "loadtests/latency/makeconsole.sh": {
       "sha": "291f5057d4b3c808d60ca0e052975c79464e48b8",
       "date": "2026-08-08"
+    },
+    "pyproject.toml": {
+      "sha": "54640025dd0d032905208a842fe1c032ea1dbdef",
+      "date": "2026-09-26"
+    },
+    "renovate.json": {
+      "sha": "b9e2faba3117c900fe59be7a54371d9944da8ed4",
+      "date": "2026-09-26"
     },
     "rust/kerbside-proxy/README.md": {
       "sha": "e827f685f04ba9e4f951d6203f384be5db2bf918",
@@ -456,6 +504,10 @@
     "tools/verify-wheel-stamping.sh": {
       "sha": "37c6a675aaded9b471302a04f962f94100175999",
       "date": "2026-08-18"
+    },
+    "tox.ini": {
+      "sha": "d5df9f97ea180376bad48ade0081dc2aa934e639",
+      "date": "2026-09-26"
     }
   }
 }

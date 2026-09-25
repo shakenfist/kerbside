@@ -444,23 +444,11 @@
       "author": "mikal"
     },
     {
-      "path": "docs/spice/spice-link-protocol.md",
-      "author": "mikal"
-    },
-    {
       "path": "docs/spice/usb-redirection.md",
       "author": "mikal"
     },
     {
       "path": "docs/spice/vd-agent-protocol.md",
-      "author": "mikal"
-    },
-    {
-      "path": "docs/spice",
-      "author": "mikal"
-    },
-    {
-      "path": "docs/proxy-architecture.md",
       "author": "mikal"
     },
     {
@@ -509,6 +497,66 @@
     },
     {
       "path": "alembic.ini",
+      "author": "mikal"
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "author": "mikal"
+    },
+    {
+      "path": "PLAN-TEMPLATE.md",
+      "author": "mikal"
+    },
+    {
+      "path": "PUSH-AUDIT.md",
+      "author": "mikal"
+    },
+    {
+      "path": "pyproject.toml",
+      "author": "mikal"
+    },
+    {
+      "path": "README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "RELEASE-SETUP.md",
+      "author": "mikal"
+    },
+    {
+      "path": "renovate.json",
+      "author": "mikal"
+    },
+    {
+      "path": "tox.ini",
+      "author": "mikal"
+    },
+    {
+      "path": ".stestr.conf",
+      "author": "mikal"
+    },
+    {
+      "path": "bindep.txt",
+      "author": "mikal"
+    },
+    {
+      "path": ".dockerignore",
+      "author": "mikal"
+    },
+    {
+      "path": ".gitignore",
+      "author": "mikal"
+    },
+    {
+      "path": ".gitleaks.toml",
+      "author": "mikal"
+    },
+    {
+      "path": ".pre-commit-config.yaml",
+      "author": "mikal"
+    },
+    {
+      "path": ".skillsaw.yaml",
       "author": "mikal"
     }
   ],
