@@ -140,14 +140,6 @@
       "author": "mikal"
     },
     {
-      "path": "rust/kerbside-proxy/src/backend.rs",
-      "author": "mikal"
-    },
-    {
-      "path": "rust/kerbside-proxy/src/listen.rs",
-      "author": "mikal"
-    },
-    {
       "path": "rust/kerbside-proxy/src/metrics.rs",
       "author": "mikal"
     },
@@ -157,10 +149,6 @@
     },
     {
       "path": "rust/kerbside-proxy/src/relay.rs",
-      "author": "mikal"
-    },
-    {
-      "path": "rust/kerbside-proxy/src/session.rs",
       "author": "mikal"
     },
     {
@@ -201,10 +189,6 @@
     },
     {
       "path": "tools/direct-qemu/start-kerbside.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/start-rust-proxy.sh",
       "author": "mikal"
     },
     {
@@ -337,14 +321,6 @@
     },
     {
       "path": "etc/example-static-sources.yaml",
-      "author": "mikal"
-    },
-    {
-      "path": "rust/kerbside-proxy/src/main.rs",
-      "author": "mikal"
-    },
-    {
-      "path": "rust/kerbside-proxy/src",
       "author": "mikal"
     },
     {

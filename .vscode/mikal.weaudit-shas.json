@@ -169,18 +169,6 @@
       "sha": "f2adab6fb95e5085f48b9b558926b1ff457e1636",
       "date": "2026-08-15"
     },
-    "rust/kerbside-proxy/src/backend.rs": {
-      "sha": "2e5cc0e2eb032193457f1af80496b0670092aa7a",
-      "date": "2026-08-15"
-    },
-    "rust/kerbside-proxy/src/listen.rs": {
-      "sha": "93dca4c1400e57b32bff1302231d4d544b191568",
-      "date": "2026-08-15"
-    },
-    "rust/kerbside-proxy/src/main.rs": {
-      "sha": "22f1ccbbad414a08a886a1aaf8af9eda459b557b",
-      "date": "2026-08-18"
-    },
     "rust/kerbside-proxy/src/metrics.rs": {
       "sha": "521fa7d251dc05fbf4d92f440069ae8d73570ddb",
       "date": "2026-08-15"
@@ -196,10 +184,6 @@
     "rust/kerbside-proxy/src/rpc.rs": {
       "sha": "a50c7c209641787f1aa0bfdeea558820c812537f",
       "date": "2026-08-05"
-    },
-    "rust/kerbside-proxy/src/session.rs": {
-      "sha": "3d5738b24d4db47dff238580d3f9c270ba2506e2",
-      "date": "2026-08-15"
     },
     "rust/kerbside-proxy/src/tls.rs": {
       "sha": "e2be3c864a08747f987880b5205d719f33a15f78",
@@ -299,10 +283,6 @@
     },
     "tools/direct-qemu/start-kerbside.sh": {
       "sha": "7b8048db87302f07ce6d81ce006d0c10827e847f",
-      "date": "2026-08-15"
-    },
-    "tools/direct-qemu/start-rust-proxy.sh": {
-      "sha": "e768b49f4b9bcc1264f02ee76080b2dce25de373",
       "date": "2026-08-15"
     },
     "tools/direct-qemu/verify-rust-proxy.sh": {
