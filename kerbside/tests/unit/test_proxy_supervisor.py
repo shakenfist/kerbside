@@ -11,7 +11,7 @@ import testtools
 from kerbside import proxy_supervisor
 
 
-def _fake_config(verbose=False):
+def _fake_config(verbose=False, notsent_lowat=None, backend_rcvbuf=None):
     """A stand-in for the pydantic config carrying just the launch fields."""
     return types.SimpleNamespace(
         VDI_ADDRESS='0.0.0.0',
@@ -25,6 +25,8 @@ def _fake_config(verbose=False):
         PROMETHEUS_METRICS_PORT=13003,
         PROMETHEUS_METRICS_ADDRESS='127.0.0.1',
         API_SOCKET_PATH='/run/kerbside/api.sock',
+        PROXY_CLIENT_NOTSENT_LOWAT_BYTES=notsent_lowat,
+        PROXY_BACKEND_RCVBUF_BYTES=backend_rcvbuf,
         LOG_VERBOSE=verbose)
 
 
@@ -49,6 +51,36 @@ class BuildProxyArgvTestCase(testtools.TestCase):
     def test_verbose_flag_present_only_when_log_verbose(self):
         self.assertNotIn('--verbose', proxy_supervisor.build_proxy_argv('b', _fake_config(False)))
         self.assertIn('--verbose', proxy_supervisor.build_proxy_argv('b', _fake_config(True)))
+
+    def test_socket_tuning_flags_absent_when_unset(self):
+        # An older proxy binary rejects unknown flags, so unset must mean
+        # "not on the command line", not "the default value".
+        argv = proxy_supervisor.build_proxy_argv('b', _fake_config())
+        self.assertNotIn('--client-notsent-lowat-bytes', argv)
+        self.assertNotIn('--backend-rcvbuf-bytes', argv)
+
+    def test_socket_tuning_flags_passed_when_set(self):
+        argv = proxy_supervisor.build_proxy_argv(
+            'b', _fake_config(notsent_lowat=65536, backend_rcvbuf=131072))
+        self.assertEqual(
+            ['--client-notsent-lowat-bytes', '65536',
+             '--backend-rcvbuf-bytes', '131072'],
+            argv[-4:])
+
+    def test_socket_tuning_zero_is_passed_to_disable(self):
+        # 0 is a real value (disable the option), not the same as unset.
+        argv = proxy_supervisor.build_proxy_argv(
+            'b', _fake_config(notsent_lowat=0, backend_rcvbuf=0))
+        self.assertEqual(
+            ['--client-notsent-lowat-bytes', '0',
+             '--backend-rcvbuf-bytes', '0'],
+            argv[-4:])
+
+    def test_socket_tuning_flags_precede_verbose(self):
+        argv = proxy_supervisor.build_proxy_argv(
+            'b', _fake_config(verbose=True, notsent_lowat=1))
+        self.assertEqual(
+            ['--client-notsent-lowat-bytes', '1', '--verbose'], argv[-3:])
 
 
 class FindProxyBinTestCase(testtools.TestCase):

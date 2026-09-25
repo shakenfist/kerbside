@@ -3,6 +3,7 @@ import os
 import sys
 
 from pydantic import Field
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -181,6 +182,33 @@ class Config(BaseSettings):
                     'VDI interface; set a management address (or 0.0.0.0 '
                     'behind a firewall) to scrape from another host.')
 
+    # SPICE proxy socket tuning. Both are passed to the Rust proxy only when
+    # set, so that a newer daemon can still launch an older proxy binary that
+    # predates the flags. Unset (None) means "use the proxy's own default";
+    # 0 turns the option off entirely. The upper bound is the proxy's: both
+    # flags are u32, so a larger value would fail its argument parsing at
+    # startup rather than here, with the setting's name attached.
+    PROXY_CLIENT_NOTSENT_LOWAT_BYTES: int | None = Field(
+        None,
+        ge=0,
+        le=2**32 - 1,
+        description=('TCP_NOTSENT_LOWAT for each accepted TLS client-leg '
+                     'SPICE socket, in '
+                     'bytes: the most unsent data the kernel queues before '
+                     'the proxy stops relaying from the hypervisor. Moves '
+                     'the display backlog on a slow link from the proxy to '
+                     'spice-server; measured not to reduce latency. Unset '
+                     'uses the proxy default (0, off).'))
+    PROXY_BACKEND_RCVBUF_BYTES: int | None = Field(
+        None,
+        ge=0,
+        le=2**32 - 1,
+        description=('SO_RCVBUF for each hypervisor-leg SPICE socket, in '
+                     'bytes, capping the backlog the proxy accepts from '
+                     'spice-server while a client is slow. Linux clamps it '
+                     'to net.core.rmem_max. Unset uses the proxy default '
+                     '(0, off: kernel receive autotuning).'))
+
     # Database and cloud inspection
     SQL_URL: str = Field(
         'mysql://kerbside:QwwMH-4w@kolla/kerbside',
@@ -218,6 +246,15 @@ class Config(BaseSettings):
     API_GRPC_WORKERS: int = Field(
         8,
         description='Thread pool size for the KerbsideProxy gRPC server.')
+
+    @field_validator('PROXY_CLIENT_NOTSENT_LOWAT_BYTES',
+                     'PROXY_BACKEND_RCVBUF_BYTES', mode='before')
+    @classmethod
+    def _empty_means_unset(cls, value):
+        """An empty value (e.g. "key =" in the INI file) means unset."""
+        if isinstance(value, str) and value.strip() == '':
+            return None
+        return value
 
     class Config:
         env_prefix = ENV_PREFIX

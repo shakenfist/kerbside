@@ -24,6 +24,8 @@ use std::time::Duration;
 use anyhow::{anyhow, Error, Result};
 use shakenfist_spice_protocol::link::SpiceStream;
 use shakenfist_spice_protocol::{ChannelType, ConnectionConfig, SpiceClient};
+use socket2::SockRef;
+use tokio::net::TcpStream;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -127,6 +129,10 @@ pub async fn run(
             }
         }
     };
+
+    // Cap the backend-leg receive buffer before any display traffic is
+    // relayed, so the backlog we hold on spice-server's behalf stays small.
+    set_backend_rcvbuf(&backend_stream, state.backend_rcvbuf_bytes, connection_ref);
 
     // Successful hypervisor connection: record the audit event. The ticket is
     // never logged. Audit RPC failures are non-fatal -- log and continue
@@ -241,6 +247,50 @@ async fn connect_once(
             "backend connect timed out after {}s",
             BACKEND_CONNECT_TIMEOUT.as_secs()
         )),
+    }
+}
+
+/// The raw TCP socket underneath a `SpiceStream`, whichever variant it is.
+/// The tokio-rustls streams' `get_ref()` returns `(io, connection)`.
+fn tcp_of(stream: &SpiceStream) -> &TcpStream {
+    match stream {
+        SpiceStream::Plain(tcp) => tcp,
+        SpiceStream::Tls(tls) => tls.get_ref().0,
+        SpiceStream::TlsServer(tls) => tls.get_ref().0,
+    }
+}
+
+/// Cap `SO_RCVBUF` on the backend-leg socket.
+///
+/// Left alone, the receive buffer autotunes up to `net.ipv4.tcp_rmem`'s
+/// maximum (commonly 6 MiB) and keeps the TCP window to spice-server open
+/// while the relay is blocked writing to a slow client, so the display
+/// backlog sits in the proxy. Capping it moves that backlog into
+/// spice-server's socket; it does not shrink it, because spice-server's
+/// per-channel ACK window is what bounds it (see
+/// docs/performance/proxy-backpressure.md). Setting `SO_RCVBUF` explicitly
+/// also turns off receive autotuning for the socket.
+///
+/// The ryll crate dials the socket, so this runs after connect. That cannot
+/// shrink the window scale negotiated in the SYN, but the scale only sets
+/// the maximum advertisable window; the buffer still bounds what is
+/// actually advertised from here on. Linux doubles the value to allow for
+/// bookkeeping overhead, so a read-back reports twice what was set, and
+/// clamps the request to `net.core.rmem_max` (commonly 212992) first.
+///
+/// `bytes` of 0 leaves the kernel default in place. Best-effort, like the
+/// client-leg options: a failure is logged and NON-fatal.
+fn set_backend_rcvbuf(stream: &SpiceStream, bytes: u32, connection_ref: &str) {
+    if bytes == 0 {
+        return;
+    }
+    if let Err(e) = SockRef::from(tcp_of(stream)).set_recv_buffer_size(bytes as usize) {
+        warn!(
+            %connection_ref,
+            bytes,
+            error = %e,
+            "setting backend SO_RCVBUF failed; continuing"
+        );
     }
 }
 
@@ -396,5 +446,59 @@ mod tests {
             build_config(&target).host_subject.as_deref(),
             Some("O=Acme\\, Inc,CN=hv")
         );
+    }
+
+    /// Build a connected loopback pair: (accepted server side, client side).
+    async fn loopback_pair() -> (TcpStream, TcpStream) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("binding a loopback listener");
+        let addr = listener.local_addr().expect("local_addr");
+        let connect = tokio::spawn(async move { TcpStream::connect(addr).await });
+        let (server, _peer) = listener.accept().await.expect("accept");
+        let client = connect.await.expect("connect task").expect("connect");
+        (server, client)
+    }
+
+    /// The receive-buffer cap must apply to a connected (post-connect) socket
+    /// reached through the `SpiceStream` wrapper, and 0 must be a no-op.
+    #[tokio::test]
+    async fn set_backend_rcvbuf_on_loopback_takes_effect() {
+        let (_server, client) = loopback_pair().await;
+        let stream = SpiceStream::Plain(client);
+        let before = SockRef::from(tcp_of(&stream))
+            .recv_buffer_size()
+            .expect("reading SO_RCVBUF");
+
+        set_backend_rcvbuf(&stream, 0, "test");
+        assert_eq!(
+            SockRef::from(tcp_of(&stream))
+                .recv_buffer_size()
+                .expect("reading SO_RCVBUF"),
+            before
+        );
+
+        // 128 KiB: below the common net.core.rmem_max (212992), which
+        // silently clamps larger SO_RCVBUF requests from unprivileged code.
+        set_backend_rcvbuf(&stream, 131_072, "test");
+        let after = SockRef::from(tcp_of(&stream))
+            .recv_buffer_size()
+            .expect("reading SO_RCVBUF");
+        // Linux clamps the request to net.core.rmem_max (and a small floor),
+        // then doubles it on read-back; other platforms report it as set.
+        // The exact value is only predictable where rmem_max admits the
+        // request, so a host with a lower (or unreadable) rmem_max gets the
+        // bound alone rather than a failure that reads as a code defect.
+        if cfg!(target_os = "linux") {
+            assert!(after <= 262_144, "SO_RCVBUF read back as {after}");
+            let rmem_max = std::fs::read_to_string("/proc/sys/net/core/rmem_max")
+                .ok()
+                .and_then(|s| s.trim().parse::<usize>().ok());
+            if rmem_max.is_some_and(|m| m >= 131_072) {
+                assert_eq!(after, 262_144);
+            }
+        } else {
+            assert!(after >= 131_072, "SO_RCVBUF read back as {after}");
+        }
     }
 }

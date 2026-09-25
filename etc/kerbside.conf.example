@@ -184,6 +184,19 @@ public_fqdn = kerbside.example.com
 # vdi_secure_port = 5900
 # vdi_insecure_port = 5901
 
+# Socket tuning for the SPICE proxy, in bytes. Both cap how much
+# display data the proxy's own sockets hold on a slow client link.
+# That saves proxy memory, but the backlog moves to the hypervisor's
+# socket rather than going away, so latency does not improve (see
+# docs/performance/proxy-backpressure.md). Empty uses the proxy's
+# default, which is off for both; 0 also turns the option off. The
+# receive buffer is clamped by the kernel to net.core.rmem_max. Setting
+# either needs a kerbside-proxy that accepts the matching flag (see
+# kerbside-proxy --help); an older one fails at startup, taking the
+# daemon with it.
+# proxy_client_notsent_lowat_bytes =
+# proxy_backend_rcvbuf_bytes =
+
 ####################################################################
 # Shaken Fist console tokens
 ####################################################################

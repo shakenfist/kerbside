@@ -169,6 +169,10 @@ def build_proxy_argv(bin_path, cfg):
     The firewall knobs (FIREWALL_MODE / FIREWALL_PERMITTED_CHANNELS) are NOT
     included: they are delivered per connection in the AuthorizeConnection
     reply, not on the command line.
+
+    The socket tuning flags are passed only when configured: a binary that
+    predates them would refuse to start on an unknown flag, and leaving them
+    out lets the binary apply its own defaults.
     """
     argv = [
         bin_path,
@@ -184,6 +188,12 @@ def build_proxy_argv(bin_path, cfg):
         '--metrics-address', cfg.PROMETHEUS_METRICS_ADDRESS,
         '--api-socket', cfg.API_SOCKET_PATH,
     ]
+    if cfg.PROXY_CLIENT_NOTSENT_LOWAT_BYTES is not None:
+        argv.extend(['--client-notsent-lowat-bytes',
+                     str(cfg.PROXY_CLIENT_NOTSENT_LOWAT_BYTES)])
+    if cfg.PROXY_BACKEND_RCVBUF_BYTES is not None:
+        argv.extend(['--backend-rcvbuf-bytes',
+                     str(cfg.PROXY_BACKEND_RCVBUF_BYTES)])
     if cfg.LOG_VERBOSE:
         argv.append('--verbose')
     return argv

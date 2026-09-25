@@ -1,0 +1,126 @@
+diff --git a/shakenfist-spice-renderer/src/control/server.rs b/shakenfist-spice-renderer/src/control/server.rs
+index a8b05bd..31905be 100644
+--- a/shakenfist-spice-renderer/src/control/server.rs
++++ b/shakenfist-spice-renderer/src/control/server.rs
+@@ -480,6 +480,35 @@ async fn emit_dropped(out_tx: &mpsc::Sender<OutboundMessage>, dropped_count: &mu
+     }
+ }
+
++/// Build a `surface_drawn` event carrying the drawn rect as
++/// `[left, top, right, bottom]` in surface coordinates (local rect
++/// extension used by kerbside's shaped-link measurement).
++fn surface_drawn_event(
++    state: &ClientState,
++    display_channel_id: u8,
++    surface_id: u32,
++    produced_at_secs: f64,
++    rect: (u32, u32, u32, u32),
++) -> Option<Event> {
++    if !state.is_subscribed("surface_drawn") {
++        return None;
++    }
++    let wallclock_us = SystemTime::now()
++        .duration_since(UNIX_EPOCH)
++        .map(|d| d.as_micros() as u64)
++        .unwrap_or(0);
++    Some(Event {
++        event: "surface_drawn".into(),
++        data: serde_json::json!({
++            "display_channel_id": display_channel_id,
++            "surface_id": surface_id,
++            "produced_at_secs": produced_at_secs,
++            "wallclock_us": wallclock_us,
++            "rect": [rect.0, rect.1, rect.2, rect.3],
++        }),
++    })
++}
++
+ /// Map a `ChannelEvent` to a wire `Event` if the client is currently
+ /// subscribed to a matching event name.
+ ///
+@@ -597,55 +626,65 @@ fn translate_event(
+             display_channel_id,
+             surface_id,
+             produced_at_secs,
++            left,
++            top,
++            width,
++            height,
+             ..
+         }
+         | ChannelEvent::ImageReadyChroma {
+             display_channel_id,
+             surface_id,
+             produced_at_secs,
++            left,
++            top,
++            width,
++            height,
+             ..
+         }
+         | ChannelEvent::ImageReadyAlpha {
+             display_channel_id,
+             surface_id,
+             produced_at_secs,
++            left,
++            top,
++            width,
++            height,
+             ..
+-        }
+-        | ChannelEvent::FillRect {
++        } => surface_drawn_event(
++            state,
++            *display_channel_id,
++            *surface_id,
++            *produced_at_secs,
++            (*left, *top, *left + *width, *top + *height),
++        ),
++        ChannelEvent::FillRect {
+             display_channel_id,
+             surface_id,
+             produced_at_secs,
++            rect,
+             ..
+         }
+         | ChannelEvent::CopyBits {
+             display_channel_id,
+             surface_id,
+             produced_at_secs,
++            dest_rect: rect,
+             ..
+         }
+         | ChannelEvent::Invert {
+             display_channel_id,
+             surface_id,
+             produced_at_secs,
++            rect,
+             ..
+-        } => {
+-            if !state.is_subscribed("surface_drawn") {
+-                return None;
+-            }
+-            let wallclock_us = SystemTime::now()
+-                .duration_since(UNIX_EPOCH)
+-                .map(|d| d.as_micros() as u64)
+-                .unwrap_or(0);
+-            Some(Event {
+-                event: "surface_drawn".into(),
+-                data: serde_json::json!({
+-                    "display_channel_id": *display_channel_id,
+-                    "surface_id": *surface_id,
+-                    "produced_at_secs": *produced_at_secs,
+-                    "wallclock_us": wallclock_us,
+-                }),
+-            })
+-        }
++        } => surface_drawn_event(
++            state,
++            *display_channel_id,
++            *surface_id,
++            *produced_at_secs,
++            *rect,
++        ),
+
+         // ── v1.1 digest_updated (digest-decode feature) ────────
+         #[cfg(feature = "digest-decode")]
