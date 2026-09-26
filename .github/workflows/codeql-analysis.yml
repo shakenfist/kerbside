@@ -49,8 +49,15 @@ jobs:
         run: git checkout HEAD^2
         if: ${{ github.event_name == 'pull_request' }}
 
+      # Pin the languages rather than autodetecting them. The only C in
+      # the tree is tools/shaped-link/guest/keydraw.c, a benchmark rig's
+      # statically linked guest init that build-guest.sh builds against
+      # the host kernel. Autobuild cannot build it, so an autodetected
+      # cpp database is always empty and CodeQL fails finalizing it.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
+        with:
+          languages: actions, javascript-typescript, python, rust
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@v4
