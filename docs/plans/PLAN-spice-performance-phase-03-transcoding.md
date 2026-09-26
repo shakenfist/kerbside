@@ -353,8 +353,10 @@ Brief notes for 1b:
   (open question 2) in `docs/` and in the release notes.
 - **Client leg.** Keep the parsed client `SpiceLinkMess` and
   pass its caps through `serve()` to `backend::run`. Refuse a
-  client whose common caps lack MINI_HEADER, with a link error
-  and an audit event.
+  client whose common caps lack MINI_HEADER, with a link error.
+  (As built: logged, not audited. The refusal precedes
+  authentication, and `kerbside/api.py` deliberately writes no
+  audit rows for unauthenticated rejections.)
 - **Reply caps.** Replace the fixed `[11]`/`[9]` with a table
   per channel type. Derive each row from what spice-server
   advertises for that channel type (read
