@@ -83,8 +83,10 @@ class TestStaticSourceSingleEntry(unittest.TestCase):
         self.assertEqual(_VALID_CONSOLE['uuid'], result['uuid'])
         self.assertEqual(_VALID_CONSOLE['name'], result['name'])
         self.assertEqual(_VALID_CONSOLE['hypervisor'], result['hypervisor'])
-        self.assertEqual(_VALID_CONSOLE['hypervisor_ip'], result['hypervisor_ip'])
-        self.assertEqual(_VALID_CONSOLE['insecure_port'], result['insecure_port'])
+        self.assertEqual(_VALID_CONSOLE['hypervisor_ip'],
+                         result['hypervisor_ip'])
+        self.assertEqual(_VALID_CONSOLE['insecure_port'],
+                         result['insecure_port'])
         self.assertEqual(_VALID_CONSOLE['ticket'], result['ticket'])
         self.assertEqual('test-static', result['source'])
 
@@ -149,8 +151,9 @@ class TestStaticSourceMissingRequiredField(unittest.TestCase):
         # omitted something else must not put that ticket in the log.
         # This is a raw sources.yaml entry: CONSOLE_PUBLIC_FIELDS never
         # sees it, so nothing but this line protects it.
-        self.assertNotIn(_VALID_CONSOLE['ticket'], str(mock_log_error.call_args),
-                         msg=f'ticket logged while reporting missing {field!r}')
+        self.assertNotIn(
+            _VALID_CONSOLE['ticket'], str(mock_log_error.call_args),
+            msg=f'ticket logged while reporting missing {field!r}')
 
     def test_error_names_the_problem_without_the_entry(self):
         """Withholding the entry must not cost the operator the diagnostic.
