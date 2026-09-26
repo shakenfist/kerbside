@@ -8,27 +8,31 @@
 //! - `connection_ref` for bookkeeping/audit correlation,
 //! - `client_stream`, the TLS-terminated, authorized client stream to relay,
 //! - the SPICE channel identity (`connection_id`, `channel_type`,
-//!   `channel_id`) to replay onto the backend link handshake, and
+//!   `channel_id`) to replay onto the backend link handshake,
+//! - `client_caps`, the capabilities the client advertised, forwarded to
+//!   the backend so spice-server encodes for the real client (see
+//!   `crate::caps`), and
 //! - `target`, the authorized upstream descriptor (hypervisor host/ip, secure
 //!   / insecure ports, ticket, CA cert, host subject) to build a
 //!   `ConnectionConfig` from.
 //!
-//! 3e builds the `ConnectionConfig` from `target`, connects via `SpiceClient`
+//! It builds the `ConnectionConfig` from `target`, connects via `SpiceClient`
 //! with a `need_secured` retry (which the crate does not perform itself),
 //! emits the hypervisor connect success/failure audit events, and then hands
-//! the two streams to the relay seam (`crate::relay::run`, a stub until 3f).
+//! the two streams to the relay (`crate::relay::run`).
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Error, Result};
-use shakenfist_spice_protocol::link::SpiceStream;
+use shakenfist_spice_protocol::link::{SpiceLinkReply, SpiceStream};
 use shakenfist_spice_protocol::{ChannelType, ConnectionConfig, SpiceClient};
 use socket2::SockRef;
 use tokio::net::TcpStream;
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
+use crate::caps::{self, ClientCaps};
 use crate::pb;
 use crate::policy::FirewallPolicy;
 use crate::session::SharedState;
@@ -44,9 +48,10 @@ const BACKEND_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Detect the crate's "server requires TLS" (`NeedSecured`) error.
 ///
 /// FRAGILE: this is a string match over the error chain, forced by the ryll
-/// crate not exposing a typed `NeedSecured` error -- `SpiceClient::connect_channel`
-/// maps `SpiceError::NeedSecured` to `anyhow!("Server requires TLS connection.
-/// Use tls-port in config.")`, so we have nothing to match on but the message.
+/// crate not exposing a typed `NeedSecured` error --
+/// `SpiceClient::connect_channel_with_caps` maps `SpiceError::NeedSecured` to
+/// `anyhow!("Server requires TLS connection. Use tls-port in config.")`, so we
+/// have nothing to match on but the message.
 /// Any other connect failure (refused, TLS handshake, bad ticket, ...) must NOT
 /// match here, so we deliberately look only for the distinctive substrings.
 ///
@@ -74,20 +79,26 @@ pub async fn run(
     connection_id: u32,
     channel_type: ChannelType,
     channel_id: u8,
+    client_caps: &ClientCaps,
     target: &pb::Target,
     cancel: CancellationToken,
 ) -> Result<()> {
     // Build the base connection config from the authorized target. The ports
     // are set per attempt below (insecure first, TLS on retry).
     let base_config = build_config(target);
+    let link = BackendLink {
+        connection_id,
+        channel_type,
+        channel_id,
+        common_caps: caps::backend_common_caps(&client_caps.common),
+        channel_caps: client_caps.channel.clone(),
+    };
 
     // Connect with an insecure-first + RetrySecured fallback: attempt the
     // insecure leg and, only on a NeedSecured signal, retry over TLS. Any
     // other failure on the first attempt is returned as-is (no retry).
-    let backend_stream = match connect_once(&base_config, connection_id, channel_type, channel_id)
-        .await
-    {
-        Ok(stream) => stream,
+    let (backend_stream, backend_reply) = match connect_once(&base_config, &link).await {
+        Ok(connected) => connected,
         Err(first_err) => {
             // Only retry when the server explicitly asked for a secure
             // connection and we actually have a secure port to try.
@@ -108,8 +119,8 @@ pub async fn run(
                 let mut secure_config = base_config;
                 // `port` is unused once tls_port is set; the crate dials tls_port.
                 secure_config.tls_port = Some(target.secure_port as u16);
-                match connect_once(&secure_config, connection_id, channel_type, channel_id).await {
-                    Ok(stream) => stream,
+                match connect_once(&secure_config, &link).await {
+                    Ok(connected) => connected,
                     Err(retry_err) => {
                         record_connect_failure(
                             state,
@@ -133,6 +144,8 @@ pub async fn run(
     // Cap the backend-leg receive buffer before any display traffic is
     // relayed, so the backlog we hold on spice-server's behalf stays small.
     set_backend_rcvbuf(&backend_stream, state.backend_rcvbuf_bytes, connection_ref);
+
+    log_backend_caps(connection_ref, channel_type, &link, &backend_reply);
 
     // Successful hypervisor connection: record the audit event. The ticket is
     // never logged. Audit RPC failures are non-fatal -- log and continue
@@ -216,11 +229,67 @@ fn build_config(target: &pb::Target) -> ConnectionConfig {
         } else {
             Some(target.host_subject.clone())
         },
+        // Kerbside dials hypervisors directly; no source delivers an HTTP
+        // CONNECT proxy in `Target`.
+        proxy: None,
+    }
+}
+
+/// What the backend link handshake advertises: the client's channel identity
+/// and the capabilities forwarded from it.
+struct BackendLink {
+    connection_id: u32,
+    channel_type: ChannelType,
+    channel_id: u8,
+    common_caps: Vec<u32>,
+    channel_caps: Vec<u32>,
+}
+
+/// Log what the backend granted, and warn when it lacks a capability the
+/// client leg already offered the client.
+///
+/// The client-leg reply is sent before the backend is known (it carries the
+/// ticket key), so Kerbside offers the caps spice-server normally
+/// advertises for the channel type (`caps::reply_channel_caps`). A backend
+/// built without, say, Opus or LZ4 then lacks a cap the client was told it
+/// has, and the client may send something that server refuses. That cannot
+/// be undone at this point, but it should be visible.
+fn log_backend_caps(
+    connection_ref: &str,
+    channel_type: ChannelType,
+    link: &BackendLink,
+    reply: &SpiceLinkReply,
+) {
+    debug!(
+        %connection_ref,
+        channel_type = channel_type.name(),
+        sent_common_caps = ?link.common_caps,
+        sent_channel_caps = ?link.channel_caps,
+        backend_common_caps = ?reply.common_caps,
+        backend_channel_caps = ?reply.channel_caps,
+        "backend link capabilities"
+    );
+    let missing_common = caps::missing_caps(&caps::REPLY_COMMON_CAPS, &reply.common_caps);
+    let missing_channel =
+        caps::missing_caps(caps::reply_channel_caps(channel_type), &reply.channel_caps);
+    if !missing_common.is_empty() || !missing_channel.is_empty() {
+        warn!(
+            %connection_ref,
+            channel_type = channel_type.name(),
+            ?missing_common,
+            ?missing_channel,
+            backend_common_caps = ?reply.common_caps,
+            backend_channel_caps = ?reply.channel_caps,
+            "backend lacks capabilities Kerbside offered the client; the client may \
+             send messages this backend does not support"
+        );
     }
 }
 
 /// One backend connect attempt: build a `SpiceClient` from the config and open
-/// the requested channel. TLS is used iff `config.tls_port.is_some()`.
+/// the requested channel, advertising the forwarded client caps. Returns the
+/// stream and the backend's link reply. TLS is used iff
+/// `config.tls_port.is_some()`.
 ///
 /// Bounded by `BACKEND_CONNECT_TIMEOUT` so a hypervisor that accepts TCP but
 /// stalls the handshake cannot pin the connection's permit forever. A timeout
@@ -229,16 +298,20 @@ fn build_config(target: &pb::Target) -> ConnectionConfig {
 /// "requires TLS" signal and does not trigger the secure retry.
 async fn connect_once(
     config: &ConnectionConfig,
-    connection_id: u32,
-    channel_type: ChannelType,
-    channel_id: u8,
-) -> Result<SpiceStream> {
+    link: &BackendLink,
+) -> Result<(SpiceStream, SpiceLinkReply)> {
     // `ConnectionConfig` is not Copy; clone it so callers can reuse/adjust the
     // base config across attempts.
     let client = SpiceClient::new(config.clone())?;
     match tokio::time::timeout(
         BACKEND_CONNECT_TIMEOUT,
-        client.connect_channel(connection_id, channel_type, channel_id),
+        client.connect_channel_with_caps(
+            link.connection_id,
+            link.channel_type,
+            link.channel_id,
+            &link.common_caps,
+            &link.channel_caps,
+        ),
     )
     .await
     {
@@ -336,8 +409,8 @@ mod tests {
 
     #[test]
     fn is_need_secured_matches_crate_message() {
-        // The exact message SpiceClient::connect_channel returns for
-        // SpiceError::NeedSecured.
+        // The exact message SpiceClient::connect_channel_with_caps returns
+        // for SpiceError::NeedSecured.
         let err = anyhow!("Server requires TLS connection. Use tls-port in config.");
         assert!(is_need_secured(&err));
     }
