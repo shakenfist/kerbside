@@ -11,25 +11,32 @@ server.
 ## High-Level Architecture
 
 ```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 60, "rankSpacing": 70}}}%%
 graph TD
-    browser["Web Browser<br/>(Admin UI)"]
+    browser["Web Browser / Broker<br/>(admin UI, REST, .vv exchange)"]
+    client["SPICE Client<br/>(remote-viewer, ryll)"]
+    prom["Prometheus"]
     kerbside["kerbside (Python)<br/>REST API + daemon"]
     db[("MariaDB<br/>(shared bus)")]
-    client["SPICE Client<br/>(virt-viewer)"]
+    clouds["Cloud APIs<br/>(SF, oVirt engine,<br/>Keystone/Nova)"]
     proxy["kerbside-proxy<br/>(Rust, tokio)"]
-    sf["Shaken Fist<br/>Hypervisors"]
-    os["OpenStack<br/>Hypervisors"]
-    ovirt["oVirt<br/>Hypervisors"]
+    hv["Hypervisors<br/>(Shaken Fist, OpenStack,<br/>oVirt, static)"]
 
-    browser -->|HTTPS| kerbside
-    kerbside <-->|SQLAlchemy| db
-    kerbside -.->|supervises| proxy
-    client -->|"TLS :5900"| proxy
-    proxy <-->|gRPC over UDS| kerbside
-    proxy -->|TLS| sf
-    proxy -->|TLS| os
-    proxy -->|TLS| ovirt
+    browser -->|"HTTP(S) :13002<br/>(gunicorn --bind)"| kerbside
+    client -->|"TLS :5900 (all sessions)<br/>plaintext :5901<br/>(NEED_SECURED only)"| proxy
+    prom -->|"HTTP :13003<br/>(loopback)"| proxy
+    kerbside <-->|"SQL :3306"| db
+    kerbside -->|"discovery, token<br/>validation"| clouds
+    kerbside <-->|"supervises;<br/>gRPC over UDS<br/>/run/kerbside/api.sock"| proxy
+    proxy -->|"plaintext port first,<br/>TLS port on NEED_SECURED"| hv
 ```
+
+All ports shown are defaults. SPICE clients need **both** 5900 and
+5901: the `.vv` files Kerbside generates name both `port=` and
+`tls-port=`, and spice-gtk clients such as remote-viewer dial `port=`
+first and rely on the `NEED_SECURED` redirect to reach TLS. See
+[docs/network-ports.md](docs/network-ports.md) for every port, who
+needs to reach it, and why the insecure port cannot be skipped.
 
 ## Core Components
 
@@ -93,7 +100,7 @@ control-plane gRPC service (component 2) over the unix socket for
 authorization and channel/audit bookkeeping, and it reuses the ryll
 `shakenfist-spice-protocol` crate for the SPICE wire format. It binds the
 secure (5900) and insecure (5901) VDI ports — the insecure port issues a
-`need_secured` redirect to TLS — and exposes its own Prometheus `/metrics`
+`need_secured` redirect to TLS and relays nothing — and exposes its own Prometheus `/metrics`
 endpoint on `--metrics-address` (default loopback, config
 `PROMETHEUS_METRICS_ADDRESS`) rather than the public VDI address, since the
 endpoint is unauthenticated. It is also an L0+L1 SPICE firewall (see
@@ -102,7 +109,8 @@ endpoint is unauthenticated. It is also an L0+L1 SPICE firewall (see
 **Connection flow:** accept → TLS terminate → SPICE link handshake →
 `AuthorizeConnection` over the UDS (decrypt the token, resolve the
 hypervisor `Target`, or `Denied`) → connect the backend leg to the
-hypervisor → bidirectional framed relay, with every message checked against
+hypervisor (its plaintext port first, escalating to its TLS port only on a
+`NEED_SECURED` answer when the console has one) → bidirectional framed relay, with every message checked against
 the firewall policy delivered in the authorize reply.
 
 **Supervision.** `daemon_run` (`main.py`) binds the gRPC UDS server
@@ -208,6 +216,7 @@ OpenStack environments).
 | `GET /console/direct/<source>/<uuid>/console.vv` | Generate a direct-connection virt-viewer config |
 | `GET /console/proxy/<source>/<uuid>/console.vv` | Generate a proxied virt-viewer config, minting a console token |
 | `POST /console/<source>/<uuid>/terminate` | Terminate every session for a console |
+| `GET /nova-console.vv` | Exchange a Nova spice-direct console token (validated against Nova) for a console token and virt-viewer config |
 | `GET /sf-console.vv?token=<jwt>` | Exchange a Shaken Fist Ed25519 JWT (verified offline) for a console token and virt-viewer config |
 | `GET /session` | List active proxy sessions |
 | `POST /session/<id>/terminate` | Kill specific session |
@@ -316,7 +325,13 @@ worked example in `etc/kerbside.conf.example`.
 
 1. **Client Authentication**: JWT tokens issued after Keystone validation
 2. **Console Access**: Time-limited tokens (configurable expiry)
-3. **TLS Everywhere**: Client-to-proxy and proxy-to-hypervisor connections
+3. **Transport security**: the client-to-proxy leg is always TLS; the
+   plaintext port only redirects. The proxy-to-hypervisor leg is TLS only
+   when the hypervisor answers the plaintext attempt with `NEED_SECURED`
+   and the console has a TLS port to escalate to
+   (`rust/kerbside-proxy/src/backend.rs`); a hypervisor that accepts
+   plaintext is relayed in plaintext. See
+   [docs/network-ports.md](docs/network-ports.md).
 4. **Certificate Validation**: the backend hypervisor certificate chain is
    validated against the source CA. When the console carries a
    `host_subject`, it is also enforced: the certificate's subject must match
@@ -474,4 +489,5 @@ For detailed SPICE protocol documentation, see the
 - [Channel Protocols](docs/spice/channel-protocols.md) - Per-channel message formats
 - [Capabilities](docs/spice/capabilities.md) - Feature negotiation
 - [Proxy Architecture](docs/proxy-architecture.md) - Internal proxy design details
+- [Network Ports](docs/network-ports.md) - Every port Kerbside listens on or dials, and why
 - [Use Cases](docs/index.md#use-cases) - Per-deployment and topology guides

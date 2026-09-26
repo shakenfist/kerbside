@@ -115,7 +115,7 @@ class Config(BaseSettings):
         5901,
         description=(
             'Port insecure connections should connect to on the PUBLIC_FQDN. This '
-            'can be different from VDI_SECURE_PORT if there is a load balancing '
+            'can be different from VDI_INSECURE_PORT if there is a load balancing '
             'layer in front of Kerbside'
         )
     )
