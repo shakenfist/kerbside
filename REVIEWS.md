@@ -15,98 +15,98 @@ for how this works, including how to verify the attestations.
 
 ## Reviewed files
 
-| File | Reviewer | Date | Blob SHA |
-|------|----------|------|----------|
-| .claude/skills/add-database-migration/SKILL.md | mikal | 2026-09-17 | 1eff02777bc5 |
-| .claude/skills/add-source-type/SKILL.md | mikal | 2026-09-17 | a8721f2f61e3 |
-| .github/workflows/codeql-analysis.yml | mikal | 2026-08-18 | 296eca7815ac |
-| .github/workflows/export-repo-config.yml | mikal | 2026-08-11 | 53b5d8eb46e8 |
-| .github/workflows/pr-re-review.yml | mikal | 2026-09-17 | f1b1103a5324 |
-| .github/workflows/pr-retest.yml | mikal | 2026-08-18 | 86352446dd2c |
-| .github/workflows/prune-reviews.yml | mikal | 2026-08-11 | 27c5c370391a |
-| .github/workflows/pypi-storage-check.yml | mikal | 2026-08-24 | b4ea2a75e61a |
-| demo/Dockerfile | mikal | 2026-08-18 | e94b4457477d |
-| demo/demo-env.sh | mikal | 2026-08-18 | a5cbc188afcb |
-| demo/entrypoint.sh | mikal | 2026-08-18 | 8401f99b8352 |
-| demo/get-console.sh | mikal | 2026-08-18 | a5af2d69d9da |
-| demo/kerbside-demo-env | mikal | 2026-08-18 | 5483df34682f |
-| demo/kerbside.ini | mikal | 2026-08-18 | b31de6116ea7 |
-| etc/example-static-sources.yaml | mikal | 2026-08-18 | 558621b0e5ee |
-| etc/kolla-ci-globals-overlay.yml | mikal | 2026-08-04 | e11f4d65bca4 |
-| kerbside/__init__.py | mikal | 2026-08-06 | e69de29bb2d1 |
-| kerbside/consoletoken.py | mikal | 2026-08-06 | 6811fdf54cb5 |
-| kerbside/migrations/env.py | mikal | 2026-08-18 | be576fb0b1e8 |
-| kerbside/migrations/versions/5c8101ff14d7_sources_can_be_deleted.py | mikal | 2026-08-18 | f6e524d52a9a |
-| kerbside/migrations/versions/7d1c2f36a7b3_connection_id_as_bigint.py | mikal | 2026-08-18 | 0d26891fe87c |
-| kerbside/migrations/versions/9a3f1c7b2e40_proxychannels_surrogate_id.py | mikal | 2026-08-18 | bf0e6343896a |
-| kerbside/migrations/versions/ad47e96baff6_initial_schema.py | mikal | 2026-08-18 | 17858c0fca8c |
-| kerbside/migrations/versions/bb26023f0c98_remove_flavor_column.py | mikal | 2026-08-18 | 9652b3a947da |
-| kerbside/migrations/versions/c4e7a1b9d2f3_session_terminations.py | mikal | 2026-08-18 | 34597ad33c7e |
-| kerbside/migrations/versions/cdb5c3529858_sf_token_tables.py | mikal | 2026-08-18 | 8c28ea4b9a7d |
-| kerbside/migrations/versions/e1a4c7d2f9b6_auditevents_pid_as_string.py | mikal | 2026-08-18 | d5b53b8aede6 |
-| kerbside/migrations/versions/f7b2e9c4a1d8_drop_proxychannels_session_id_fk.py | mikal | 2026-08-18 | be35c384ab3c |
-| kerbside/rpc/__init__.py | mikal | 2026-08-07 | e69de29bb2d1 |
-| kerbside/rpc/server.py | mikal | 2026-08-07 | d6af35e9ff27 |
-| kerbside/sources/base.py | mikal | 2026-08-07 | 950856916980 |
-| kerbside/tests/__init__.py | mikal | 2026-08-08 | e69de29bb2d1 |
-| kerbside/tests/functional/__init__.py | mikal | 2026-08-08 | e69de29bb2d1 |
-| kerbside/tests/functional/test_openstack.py | mikal | 2026-08-08 | f3beb5d9abc5 |
-| kerbside/tests/functional/test_shakenfist.py | mikal | 2026-08-08 | e20f496edd01 |
-| kerbside/tests/unit/__init__.py | mikal | 2026-08-08 | e69de29bb2d1 |
-| kerbside/tests/unit/test_sf_token.py | mikal | 2026-08-08 | 2b42aef35cbb |
-| loadtests/latency/cleanupconsoles.sh | mikal | 2026-08-08 | 181480700807 |
-| loadtests/latency/makeconsole.sh | mikal | 2026-08-08 | 291f5057d4b3 |
-| rust/kerbside-proxy/README.md | mikal | 2026-08-18 | e827f685f04b |
-| rust/kerbside-proxy/build.rs | mikal | 2026-08-18 | 986a0e57e486 |
-| rust/kerbside-proxy/src/allowlist.rs | mikal | 2026-08-15 | f2adab6fb95e |
-| rust/kerbside-proxy/src/metrics.rs | mikal | 2026-08-15 | 521fa7d251dc |
-| rust/kerbside-proxy/src/policy.rs | mikal | 2026-08-15 | e5ec82cc156b |
-| rust/kerbside-proxy/src/relay.rs | mikal | 2026-08-15 | 9f46aa32f6a7 |
-| rust/kerbside-proxy/src/rpc.rs | mikal | 2026-08-05 | a50c7c209641 |
-| rust/kerbside-proxy/src/tls.rs | mikal | 2026-08-05 | e2be3c864a08 |
-| tempest-plugin/README.md | mikal | 2026-08-18 | bf3b673319f7 |
-| tempest-plugin/kerbside_tempest_plugin/__init__.py | mikal | 2026-08-08 | e69de29bb2d1 |
-| tempest-plugin/kerbside_tempest_plugin/config.py | mikal | 2026-08-08 | 47398e47680a |
-| tempest-plugin/kerbside_tempest_plugin/plugin.py | mikal | 2026-08-08 | 38d6e6f49d50 |
-| tempest-plugin/kerbside_tempest_plugin/tests/__init__.py | mikal | 2026-08-18 | e69de29bb2d1 |
-| tempest-plugin/kerbside_tempest_plugin/tests/api/__init__.py | mikal | 2026-08-18 | e69de29bb2d1 |
-| tempest-plugin/kerbside_tempest_plugin/tests/api/test_spice_via_kerbside.py | mikal | 2026-08-18 | a81ea8817e1f |
-| tempest-plugin/kerbside_tempest_plugin/tests/scenario/__init__.py | mikal | 2026-08-18 | e69de29bb2d1 |
-| tools/check-required-checks.sh | mikal | 2026-08-15 | dc86bff62d2d |
-| tools/check-wheel.py | mikal | 2026-08-15 | 01953f7326bc |
-| tools/ci-prune-reviews.sh | mikal | 2026-08-06 | 6daef1e07eb0 |
-| tools/create-ovirt-vnc-vm.py | mikal | 2026-08-15 | ab5640046d9d |
-| tools/direct-qemu/generate-tls.sh | mikal | 2026-08-15 | b271b8113594 |
-| tools/direct-qemu/install-proxy-wheel.sh | mikal | 2026-08-18 | 9266fc276c75 |
-| tools/direct-qemu/lane-down.sh | mikal | 2026-08-15 | d800366551ac |
-| tools/direct-qemu/lane-up.sh | mikal | 2026-08-15 | f130cd95e021 |
-| tools/direct-qemu/mock-grpc-server.py | mikal | 2026-08-15 | a967113f7730 |
-| tools/direct-qemu/probe-runner.sh | mikal | 2026-08-15 | 67882b8dba7a |
-| tools/direct-qemu/rebuild-sextant-qcow2.sh | mikal | 2026-08-09 | 4cfa3daff656 |
-| tools/direct-qemu/run-host-subject-checks.sh | mikal | 2026-08-15 | aaddc0bf0732 |
-| tools/direct-qemu/run-scenario.sh | mikal | 2026-08-15 | 6b989adb040d |
-| tools/direct-qemu/setup-mariadb.sh | mikal | 2026-08-15 | 4bb393d94ea6 |
-| tools/direct-qemu/smoke-client.py | mikal | 2026-08-15 | b7fcd8143c85 |
-| tools/direct-qemu/start-kerbside.sh | mikal | 2026-08-15 | 7b8048db8730 |
-| tools/direct-qemu/verify-rust-proxy.sh | mikal | 2026-08-15 | f8631679d5a7 |
-| tools/direct-qemu/verify-terminate-live.sh | mikal | 2026-08-18 | ad344ca4713f |
-| tools/direct-qemu/wait-for-banner.sh | mikal | 2026-08-09 | 17c8a378a6a9 |
-| tools/dump-ovirt-host-subject.py | mikal | 2026-08-15 | d3fc3319691b |
-| tools/file-nightly-failure-issue.sh | mikal | 2026-08-15 | 645f302940ec |
-| tools/gen-protos.sh | mikal | 2026-08-18 | e56d238dbdaa |
-| tools/ovirt-e2e/README.md | mikal | 2026-08-18 | 20e8fe84c47b |
-| tools/ovirt-e2e/drive-console.py | mikal | 2026-08-18 | 5abf82e72acb |
-| tools/ovirt-e2e/gen-sources.py | mikal | 2026-08-18 | c26f5d39cf25 |
-| tools/pin-indirect-dependencies.sh | mikal | 2026-08-06 | 241b462c281d |
-| tools/review-tracking.sh | mikal | 2026-08-06 | e63705ac5c57 |
-| tools/sf-e2e/README.md | mikal | 2026-08-15 | 6b5f0ebcbe1c |
-| tools/sf-e2e/deploy-kerbside.sh | mikal | 2026-08-15 | b374194e5585 |
-| tools/sf-e2e/drive-adversarial.py | mikal | 2026-08-15 | 12ab1f0f45a6 |
-| tools/sf-e2e/gather-artifacts.sh | mikal | 2026-08-15 | b88a99542202 |
-| tools/sf-e2e/gen-sources.py | mikal | 2026-08-15 | ac916339e3b2 |
-| tools/sf-e2e/import-instance.sh | mikal | 2026-08-15 | 7037f8372e2e |
-| tools/sf-e2e/provision-sf.sh | mikal | 2026-08-15 | e8db5e0a6203 |
-| tools/stamp-dev-proxy-version.sh | mikal | 2026-08-18 | 8669f794ef37 |
-| tools/stamp-proxy-version.sh | mikal | 2026-08-18 | f89c1f63e9a6 |
-| tools/test-ovirt-console.py | mikal | 2026-08-06 | c3ee796b2c44 |
-| tools/verify-wheel-stamping.sh | mikal | 2026-08-18 | 37c6a675aade |
+| File | Reviewer | Date | Blob SHA | Source |
+|------|----------|------|----------|--------|
+| .claude/skills/add-database-migration/SKILL.md | mikal | 2026-09-17 | 1eff02777bc5 | - |
+| .claude/skills/add-source-type/SKILL.md | mikal | 2026-09-17 | a8721f2f61e3 | - |
+| .github/workflows/codeql-analysis.yml | mikal | 2026-08-18 | 296eca7815ac | - |
+| .github/workflows/export-repo-config.yml | mikal | 2026-08-11 | 53b5d8eb46e8 | - |
+| .github/workflows/pr-re-review.yml | mikal | 2026-09-17 | f1b1103a5324 | - |
+| .github/workflows/pr-retest.yml | mikal | 2026-08-18 | 86352446dd2c | - |
+| .github/workflows/prune-reviews.yml | mikal | 2026-08-11 | 27c5c370391a | - |
+| .github/workflows/pypi-storage-check.yml | mikal | 2026-08-24 | b4ea2a75e61a | - |
+| demo/Dockerfile | mikal | 2026-08-18 | e94b4457477d | - |
+| demo/demo-env.sh | mikal | 2026-08-18 | a5cbc188afcb | - |
+| demo/entrypoint.sh | mikal | 2026-08-18 | 8401f99b8352 | - |
+| demo/get-console.sh | mikal | 2026-08-18 | a5af2d69d9da | - |
+| demo/kerbside-demo-env | mikal | 2026-08-18 | 5483df34682f | - |
+| demo/kerbside.ini | mikal | 2026-08-18 | b31de6116ea7 | - |
+| etc/example-static-sources.yaml | mikal | 2026-08-18 | 558621b0e5ee | - |
+| etc/kolla-ci-globals-overlay.yml | mikal | 2026-08-04 | e11f4d65bca4 | - |
+| kerbside/__init__.py | mikal | 2026-08-06 | e69de29bb2d1 | - |
+| kerbside/consoletoken.py | mikal | 2026-08-06 | 6811fdf54cb5 | - |
+| kerbside/migrations/env.py | mikal | 2026-08-18 | be576fb0b1e8 | - |
+| kerbside/migrations/versions/5c8101ff14d7_sources_can_be_deleted.py | mikal | 2026-08-18 | f6e524d52a9a | - |
+| kerbside/migrations/versions/7d1c2f36a7b3_connection_id_as_bigint.py | mikal | 2026-08-18 | 0d26891fe87c | - |
+| kerbside/migrations/versions/9a3f1c7b2e40_proxychannels_surrogate_id.py | mikal | 2026-08-18 | bf0e6343896a | - |
+| kerbside/migrations/versions/ad47e96baff6_initial_schema.py | mikal | 2026-08-18 | 17858c0fca8c | - |
+| kerbside/migrations/versions/bb26023f0c98_remove_flavor_column.py | mikal | 2026-08-18 | 9652b3a947da | - |
+| kerbside/migrations/versions/c4e7a1b9d2f3_session_terminations.py | mikal | 2026-08-18 | 34597ad33c7e | - |
+| kerbside/migrations/versions/cdb5c3529858_sf_token_tables.py | mikal | 2026-08-18 | 8c28ea4b9a7d | - |
+| kerbside/migrations/versions/e1a4c7d2f9b6_auditevents_pid_as_string.py | mikal | 2026-08-18 | d5b53b8aede6 | - |
+| kerbside/migrations/versions/f7b2e9c4a1d8_drop_proxychannels_session_id_fk.py | mikal | 2026-08-18 | be35c384ab3c | - |
+| kerbside/rpc/__init__.py | mikal | 2026-08-07 | e69de29bb2d1 | - |
+| kerbside/rpc/server.py | mikal | 2026-08-07 | d6af35e9ff27 | - |
+| kerbside/sources/base.py | mikal | 2026-08-07 | 950856916980 | - |
+| kerbside/tests/__init__.py | mikal | 2026-08-08 | e69de29bb2d1 | - |
+| kerbside/tests/functional/__init__.py | mikal | 2026-08-08 | e69de29bb2d1 | - |
+| kerbside/tests/functional/test_openstack.py | mikal | 2026-08-08 | f3beb5d9abc5 | - |
+| kerbside/tests/functional/test_shakenfist.py | mikal | 2026-08-08 | e20f496edd01 | - |
+| kerbside/tests/unit/__init__.py | mikal | 2026-08-08 | e69de29bb2d1 | - |
+| kerbside/tests/unit/test_sf_token.py | mikal | 2026-08-08 | 2b42aef35cbb | - |
+| loadtests/latency/cleanupconsoles.sh | mikal | 2026-08-08 | 181480700807 | - |
+| loadtests/latency/makeconsole.sh | mikal | 2026-08-08 | 291f5057d4b3 | - |
+| rust/kerbside-proxy/README.md | mikal | 2026-08-18 | e827f685f04b | - |
+| rust/kerbside-proxy/build.rs | mikal | 2026-08-18 | 986a0e57e486 | - |
+| rust/kerbside-proxy/src/allowlist.rs | mikal | 2026-08-15 | f2adab6fb95e | - |
+| rust/kerbside-proxy/src/metrics.rs | mikal | 2026-08-15 | 521fa7d251dc | - |
+| rust/kerbside-proxy/src/policy.rs | mikal | 2026-08-15 | e5ec82cc156b | - |
+| rust/kerbside-proxy/src/relay.rs | mikal | 2026-08-15 | 9f46aa32f6a7 | - |
+| rust/kerbside-proxy/src/rpc.rs | mikal | 2026-08-05 | a50c7c209641 | - |
+| rust/kerbside-proxy/src/tls.rs | mikal | 2026-08-05 | e2be3c864a08 | - |
+| tempest-plugin/README.md | mikal | 2026-08-18 | bf3b673319f7 | - |
+| tempest-plugin/kerbside_tempest_plugin/__init__.py | mikal | 2026-08-08 | e69de29bb2d1 | - |
+| tempest-plugin/kerbside_tempest_plugin/config.py | mikal | 2026-08-08 | 47398e47680a | - |
+| tempest-plugin/kerbside_tempest_plugin/plugin.py | mikal | 2026-08-08 | 38d6e6f49d50 | - |
+| tempest-plugin/kerbside_tempest_plugin/tests/__init__.py | mikal | 2026-08-18 | e69de29bb2d1 | - |
+| tempest-plugin/kerbside_tempest_plugin/tests/api/__init__.py | mikal | 2026-08-18 | e69de29bb2d1 | - |
+| tempest-plugin/kerbside_tempest_plugin/tests/api/test_spice_via_kerbside.py | mikal | 2026-08-18 | a81ea8817e1f | - |
+| tempest-plugin/kerbside_tempest_plugin/tests/scenario/__init__.py | mikal | 2026-08-18 | e69de29bb2d1 | - |
+| tools/check-required-checks.sh | mikal | 2026-08-15 | dc86bff62d2d | - |
+| tools/check-wheel.py | mikal | 2026-08-15 | 01953f7326bc | - |
+| tools/ci-prune-reviews.sh | mikal | 2026-08-06 | 6daef1e07eb0 | - |
+| tools/create-ovirt-vnc-vm.py | mikal | 2026-08-15 | ab5640046d9d | - |
+| tools/direct-qemu/generate-tls.sh | mikal | 2026-08-15 | b271b8113594 | - |
+| tools/direct-qemu/install-proxy-wheel.sh | mikal | 2026-08-18 | 9266fc276c75 | - |
+| tools/direct-qemu/lane-down.sh | mikal | 2026-08-15 | d800366551ac | - |
+| tools/direct-qemu/lane-up.sh | mikal | 2026-08-15 | f130cd95e021 | - |
+| tools/direct-qemu/mock-grpc-server.py | mikal | 2026-08-15 | a967113f7730 | - |
+| tools/direct-qemu/probe-runner.sh | mikal | 2026-08-15 | 67882b8dba7a | - |
+| tools/direct-qemu/rebuild-sextant-qcow2.sh | mikal | 2026-08-09 | 4cfa3daff656 | - |
+| tools/direct-qemu/run-host-subject-checks.sh | mikal | 2026-08-15 | aaddc0bf0732 | - |
+| tools/direct-qemu/run-scenario.sh | mikal | 2026-08-15 | 6b989adb040d | - |
+| tools/direct-qemu/setup-mariadb.sh | mikal | 2026-08-15 | 4bb393d94ea6 | - |
+| tools/direct-qemu/smoke-client.py | mikal | 2026-08-15 | b7fcd8143c85 | - |
+| tools/direct-qemu/start-kerbside.sh | mikal | 2026-08-15 | 7b8048db8730 | - |
+| tools/direct-qemu/verify-rust-proxy.sh | mikal | 2026-08-15 | f8631679d5a7 | - |
+| tools/direct-qemu/verify-terminate-live.sh | mikal | 2026-08-18 | ad344ca4713f | - |
+| tools/direct-qemu/wait-for-banner.sh | mikal | 2026-08-09 | 17c8a378a6a9 | - |
+| tools/dump-ovirt-host-subject.py | mikal | 2026-08-15 | d3fc3319691b | - |
+| tools/file-nightly-failure-issue.sh | mikal | 2026-08-15 | 645f302940ec | - |
+| tools/gen-protos.sh | mikal | 2026-08-18 | e56d238dbdaa | - |
+| tools/ovirt-e2e/README.md | mikal | 2026-08-18 | 20e8fe84c47b | - |
+| tools/ovirt-e2e/drive-console.py | mikal | 2026-08-18 | 5abf82e72acb | - |
+| tools/ovirt-e2e/gen-sources.py | mikal | 2026-08-18 | c26f5d39cf25 | - |
+| tools/pin-indirect-dependencies.sh | mikal | 2026-08-06 | 241b462c281d | - |
+| tools/review-tracking.sh | mikal | 2026-08-06 | e63705ac5c57 | - |
+| tools/sf-e2e/README.md | mikal | 2026-08-15 | 6b5f0ebcbe1c | - |
+| tools/sf-e2e/deploy-kerbside.sh | mikal | 2026-08-15 | b374194e5585 | - |
+| tools/sf-e2e/drive-adversarial.py | mikal | 2026-08-15 | 12ab1f0f45a6 | - |
+| tools/sf-e2e/gather-artifacts.sh | mikal | 2026-08-15 | b88a99542202 | - |
+| tools/sf-e2e/gen-sources.py | mikal | 2026-08-15 | ac916339e3b2 | - |
+| tools/sf-e2e/import-instance.sh | mikal | 2026-08-15 | 7037f8372e2e | - |
+| tools/sf-e2e/provision-sf.sh | mikal | 2026-08-15 | e8db5e0a6203 | - |
+| tools/stamp-dev-proxy-version.sh | mikal | 2026-08-18 | 8669f794ef37 | - |
+| tools/stamp-proxy-version.sh | mikal | 2026-08-18 | f89c1f63e9a6 | - |
+| tools/test-ovirt-console.py | mikal | 2026-08-06 | c3ee796b2c44 | - |
+| tools/verify-wheel-stamping.sh | mikal | 2026-08-18 | 37c6a675aade | - |
