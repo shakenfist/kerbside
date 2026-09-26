@@ -77,6 +77,15 @@ material. The auth seed and generated keys are written with `600`
 permissions and are never emitted to stdout or artifacts. Public keys are
 fine to log.
 
+`gather-artifacts.sh` collects kerbside and ryll logs, the `.vv`,
+`sources.yaml`, and the whole-run journals of every SF daemon
+(`sf-api.journal`, `sf-console.journal`, `sf-daemons.journal`) and of
+libvirt (`libvirtd.journal`). Those journals can carry secrets: a libvirt
+refusal echoes the domain XML, SPICE `passwd='...'` included. So every
+collected file is redacted in one pass over the output directory, and a
+file in which a password-shaped value survives is withheld from the
+upload and fails the step by name. See shakenfist/kerbside#482.
+
 ## Env-file contract
 
 - `/tmp/sf-e2e/kerbside.env` (written by `deploy-kerbside.sh`): venv path,
