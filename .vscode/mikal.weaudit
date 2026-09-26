@@ -28,10 +28,6 @@
   ],
   "auditedFiles": [
     {
-      "path": "etc/kolla-ci-globals-overlay.yml",
-      "author": "mikal"
-    },
-    {
       "path": "rust/kerbside-proxy/src/rpc.rs",
       "author": "mikal"
     },

@@ -153,10 +153,6 @@
       "sha": "558621b0e5ee59b1a61c784a96ea9f7281d3dcd1",
       "date": "2026-08-18"
     },
-    "etc/kolla-ci-globals-overlay.yml": {
-      "sha": "e11f4d65bca446150d6e2ed32a49a8fccfa0ebbc",
-      "date": "2026-08-04"
-    },
     "kerbside/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-06"
