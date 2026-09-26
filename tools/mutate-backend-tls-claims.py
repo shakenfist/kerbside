@@ -18,6 +18,7 @@ Add a mutation whenever you add a rule to the guard. Run it with:
 
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -105,6 +106,18 @@ def main():
     handle, backup = tempfile.mkstemp(suffix='.py')
     os.close(handle)
     shutil.copy(GUARD, backup)
+
+    # The guard is mutated in the working tree for the whole run, so
+    # every way out has to reach the restore below. SIGINT already
+    # raises, but SIGTERM and SIGHUP -- a kill, or the terminal
+    # closing -- do not, and would leave a weakened guard behind for
+    # the next commit to pick up. Raising SystemExit from the handler
+    # puts them through the same finally as everything else.
+    def restore_and_exit(signum, _frame):
+        sys.exit('signal %d: restoring %s' % (signum, GUARD))
+
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, restore_and_exit)
 
     try:
         # Without this, an unbuilt tox environment makes every mutation
