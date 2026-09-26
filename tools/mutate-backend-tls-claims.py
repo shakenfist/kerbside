@@ -12,6 +12,10 @@ Add a mutation whenever you add a rule to the guard. Run it with:
     tools/mutate-backend-tls-claims.py
 """
 
+# audit-allow-print: this is a reporting CLI -- it prints which
+# mutations the guard's tests caught, and is run by hand rather
+# than by the daemon.
+
 import os
 import shutil
 import subprocess

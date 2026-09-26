@@ -47,6 +47,10 @@ outcome of a flow whose condition the surrounding prose states, and
 there is no room in a diagram label to restate it.
 """
 
+# audit-allow-print: this is a reporting CLI -- the docs_checks job
+# in functional-tests.yml reads its stdout, and a developer runs it
+# by hand to see which block failed.
+
 import glob
 import os
 import re
