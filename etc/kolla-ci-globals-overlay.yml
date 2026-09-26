@@ -8,3 +8,9 @@
 # Horizon is the OpenStack dashboard. Tempest drives the API directly
 # and the kerbside scenarios never touch it.
 enable_horizon: "no"
+
+# Magnum is not part of the kerbside story. kerbside-patches'
+# globals-master.yml enables it to exercise a MariaDB collation fix,
+# but the openstack_matrix job does not build magnum images, so
+# leaving it enabled fails the deploy pulling kolla/magnum-api.
+enable_magnum: "no"
