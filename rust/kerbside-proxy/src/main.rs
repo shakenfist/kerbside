@@ -41,6 +41,9 @@ mod tls;
 /// The per-connection client-facing handshake + authorization.
 mod session;
 
+/// The link capabilities offered to clients and forwarded to backends.
+mod caps;
+
 /// The backend leg: hypervisor connect (with the need_secured retry) + relay
 /// handoff.
 mod backend;

@@ -6,17 +6,21 @@
 //! (TLS-terminated) client connection to. It:
 //!
 //! 1. reads the client's link message (`read_link_mess`),
-//! 2. maps and validates the requested channel type,
+//! 2. maps and validates the requested channel type, and refuses a client
+//!    whose common capabilities lack MINI_HEADER or AUTH_SELECTION with a
+//!    link error (see `crate::caps`),
 //! 3. records the pre-authorization channel identity (`RegisterChannel`),
 //! 4. generates a fresh per-connection RSA keypair and replies with the
-//!    success link reply (DER public key, caps 11/9) so the client encrypts
-//!    its ticket to us (`send_link_reply`),
+//!    success link reply (DER public key, and the per-channel-type caps from
+//!    `crate::caps::reply_channel_caps`) so the client encrypts its ticket to
+//!    us (`send_link_reply`),
 //! 5. reads and decrypts the ticket (`read_auth_ticket`),
 //! 6. authorizes the token against the gRPC control service
 //!    (`AuthorizeConnection`), sending the client the protocol-correct
 //!    `SpiceError` on denial/failure, and
 //! 7. on success, hands the authorized stream off to the backend leg + relay
-//!    (`crate::backend::run`).
+//!    (`crate::backend::run`), along with the client's link capabilities,
+//!    which the backend leg forwards to the hypervisor.
 //!
 //! Every path that gets as far as a successful `RegisterChannel`
 //! deregisters on teardown, and no path panics: a hostile or broken client
@@ -38,6 +42,7 @@ use shakenfist_spice_protocol::{ChannelType, SpiceError};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
+use crate::caps::{self, ClientCaps};
 use crate::metrics;
 use crate::rpc::{AuthzOutcome, KerbsideRpc};
 
@@ -186,6 +191,35 @@ pub async fn handle_connection(state: Arc<SharedState>, mut stream: SpiceStream,
     };
     let channel_type_name = channel_type.name();
 
+    // Refuse a client that cannot speak what the relay and the ticket
+    // exchange depend on, before anything is recorded for it: a link error
+    // the client can report, rather than an auth read that misparses or a
+    // relay that misframes. This is not an audit event: nothing about the
+    // client is authenticated yet, so there is no console to attribute it
+    // to, and a write per unauthenticated connection is the unbounded audit
+    // table growth kerbside/api.py's pre-verify rejections avoid.
+    let missing = caps::missing_required_client_caps(&link.common_caps);
+    if !missing.is_empty() {
+        info!(
+            %peer, %connection_ref,
+            channel = channel_type_name,
+            missing = %missing.join(", "),
+            common_caps = ?link.common_caps,
+            "client lacks required SPICE common capabilities; refusing link"
+        );
+        let reply = SpiceLinkReply::error_reply(SpiceError::VersionMismatch);
+        match tokio::time::timeout(HANDSHAKE_TIMEOUT, send_link_reply(&mut stream, &reply)).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => debug!(%peer, %connection_ref, error = %e, "sending link refusal failed"),
+            Err(_) => debug!(%peer, %connection_ref, "sending link refusal timed out"),
+        }
+        return;
+    }
+    let client_caps = ClientCaps {
+        common: link.common_caps,
+        channel: link.channel_caps,
+    };
+
     let client_ip = peer.ip().to_string();
     let client_port = peer.port() as u32;
 
@@ -221,6 +255,7 @@ pub async fn handle_connection(state: Arc<SharedState>, mut stream: SpiceStream,
         channel_type,
         link.channel_id,
         channel_type_name,
+        &client_caps,
     )
     .await;
     if let Err(e) = result {
@@ -251,6 +286,7 @@ async fn serve(
     channel_type: ChannelType,
     channel_id: u8,
     channel_type_name: &str,
+    client_caps: &ClientCaps,
 ) -> Result<()> {
     // Fresh per-connection RSA keypair for the ticket exchange. The private
     // key never leaves this function (the `rsa` types are not a direct
@@ -259,15 +295,17 @@ async fn serve(
     let (priv_key, der) =
         generate_ticket_keypair().context("generating per-connection RSA keypair")?;
 
-    // Send the success link reply (carrying our DER public key and the
-    // caps 11/9 the Python proxy uses) and read + decrypt the client's ticket,
-    // both under the handshake time bound. The recovered token is never logged.
+    // Send the success link reply (carrying our DER public key and the caps
+    // Kerbside offers for this channel type) and read + decrypt the client's
+    // ticket, both under the handshake time bound. The reply cannot depend on
+    // the backend, which is not chosen until the ticket is authorized. The
+    // recovered token is never logged.
     let token = tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
         let reply = SpiceLinkReply {
             error: SpiceError::Ok,
             pub_key: der,
-            common_caps: vec![11],
-            channel_caps: vec![9],
+            common_caps: caps::REPLY_COMMON_CAPS.to_vec(),
+            channel_caps: caps::reply_channel_caps(channel_type).to_vec(),
         };
         send_link_reply(&mut stream, &reply).await?;
         read_auth_ticket(&mut stream, &priv_key).await
@@ -360,6 +398,7 @@ async fn serve(
                 connection_id,
                 channel_type,
                 channel_id,
+                client_caps,
                 &target,
                 cancel,
             )
@@ -448,5 +487,249 @@ mod tests {
         assert!(ChannelType::from_u8(0).is_none());
         assert!(ChannelType::from_u8(12).is_none());
         assert!(ChannelType::from_u8(255).is_none());
+    }
+}
+
+/// The whole client-to-backend handshake, driven through `handle_connection`
+/// over loopback TCP: a fake SPICE client, the mock control service from
+/// `rpc.rs`, and a fake hypervisor built from ryll's server-role drivers.
+#[cfg(test)]
+mod handshake_tests {
+    use super::*;
+
+    use shakenfist_spice_protocol::constants::capabilities;
+    use shakenfist_spice_protocol::link::{perform_auth, perform_link_with_caps, SpiceLinkMess};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
+    use tokio::sync::oneshot;
+
+    use crate::pb;
+    use crate::rpc::tests::{spawn_mock_with, MockService};
+
+    /// Bound on each whole test, so a handshake bug fails rather than hangs.
+    const TEST_TIMEOUT: Duration = Duration::from_secs(60);
+
+    const VM_TICKET: &str = "vm-ticket";
+
+    /// What the fake hypervisor saw of the backend leg's link message.
+    #[derive(Debug)]
+    struct BackendSaw {
+        connection_id: u32,
+        channel_type: u8,
+        channel_id: u8,
+        common_caps: Vec<u32>,
+        channel_caps: Vec<u32>,
+    }
+
+    /// A one-shot fake hypervisor: accept one connection, record its link
+    /// message, reply with `reply_channel_caps`, check the ticket Kerbside
+    /// sends, grant auth, then hold the connection until the relay closes it.
+    async fn spawn_fake_backend(
+        reply_channel_caps: Vec<u32>,
+    ) -> (u16, oneshot::Receiver<BackendSaw>) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind backend");
+        let port = listener.local_addr().expect("backend addr").port();
+        let (tx, rx) = oneshot::channel();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("backend accept");
+            let link = read_link_mess(&mut stream)
+                .await
+                .expect("backend read link");
+            let _ = tx.send(BackendSaw {
+                connection_id: link.connection_id,
+                channel_type: link.channel_type,
+                channel_id: link.channel_id,
+                common_caps: link.common_caps,
+                channel_caps: link.channel_caps,
+            });
+            let (key, der) = generate_ticket_keypair().expect("backend keypair");
+            let reply = SpiceLinkReply {
+                error: SpiceError::Ok,
+                pub_key: der,
+                common_caps: vec![11],
+                channel_caps: reply_channel_caps,
+            };
+            send_link_reply(&mut stream, &reply)
+                .await
+                .expect("backend link reply");
+            let ticket = read_auth_ticket(&mut stream, &key)
+                .await
+                .expect("backend ticket");
+            assert_eq!(ticket, VM_TICKET, "Kerbside must send the target's ticket");
+            send_auth_result(&mut stream, SpiceError::Ok)
+                .await
+                .expect("backend auth result");
+            let mut sink = Vec::new();
+            let _ = stream.read_to_end(&mut sink).await;
+        });
+        (port, rx)
+    }
+
+    /// Start a proxy accept loop for one connection over plain TCP (the TLS
+    /// termination in `listen.rs` is not under test here), backed by `mock`.
+    /// Returns the proxy address, the audit log, and the connection task.
+    async fn spawn_proxy(
+        mock: MockService,
+    ) -> (
+        SocketAddr,
+        Arc<Mutex<Vec<String>>>,
+        tokio::task::JoinHandle<()>,
+        tempfile::TempDir,
+    ) {
+        let audit = Arc::clone(&mock.audit_messages);
+        let (rpc, dir) = spawn_mock_with(mock).await;
+        let state = Arc::new(SharedState {
+            rpc,
+            node_name: "test-node".to_string(),
+            sessions: Arc::new(SessionRegistry::default()),
+            backend_rcvbuf_bytes: 0,
+        });
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind proxy");
+        let addr = listener.local_addr().expect("proxy addr");
+        let task = tokio::spawn(async move {
+            let (tcp, peer) = listener.accept().await.expect("proxy accept");
+            handle_connection(state, SpiceStream::Plain(tcp), peer).await;
+        });
+        (addr, audit, task, dir)
+    }
+
+    /// A client with capabilities no Ryll build advertises -- display bits
+    /// GL_SCANOUT(7), CODEC_VP8(10), CODEC_VP9(13) and CODEC_H265(14), a
+    /// top bit, and a second word in both sets -- is forwarded to the
+    /// backend verbatim, and is offered the display row of the reply table
+    /// rather than the old fixed caps.
+    #[tokio::test]
+    async fn client_caps_reach_the_backend_and_reply_caps_follow_channel_type() {
+        tokio::time::timeout(TEST_TIMEOUT, async {
+            let client_common = [
+                capabilities::AUTH_SELECTION
+                    | capabilities::AUTH_SPICE
+                    | capabilities::MINI_HEADER
+                    | (1 << 30),
+                0x0000_0005,
+            ];
+            let client_channel = [
+                (1 << 7) | (1 << 10) | (1 << 13) | (1 << 14) | (1 << 31),
+                0xdead_beef,
+            ];
+
+            // The backend lacks PREF_VIDEO_CODEC_TYPE, which Kerbside offered
+            // the client, exercising the mismatch warning path.
+            let backend_caps = vec![
+                capabilities::DISPLAY_MONITORS_CONFIG
+                    | capabilities::DISPLAY_PREF_COMPRESSION
+                    | capabilities::DISPLAY_STREAM_REPORT,
+            ];
+            let (backend_port, backend_saw) = spawn_fake_backend(backend_caps).await;
+            let mock = MockService {
+                target: Some(pb::Target {
+                    hypervisor: "fake-hv".to_string(),
+                    hypervisor_ip: "127.0.0.1".to_string(),
+                    insecure_port: backend_port as u32,
+                    secure_port: 0,
+                    ticket: VM_TICKET.to_string(),
+                    source: "src".to_string(),
+                    uuid: "uuid".to_string(),
+                    session_id: "session".to_string(),
+                    ..Default::default()
+                }),
+                // Empty means every channel type is permitted.
+                permitted_channels: Some(vec![]),
+                ..Default::default()
+            };
+            let (proxy_addr, audit, proxy_task, _dir) = spawn_proxy(mock).await;
+
+            let mut client = TcpStream::connect(proxy_addr)
+                .await
+                .expect("client connect");
+            let reply = perform_link_with_caps(
+                &mut client,
+                0x1234_5678,
+                ChannelType::Display,
+                2,
+                &client_common,
+                &client_channel,
+            )
+            .await
+            .expect("client link");
+            assert_eq!(reply.error, SpiceError::Ok);
+            assert_eq!(reply.common_caps, caps::REPLY_COMMON_CAPS.to_vec());
+            assert_eq!(
+                reply.channel_caps,
+                caps::reply_channel_caps(ChannelType::Display).to_vec()
+            );
+            perform_auth(&mut client, &reply.pub_key, Some("good-token"))
+                .await
+                .expect("client auth through the proxy");
+
+            let saw = backend_saw.await.expect("backend saw a link");
+            assert_eq!(saw.connection_id, 0x1234_5678);
+            assert_eq!(saw.channel_type, ChannelType::Display as u8);
+            assert_eq!(saw.channel_id, 2);
+            // Verbatim, multi-word included, apart from the auth mechanism
+            // bits (AUTH_SPICE was already set, so nothing changes here).
+            assert_eq!(saw.common_caps, client_common.to_vec());
+            assert_eq!(saw.channel_caps, client_channel.to_vec());
+
+            // Closing the client ends the relay and the connection task.
+            drop(client);
+            proxy_task.await.expect("proxy connection task");
+            let audit = audit.lock().expect("audit mutex").clone();
+            assert!(
+                audit
+                    .iter()
+                    .any(|m| m == "Hypervisor connection successful"),
+                "audit events: {audit:?}"
+            );
+        })
+        .await
+        .expect("handshake test timed out");
+    }
+
+    /// A client lacking MINI_HEADER, or AUTH_SELECTION, gets a link error
+    /// before any key exchange, control-plane call or backend dial.
+    #[tokio::test]
+    async fn client_without_required_common_caps_is_refused_at_link() {
+        tokio::time::timeout(TEST_TIMEOUT, async {
+            for common in [
+                capabilities::AUTH_SELECTION | capabilities::AUTH_SPICE,
+                capabilities::AUTH_SPICE | capabilities::MINI_HEADER,
+            ] {
+                let (proxy_addr, audit, proxy_task, _dir) =
+                    spawn_proxy(MockService::default()).await;
+                let mut client = TcpStream::connect(proxy_addr)
+                    .await
+                    .expect("client connect");
+                let link = SpiceLinkMess {
+                    connection_id: 0,
+                    channel_type: ChannelType::Main as u8,
+                    channel_id: 0,
+                    common_caps: vec![common],
+                    channel_caps: vec![capabilities::DEFAULT_MAIN],
+                };
+                client
+                    .write_all(&link.serialize())
+                    .await
+                    .expect("client link");
+
+                let mut buf = Vec::new();
+                client.read_to_end(&mut buf).await.expect("read link reply");
+                let reply = SpiceLinkReply::parse(&buf).expect("parse link reply");
+                assert_eq!(
+                    reply.error,
+                    SpiceError::VersionMismatch,
+                    "common caps {common:#x}"
+                );
+                assert!(reply.common_caps.is_empty());
+                assert!(reply.channel_caps.is_empty());
+
+                proxy_task.await.expect("proxy connection task");
+                assert!(audit.lock().expect("audit mutex").is_empty());
+            }
+        })
+        .await
+        .expect("refusal test timed out");
     }
 }
