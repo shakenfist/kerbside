@@ -15,8 +15,10 @@
 #
 # What is included, and why:
 #
-# - Python, Rust, shell, JavaScript and protobuf definitions are the
-#   executable artifacts.
+# - Python, Rust, C, shell, JavaScript and protobuf definitions are
+#   the executable artifacts. Patches are too: the shaped-link
+#   harness applies tools/shaped-link/ryll-surface-drawn-rect.patch
+#   to the ryll it builds, so the patch is code that runs.
 # - YAML is executable in practice: the CI workflows decide what runs,
 #   with which permissions, against which secrets.
 # - Markdown documentation (README, ARCHITECTURE, AGENTS, docs/
@@ -65,6 +67,8 @@ include = [
     '*.py',
     '*.pyi',
     '*.rs',
+    '*.c',
+    '*.patch',
     '*.sh',
     '*.js',
     '*.proto',
