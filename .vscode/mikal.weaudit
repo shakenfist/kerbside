@@ -28,10 +28,6 @@
   ],
   "auditedFiles": [
     {
-      "path": "rust/kerbside-proxy/src/rpc.rs",
-      "author": "mikal"
-    },
-    {
       "path": "rust/kerbside-proxy/src/tls.rs",
       "author": "mikal"
     },
@@ -417,10 +413,6 @@
     },
     {
       "path": "docs/spice/console-vv-extensions.md",
-      "author": "mikal"
-    },
-    {
-      "path": "docs/spice/protocol-overview.md",
       "author": "mikal"
     },
     {

@@ -129,10 +129,6 @@
       "sha": "04de34ecbe3153d26409d6f4c30249e963097f44",
       "date": "2026-09-18"
     },
-    "docs/spice/protocol-overview.md": {
-      "sha": "2a49ba528c79e8980f59dc998eaab0daff16cd01",
-      "date": "2026-09-18"
-    },
     "docs/spice/scancodes.md": {
       "sha": "0bcdfd3b59f71bfddfbdd6eeb78738ced94dce39",
       "date": "2026-09-18"
@@ -268,10 +264,6 @@
     "rust/kerbside-proxy/src/relay.rs": {
       "sha": "9f46aa32f6a7919ceb00c2d95f86c672f7e8b92c",
       "date": "2026-08-15"
-    },
-    "rust/kerbside-proxy/src/rpc.rs": {
-      "sha": "a50c7c209641787f1aa0bfdeea558820c812537f",
-      "date": "2026-08-05"
     },
     "rust/kerbside-proxy/src/tls.rs": {
       "sha": "e2be3c864a08747f987880b5205d719f33a15f78",
