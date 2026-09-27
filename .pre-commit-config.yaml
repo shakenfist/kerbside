@@ -37,8 +37,8 @@ repos:
         types_or: [sh, bash, shell]
         args: ['-x']
 
-  # skillsaw lints the agent context -- AGENTS.md, .claude/CLAUDE.md and
-  # the skills under .claude/skills/ -- for malformed frontmatter,
+  # skillsaw lints the agent context -- AGENTS.md and the skills under
+  # .claude/skills/ -- for malformed frontmatter,
   # embedded credentials and invisible-unicode smuggling. Agent context
   # is code an agent executes against, and it is the material the
   # credential scan is least likely to be pointed at. The same linter
