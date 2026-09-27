@@ -173,8 +173,8 @@
       "sha": "c07088c165daeb718be4b23db70c3007215adc22",
       "date": "2026-09-18"
     },
-    "docs/use-cases/multi-cloud.md": {
-      "sha": "78e60b55fe2f12b79c7dc44ea9985ab147795f9e",
+    "docs/use-cases/openstack.md": {
+      "sha": "dd286d8951f7320e9ac0c9113951bf39a65269fc",
       "date": "2026-09-27"
     },
     "etc/example-static-sources.yaml": {

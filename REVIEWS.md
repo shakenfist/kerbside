@@ -60,7 +60,7 @@ for how this works, including how to verify the attestations.
 | docs/spice/scancodes.md | mikal | 2026-09-18 | 0bcdfd3b59f7 | - |
 | docs/spice/usb-redirection.md | mikal | 2026-09-18 | fb19b4f045b1 | - |
 | docs/spice/vd-agent-protocol.md | mikal | 2026-09-18 | c07088c165da | - |
-| docs/use-cases/multi-cloud.md | mikal | 2026-09-27 | 78e60b55fe2f | - |
+| docs/use-cases/openstack.md | mikal | 2026-09-27 | dd286d8951f7 | - |
 | etc/example-static-sources.yaml | mikal | 2026-08-18 | 558621b0e5ee | - |
 | kerbside/__init__.py | mikal | 2026-08-06 | e69de29bb2d1 | - |
 | kerbside/consoletoken.py | mikal | 2026-08-06 | 6811fdf54cb5 | - |
