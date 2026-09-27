@@ -299,9 +299,13 @@ impl KerbsideRpc {
     }
 }
 
+/// The in-process mock control service, shared with other modules' tests
+/// (the session handshake test drives a whole connection through it).
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    use std::sync::Mutex;
 
     use shakenfist_spice_protocol::ChannelType;
     use tokio::net::UnixListener;
@@ -314,8 +318,17 @@ mod tests {
     /// A minimal in-process implementation of the service with canned
     /// responses: a `Target` for a known token, `Denied` otherwise, and
     /// `StatusReply { success: true }` for the bookkeeping RPCs.
+    ///
+    /// The `Default` instance answers "good-token" with a fixed target and a
+    /// WarnOnly policy permitting only main and inputs. A test that needs a
+    /// reachable target or other channels overrides `target` and
+    /// `permitted_channels`; `audit_messages` collects every audit event.
     #[derive(Default)]
-    struct MockService;
+    pub(crate) struct MockService {
+        pub(crate) target: Option<pb::Target>,
+        pub(crate) permitted_channels: Option<Vec<u32>>,
+        pub(crate) audit_messages: Arc<Mutex<Vec<String>>>,
+    }
 
     #[tonic::async_trait]
     impl KerbsideProxy for MockService {
@@ -328,21 +341,23 @@ mod tests {
             // so the client-side proto->FirewallPolicy mapping is exercised.
             let (result, firewall_policy) = if req.token == "good-token" {
                 (
-                    pb::authorize_connection_reply::Result::Target(pb::Target {
-                        hypervisor: "hv1".to_string(),
-                        hypervisor_ip: "10.0.0.1".to_string(),
-                        insecure_port: 5900,
-                        secure_port: 5901,
-                        ticket: "ticket".to_string(),
-                        ca_cert: "ca".to_string(),
-                        host_subject: "CN=hv1".to_string(),
-                        source: "src".to_string(),
-                        uuid: "uuid".to_string(),
-                        session_id: "session".to_string(),
-                    }),
+                    pb::authorize_connection_reply::Result::Target(self.target.clone().unwrap_or(
+                        pb::Target {
+                            hypervisor: "hv1".to_string(),
+                            hypervisor_ip: "10.0.0.1".to_string(),
+                            insecure_port: 5900,
+                            secure_port: 5901,
+                            ticket: "ticket".to_string(),
+                            ca_cert: "ca".to_string(),
+                            host_subject: "CN=hv1".to_string(),
+                            source: "src".to_string(),
+                            uuid: "uuid".to_string(),
+                            session_id: "session".to_string(),
+                        },
+                    )),
                     Some(pb::FirewallPolicy {
                         mode: pb::firewall_policy::Mode::WarnOnly as i32,
-                        permitted_channels: vec![1, 3],
+                        permitted_channels: self.permitted_channels.clone().unwrap_or(vec![1, 3]),
                     }),
                 )
             } else {
@@ -371,8 +386,12 @@ mod tests {
 
         async fn record_audit_event(
             &self,
-            _request: Request<pb::AuditEventRequest>,
+            request: Request<pb::AuditEventRequest>,
         ) -> std::result::Result<Response<pb::StatusReply>, Status> {
+            self.audit_messages
+                .lock()
+                .expect("audit mutex poisoned")
+                .push(request.into_inner().message);
             Ok(Response::new(pb::StatusReply {
                 success: true,
                 error: String::new(),
@@ -431,8 +450,15 @@ mod tests {
         }
     }
 
-    /// Spawn the mock server on a unix socket and return a connected client.
+    /// Spawn the default mock server on a unix socket and return a connected
+    /// client.
     async fn spawn_mock() -> (KerbsideRpc, tempfile::TempDir) {
+        spawn_mock_with(MockService::default()).await
+    }
+
+    /// Spawn `service` on a unix socket and return a connected client. The
+    /// socket lives in the returned directory, so keep it alive.
+    pub(crate) async fn spawn_mock_with(service: MockService) -> (KerbsideRpc, tempfile::TempDir) {
         let dir = tempfile::tempdir().expect("tempdir");
         let socket_path = dir.path().join("api.sock");
 
@@ -441,7 +467,7 @@ mod tests {
 
         tokio::spawn(async move {
             Server::builder()
-                .add_service(KerbsideProxyServer::new(MockService))
+                .add_service(KerbsideProxyServer::new(service))
                 .serve_with_incoming(incoming)
                 .await
                 .expect("serve");
