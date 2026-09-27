@@ -445,20 +445,12 @@
       "sha": "e63705ac5c57fd6d9fd0da21e18f399e3f88e4a4",
       "date": "2026-08-06"
     },
-    "tools/sf-e2e/README.md": {
-      "sha": "6b5f0ebcbe1c086ef9de532c3b7e5b57be51d9b8",
-      "date": "2026-08-15"
-    },
     "tools/sf-e2e/deploy-kerbside.sh": {
       "sha": "b374194e55859c4c3b8d8dbac368b3d17b299b1d",
       "date": "2026-08-15"
     },
     "tools/sf-e2e/drive-adversarial.py": {
       "sha": "12ab1f0f45a642ab9a3cd0c5c237e75ae232a1ee",
-      "date": "2026-08-15"
-    },
-    "tools/sf-e2e/gather-artifacts.sh": {
-      "sha": "b88a9954220263f2a95dee78d6cb42c6b8c9dac6",
       "date": "2026-08-15"
     },
     "tools/sf-e2e/gen-sources.py": {
