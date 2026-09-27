@@ -280,10 +280,11 @@ jobs:
 
       # skillsaw lints the agent context -- AGENTS.md and the skills
       # under .claude/skills/ -- for malformed frontmatter, embedded
-      # credentials and invisible-unicode smuggling. The pre-commit hook is the same linter at the same
-      # error-only severity, but a hook can be skipped with --no-verify
-      # or by a clone that never ran `pre-commit install`, and agent
-      # context is code an agent executes against.
+      # credentials and invisible-unicode smuggling. The pre-commit hook
+      # is the same linter at the same error-only severity, but a hook
+      # can be skipped with --no-verify or by a clone that never ran
+      # `pre-commit install`, and agent context is code an agent
+      # executes against.
       #
       # Installed into the test venv rather than run as
       # stbenjam/skillsaw@v0. That composite action opens with
