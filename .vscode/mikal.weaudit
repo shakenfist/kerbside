@@ -498,6 +498,46 @@
     {
       "path": ".skillsaw.yaml",
       "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/codeql-analysis.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/demo-compose.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/dev-proxy-wheel.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/direct-qemu-functional.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/mermaid-lint.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/pin-indirect-dependencies.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/rust.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/sf-e2e-functional.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/actionlint.yaml",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

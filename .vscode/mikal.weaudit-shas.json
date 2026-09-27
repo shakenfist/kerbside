@@ -13,6 +13,34 @@
       "sha": "efb2e768654f6bfa32d5a35d84891d2f0e6ab610",
       "date": "2026-09-26"
     },
+    ".github/actionlint.yaml": {
+      "sha": "51ca7aeb826114754b7c00811695bd9772dad18a",
+      "date": "2026-09-27"
+    },
+    ".github/workflows/codeql-analysis.yml": {
+      "sha": "41389dc343926f1f949a2524afa4b81a54dd9c06",
+      "date": "2026-09-27"
+    },
+    ".github/workflows/demo-compose.yml": {
+      "sha": "9a44d8f35bb0e75c628cedf0079053ceeda3b112",
+      "date": "2026-09-27"
+    },
+    ".github/workflows/dev-proxy-wheel.yml": {
+      "sha": "e8f8f57003823289d6079826d29f718a9d76df2c",
+      "date": "2026-09-27"
+    },
+    ".github/workflows/direct-qemu-functional.yml": {
+      "sha": "27e67fd39ee151726e5da3312ac5421fd502041b",
+      "date": "2026-09-27"
+    },
+    ".github/workflows/mermaid-lint.yml": {
+      "sha": "b4c31cff44ef4f93fdd2854fda40c4d0b39111a5",
+      "date": "2026-09-27"
+    },
+    ".github/workflows/pin-indirect-dependencies.yml": {
+      "sha": "ad5835fb017c7412f72db54764f7702396d97d36",
+      "date": "2026-09-27"
+    },
     ".github/workflows/prune-reviews.yml": {
       "sha": "27c5c370391a513b7978fe4eb2c0302c3da68ae3",
       "date": "2026-08-11"
@@ -20,6 +48,18 @@
     ".github/workflows/pypi-storage-check.yml": {
       "sha": "b4ea2a75e61abba4bcfd122d9f0d8222f1b25607",
       "date": "2026-08-24"
+    },
+    ".github/workflows/release.yml": {
+      "sha": "47583d36522c431a179f2dd0865fe130d6673a11",
+      "date": "2026-09-27"
+    },
+    ".github/workflows/rust.yml": {
+      "sha": "8b8f7d515c38bd90b7c093a0c4d7bd19cdf226c9",
+      "date": "2026-09-27"
+    },
+    ".github/workflows/sf-e2e-functional.yml": {
+      "sha": "00d9aa7b1a15273cfb15d7ad8ae752bb0bd2de41",
+      "date": "2026-09-27"
     },
     ".gitignore": {
       "sha": "45c7b4061c76ee62e15d7efceb2cc2f53451b12e",
