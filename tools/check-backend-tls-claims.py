@@ -47,6 +47,10 @@ outcome of a flow whose condition the surrounding prose states, and
 there is no room in a diagram label to restate it.
 """
 
+# audit-allow-print: this is a reporting CLI -- the docs_checks job
+# in functional-tests.yml reads its stdout, and a developer runs it
+# by hand to see which block failed.
+
 import glob
 import os
 import re
@@ -136,6 +140,10 @@ def default_paths():
     root = repository_root()
     paths = []
     for pattern in DOC_PATHS:
+        # Both halves of this join are process-chosen -- root from
+        # __file__, pattern from the DOC_PATHS constant above -- so
+        # there is nothing here to contain and no realpath check is
+        # owed. Paths from argv are a different question; see main().
         paths.extend(glob.glob(os.path.join(root, pattern)))
     return sorted(os.path.relpath(p, root) for p in paths)
 
