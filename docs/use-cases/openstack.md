@@ -9,7 +9,17 @@ beside one.
 
 Nova 2025.1 (Epoxy) added the `spice-direct` console type so
 that users can open a native SPICE client instead of the HTML5
-transcoding proxy. A native client has to connect to something,
+transcoding proxy. That console type did not arrive
+independently of Kerbside. The Kerbside developers proposed it
+to Nova as the upstream half of this deployment, and it was
+refined and landed with the Nova team through the
+[Nova specification](https://specs.openstack.org/openstack/nova-specs/specs/2025.1/implemented/libvirt-spice-direct-consoles.html)
+process. What landed is deliberately general: any
+protocol-aware proxy could answer it. But Kerbside is the proxy
+it was designed alongside, and the two projects have moved
+together since.
+
+A native client has to connect to something,
 and OpenStack is — wisely — unwilling to give a client network
 a route to TCP ports on a hypervisor. So `spice-direct` does not
 hand the user a hypervisor address at all. It hands out a URL
@@ -225,12 +235,18 @@ template that it ought to use a dedicated Kerbside account
 instead. No least-privilege role has been built or tested; treat
 one as untried.
 
-**Deployment.** Kerbside is deployed as a component of the
-cloud, next to the other control plane services rather than
-outside them. The Kolla and Kolla-Ansible work that does this
-lives in
-[kerbside-patches](https://github.com/shakenfist/kerbside-patches),
-and is being upstreamed under the `spice-direct-consoles` topic.
+**Deployment.** Kerbside's OpenStack support has always been a
+set of upstream contributions as much as code in this
+repository, and
+[kerbside-patches](https://github.com/shakenfist/kerbside-patches)
+is where they are tracked. It carries the Nova changes behind
+`spice-direct` itself, which have landed; the openstacksdk and
+python-openstackclient support that exposes the console type to
+users; follow-on Nova work, such as extra specs for the sound
+model and USB redirection; and the Kolla and Kolla-Ansible
+changes that deploy Kerbside as a component of the cloud, next
+to the other control plane services. Those deployment changes
+are being upstreamed under the `spice-direct-consoles` topic.
 Checked on **2026-09-20**:
 
 | Change | What it does | Status |
@@ -445,7 +461,9 @@ Not covered, and worth knowing before you deploy:
   pages: several sources behind one Kerbside, and several
   Kerbsides in front of one cloud
 - [Nova specification](https://specs.openstack.org/openstack/nova-specs/specs/2025.1/implemented/libvirt-spice-direct-consoles.html)
-  — the specification that added the `spice-direct` console
-  type to Nova in 2025.1
+  — the specification, proposed from the Kerbside work, that
+  added the `spice-direct` console type to Nova in 2025.1
 - [kerbside-patches](https://github.com/shakenfist/kerbside-patches)
-  — the Kolla and Kolla-Ansible changes, until they are upstream
+  — the record of Kerbside's contributions to OpenStack: the
+  Nova, client, Kolla and Kolla-Ansible changes, landed and
+  in flight

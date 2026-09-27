@@ -186,7 +186,9 @@ periodically scraping for available consoles, Kerbside validates authentication
 tokens issued by Nova when users request SPICE direct console access.
 
 Nova 2025.1 (Epoxy) and later includes native support for SPICE direct consoles
-via the "spice-direct" console type. When a user requests a console, Nova returns
+via the "spice-direct" console type, which the Kerbside developers proposed to
+Nova and landed with the Nova team (see
+[Kerbside for OpenStack](use-cases/openstack.md#value-proposition)). When a user requests a console, Nova returns
 a URL pointing to Kerbside with an authentication token. Kerbside validates this
 token via Nova's `/os-console-auth-tokens/` API and establishes the proxied
 connection to the hypervisor.
