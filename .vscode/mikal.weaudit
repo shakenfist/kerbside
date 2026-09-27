@@ -120,10 +120,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/export-repo-config.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/prune-reviews.yml",
       "author": "mikal"
     },
@@ -272,10 +268,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/pr-retest.yml",
-      "author": "mikal"
-    },
-    {
       "path": "demo/demo-env.sh",
       "author": "mikal"
     },
@@ -396,10 +388,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/pr-re-review.yml",
-      "author": "mikal"
-    },
-    {
       "path": "docs/spice/capabilities.md",
       "author": "mikal"
     },
@@ -460,15 +448,7 @@
       "author": "mikal"
     },
     {
-      "path": ".claude/CLAUDE.md",
-      "author": "mikal"
-    },
-    {
       "path": ".claude",
-      "author": "mikal"
-    },
-    {
-      "path": "AGENTS.md",
       "author": "mikal"
     },
     {
@@ -477,14 +457,6 @@
     },
     {
       "path": "ARCHITECTURE.md",
-      "author": "mikal"
-    },
-    {
-      "path": "PLAN-TEMPLATE.md",
-      "author": "mikal"
-    },
-    {
-      "path": "PUSH-AUDIT.md",
       "author": "mikal"
     },
     {
@@ -521,10 +493,6 @@
     },
     {
       "path": ".gitleaks.toml",
-      "author": "mikal"
-    },
-    {
-      "path": ".pre-commit-config.yaml",
       "author": "mikal"
     },
     {

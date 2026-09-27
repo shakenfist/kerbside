@@ -1,10 +1,6 @@
 {
   "version": 1,
   "files": {
-    ".claude/CLAUDE.md": {
-      "sha": "403ec4e2f6524ed002f3bf7192624fdd94295a54",
-      "date": "2026-09-26"
-    },
     ".claude/skills/add-database-migration/SKILL.md": {
       "sha": "16f2c1db4f57ad49772cfb806e19df2708f3176c",
       "date": "2026-09-18"
@@ -16,18 +12,6 @@
     ".dockerignore": {
       "sha": "efb2e768654f6bfa32d5a35d84891d2f0e6ab610",
       "date": "2026-09-26"
-    },
-    ".github/workflows/export-repo-config.yml": {
-      "sha": "53b5d8eb46e89e228dd88d42d7e1b0c3ea6694cd",
-      "date": "2026-08-11"
-    },
-    ".github/workflows/pr-re-review.yml": {
-      "sha": "f1b1103a5324f17c05f369528f702a89002c7993",
-      "date": "2026-09-17"
-    },
-    ".github/workflows/pr-retest.yml": {
-      "sha": "86352446dd2c808f6191213a3280e1c525cb6417",
-      "date": "2026-08-18"
     },
     ".github/workflows/prune-reviews.yml": {
       "sha": "27c5c370391a513b7978fe4eb2c0302c3da68ae3",
@@ -45,10 +29,6 @@
       "sha": "9cb3943ca56de7ec27c6090195989f2b98100e10",
       "date": "2026-09-26"
     },
-    ".pre-commit-config.yaml": {
-      "sha": "20d82a6704e052e7717d5d7444f9164e1f1978d5",
-      "date": "2026-09-26"
-    },
     ".skillsaw.yaml": {
       "sha": "7f2245e1fb8311d66a1aac849346283ee7441425",
       "date": "2026-09-26"
@@ -57,20 +37,8 @@
       "sha": "6c68d8e253a301c9792a546f9e41045aeff4f1f6",
       "date": "2026-09-26"
     },
-    "AGENTS.md": {
-      "sha": "ed4434b32651f8232faa390c80fc1a6cb61bee09",
-      "date": "2026-09-26"
-    },
     "ARCHITECTURE.md": {
       "sha": "1cbc2a7d1b33da33ab671e3e5ce91b15d55c956e",
-      "date": "2026-09-26"
-    },
-    "PLAN-TEMPLATE.md": {
-      "sha": "e3999ece5e54b53dbb7d5d039c801d1c1157e873",
-      "date": "2026-09-26"
-    },
-    "PUSH-AUDIT.md": {
-      "sha": "b7f2aa7b97ae8f13214430d9b6db2819d3c2d635",
       "date": "2026-09-26"
     },
     "README.md": {
