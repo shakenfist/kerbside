@@ -241,10 +241,6 @@
       "sha": "291f5057d4b3c808d60ca0e052975c79464e48b8",
       "date": "2026-08-08"
     },
-    "pyproject.toml": {
-      "sha": "54640025dd0d032905208a842fe1c032ea1dbdef",
-      "date": "2026-09-26"
-    },
     "renovate.json": {
       "sha": "b9e2faba3117c900fe59be7a54371d9944da8ed4",
       "date": "2026-09-26"
