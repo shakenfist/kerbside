@@ -538,6 +538,30 @@
     {
       "path": ".github/actionlint.yaml",
       "author": "mikal"
+    },
+    {
+      "path": "demo/spice-target/Dockerfile",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/spice-target",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/docker-compose.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/sources.yaml",
+      "author": "mikal"
+    },
+    {
+      "path": "demo",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

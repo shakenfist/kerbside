@@ -101,9 +101,17 @@
       "sha": "e94b4457477d238ad2f2f5cc143a8859eff0145a",
       "date": "2026-08-18"
     },
+    "demo/README.md": {
+      "sha": "518e58d886d3cd8257acaed5a59bdc3c4de596c0",
+      "date": "2026-09-27"
+    },
     "demo/demo-env.sh": {
       "sha": "a5cbc188afcbf3811142a84e55aaa423c6e0e60a",
       "date": "2026-08-18"
+    },
+    "demo/docker-compose.yml": {
+      "sha": "375ed68f4aa5146b183f0f1235d8c3a18e54bb58",
+      "date": "2026-09-27"
     },
     "demo/entrypoint.sh": {
       "sha": "8401f99b8352e66059b6fc85cea84b1b44b34d1f",
@@ -120,6 +128,14 @@
     "demo/kerbside.ini": {
       "sha": "b31de6116ea70559b0706b9512049fea6ce661cd",
       "date": "2026-08-18"
+    },
+    "demo/sources.yaml": {
+      "sha": "fb16a011f6971f0a20c415ac36765f583eeea9ce",
+      "date": "2026-09-27"
+    },
+    "demo/spice-target/Dockerfile": {
+      "sha": "78514c2afb47e97e928655faa78dc70c92fb9f57",
+      "date": "2026-09-27"
     },
     "docs/spice/capabilities.md": {
       "sha": "4cccf89b41c025072ecbd7bc1d2a8384f2274b09",
