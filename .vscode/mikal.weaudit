@@ -562,6 +562,22 @@
     {
       "path": "demo",
       "author": "mikal"
+    },
+    {
+      "path": "docs/performance/proxy-backpressure.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/performance/streaming-rebaseline.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/performance",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/use-cases/multi-cloud.md",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

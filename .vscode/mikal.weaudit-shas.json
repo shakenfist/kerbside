@@ -137,6 +137,14 @@
       "sha": "78514c2afb47e97e928655faa78dc70c92fb9f57",
       "date": "2026-09-27"
     },
+    "docs/performance/proxy-backpressure.md": {
+      "sha": "54294dd7bedfd75e9fcbc62e9ab4eccad51ca9f2",
+      "date": "2026-09-27"
+    },
+    "docs/performance/streaming-rebaseline.md": {
+      "sha": "693d8284d3ca31296628ecb45f223b2345abf593",
+      "date": "2026-09-27"
+    },
     "docs/spice/capabilities.md": {
       "sha": "4cccf89b41c025072ecbd7bc1d2a8384f2274b09",
       "date": "2026-09-18"
@@ -164,6 +172,10 @@
     "docs/spice/vd-agent-protocol.md": {
       "sha": "c07088c165daeb718be4b23db70c3007215adc22",
       "date": "2026-09-18"
+    },
+    "docs/use-cases/multi-cloud.md": {
+      "sha": "78e60b55fe2f12b79c7dc44ea9985ab147795f9e",
+      "date": "2026-09-27"
     },
     "etc/example-static-sources.yaml": {
       "sha": "558621b0e5ee59b1a61c784a96ea9f7281d3dcd1",
