@@ -128,9 +128,20 @@ https://www.spice-space.org/spice-protocol.html.
   default build installs the released package from PyPI and works
   anywhere. Issue #326 tracks the underlying packaging fragility.
 
-- **Renaming a `Can enqueue: <lane>` gate job blocks every merge**
-  until the develop ruleset is updated to match. Both the direct-qemu
-  and `sf-e2e` gate jobs are required status checks.
+- **Renaming a gate job blocks every merge** until the develop
+  ruleset is updated to match. All five required status checks are
+  gate jobs (`Can see status`, `Can enqueue`, `Can merge`,
+  `Can enqueue: direct-qemu`, `Can enqueue: sf-e2e`), and adding a
+  step to a gated job does not rename it. See "Gate jobs and required
+  checks" in [`docs/testing.md`](docs/testing.md).
+
+- **Components on different nodes coordinate only through the shared
+  database, never by direct RPC.** API and proxy nodes may be on
+  different machines behind a load balancer, so the API cannot reach
+  a particular proxy; the daemon-to-proxy gRPC contract is local to
+  one node, over a Unix socket. Cross-node intent, such as session
+  termination, is written to the database and polled by each node.
+  See [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 - **Never hand-edit between `# START_OF_INDIRECT_DEPS` and
   `# END_OF_INDIRECT_DEPS` in `pyproject.toml`.** The nightly
@@ -207,6 +218,7 @@ https://www.spice-space.org/spice-protocol.html.
 - Wrap lines at 80 characters
 - Use `LOG.with_fields({...}).info()` for structured logging
 - Add audit events for security-sensitive operations
+- Use mypy type hints
 - Diagrams in `docs/` are mermaid fenced blocks, not ASCII art, and
   prefer a vertical flow. See "Diagrams in the documentation" in
   [`docs/development.md`](docs/development.md) for the conventions and
@@ -220,8 +232,6 @@ Claude skills for common tasks are in `.claude/skills/`:
   model updates and documentation.
 - `add-source-type/` — adding new cloud source implementations, from
   source class through tests and docs.
-
-Project-specific instructions are in `.claude/CLAUDE.md`.
 
 ## Related repositories
 

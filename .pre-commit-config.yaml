@@ -37,14 +37,13 @@ repos:
         types_or: [sh, bash, shell]
         args: ['-x']
 
-  # skillsaw lints the agent context -- AGENTS.md, .claude/CLAUDE.md and
-  # the skills under .claude/skills/ -- for malformed frontmatter,
-  # embedded credentials and invisible-unicode smuggling. Agent context
-  # is code an agent executes against, and it is the material the
-  # credential scan is least likely to be pointed at. The same linter
-  # runs in CI (sanity_checks), because a hook is advisory: it can be
-  # skipped with --no-verify or by a clone that never ran
-  # `pre-commit install`.
+  # skillsaw lints the agent context -- AGENTS.md and the skills under
+  # .claude/skills/ -- for malformed frontmatter, embedded credentials
+  # and invisible-unicode smuggling. Agent context is code an agent
+  # executes against, and it is the material the credential scan is
+  # least likely to be pointed at. The same linter runs in CI
+  # (sanity_checks), because a hook is advisory: it can be skipped with
+  # --no-verify or by a clone that never ran `pre-commit install`.
   #
   # Keep rev in lockstep with functional-tests.yml's skillsaw pin, for
   # the same reason as shellcheck above: CI installs that pin,
