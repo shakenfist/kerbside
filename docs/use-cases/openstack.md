@@ -122,9 +122,8 @@ Kerbside's `/nova-console.vv` endpoint, which is the whole of
 the OpenStack implementation (`NovaToken` in `kerbside/api.py`).
 Kerbside authenticates to Keystone as the service account you
 configured for the cloud and asks Nova to validate the token it
-was handed. The two are not reached on the same catalogue
-interface, which matters when you come to firewall it; see
-**Network** below. That is a live call per exchange, so it sits
+was handed; which endpoints that needs is under **Network**
+below. That is a live call per exchange, so it sits
 between oVirt's per-request ticket and Shaken Fist's entirely
 offline signature check: a Nova that is down means no *new*
 consoles, while sessions already running are untouched. Where
@@ -229,11 +228,11 @@ not decode it.
 **Account.** Kerbside authenticates to Keystone as a service
 account and validates console tokens minted for *other* users'
 instances, which is an administrative operation rather than a
-project-scoped one. The Kolla-Ansible role configures the
-deployment's admin account for this, and carries a note in the
-template that it ought to use a dedicated Kerbside account
-instead. No least-privilege role has been built or tested; treat
-one as untried.
+project-scoped one. The Kolla-Ansible role registers a
+dedicated `kerbside` user (`kerbside_keystone_user`) in the
+`service` project for this, but grants it the `admin` role. No
+least-privilege role has been built or tested; treat one as
+untried.
 
 **Deployment.** Kerbside's OpenStack support has always been a
 set of upstream contributions as much as code in this
@@ -285,21 +284,18 @@ downloads perfectly; the failure appears only when the SPICE
 client tries to connect, one step later than an operator
 watching the exchange would expect.
 
-Kerbside must also reach Keystone and Nova, and not on the same
-interface. The exchange builds its connection with
-`identity_interface='internal'`, so Keystone is taken from the
-catalogue's **internal** endpoint. That setting is per-service:
-Nova is resolved with the SDK's default interface, which is
-**public**. Both endpoints therefore have to be reachable from
-Kerbside.
-
-Firewalling to the internal network alone is the trap here,
-because it half works. Keystone authentication succeeds and the
-validation call cannot reach Nova, so the symptom is the one
-described above — an exchange that fails while everything it
-appears to depend on is up. There is currently no setting that
-moves Nova to the internal interface; that would be a change to
-Kerbside rather than to your deployment.
+Kerbside must also reach Keystone and Nova. Keystone
+authentication goes to the `url` configured for the cloud, and
+Nova is then found in the service catalogue on the source's
+`interface`, which defaults to **internal**. That is the right
+default: Kerbside is a control plane service, the validation is
+an administrative service-to-service call like the ones Nova's
+own console proxies make, and Kerbside already has to be on the
+management network to reach the compute nodes. So set `url` to
+the internal Keystone endpoint too, and Kerbside needs nothing
+from the public edge at all. Set `interface: public` only where
+Kerbside sits outside the cloud it brokers, as it may in a
+[multi-cloud](multi-cloud.md) deployment.
 
 Clients need to reach two things and only two things: Nova's
 API, to ask for a console, and Kerbside, at the name
@@ -429,12 +425,12 @@ Not covered, and worth knowing before you deploy:
 | No backend host-subject pinning | Nova's token validation returns no certificate subject for the compute node, so the console Kerbside records carries none and the proxy relays that backend without host-subject enforcement. A redirected backend is then caught by CA verification, where a CA is configured and the hypervisor escalated to TLS, but never by identity. This is *not* `PROXY_HOST_SUBJECT`, which pins the client-to-Kerbside leg and is unaffected; the unpinned leg is Kerbside-to-hypervisor. Both the oVirt and Shaken Fist paths can pin this leg because their discovery learns a subject; this path has no discovery. |
 | `openstack_matrix` is merge-tier only | The lane builds container images and an all-in-one cloud, so it runs in the merge queue and on `workflow_dispatch`, never on a pull request. An OpenStack regression therefore surfaces after review has finished, when the change is already queued to land, and ejects the merge group rather than failing the author's own PR. The Shaken Fist and static equivalents are smoke-tier and catch the same class of regression per-PR. See [testing.md](../testing.md#ci-tiers). |
 | The backend leg is not driven end to end in CI | The Tempest test completes a SPICE link handshake against Kerbside but does not authenticate through to a hypervisor console, so the relay, the TLS escalation and the firewall are proven on this cloud's traffic only as far as the front door. They are driven end to end by the oVirt, Shaken Fist and direct-qemu lanes, against other sources. |
-| Least-privilege accounts untested | Only the deployment's admin account has been exercised. Validating another user's console token is an administrative call, so a project-scoped account is not expected to work; no minimal role has been built. |
+| Least-privilege accounts untested | Only an account holding the `admin` role has been exercised: the Kolla-Ansible role's dedicated `kerbside` user has it. Validating another user's console token is an administrative call, so a project-scoped account is not expected to work; no minimal role has been built. |
 | Console rows are never reconciled | Nothing scrapes this cloud, so nothing ever removes a console it can no longer see. A row for a deleted instance stays listed until the cloud is removed from `sources.yaml`. Nova will not mint a token for it, so it is unreachable through the `spice-direct` path — but Kerbside's own administrative `.vv` download mints a token from the stored row without calling Nova, and will still open it. Since libvirt reuses console ports, the recorded address and ports may by then belong to a different instance, possibly another tenant's. Remove a decommissioned cloud from `sources.yaml` rather than leaving it configured. |
 | Configured clouds share one token exchange | Every configured cloud is asked to validate tokens minted by the others, so each cloud's operators can observe tokens destined for their neighbours, and a cloud which fails for any reason other than cleanly disowning a token — bad credentials, an unreachable Keystone, a certificate error — denies console access to the clouds after it rather than being skipped. Order therefore matters (the token is offered to each configured cloud in file order until one validates it), and a cloud being taken out of service should be removed from the file rather than left to fail. How the exchange reaches that behaviour, and when several clouds behind one Kerbside is the right shape, are in [multi-cloud.md](multi-cloud.md). |
 | Single-node deployments only, in testing | The lane is all-in-one, so one compute node. Multiple compute nodes should work — the address and ports come from the token validation on every exchange rather than from a cached inventory — but no lane covers them. |
 | Deployment support is not upstream yet | As of 2026-09-20 the Kolla image build has merged and kolla-ansible change 976889 is still open, so a stock Kolla-Ansible cannot deploy Kerbside. `kerbside-patches` is the supported route until it lands. |
-| Certificate verification for the cloud | The Kolla-Ansible role in `kerbside-patches` turns `verify` off, which is how a deployment using an internal CA the Kerbside container does not trust is made to work at all. One session carries both the Keystone authentication and the Nova validation call, so turning it off also means the answer that decides a caller may reach a hypervisor console is accepted over an unverified connection. Turning it off is not the only way to solve the CA problem: `verify` also accepts a path to a CA bundle, so pointing it at the internal CA is a security fix rather than tidiness. See [console-sources.md](../console-sources.md#openstack). |
+| Certificate verification for the cloud | The Kolla-Ansible role in `kerbside-patches` sets `verify` to Kolla's `openstack_cacert` where one is configured, and leaves it on otherwise. A hand-written `sources.yaml` can still turn it off, and that costs more than it appears to: one session carries both the Keystone authentication and the Nova validation call, so the answer that decides a caller may reach a hypervisor console is then accepted over an unverified connection. A deployment with an internal CA wants `verify` pointed at that CA bundle rather than off. See [console-sources.md](../console-sources.md#openstack). |
 | The exchange endpoint is unauthenticated and uncached | `/nova-console.vv` carries a Nova token instead of Kerbside credentials, so it has to be reachable by users without authenticating first. Every request re-reads `sources.yaml` and performs a fresh Keystone password authentication and Nova validation call for each configured cloud in turn, with no session reuse, caching or rate limiting. An unauthenticated caller can therefore drive repeated Keystone authentications, and exchange latency grows with the number of configured clouds. Rate limiting in front of Kerbside is a deployment concern. |
 | Live migration during a session | Not characterised. The compute node's address and the console ports are captured at exchange time; an instance that migrates mid-session has not been tested. |
 | Nova 2025.1 or newer only | No `spice-direct` console type exists before it, and no earlier release is tested. |

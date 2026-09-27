@@ -750,3 +750,72 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
         for fields in self.logged:
             self.assertNotIn('password', fields)
             self.assertNotIn('sekrit-ovirt-password', repr(fields))
+
+
+class NovaTokenInterfaceTestCase(testtools.TestCase):
+    """The /nova-console.vv exchange resolves every service on the source's
+    catalogue interface: internal unless the source names another."""
+
+    def setUp(self):
+        super().setUp()
+        api.app.config['TESTING'] = True
+        self.client = api.app.test_client()
+
+        # Mock the lazily imported OpenStack and Keystone modules. The
+        # validation answers None, a clean "not mine", so the exchange ends
+        # as a 404 without reaching the console row or the .vv.
+        self.openstack = mock.MagicMock()
+        self.openstack.exceptions.NotFoundException = type(
+            'NotFoundException', (Exception,), {})
+        self.openstack.connection.Connection.return_value.compute.\
+            validate_console_auth_token.return_value = None
+        self.keystone_exceptions = mock.MagicMock()
+        self.keystone_exceptions.connection.SSLError = type(
+            'SSLError', (Exception,), {})
+        for name, value in [
+                ('OPENSTACK_CLIENT', self.openstack),
+                ('KEYSTONE_V3', mock.MagicMock()),
+                ('KEYSTONE_EXCEPTIONS', self.keystone_exceptions),
+                ('KEYSTONE_SESSION', mock.MagicMock())]:
+            patch = mock.patch.object(api, name, value)
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def _sources(self, **extra):
+        source = {
+            'source': 'os1', 'type': 'openstack',
+            'url': 'https://keystone.example.com:5000', 'username': 'kerbside',
+            'password': 'sekrit', 'project_name': 'admin',
+            'user_domain_id': 'default', 'project_domain_id': 'default',
+        }
+        source.update(extra)
+        f = tempfile.NamedTemporaryFile(
+            mode='w', suffix='.yaml', delete=False)
+        json.dump([source], f)
+        f.close()
+        self.addCleanup(os.unlink, f.name)
+        patch = mock.patch.object(api.config, 'SOURCES_PATH', f.name)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_defaults_to_internal(self):
+        self._sources()
+        resp = self.client.get('/nova-console.vv?token=abc')
+        self.assertEqual(404, resp.status_code)
+        self.assertEqual(
+            'internal',
+            self.openstack.connection.Connection.call_args.kwargs['interface'])
+
+    def test_source_can_choose_public(self):
+        self._sources(interface='public')
+        resp = self.client.get('/nova-console.vv?token=abc')
+        self.assertEqual(404, resp.status_code)
+        self.assertEqual(
+            'public',
+            self.openstack.connection.Connection.call_args.kwargs['interface'])
+
+    def test_unknown_interface_is_a_configuration_error(self):
+        self._sources(interface='intenral')
+        resp = self.client.get('/nova-console.vv?token=abc')
+        self.assertEqual(500, resp.status_code)
+        self.openstack.connection.Connection.assert_not_called()

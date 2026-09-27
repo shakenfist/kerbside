@@ -76,6 +76,9 @@ jwt = JWTManager(app)
 
 OPENSTACK_CLIENT = None
 
+# The Keystone catalogue interfaces an OpenStack source may name.
+OPENSTACK_INTERFACES = {'public', 'internal', 'admin'}
+
 # NOTE(mikal): KEYSTONE_V3 is used as a marker for if _any_ of these globals
 # are already initialized.
 KEYSTONE_V3 = None
@@ -627,7 +630,20 @@ class NovaToken(sf_api.Resource):
                 else:
                     LOG.error(
                         f'type {type(verify)} for verify value for source '
-                        f'{source["name"]} is not supported')
+                        f'{source["source"]} is not supported')
+                    return sf_api.error(500, 'Source configuration error')
+
+                # The catalogue interface every service on this connection is
+                # resolved on. Kerbside is a control plane service and already
+                # has to sit on the management network to reach the compute
+                # nodes, so internal is the default; public is for a Kerbside
+                # outside the cloud it is brokering.
+                interface = source.get('interface', 'internal')
+                if interface not in OPENSTACK_INTERFACES:
+                    LOG.error(
+                        f'interface {interface!r} for source '
+                        f'{source["source"]} is not one of '
+                        f'{sorted(OPENSTACK_INTERFACES)}')
                     return sf_api.error(500, 'Source configuration error')
 
                 try:
@@ -642,7 +658,7 @@ class NovaToken(sf_api.Resource):
                         session=KEYSTONE_SESSION.Session(
                             auth=auth,
                             verify=verify),
-                        identity_interface='internal')
+                        interface=interface)
                     details = conn.compute.validate_console_auth_token(token)
                 except OPENSTACK_CLIENT.exceptions.NotFoundException:
                     continue
