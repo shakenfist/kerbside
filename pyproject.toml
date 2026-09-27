@@ -126,7 +126,7 @@ dependencies = [
     "marshmallow==4.3.1",
     "pycparser==3.0",
     "python-dotenv==1.2.3",
-    "pytz==2026.3.post1",
+    "pytz==2026.4",
     "setproctitle==1.3.7",
     "six==1.17.0",
     "typing-inspection==0.4.4",
