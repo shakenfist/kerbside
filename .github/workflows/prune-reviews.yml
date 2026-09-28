@@ -1,49 +1,99 @@
-name: Prune stale review marks
+name: Prune and import review marks
 
-# Review marks attest to exact file content, so any push to develop
-# can make some of them stale. Prune those marks and commit the
-# regenerated review state straight back as the bot: prune only ever
-# removes marks, so the commit does not need to be signed -- the
-# attestations live in the signed commits that introduced the stamps.
-# The push authenticates as shakenfist-bot (DEPENDENCIES_TOKEN): the
-# develop ruleset requires a pull request before merging, and GitHub
-# does not allow the built-in Actions app as a bypass actor, so the
-# bypass is the "SF Can Skip Merge Queue" team, which the bot belongs
-# to. A PAT push retriggers this workflow once; that is safe, not a
-# loop -- the second run finds nothing to prune. See the steady state
-# section of
+# Keep this repository's review state honest without a human in the
+# loop, on its default branch only:
+#
+# * prune drops review marks whose file has changed since it was
+#   reviewed, since a mark attests to exact file content;
+# * import marks files whose content is byte-identical to a blob fully
+#   reviewed in shakenfist/development, pointing each entry at the
+#   signed commit there that holds the review.
+#
+# Both results land in one unsigned commit as shakenfist-bot. That is
+# safe for different reasons: prune only ever removes marks, and every
+# imported entry is a pointer to a signed attestation which import
+# verifies with gitsign before writing it. See "Steady state" in
 # https://github.com/shakenfist/development/blob/main/docs/code-review-tracking.md
+#
+# This file is copied byte-for-byte from templates/review-tracking/ in
+# shakenfist/development into every adopted repository, so nothing in
+# it names a repository or a branch. Change the template, not a copy.
 
 on:
+  # Any push to the default branch can make a mark stale. The branch
+  # cannot be named here, because it differs across the fleet, so
+  # pushes to every branch start a run and the job's guard below
+  # skips all but the default. Tags can be filtered without naming
+  # anything, so they are, which keeps releases out of the Actions
+  # tab. The branches line is not redundant: a push trigger that
+  # filters only tags does not run for branch pushes at all. Listing
+  # the fleet's usual default branches instead, as
+  # templates/mermaid-lint does, would spare the skipped runs, but a
+  # repository whose default is not listed would then only ever prune
+  # daily, with nothing to say so: a missed lint run fails loudly on
+  # its pull request, a missed prune leaves stale marks counting as
+  # reviewed.
   push:
-    branches: [develop]
+    branches: ['**']
+    tags-ignore: ['**']
+  # Daily as well, because what import can bring in changes when
+  # shakenfist/development reviews something, and nothing is pushed
+  # here when that happens.
+  schedule:
+    - cron: '23 4 * * *'
   workflow_dispatch:
 
 permissions: {}
 
-# Serialise runs so overlapping merges cannot race the push.
+# Serialise runs so that overlapping merges cannot race the push. The
+# ref is in the group so that the skipped runs for pushes to other
+# branches cannot displace a pending default branch run.
 concurrency:
-  group: prune-reviews
+  group: prune-reviews-${{ github.ref }}
 
 jobs:
-  prune:
-    name: Prune stale review marks
+  prune-and-import:
+    name: Prune and import review marks
+    # The job runs the checked-out copy of ci-prune-reviews.sh with a
+    # token that can push to the default branch, so a run on any other
+    # branch would land review state on the default branch using that
+    # branch's copy of the script, before anybody has merged it. A
+    # scheduled run only ever runs on the default branch, so
+    # its event name is a sufficient guard, and the disjunct keeps the
+    # guard independent of whether the payload carries a repository
+    # object.
+    if: >-
+      github.event_name == 'schedule' ||
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: [self-hosted, static]
+    # Import verifies each source commit's signature against Rekor,
+    # with a two minute timeout per commit, so a run that cannot reach
+    # it is slow rather than stuck. The budget covers one slow pass,
+    # not three: a push rejected by a concurrent merge re-runs prune
+    # and import in full, verification included. A run that needs both
+    # a Rekor outage and two races to exceed it is killed, and the
+    # next push or daily run lands the same state.
+    timeout-minutes: 30
+    # Repositories whose default branch ruleset requires a pull request
+    # push with DEPENDENCIES_TOKEN, as shakenfist-bot: GitHub does not
+    # accept the built-in Actions app as a bypass actor. The rest have
+    # no such secret and push with GITHUB_TOKEN, which needs contents:
+    # write; a permissions block does not constrain a PAT either way.
+    # A PAT push retriggers this workflow once, into a run that finds
+    # nothing to do.
     permissions:
       contents: write
     steps:
-      - name: Checkout kerbside
+      - name: Checkout
         uses: actions/checkout@v7
         with:
-          token: ${{ secrets.DEPENDENCIES_TOKEN }}
+          token: ${{ secrets.DEPENDENCIES_TOKEN || github.token }}
 
-      - name: Clone the development repository
-        run: |
-          rm -rf "${RUNNER_TEMP}/development"
-          git clone --depth 1 https://github.com/shakenfist/development \
-              "${RUNNER_TEMP}/development"
-
-      - name: Prune stale review marks
+      - name: Prune and import review marks
         run: tools/ci-prune-reviews.sh
         env:
-          SHAKENFIST_DEVELOPMENT: ${{ runner.temp }}/development
+          # The guard above means this is the default branch in every
+          # run that gets here. ref_name is the fallback should an
+          # event lack a repository object; for a scheduled run it is
+          # the default branch too.
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
