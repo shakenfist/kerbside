@@ -245,8 +245,8 @@ struct BackendLink {
     channel_caps: Vec<u32>,
 }
 
-/// Log what the backend granted, and warn when it lacks a capability the
-/// client leg already offered the client.
+/// Log what the backend granted, and warn when it lacks a channel
+/// capability the client leg already offered the client.
 ///
 /// The client-leg reply is sent before the backend is known (it carries the
 /// ticket key), so Kerbside offers the caps spice-server normally
@@ -254,6 +254,13 @@ struct BackendLink {
 /// built without, say, Opus or LZ4 then lacks a cap the client was told it
 /// has, and the client may send something that server refuses. That cannot
 /// be undone at this point, but it should be visible.
+///
+/// Only the channel word is compared. Every common capability Kerbside
+/// offers (`caps::REPLY_COMMON_CAPS`) is one the backend leg cannot work
+/// without -- the relay frames on MINI_HEADER, and the ticket exchange
+/// needs AUTH_SELECTION and AUTH_SPICE -- so a backend lacking one never
+/// gets here: `connect_channel_with_caps` refuses the reply
+/// (`SpiceLinkReply::check_client_requirements`) and the connect fails.
 fn log_backend_caps(
     connection_ref: &str,
     channel_type: ChannelType,
@@ -269,16 +276,13 @@ fn log_backend_caps(
         backend_channel_caps = ?reply.channel_caps,
         "backend link capabilities"
     );
-    let missing_common = caps::missing_caps(&caps::REPLY_COMMON_CAPS, &reply.common_caps);
     let missing_channel =
         caps::missing_caps(caps::reply_channel_caps(channel_type), &reply.channel_caps);
-    if !missing_common.is_empty() || !missing_channel.is_empty() {
+    if !missing_channel.is_empty() {
         warn!(
             %connection_ref,
             channel_type = channel_type.name(),
-            ?missing_common,
             ?missing_channel,
-            backend_common_caps = ?reply.common_caps,
             backend_channel_caps = ?reply.channel_caps,
             "backend lacks capabilities Kerbside offered the client; the client may \
              send messages this backend does not support"

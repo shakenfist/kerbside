@@ -522,9 +522,12 @@ mod handshake_tests {
     }
 
     /// A one-shot fake hypervisor: accept one connection, record its link
-    /// message, reply with `reply_channel_caps`, check the ticket Kerbside
-    /// sends, grant auth, then hold the connection until the relay closes it.
+    /// message, reply with `reply_common_caps` and `reply_channel_caps`,
+    /// check the ticket Kerbside sends, grant auth, then hold the connection
+    /// until the relay closes it. If Kerbside hangs up instead of sending a
+    /// ticket (it refused the reply), the fake just stops.
     async fn spawn_fake_backend(
+        reply_common_caps: Vec<u32>,
         reply_channel_caps: Vec<u32>,
     ) -> (u16, oneshot::Receiver<BackendSaw>) {
         let listener = TcpListener::bind("127.0.0.1:0")
@@ -548,15 +551,15 @@ mod handshake_tests {
             let reply = SpiceLinkReply {
                 error: SpiceError::Ok,
                 pub_key: der,
-                common_caps: vec![11],
+                common_caps: reply_common_caps,
                 channel_caps: reply_channel_caps,
             };
             send_link_reply(&mut stream, &reply)
                 .await
                 .expect("backend link reply");
-            let ticket = read_auth_ticket(&mut stream, &key)
-                .await
-                .expect("backend ticket");
+            let Ok(ticket) = read_auth_ticket(&mut stream, &key).await else {
+                return;
+            };
             assert_eq!(ticket, VM_TICKET, "Kerbside must send the target's ticket");
             send_auth_result(&mut stream, SpiceError::Ok)
                 .await
@@ -595,6 +598,27 @@ mod handshake_tests {
         (addr, audit, task, dir)
     }
 
+    /// A control plane that authorizes "good-token" to the fake hypervisor
+    /// on `backend_port`, for any channel type.
+    fn mock_for_backend(backend_port: u16) -> MockService {
+        MockService {
+            target: Some(pb::Target {
+                hypervisor: "fake-hv".to_string(),
+                hypervisor_ip: "127.0.0.1".to_string(),
+                insecure_port: backend_port as u32,
+                secure_port: 0,
+                ticket: VM_TICKET.to_string(),
+                source: "src".to_string(),
+                uuid: "uuid".to_string(),
+                session_id: "session".to_string(),
+                ..Default::default()
+            }),
+            // Empty means every channel type is permitted.
+            permitted_channels: Some(vec![]),
+            ..Default::default()
+        }
+    }
+
     /// A client with capabilities no Ryll build advertises -- display bits
     /// GL_SCANOUT(7), CODEC_VP8(10), CODEC_VP9(13) and CODEC_H265(14), a
     /// top bit, and a second word in both sets -- is forwarded to the
@@ -616,30 +640,17 @@ mod handshake_tests {
             ];
 
             // The backend lacks PREF_VIDEO_CODEC_TYPE, which Kerbside offered
-            // the client, exercising the mismatch warning path.
+            // the client. That only logs a warning (not asserted here); the
+            // session must still go ahead.
             let backend_caps = vec![
                 capabilities::DISPLAY_MONITORS_CONFIG
                     | capabilities::DISPLAY_PREF_COMPRESSION
                     | capabilities::DISPLAY_STREAM_REPORT,
             ];
-            let (backend_port, backend_saw) = spawn_fake_backend(backend_caps).await;
-            let mock = MockService {
-                target: Some(pb::Target {
-                    hypervisor: "fake-hv".to_string(),
-                    hypervisor_ip: "127.0.0.1".to_string(),
-                    insecure_port: backend_port as u32,
-                    secure_port: 0,
-                    ticket: VM_TICKET.to_string(),
-                    source: "src".to_string(),
-                    uuid: "uuid".to_string(),
-                    session_id: "session".to_string(),
-                    ..Default::default()
-                }),
-                // Empty means every channel type is permitted.
-                permitted_channels: Some(vec![]),
-                ..Default::default()
-            };
-            let (proxy_addr, audit, proxy_task, _dir) = spawn_proxy(mock).await;
+            let (backend_port, backend_saw) =
+                spawn_fake_backend(caps::REPLY_COMMON_CAPS.to_vec(), backend_caps).await;
+            let (proxy_addr, audit, proxy_task, _dir) =
+                spawn_proxy(mock_for_backend(backend_port)).await;
 
             let mut client = TcpStream::connect(proxy_addr)
                 .await
@@ -731,5 +742,63 @@ mod handshake_tests {
         })
         .await
         .expect("refusal test timed out");
+    }
+
+    /// A backend whose link reply lacks MINI_HEADER would frame with the
+    /// 18-byte full header, which the relay cannot parse. The backend
+    /// connect must fail -- recorded as a connect failure, before any
+    /// ticket is sent -- rather than hand the streams to the relay.
+    #[tokio::test]
+    async fn backend_without_mini_header_fails_the_connect() {
+        tokio::time::timeout(TEST_TIMEOUT, async {
+            let (backend_port, backend_saw) = spawn_fake_backend(
+                vec![capabilities::AUTH_SELECTION | capabilities::AUTH_SPICE],
+                caps::reply_channel_caps(ChannelType::Main).to_vec(),
+            )
+            .await;
+            let (proxy_addr, audit, proxy_task, _dir) =
+                spawn_proxy(mock_for_backend(backend_port)).await;
+
+            let mut client = TcpStream::connect(proxy_addr)
+                .await
+                .expect("client connect");
+            let reply = perform_link_with_caps(
+                &mut client,
+                0,
+                ChannelType::Main,
+                0,
+                &caps::REPLY_COMMON_CAPS,
+                &[capabilities::DEFAULT_MAIN],
+            )
+            .await
+            .expect("client link");
+            assert_eq!(reply.error, SpiceError::Ok);
+            perform_auth(&mut client, &reply.pub_key, Some("good-token"))
+                .await
+                .expect("client auth through the proxy");
+
+            backend_saw.await.expect("backend saw a link");
+            // Kerbside closes the client once the backend connect fails.
+            let mut sink = Vec::new();
+            let _ = client.read_to_end(&mut sink).await;
+            proxy_task.await.expect("proxy connection task");
+
+            let audit = audit.lock().expect("audit mutex").clone();
+            assert!(
+                audit
+                    .iter()
+                    .any(|m| m.starts_with("Hypervisor connection failed")
+                        && m.contains("MINI_HEADER")),
+                "audit events: {audit:?}"
+            );
+            assert!(
+                !audit
+                    .iter()
+                    .any(|m| m == "Hypervisor connection successful"),
+                "audit events: {audit:?}"
+            );
+        })
+        .await
+        .expect("backend refusal test timed out");
     }
 }

@@ -341,8 +341,8 @@ pub(crate) mod tests {
             // so the client-side proto->FirewallPolicy mapping is exercised.
             let (result, firewall_policy) = if req.token == "good-token" {
                 (
-                    pb::authorize_connection_reply::Result::Target(self.target.clone().unwrap_or(
-                        pb::Target {
+                    pb::authorize_connection_reply::Result::Target(
+                        self.target.clone().unwrap_or_else(|| pb::Target {
                             hypervisor: "hv1".to_string(),
                             hypervisor_ip: "10.0.0.1".to_string(),
                             insecure_port: 5900,
@@ -353,11 +353,14 @@ pub(crate) mod tests {
                             source: "src".to_string(),
                             uuid: "uuid".to_string(),
                             session_id: "session".to_string(),
-                        },
-                    )),
+                        }),
+                    ),
                     Some(pb::FirewallPolicy {
                         mode: pb::firewall_policy::Mode::WarnOnly as i32,
-                        permitted_channels: self.permitted_channels.clone().unwrap_or(vec![1, 3]),
+                        permitted_channels: self
+                            .permitted_channels
+                            .clone()
+                            .unwrap_or_else(|| vec![1, 3]),
                     }),
                 )
             } else {

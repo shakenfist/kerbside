@@ -50,6 +50,7 @@ accumulated diff, not over the last phase alone;
 | `rust/kerbside-proxy/` | The SPICE proxy — start here for connection handling. Builds in Docker via its Makefile |
 | `rust/kerbside-proxy/src/policy.rs` | The `Policy`/`Verdict` seam and the firewall engine |
 | `rust/kerbside-proxy/src/allowlist.rs` | The compiled-in L1 message-type grammar, derived from ryll's `shakenfist-spice-protocol` name tables |
+| `rust/kerbside-proxy/src/caps.rs` | The per-channel-type link capabilities offered to clients, and the client capabilities forwarded to backends |
 | `rust/kerbside-proxy/src/session.rs` | `SessionRegistry`: the `session_id -> CancellationToken` map the relay and `ProxyControl` share |
 
 ## Common tasks
