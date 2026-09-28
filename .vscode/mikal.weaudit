@@ -40,15 +40,7 @@
       "author": "mikal"
     },
     {
-      "path": "tools/ci-prune-reviews.sh",
-      "author": "mikal"
-    },
-    {
       "path": "tools/pin-indirect-dependencies.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/review-tracking.sh",
       "author": "mikal"
     },
     {
@@ -117,10 +109,6 @@
     },
     {
       "path": "tools/direct-qemu/wait-for-banner.sh",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/prune-reviews.yml",
       "author": "mikal"
     },
     {

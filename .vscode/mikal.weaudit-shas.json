@@ -41,10 +41,6 @@
       "sha": "ad5835fb017c7412f72db54764f7702396d97d36",
       "date": "2026-09-27"
     },
-    ".github/workflows/prune-reviews.yml": {
-      "sha": "27c5c370391a513b7978fe4eb2c0302c3da68ae3",
-      "date": "2026-08-11"
-    },
     ".github/workflows/pypi-storage-check.yml": {
       "sha": "b4ea2a75e61abba4bcfd122d9f0d8222f1b25607",
       "date": "2026-08-24"
@@ -353,10 +349,6 @@
       "sha": "01953f7326bc063d2d2a45e2c3417077dc18fa58",
       "date": "2026-08-15"
     },
-    "tools/ci-prune-reviews.sh": {
-      "sha": "6daef1e07eb05d46b0a13745d5338cf1aea23cd8",
-      "date": "2026-08-06"
-    },
     "tools/create-ovirt-vnc-vm.py": {
       "sha": "ab5640046d9d6f4827e0e61db0dc16fdfe41c7dd",
       "date": "2026-08-15"
@@ -468,10 +460,6 @@
     "tools/preview-templates.py": {
       "sha": "e1c001cf6ed50a8b02cac739193e204319113a73",
       "date": "2026-09-18"
-    },
-    "tools/review-tracking.sh": {
-      "sha": "e63705ac5c57fd6d9fd0da21e18f399e3f88e4a4",
-      "date": "2026-08-06"
     },
     "tools/sf-e2e/deploy-kerbside.sh": {
       "sha": "b374194e55859c4c3b8d8dbac368b3d17b299b1d",
