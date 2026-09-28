@@ -438,14 +438,16 @@ its results are the *What the measurements settled* section
 above. The push audit has nothing of it to read.
 
 Phase 1b's `Merged` cell holds `actions <sha> (#pr)`; its
-ryll half lands inside phase 2's merge and carries no
-separate `Merged` entry of its own.
+ryll half landed inside phase 2's merge and carries no
+separate `Merged` entry of its own. Phase 2's push-audit
+findings landed as ryll `d787520` (#411), audited in ryll
+and cited from phase 2's *Outcome*.
 
 | Phase | Plan | Status | Merged |
 |-------|------|--------|--------|
 | 1. Ticket semantics | | Complete | |
-| 1b. CI substrate | [PLAN-proxmox-source-phase-01b-ci-substrate.md](PLAN-proxmox-source-phase-01b-ci-substrate.md) | In progress | |
-| 2. Tunnelled transport in ryll | [PLAN-proxmox-source-phase-02-ryll-connect.md](PLAN-proxmox-source-phase-02-ryll-connect.md) | In progress | |
+| 1b. CI substrate | [PLAN-proxmox-source-phase-01b-ci-substrate.md](PLAN-proxmox-source-phase-01b-ci-substrate.md) | Complete | actions 5399c4f (#96) |
+| 2. Tunnelled transport in ryll | [PLAN-proxmox-source-phase-02-ryll-connect.md](PLAN-proxmox-source-phase-02-ryll-connect.md) | Complete | ryll ea4bf67 (#402) |
 | 3a. Minting at connect time | | Not started | |
 | 3b. Tunnel transport | | Not started | |
 | 4. The source driver | | Not started | |
@@ -469,7 +471,7 @@ separate `Merged` entry of its own.
 
 ## Status
 
-In progress. Phase 1 is complete, and phases 1b and 2 are
-planned. Phase 2 is in progress in ryll (steps 2a and 2b
-committed on `spice-http-connect`); its validation waits on
-phase 1b.
+In progress. Phases 1, 1b and 2 are complete: CI can build a
+Proxmox VE node on demand, and ryll tunnels through
+`spiceproxy`, proven against a real node on every ryll pull
+request that touches the tunnel.
