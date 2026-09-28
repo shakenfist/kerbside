@@ -498,6 +498,86 @@
     {
       "path": ".skillsaw.yaml",
       "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/codeql-analysis.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/demo-compose.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/dev-proxy-wheel.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/direct-qemu-functional.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/mermaid-lint.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/pin-indirect-dependencies.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/rust.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/sf-e2e-functional.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/actionlint.yaml",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/spice-target/Dockerfile",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/spice-target",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/docker-compose.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/sources.yaml",
+      "author": "mikal"
+    },
+    {
+      "path": "demo",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/performance/proxy-backpressure.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/performance/streaming-rebaseline.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/performance",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/use-cases/openstack.md",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

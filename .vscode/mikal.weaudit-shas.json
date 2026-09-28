@@ -13,6 +13,34 @@
       "sha": "efb2e768654f6bfa32d5a35d84891d2f0e6ab610",
       "date": "2026-09-26"
     },
+    ".github/actionlint.yaml": {
+      "sha": "51ca7aeb826114754b7c00811695bd9772dad18a",
+      "date": "2026-09-27"
+    },
+    ".github/workflows/codeql-analysis.yml": {
+      "sha": "41389dc343926f1f949a2524afa4b81a54dd9c06",
+      "date": "2026-09-27"
+    },
+    ".github/workflows/demo-compose.yml": {
+      "sha": "9a44d8f35bb0e75c628cedf0079053ceeda3b112",
+      "date": "2026-09-27"
+    },
+    ".github/workflows/dev-proxy-wheel.yml": {
+      "sha": "e8f8f57003823289d6079826d29f718a9d76df2c",
+      "date": "2026-09-27"
+    },
+    ".github/workflows/direct-qemu-functional.yml": {
+      "sha": "27e67fd39ee151726e5da3312ac5421fd502041b",
+      "date": "2026-09-27"
+    },
+    ".github/workflows/mermaid-lint.yml": {
+      "sha": "b4c31cff44ef4f93fdd2854fda40c4d0b39111a5",
+      "date": "2026-09-27"
+    },
+    ".github/workflows/pin-indirect-dependencies.yml": {
+      "sha": "ad5835fb017c7412f72db54764f7702396d97d36",
+      "date": "2026-09-27"
+    },
     ".github/workflows/prune-reviews.yml": {
       "sha": "27c5c370391a513b7978fe4eb2c0302c3da68ae3",
       "date": "2026-08-11"
@@ -20,6 +48,18 @@
     ".github/workflows/pypi-storage-check.yml": {
       "sha": "b4ea2a75e61abba4bcfd122d9f0d8222f1b25607",
       "date": "2026-08-24"
+    },
+    ".github/workflows/release.yml": {
+      "sha": "47583d36522c431a179f2dd0865fe130d6673a11",
+      "date": "2026-09-27"
+    },
+    ".github/workflows/rust.yml": {
+      "sha": "8b8f7d515c38bd90b7c093a0c4d7bd19cdf226c9",
+      "date": "2026-09-27"
+    },
+    ".github/workflows/sf-e2e-functional.yml": {
+      "sha": "00d9aa7b1a15273cfb15d7ad8ae752bb0bd2de41",
+      "date": "2026-09-27"
     },
     ".gitignore": {
       "sha": "45c7b4061c76ee62e15d7efceb2cc2f53451b12e",
@@ -61,9 +101,17 @@
       "sha": "e94b4457477d238ad2f2f5cc143a8859eff0145a",
       "date": "2026-08-18"
     },
+    "demo/README.md": {
+      "sha": "518e58d886d3cd8257acaed5a59bdc3c4de596c0",
+      "date": "2026-09-27"
+    },
     "demo/demo-env.sh": {
       "sha": "a5cbc188afcbf3811142a84e55aaa423c6e0e60a",
       "date": "2026-08-18"
+    },
+    "demo/docker-compose.yml": {
+      "sha": "375ed68f4aa5146b183f0f1235d8c3a18e54bb58",
+      "date": "2026-09-27"
     },
     "demo/entrypoint.sh": {
       "sha": "8401f99b8352e66059b6fc85cea84b1b44b34d1f",
@@ -80,6 +128,22 @@
     "demo/kerbside.ini": {
       "sha": "b31de6116ea70559b0706b9512049fea6ce661cd",
       "date": "2026-08-18"
+    },
+    "demo/sources.yaml": {
+      "sha": "fb16a011f6971f0a20c415ac36765f583eeea9ce",
+      "date": "2026-09-27"
+    },
+    "demo/spice-target/Dockerfile": {
+      "sha": "78514c2afb47e97e928655faa78dc70c92fb9f57",
+      "date": "2026-09-27"
+    },
+    "docs/performance/proxy-backpressure.md": {
+      "sha": "54294dd7bedfd75e9fcbc62e9ab4eccad51ca9f2",
+      "date": "2026-09-27"
+    },
+    "docs/performance/streaming-rebaseline.md": {
+      "sha": "693d8284d3ca31296628ecb45f223b2345abf593",
+      "date": "2026-09-27"
     },
     "docs/spice/capabilities.md": {
       "sha": "4cccf89b41c025072ecbd7bc1d2a8384f2274b09",
@@ -108,6 +172,10 @@
     "docs/spice/vd-agent-protocol.md": {
       "sha": "c07088c165daeb718be4b23db70c3007215adc22",
       "date": "2026-09-18"
+    },
+    "docs/use-cases/openstack.md": {
+      "sha": "dd286d8951f7320e9ac0c9113951bf39a65269fc",
+      "date": "2026-09-27"
     },
     "etc/example-static-sources.yaml": {
       "sha": "558621b0e5ee59b1a61c784a96ea9f7281d3dcd1",
