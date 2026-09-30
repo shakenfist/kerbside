@@ -10,5 +10,10 @@ on:
     - cron: '30 00 * * *'
 
 jobs:
+  # No "secrets: inherit": the shared workflow reads no secrets and
+  # authenticates with github.token under the permissions: block above,
+  # so inheriting would only hand every secret this repository holds to
+  # a workflow in another repository. The export-repo-config consistency
+  # audit fails a caller which passes it.
   export-config:
     uses: shakenfist/actions/.github/workflows/export-repo-config.yml@main
