@@ -1,15 +1,15 @@
-# Triggers a re-run of functional tests when an authorized user comments
-# "@shakenfist-bot please retest"
+# Triggers a re-run of this repository's test workflow when an
+# authorized user comments "@shakenfist-bot please retest"
 #
 # This is useful after bot commits (which don't trigger CI) or when you
 # want to re-run checks without pushing a new commit.
 #
-# Know what this does and does not do: a workflow_dispatch of
-# functional-tests.yml runs the MERGE tier (with the dispatch default target),
-# not the smoke lanes that block a PR, and a dispatch run never attaches checks
-# to the PR rollup. To re-trigger a PR's blocking checks, close and reopen the
-# PR. Re-pointing this bot at the smoke lanes belongs in the shared template,
-# not here.
+# The workflow it dispatches is the RETEST_WORKFLOW repository variable,
+# or functional-tests.yml when that is unset. A repository whose tests
+# live in another file -- ci.yml, say -- sets the variable (Settings >
+# Secrets and variables > Actions > Variables) rather than editing this
+# file, so every copy stays byte-identical to the template. Whatever it
+# names must carry a workflow_dispatch trigger.
 #
 # Template source: shakenfist/development/templates/ci-review-automation/
 
@@ -129,29 +129,34 @@ jobs:
     concurrency:
       group: pr-retest-${{ github.event.issue.number }}
       cancel-in-progress: true
+    # The workflow a retest dispatches; see the header. Read once here,
+    # and only through the environment, so both steps name the same
+    # file and neither interpolates it into shell text.
+    env:
+      RETEST_WORKFLOW: ${{ vars.RETEST_WORKFLOW || 'functional-tests.yml' }}
 
     steps:
-      - name: Trigger functional tests
+      - name: Dispatch the retest workflow
         id: dispatch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_REF: ${{ needs.trigger-retest.outputs.pr_ref }}
           REPO: ${{ github.repository }}
         run: |
-          echo "Triggering functional tests on branch: ${PR_REF}"
+          echo "Dispatching ${RETEST_WORKFLOW} on branch: ${PR_REF}"
 
           # Report a failed dispatch rather than claiming success.
           # Fork pull requests no longer reach this step -- pr-bot-trigger
           # refuses them and says why -- so what is left is a workflow
           # file that is missing, renamed or disabled.
-          if gh workflow run functional-tests.yml \
+          if gh workflow run "${RETEST_WORKFLOW}" \
             --repo "${REPO}" \
             --ref "${PR_REF}"; then
             echo "dispatched=true" >> $GITHUB_OUTPUT
-            echo "Functional tests triggered successfully"
+            echo "Dispatched ${RETEST_WORKFLOW} successfully"
           else
             echo "dispatched=false" >> $GITHUB_OUTPUT
-            echo "Functional tests dispatch failed"
+            echo "Dispatching ${RETEST_WORKFLOW} failed"
           fi
 
       - name: Post confirmation
@@ -165,11 +170,14 @@ jobs:
           if [ "${DISPATCHED}" = "true" ]; then
             gh pr comment "${PR_NUMBER}" \
               --repo "${REPO}" \
-              --body "Triggered a functional-tests dispatch (merge tier) on branch \`${PR_REF}\`. This does not re-run or re-attach this PR's blocking smoke checks -- close and reopen the PR for that.
+              --body "Triggered \`${RETEST_WORKFLOW}\` on branch \`${PR_REF}\`.
 
-          [View workflow runs](https://github.com/${REPO}/actions/workflows/functional-tests.yml)"
+          [View workflow runs](https://github.com/${REPO}/actions/workflows/${RETEST_WORKFLOW})"
           else
             gh pr comment "${PR_NUMBER}" \
               --repo "${REPO}" \
-              --body "Unable to trigger functional tests on \`${PR_REF}\`. Check that \`functional-tests.yml\` exists on the default branch, carries a \`workflow_dispatch\` trigger, and is not disabled -- or re-run the failed workflow from the Actions tab instead."
+              --body "Unable to trigger \`${RETEST_WORKFLOW}\` on \`${PR_REF}\`. Check that \`${RETEST_WORKFLOW}\` exists on the default branch, carries a \`workflow_dispatch\` trigger, and is not disabled, and that the \`RETEST_WORKFLOW\` repository variable names this repository's test workflow if it is not \`functional-tests.yml\` -- or re-run the failed workflow from the Actions tab instead."
+            # Fail the run too, after the comment has explained why, so a
+            # request that did nothing does not show green in Actions.
+            exit 1
           fi
