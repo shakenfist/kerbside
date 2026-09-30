@@ -4,8 +4,9 @@
  * The shared page-level stylesheet for Shaken Fist web
  * interfaces: the primitives a page is actually built from --
  * chrome, sections, tables, buttons, badges, cards, code
- * blocks, banners, disclosures, form controls. It exists so
- * that two projects do not write them twice and then drift.
+ * blocks, banners, disclosures, form controls and dialogs. It
+ * exists so that two projects do not write them twice and then
+ * drift.
  * It is not a framework: no grid system, no utility
  * vocabulary, no JavaScript, and no opinion about layout
  * beyond a centered container. Every color comes from
@@ -662,8 +663,15 @@
 
     /* .sf-btn--lg copies this rule's padding and font size so a
        submit button matches the fields it sits with. Change one
-       and change the other. */
+       and change the other.
+
+       The box sizing is restated because a page that has not
+       opted in to .sf-page misses the reset, and width: 100%
+       plus padding would then overflow its column. resize is
+       inert on <input>, so the one class serves <textarea> too;
+       vertical-only means a textarea can never widen its form. */
     .sf-input {
+        box-sizing: border-box;
         width: 100%;
         background: var(--sf-bg);
         border: 1px solid var(--sf-border);
@@ -672,6 +680,13 @@
         font-family: inherit;
         font-size: 0.9rem;
         color: var(--sf-text);
+        resize: vertical;
+    }
+
+    /* Queries, regular expressions and ids, where a proportional
+       font hides the difference between l, 1 and I. */
+    .sf-input--mono {
+        font-family: var(--sf-font-mono);
     }
 
     /* The focus ring is recolored, never removed. */
@@ -680,10 +695,101 @@
         outline: 1px solid var(--sf-accent);
     }
 
+    /* Keyed on the ARIA state rather than a modifier, so what a
+       screen reader announces and what the eye sees cannot
+       disagree. After the focus rule, so a focused invalid field
+       keeps its red border inside the accent ring. The reason
+       goes in a .sf-form-error beneath it. */
+    .sf-input[aria-invalid="true"] {
+        border-color: var(--sf-red);
+    }
+
+    /* Guidance under a field: sentence case, unlike the label,
+       because it is read rather than scanned. */
+    .sf-hint {
+        margin-top: 0.3rem;
+        color: var(--sf-text-dim);
+        font-size: 0.78rem;
+    }
+
     .sf-form-error {
         margin-top: 0.4rem;
         color: var(--sf-red);
         font-size: 0.82rem;
+    }
+
+    /* A <label> wrapping a checkbox and its text, so the text is
+       part of the hit area. Inline, so clicking the empty width
+       of the row beside it toggles nothing. */
+    .sf-check {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: var(--sf-text);
+        font-size: 0.9rem;
+        cursor: pointer;
+    }
+
+    .sf-check input {
+        margin: 0;
+        accent-color: var(--sf-accent);
+    }
+
+    /* The row of buttons that ends a form: the primary control
+       at the right-hand end, where the eye finishes. Wraps rather
+       than overflowing on a phone. */
+    .sf-form-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 0.4rem;
+        margin-top: 1.25rem;
+    }
+
+    /* A native <dialog>, dressed as a .sf-card; the page's side
+       of the contract is in docs/page-styles.md. The width cap
+       replaces the user agent's max-width rather than competing
+       with it, and leaves 1rem of backdrop either side on a
+       phone. Box sizing is restated for the same reason as
+       .sf-input's, and the auto margin because the .sf-page
+       reset zeroes the user agent's, which is what centers a
+       modal dialog. */
+    .sf-dialog {
+        box-sizing: border-box;
+        width: min(40rem, 100% - 2rem);
+        max-width: none;
+        margin: auto;
+        background: var(--sf-surface);
+        border: 1px solid var(--sf-border);
+        border-radius: var(--sf-radius-lg);
+        padding: 1.2rem 1.3rem;
+        color: var(--sf-text);
+    }
+
+    .sf-dialog h2 {
+        margin: 0 0 1rem;
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+
+    /* The page behind a modal, washed toward the page background
+       rather than darkened, so it recedes in both palettes.
+
+       Engines before Chromium 122, and others of that vintage,
+       do not inherit custom properties into ::backdrop, so there
+       var(--sf-bg) does not resolve. Its fallback is Canvas, the
+       system color for a page background -- the role --sf-bg
+       plays -- which keeps the scrim visible; at worst it is the
+       light scheme's white over a dark page. A literal would
+       break the no-literal rule, and a second declaration would
+       not help: a var() that fails is not skipped over, it
+       resets the property to transparent. */
+    .sf-dialog::backdrop {
+        background: color-mix(
+            in srgb,
+            var(--sf-bg, Canvas) 70%,
+            transparent
+        );
     }
 }
 
