@@ -1,0 +1,6 @@
+# Extra apt packages the pin-indirect-dependencies resolve needs beyond
+# the workflow's own baseline. mysqlclient ships no wheel and builds
+# against libmysqlclient, using pkg-config to locate it from 2.2.0.
+pkg-config
+build-essential
+default-libmysqlclient-dev

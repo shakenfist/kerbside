@@ -120,9 +120,9 @@ jobs:
     timeout-minutes: 60
     # Two re-review requests in quick succession would otherwise run
     # concurrently on the scarce runner and post two reviews on the same
-    # pull request. The automatic lane -- the reusable workflow at
-    # shakenfist/actions/.github/workflows/pr-auto-review.yml, called
-    # from this project's own CI workflow -- carries the same guard.
+    # pull request. The automatic lane -- the reusable pr-auto-review.yml
+    # workflow in shakenfist/actions, called from this project's CI
+    # workflow -- carries the same guard.
     concurrency:
       group: pr-re-review-${{ github.event.issue.number }}
       cancel-in-progress: true
@@ -136,10 +136,9 @@ jobs:
       # conventions as they were *before* it. The diff itself comes
       # from the API and is unaffected, which is what makes the symptom
       # subtle: a real review, calibrated wrongly.
-      # shakenfist/actions/.github/workflows/pr-auto-review.yml checks
-      # out the merge ref for this reason and says so in its header. It
-      # lives in that repository, not this one, so there is nothing
-      # alongside this file to compare against.
+      # The reusable pr-auto-review.yml workflow in shakenfist/actions
+      # checks out the merge ref for this reason and says so in its
+      # header.
       #
       # This puts the pull request's code on the runner, which is
       # exactly why pr-bot-trigger refusing fork pull requests above is

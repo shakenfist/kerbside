@@ -10,16 +10,70 @@
 # static runners do not have one: `debian-13-docker` is the fleet's
 # docker-capable image. Add it to .github/actionlint.yaml's runner
 # labels or actionlint fails.
+#
+# Living in its own file has one consequence worth stating. This job
+# can fail a pull request, but a `needs:` list in another workflow
+# cannot reach it, and it is deliberately not a required check either
+# -- see "Required status checks" in the template README for why a
+# path-filtered required check is a trap. So a red Mermaid lint is
+# visible on the pull request and blocks nothing automatically. Where
+# a repository records which jobs gate a pull request, this one
+# belongs on the list of deliberate exceptions.
 name: Mermaid lint
 
 on:
-  pull_request:
-    # Only markdown can break a diagram. REVIEWS.md is excluded for the
-    # same reason every other expensive lane excludes it: a review
-    # session or a bot prune rewrites it and changes no diagram, and
-    # this lane costs a virtual machine.
+  # Also on push, because a commit that lands on the default branch
+  # without a pull request -- an admin push, a bot commit -- would
+  # otherwise never be linted here. It would be caught by whichever
+  # unrelated pull request next touches markdown, which is worse than
+  # not catching it: the whole tree is linted every run, so the failure
+  # lands on an author who did not write the diagram.
+  #
+  # Both branch names ship, because the fleet's default branch is
+  # `develop` in some repositories and `main` in others; the one a
+  # given repository does not have simply never matches. There is
+  # deliberately no merge_group trigger: this is not a required check,
+  # and a path-filtered workflow made required reports pending forever
+  # on the pull requests it filters out.
+  push:
+    branches:
+      - main
+      - develop
     paths:
       - '**.md'
+      - '.github/workflows/mermaid-lint.yml'
+      - 'tools/mermaid-lint.sh'
+      - 'tools/mermaid-lint-exclude'
+      - '!REVIEWS.md'
+  pull_request:
+    # Markdown can break a diagram, and so can the checker itself: a
+    # pull request that edits the script or this workflow and no
+    # markdown would otherwise ship a change to the lane that was never
+    # run.
+    #
+    # REVIEWS.md is excluded because a review session or a bot prune
+    # rewrites it and changes no diagram, while this lane costs a
+    # virtual machine. A repository that has no REVIEWS.md keeps the
+    # line anyway, so that the exclusion is in force from the first
+    # commit of one rather than from whenever somebody remembered it.
+    # The negation is last because a later pattern wins.
+    #
+    # mermaid-lint.sh drops the same file from its own candidate set,
+    # and the two must stay in step: the script lints the whole tree
+    # every run, so a file excluded here but linted there fails
+    # somebody else's pull request over a diagram they did not write.
+    #
+    # A repository that excludes a tree of its own names it in
+    # tools/mermaid-lint-exclude and adds the matching '!path/**'
+    # here, in both lists, last. GitHub Actions cannot read that file,
+    # so that pair of edits is the one divergence from this template a
+    # repository is expected to carry. The file is named above so that
+    # changing an exclusion runs the lane that acts on it.
+    paths:
+      - '**.md'
+      - '.github/workflows/mermaid-lint.yml'
+      - 'tools/mermaid-lint.sh'
+      - 'tools/mermaid-lint-exclude'
       - '!REVIEWS.md'
   workflow_dispatch:
 

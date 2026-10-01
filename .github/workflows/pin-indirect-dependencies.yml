@@ -17,9 +17,18 @@
 #     to tools/pin-indirect-dependencies.sh (keep it executable).
 #   - A repository secret called DEPENDENCIES_TOKEN with push and PR
 #     permissions.
+#   - Optionally, a tools/pin-indirect-dependencies-apt.txt listing
+#     extra apt packages the resolve needs (one per line, "#" comments
+#     allowed). Read only if present; see
+#     pin-indirect-dependencies-apt.sh.
 #
-# Placeholders to replace:
-#   kerbside  -- repository / checkout directory name
+# No placeholders: this file is copied verbatim. The checkout directory
+# used to be named after the project and filled in by hand; the
+# repository is now checked out into the workspace root instead. Do not
+# reintroduce a path derived from github.event.repository: a schedule
+# event's payload has no repository object, so on the daily run that
+# expression is empty and the scheduled and pull_request runs would lay
+# the checkout out differently.
 #
 # Template source:
 #   https://github.com/shakenfist/development/tree/main/templates/pin-indirect-dependencies/
@@ -34,6 +43,8 @@ on:
     paths:
       - .github/workflows/pin-indirect-dependencies.yml
       - tools/pin-indirect-dependencies.sh
+      - tools/pin-indirect-dependencies-apt.sh
+      - tools/pin-indirect-dependencies-apt.txt
   workflow_dispatch:
   schedule:
     - cron: '00 00 * * *'        # utc
@@ -81,7 +92,9 @@ jobs:
       # not exist. unsafe-best-match restores pip's merge-across-indexes
       # behaviour. The usual dependency-confusion objection does not apply
       # here: devpi is a transparent pypi mirror, not a private package
-      # source, so both indexes serve the same namespace.
+      # source, so both indexes serve the same namespace. The trade-off is
+      # that both indexes are now queried, so devpi is no longer strictly
+      # preferred.
       UV_INDEX_STRATEGY: unsafe-best-match
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
@@ -98,21 +111,24 @@ jobs:
       # credentials, so every git operation in the script below fails for
       # a non-obvious reason.
       #
-      # The resolve runs in an isolated venv, so anything which compiles
-      # at install time needs its build dependencies present here too:
-      # mysqlclient ships no wheel and builds against libmysqlclient.
+      # Project-specific build dependencies (e.g. mysqlclient needing
+      # libmysqlclient-dev, because it ships no wheel) are not installed
+      # here: this step runs before the target repository is checked
+      # out, so it cannot yet read a file from it. They go in an
+      # optional tools/pin-indirect-dependencies-apt.txt in the target
+      # repository instead, installed by "Install project-specific
+      # build dependencies" below once the checkout has happened.
       #
-      # One invocation rather than three, all of them carrying the
-      # lock-timeout and confold options the rest of this repository's
-      # workflows use. A bare "apt install" on an ephemeral vm that boots
-      # into an unattended-upgrades window either fails on the dpkg lock
-      # or hangs on a conffile prompt.
+      # Keep the lock-timeout and confold options on every apt call in
+      # this workflow. A bare "apt install" on an ephemeral vm that
+      # boots into an unattended-upgrades window either fails on the
+      # dpkg lock or hangs on a conffile prompt.
       - name: Install system build dependencies
         run: |
           sudo apt update
           sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=-1 -o Dpkg::Options::="--force-confold" -y \
             install git python3-dev python3-pip python3-venv python3-wheel \
-            pkg-config build-essential default-libmysqlclient-dev curl
+            curl
 
       - name: Install the github command line
         run: |
@@ -141,13 +157,22 @@ jobs:
       # values, and an empty string is falsy, so a falsy true-branch is
       # discarded and the || arm fires regardless of the condition. The
       # true-branch therefore has to be the truthy value.
-      - name: Checkout kerbside
+      - name: Checkout
         uses: actions/checkout@v7
         with:
-          path: kerbside
           fetch-depth: 0
           token: ${{ github.event_name != 'pull_request' && secrets.DEPENDENCIES_TOKEN || github.token }}
           persist-credentials: ${{ github.event_name != 'pull_request' }}
+
+      # Project-specific build dependencies live in the repository just
+      # checked out, so this can only run afterwards.
+      # pin-indirect-dependencies-apt.sh does nothing when
+      # tools/pin-indirect-dependencies-apt.txt is absent -- the common
+      # case, which is why the list is optional. The script itself is
+      # not: the consistency audit fails a repository whose workflow
+      # names a tools/ script it does not carry.
+      - name: Install project-specific build dependencies
+        run: tools/pin-indirect-dependencies-apt.sh
 
       - name: Reconcile pinned indirect dependencies
         env:
@@ -156,6 +181,4 @@ jobs:
           # HEAD at the merge commit, so pushing a branch from one would
           # carry the whole pull request into an automated pin update.
           GITHUB_TOKEN: ${{ github.event_name != 'pull_request' && secrets.DEPENDENCIES_TOKEN || '' }}
-        run: |
-          cd ${GITHUB_WORKSPACE}/kerbside
-          tools/pin-indirect-dependencies.sh
+        run: tools/pin-indirect-dependencies.sh
