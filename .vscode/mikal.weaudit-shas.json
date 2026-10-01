@@ -33,28 +33,8 @@
       "sha": "27e67fd39ee151726e5da3312ac5421fd502041b",
       "date": "2026-09-27"
     },
-    ".github/workflows/export-repo-config.yml": {
-      "sha": "d199e4e868917440bb6f783e6c7036d94897c662",
-      "date": "2026-10-01"
-    },
     ".github/workflows/functional-tests.yml": {
       "sha": "3d1519bdcb3c4d66976b46f0f18b116aee1c9407",
-      "date": "2026-10-01"
-    },
-    ".github/workflows/mermaid-lint.yml": {
-      "sha": "b4c31cff44ef4f93fdd2854fda40c4d0b39111a5",
-      "date": "2026-09-27"
-    },
-    ".github/workflows/pin-indirect-dependencies.yml": {
-      "sha": "ad5835fb017c7412f72db54764f7702396d97d36",
-      "date": "2026-09-27"
-    },
-    ".github/workflows/pr-re-review.yml": {
-      "sha": "72059c8c57e2111baa5004d517d5ec188e960be3",
-      "date": "2026-10-01"
-    },
-    ".github/workflows/pr-retest.yml": {
-      "sha": "7810bdd87ff14bd99b8853fb0cef1f067cc2a07a",
       "date": "2026-10-01"
     },
     ".github/workflows/prune-reviews.yml": {
@@ -68,10 +48,6 @@
     ".github/workflows/release.yml": {
       "sha": "47583d36522c431a179f2dd0865fe130d6673a11",
       "date": "2026-09-27"
-    },
-    ".github/workflows/renovate.yml": {
-      "sha": "b1039e0c7e3f0baf44d2b5e4d7cbfb356bdd952b",
-      "date": "2026-10-01"
     },
     ".github/workflows/rust.yml": {
       "sha": "8b8f7d515c38bd90b7c093a0c4d7bd19cdf226c9",
@@ -459,10 +435,6 @@
     },
     "tools/gitleaks-scan.sh": {
       "sha": "8b2625dca2a9c5f0c171086e87e154bff91a9afd",
-      "date": "2026-09-18"
-    },
-    "tools/mermaid-lint.sh": {
-      "sha": "e9f174d6d54ec1d6e38725a8b0a6de1998945cab",
       "date": "2026-09-18"
     },
     "tools/ovirt-e2e/README.md": {
