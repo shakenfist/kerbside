@@ -74,6 +74,7 @@ jobs:
       # action's phrase match is not, so a comment that differs only in
       # case legitimately gets triggered=false and no authorized at all.
       - name: Confirm pr-bot-trigger reported the pull request's origin
+        id: origin
         env:
           TRIGGERED: ${{ steps.trigger.outputs.triggered }}
           AUTHORIZED: ${{ steps.trigger.outputs.authorized }}
@@ -99,6 +100,28 @@ jobs:
           if [ "${SAME_REPO}" != "true" ]; then
             fail "pr-bot-trigger authorized this request but reported same-repo as '${SAME_REPO}'."
           fi
+
+      # A red trigger job is visible to maintainers scanning Actions,
+      # but the requester has usually had the rocket reaction by now,
+      # and the run log is not somewhere they will look. Say it on the
+      # pull request as well. Gated on the step above rather than on
+      # any failure, so a failure inside pr-bot-trigger -- which may
+      # not have acknowledged anything -- is left to the action. The
+      # body is fixed text: nothing from the comment reaches it.
+      - name: Tell the requester the re-review will not run
+        if: failure() && steps.origin.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body="This re-review request was acknowledged but will not run:"
+          body="${body} this workflow could not confirm what pr-bot-trigger"
+          body="${body} reported about the pull request, which is a defect in"
+          body="${body} the workflow rather than in the pull request. The"
+          body="${body} [run log](${RUN_URL}) has the detail."
+          gh pr comment "${PR_NUMBER}" --repo "${REPO}" --body "${body}"
 
   re-review:
     name: "Re-review PR"
@@ -315,6 +338,7 @@ jobs:
       # this step holds is "the tree is what was validated", not "the
       # review is stale", and one rule is easier to trust than two.
       - name: Confirm the checkout is the validated commit
+        id: confirm
         env:
           HEAD_SHA: ${{ steps.ref.outputs.head_sha }}
           MERGED: ${{ steps.ref.outputs.merged }}
@@ -346,6 +370,11 @@ jobs:
               ;;
           esac
           if [ "${reviewed}" != "${HEAD_SHA}" ]; then
+            # Only this branch is a race. The exits above are defects in
+            # this workflow, and the notice must not tell the requester
+            # to comment again for those, so it reads this, not the
+            # step's outcome.
+            echo "cause=moved" >> "${GITHUB_OUTPUT}"
             echo "The ${what} ${reviewed}, but the resolve step validated"
             echo "${HEAD_SHA}. The head moved between the two, so this tree"
             echo "is not the code the review was asked for. Comment again"
@@ -402,7 +431,43 @@ jobs:
           EOF
 
       - name: Run automated reviewer
+        id: review
         uses: shakenfist/actions/review-pr-with-claude@main
         with:
           pr-number: ${{ needs.trigger-re-review.outputs.pr_number }}
           force: 'true'
+
+      # Every step above runs after the rocket reaction, and a failure
+      # in any of them before the reviewer starts would otherwise end
+      # the request in silence: the confirm step's "comment again" is
+      # only in the run log, which the requester is unlikely to open.
+      # The reviewer's own failures are left to review-pr-with-claude,
+      # which reports them itself, hence the gate on it having been
+      # skipped rather than on failure() alone. A run cancelled by a
+      # newer request is not a failure, so this stays quiet then too.
+      #
+      # The head moving is the one failure with a known remedy, so it
+      # gets its own sentence; anything else points at the run log,
+      # including the confirm step's other failures, which are defects
+      # here rather than a race (shakenfist/development#206). The body
+      # is fixed text: nothing from the comment reaches it.
+      - name: Tell the requester the re-review did not run
+        if: failure() && steps.review.outcome == 'skipped'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ needs.trigger-re-review.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+          CAUSE: ${{ steps.confirm.outputs.cause }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "${CAUSE}" = "moved" ]; then
+            body="No review was posted: this pull request's head moved"
+            body="${body} while the re-review was starting, so the tree it"
+            body="${body} checked out is not the commit it was asked to"
+            body="${body} review. Comment again to review the new head."
+          else
+            body="No review was posted: the re-review failed before the"
+            body="${body} reviewer started. The [run log](${RUN_URL}) says"
+            body="${body} why."
+          fi
+          gh pr comment "${PR_NUMBER}" --repo "${REPO}" --body "${body}"
