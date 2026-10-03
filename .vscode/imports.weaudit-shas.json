@@ -56,17 +56,6 @@
         "verified": true
       }
     },
-    ".github/workflows/renovate.yml": {
-      "sha": "00e87dc5b8fa495097adc71d5b19d71867e2fbfa",
-      "date": "2026-10-01",
-      "imported": {
-        "repo": "shakenfist/development",
-        "reviewer": "mikal",
-        "path": ".github/workflows/renovate.yml",
-        "commit": "f82b09c1c23b8a189add8f61b3e0ddcf6203ecaa",
-        "verified": true
-      }
-    },
     "tools/ci-prune-reviews.sh": {
       "sha": "cb496c3933ea26aa855b91eb7b8927aa5597e263",
       "date": "2026-09-27",
