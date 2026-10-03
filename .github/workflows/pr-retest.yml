@@ -66,6 +66,7 @@ jobs:
       # action's phrase match is not, so a comment that differs only in
       # case legitimately gets triggered=false and no authorized at all.
       - name: Confirm pr-bot-trigger reported the pull request's origin
+        id: origin
         env:
           TRIGGERED: ${{ steps.trigger.outputs.triggered }}
           AUTHORIZED: ${{ steps.trigger.outputs.authorized }}
@@ -91,6 +92,28 @@ jobs:
           if [ "${SAME_REPO}" != "true" ]; then
             fail "pr-bot-trigger authorized this request but reported same-repo as '${SAME_REPO}'."
           fi
+
+      # A red trigger job is visible to maintainers scanning Actions,
+      # but the requester has usually had the rocket reaction by now,
+      # and the run log is not somewhere they will look. Say it on the
+      # pull request as well. Gated on the step above rather than on
+      # any failure, so a failure inside pr-bot-trigger -- which may
+      # not have acknowledged anything -- is left to the action. The
+      # body is fixed text: nothing from the comment reaches it.
+      - name: Tell the requester the retest will not run
+        if: failure() && steps.origin.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body="This retest request was acknowledged but will not run:"
+          body="${body} this workflow could not confirm what pr-bot-trigger"
+          body="${body} reported about the pull request, which is a defect in"
+          body="${body} the workflow rather than in the pull request. The"
+          body="${body} [run log](${RUN_URL}) has the detail."
+          gh pr comment "${PR_NUMBER}" --repo "${REPO}" --body "${body}"
 
   retest:
     name: "Retest PR"
