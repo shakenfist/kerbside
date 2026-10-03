@@ -34,25 +34,14 @@
         "verified": true
       }
     },
-    ".github/workflows/pr-re-review.yml": {
-      "sha": "bc4d2e3782bb0762ff04068e715239bc22c2fdd6",
-      "date": "2026-10-01",
-      "imported": {
-        "repo": "shakenfist/development",
-        "reviewer": "mikal",
-        "path": ".github/workflows/pr-re-review.yml",
-        "commit": "f82b09c1c23b8a189add8f61b3e0ddcf6203ecaa",
-        "verified": true
-      }
-    },
     ".github/workflows/pr-retest.yml": {
-      "sha": "076471f6caec9bab3b96ab15f54d8aeff495c29a",
-      "date": "2026-10-01",
+      "sha": "dab99349ea1867e984ae0e5fc73f70ec00cb519b",
+      "date": "2026-10-02",
       "imported": {
         "repo": "shakenfist/development",
         "reviewer": "mikal",
         "path": ".github/workflows/pr-retest.yml",
-        "commit": "f82b09c1c23b8a189add8f61b3e0ddcf6203ecaa",
+        "commit": "334333685dd9c68222678a4676a7fe8f127675aa",
         "verified": true
       }
     },
