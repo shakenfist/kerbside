@@ -165,6 +165,10 @@
       "sha": "693d8284d3ca31296628ecb45f223b2345abf593",
       "date": "2026-09-27"
     },
+    "docs/spice/capabilities.md": {
+      "sha": "12d3cbbfab12ee94481e29157cddf123cbdbd542",
+      "date": "2026-10-05"
+    },
     "docs/spice/channel-protocols.md": {
       "sha": "c51a719e76f1e6613d7b4408cf6f065227ee2695",
       "date": "2026-09-18"
@@ -177,9 +181,17 @@
       "sha": "04de34ecbe3153d26409d6f4c30249e963097f44",
       "date": "2026-09-18"
     },
+    "docs/spice/protocol-overview.md": {
+      "sha": "846625c2bbb6886e09c31178c6bb93d8d7e26fe7",
+      "date": "2026-10-05"
+    },
     "docs/spice/scancodes.md": {
       "sha": "0bcdfd3b59f71bfddfbdd6eeb78738ced94dce39",
       "date": "2026-09-18"
+    },
+    "docs/spice/spice-link-protocol.md": {
+      "sha": "b9b0eee5875972d13dacf237e3aad85aa862c071",
+      "date": "2026-10-05"
     },
     "docs/spice/usb-redirection.md": {
       "sha": "fb19b4f045b178cd38da346940a25f6f29a64c0e",

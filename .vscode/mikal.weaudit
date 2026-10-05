@@ -590,6 +590,22 @@
     {
       "path": ".github/workflows",
       "author": "mikal"
+    },
+    {
+      "path": "docs/spice/capabilities.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/spice/protocol-overview.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/spice/spice-link-protocol.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/spice",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
