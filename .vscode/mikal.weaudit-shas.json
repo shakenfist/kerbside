@@ -33,9 +33,29 @@
       "sha": "27e67fd39ee151726e5da3312ac5421fd502041b",
       "date": "2026-09-27"
     },
+    ".github/workflows/export-repo-config.yml": {
+      "sha": "b9b3936053b8685ef0ae47f656b2f35aa62ba637",
+      "date": "2026-10-05"
+    },
     ".github/workflows/functional-tests.yml": {
       "sha": "3d1519bdcb3c4d66976b46f0f18b116aee1c9407",
       "date": "2026-10-01"
+    },
+    ".github/workflows/mermaid-lint.yml": {
+      "sha": "d5b8377f8a98d3f68fd14469ed4d5be8fece1c6a",
+      "date": "2026-10-05"
+    },
+    ".github/workflows/pin-indirect-dependencies.yml": {
+      "sha": "94e1e3a47510da8436eb629a047ba1edd4979905",
+      "date": "2026-10-05"
+    },
+    ".github/workflows/pr-re-review.yml": {
+      "sha": "68425cd384443ae15a909832693af1df01414c38",
+      "date": "2026-10-05"
+    },
+    ".github/workflows/pr-retest.yml": {
+      "sha": "dab99349ea1867e984ae0e5fc73f70ec00cb519b",
+      "date": "2026-10-05"
     },
     ".github/workflows/prune-reviews.yml": {
       "sha": "7fc119ce46252ba56037d99ddf90ea9dc180e3b8",
@@ -48,6 +68,10 @@
     ".github/workflows/release.yml": {
       "sha": "47583d36522c431a179f2dd0865fe130d6673a11",
       "date": "2026-09-27"
+    },
+    ".github/workflows/renovate.yml": {
+      "sha": "ab84e6fb10de106ac0c39124db52fa1ee7ed73a4",
+      "date": "2026-10-05"
     },
     ".github/workflows/rust.yml": {
       "sha": "8b8f7d515c38bd90b7c093a0c4d7bd19cdf226c9",
