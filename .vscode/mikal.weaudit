@@ -562,6 +562,50 @@
     {
       "path": ".github/workflows/prune-reviews.yml",
       "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/export-repo-config.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/mermaid-lint.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/pin-indirect-dependencies.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/pr-re-review.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/pr-retest.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/renovate.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/spice/capabilities.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/spice/protocol-overview.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/spice/spice-link-protocol.md",
+      "author": "mikal"
+    },
+    {
+      "path": "docs/spice",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

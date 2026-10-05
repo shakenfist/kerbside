@@ -33,9 +33,29 @@
       "sha": "27e67fd39ee151726e5da3312ac5421fd502041b",
       "date": "2026-09-27"
     },
+    ".github/workflows/export-repo-config.yml": {
+      "sha": "b9b3936053b8685ef0ae47f656b2f35aa62ba637",
+      "date": "2026-10-05"
+    },
     ".github/workflows/functional-tests.yml": {
       "sha": "3d1519bdcb3c4d66976b46f0f18b116aee1c9407",
       "date": "2026-10-01"
+    },
+    ".github/workflows/mermaid-lint.yml": {
+      "sha": "d5b8377f8a98d3f68fd14469ed4d5be8fece1c6a",
+      "date": "2026-10-05"
+    },
+    ".github/workflows/pin-indirect-dependencies.yml": {
+      "sha": "94e1e3a47510da8436eb629a047ba1edd4979905",
+      "date": "2026-10-05"
+    },
+    ".github/workflows/pr-re-review.yml": {
+      "sha": "68425cd384443ae15a909832693af1df01414c38",
+      "date": "2026-10-05"
+    },
+    ".github/workflows/pr-retest.yml": {
+      "sha": "dab99349ea1867e984ae0e5fc73f70ec00cb519b",
+      "date": "2026-10-05"
     },
     ".github/workflows/prune-reviews.yml": {
       "sha": "7fc119ce46252ba56037d99ddf90ea9dc180e3b8",
@@ -48,6 +68,10 @@
     ".github/workflows/release.yml": {
       "sha": "47583d36522c431a179f2dd0865fe130d6673a11",
       "date": "2026-09-27"
+    },
+    ".github/workflows/renovate.yml": {
+      "sha": "ab84e6fb10de106ac0c39124db52fa1ee7ed73a4",
+      "date": "2026-10-05"
     },
     ".github/workflows/rust.yml": {
       "sha": "8b8f7d515c38bd90b7c093a0c4d7bd19cdf226c9",
@@ -141,6 +165,10 @@
       "sha": "693d8284d3ca31296628ecb45f223b2345abf593",
       "date": "2026-09-27"
     },
+    "docs/spice/capabilities.md": {
+      "sha": "12d3cbbfab12ee94481e29157cddf123cbdbd542",
+      "date": "2026-10-05"
+    },
     "docs/spice/channel-protocols.md": {
       "sha": "c51a719e76f1e6613d7b4408cf6f065227ee2695",
       "date": "2026-09-18"
@@ -153,9 +181,17 @@
       "sha": "04de34ecbe3153d26409d6f4c30249e963097f44",
       "date": "2026-09-18"
     },
+    "docs/spice/protocol-overview.md": {
+      "sha": "846625c2bbb6886e09c31178c6bb93d8d7e26fe7",
+      "date": "2026-10-05"
+    },
     "docs/spice/scancodes.md": {
       "sha": "0bcdfd3b59f71bfddfbdd6eeb78738ced94dce39",
       "date": "2026-09-18"
+    },
+    "docs/spice/spice-link-protocol.md": {
+      "sha": "b9b0eee5875972d13dacf237e3aad85aa862c071",
+      "date": "2026-10-05"
     },
     "docs/spice/usb-redirection.md": {
       "sha": "fb19b4f045b178cd38da346940a25f6f29a64c0e",
