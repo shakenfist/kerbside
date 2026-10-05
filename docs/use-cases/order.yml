@@ -1,0 +1,13 @@
+---
+# Navigation order and titles for this directory on shakenfist.com.
+# The docs sync reads it in place of the default alphabetical-by-H1
+# order; a page missing from this list is published but left out of
+# the site navigation. See "Documentation site navigation" in
+# docs/development.md.
+
+- standalone.md: Standalone
+- shakenfist.md: Shaken Fist
+- openstack.md: OpenStack
+- ovirt.md: oVirt
+- multi-cloud.md: Across several clouds
+- placement.md: Placement topologies

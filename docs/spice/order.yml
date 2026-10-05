@@ -1,0 +1,16 @@
+---
+# Navigation order and titles for this directory on shakenfist.com.
+# The docs sync reads it in place of the default alphabetical-by-H1
+# order; a page missing from this list is published but left out of
+# the site navigation. See "Documentation site navigation" in
+# docs/development.md.
+
+- protocol-overview.md: Protocol overview
+- spice-link-protocol.md: Link protocol and authentication
+- capabilities.md: Capability negotiation
+- channel-protocols.md: Channel protocols
+- compression-protocols.md: Image compression (LZ and GLZ)
+- scancodes.md: Keyboard scancodes
+- vd-agent-protocol.md: VD agent protocol
+- usb-redirection.md: USB redirection
+- console-vv-extensions.md: console.vv extensions

@@ -114,13 +114,13 @@ column names the CI lane that exercises the scenario end to end; see
 
 | Scenario | Description | Tested in Kerbside CI |
 |----------|-------------|-----------------------|
-| [Multi-cloud aggregation](use-cases/multi-cloud.md) | One Kerbside brokering several sources at once, so users keep a single console entry point as workloads move between providers | Not covered |
+| [Standalone / static source](use-cases/standalone.md) | The static driver (`kerbside/sources/static.py`) for labs, demos, and direct-qemu style fleets. The [compose demo](installation.md#try-it-the-demo-stack) is the worked example | `direct-qemu`, smoke tier and nightly |
+| [Shaken Fist](use-cases/shakenfist.md) | Broker embedded in Shaken Fist itself; Ed25519 VDI console tokens exchanged offline at `/sf-console.vv` | `sf-e2e`, smoke tier and nightly |
 | [OpenStack](use-cases/openstack.md) | Nova 2025.1 spice-direct consoles, deployed alongside the cluster with Kolla-Ansible via kerbside-patches | `openstack_matrix`, merge tier |
 | [oVirt](use-cases/ovirt.md) | Replaces oVirt's SPICE proxy (squid) with a protocol-aware front door: discovery via the engine API, TLS to the hypervisor with the engine-supplied subject pinned where the engine supplies one, and the engine, network, and account prerequisites | `ovirt_matrix`, merge tier |
-| [Placement topologies](use-cases/placement.md) | Kerbside instances placed by user population rather than by cloud — one per regional office, close to its users, with the WAN hop as the inspected backend leg | Not covered |
 | Proxmox | Deferred until a Proxmox source driver exists | No source yet |
-| [Shaken Fist](use-cases/shakenfist.md) | Broker embedded in Shaken Fist itself; Ed25519 VDI console tokens exchanged offline at `/sf-console.vv` | `sf-e2e`, smoke tier and nightly |
-| [Standalone / static source](use-cases/standalone.md) | The static driver (`kerbside/sources/static.py`) for labs, demos, and direct-qemu style fleets. The [compose demo](installation.md#try-it-the-demo-stack) is the worked example | `direct-qemu`, smoke tier and nightly |
+| [Multi-cloud aggregation](use-cases/multi-cloud.md) | One Kerbside brokering several sources at once, so users keep a single console entry point as workloads move between providers | Not covered |
+| [Placement topologies](use-cases/placement.md) | Kerbside instances placed by user population rather than by cloud — one per regional office, close to its users, with the WAN hop as the inspected backend leg | Not covered |
 
 Scenarios without a link are planned rather than written; see
 [plans/PLAN-use-case-docs.md](plans/PLAN-use-case-docs.md).
@@ -206,6 +206,10 @@ channel message formats:
   including SpiceLinkMess/SpiceLinkReply formats, RSA key exchange, and
   authentication flow
 
+- [Capabilities](spice/capabilities.md) - Channel capability negotiation
+  including common, display, audio, and input capabilities with recommended
+  settings
+
 - [Channel Protocols](spice/channel-protocols.md) - Detailed message formats
   for each SPICE channel:
   - Main channel - Session control, channel negotiation
@@ -215,17 +219,20 @@ channel message formats:
   - Playback/Record channels - Audio streaming
   - Smartcard channel - Smart card redirection
 
-- [Keyboard Scancodes](spice/scancodes.md) - Complete reference for IBM PC XT
-  scancodes used by the inputs channel, including standard keys, extended keys
-  (E0 prefix), and media/browser keys
-
 - [Compression Protocols](spice/compression-protocols.md) - LZ and GLZ image
   compression formats used by the display channel, including header formats,
   command encoding, and dictionary-based decompression
 
-- [Capabilities](spice/capabilities.md) - Channel capability negotiation
-  including common, display, audio, and input capabilities with recommended
-  settings
+- [Keyboard Scancodes](spice/scancodes.md) - Complete reference for IBM PC XT
+  scancodes used by the inputs channel, including standard keys, extended keys
+  (E0 prefix), and media/browser keys
+
+### Guest Agent Protocol
+
+Protocol for advanced guest integration features:
+
+- [VD Agent Protocol](spice/vd-agent-protocol.md) - Guest agent protocol for
+  clipboard sharing, file transfer, display configuration, and volume sync
 
 ### Device Redirection Protocols
 
@@ -234,13 +241,6 @@ Protocols for redirecting client devices to the virtual machine:
 - [USB Redirection](spice/usb-redirection.md) - USB device redirection
   protocol (usbredir) including all control and data message formats,
   capability negotiation, and device filter rules
-
-### Guest Agent Protocol
-
-Protocol for advanced guest integration features:
-
-- [VD Agent Protocol](spice/vd-agent-protocol.md) - Guest agent protocol for
-  clipboard sharing, file transfer, display configuration, and volume sync
 
 ### Connection File Extensions
 
