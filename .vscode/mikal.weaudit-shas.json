@@ -169,10 +169,6 @@
       "sha": "12d3cbbfab12ee94481e29157cddf123cbdbd542",
       "date": "2026-10-05"
     },
-    "docs/spice/channel-protocols.md": {
-      "sha": "c51a719e76f1e6613d7b4408cf6f065227ee2695",
-      "date": "2026-09-18"
-    },
     "docs/spice/compression-protocols.md": {
       "sha": "31f502b7d486ba55d92d5acc0e2e4ae8bd4297dd",
       "date": "2026-09-18"
@@ -193,10 +189,6 @@
       "sha": "0bcdfd3b59f71bfddfbdd6eeb78738ced94dce39",
       "date": "2026-09-18"
     },
-    "docs/spice/spice-link-protocol.md": {
-      "sha": "b9b0eee5875972d13dacf237e3aad85aa862c071",
-      "date": "2026-10-05"
-    },
     "docs/spice/usb-redirection.md": {
       "sha": "fb19b4f045b178cd38da346940a25f6f29a64c0e",
       "date": "2026-09-18"
@@ -204,10 +196,6 @@
     "docs/spice/vd-agent-protocol.md": {
       "sha": "c07088c165daeb718be4b23db70c3007215adc22",
       "date": "2026-09-18"
-    },
-    "docs/use-cases/openstack.md": {
-      "sha": "dd286d8951f7320e9ac0c9113951bf39a65269fc",
-      "date": "2026-09-27"
     },
     "docs/use-cases/order.yml": {
       "sha": "c8348328df9390b38943855d95860b9d2cb47811",

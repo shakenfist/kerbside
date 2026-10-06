@@ -376,10 +376,6 @@
       "author": "mikal"
     },
     {
-      "path": "docs/spice/channel-protocols.md",
-      "author": "mikal"
-    },
-    {
       "path": "docs/spice/compression-protocols.md",
       "author": "mikal"
     },
@@ -548,10 +544,6 @@
       "author": "mikal"
     },
     {
-      "path": "docs/use-cases/openstack.md",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/functional-tests.yml",
       "author": "mikal"
     },
@@ -600,19 +592,7 @@
       "author": "mikal"
     },
     {
-      "path": "docs/spice/spice-link-protocol.md",
-      "author": "mikal"
-    },
-    {
-      "path": "docs/spice",
-      "author": "mikal"
-    },
-    {
       "path": "docs/spice/order.yml",
-      "author": "mikal"
-    },
-    {
-      "path": "docs/spice",
       "author": "mikal"
     },
     {
