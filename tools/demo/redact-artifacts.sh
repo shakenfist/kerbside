@@ -64,8 +64,15 @@ redact_everywhere 'GENERATED ROOT PASSWORD: ' \
 
 # Names only, never the matching line: printing the match would copy the
 # secret into the workflow log, which is as public as the artifact.
+#
+# `|| true` is load-bearing. Under `set -o pipefail` a grep that matches
+# nothing fails the pipeline, the caller's assignment fails, and `set -e`
+# kills the script with no message -- so the check failed exactly when
+# there was nothing left to find. That went unnoticed while the .vv was
+# always in the artifact directory; ryll now deletes it (it sets
+# delete-this-file=1), so "no console token anywhere" is the normal case.
 residual_files() {
-    grep -rl "$1" "${ARTIFACT_DIR}" 2> /dev/null | while read -r f; do
+    { grep -rl "$1" "${ARTIFACT_DIR}" 2> /dev/null || true; } | while read -r f; do
         if grep "$1" "${f}" | grep -qv 'REDACTED'; then
             echo "  ${f}"
         fi
