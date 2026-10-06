@@ -1,18 +1,21 @@
 # Kerbside standalone
 
-Kerbside can make a fixed list of SPICE targets safely accessible: the
-`static` source driver (`kerbside/sources/static.py`) reads its
-console list out of `sources.yaml`, so Kerbside brokers qemu
-directly with no cloud to discover anything from.
+You have SPICE consoles but no cloud that knows about them,
+and you want to hand them to users without handing out routes
+to the machines that host them. Kerbside's `static` source
+driver reads a fixed list of targets from `sources.yaml` and
+fronts them with the same audited, firewalled proxy the cloud
+deployments get.
 
 ## Value proposition
 
-The other three pages put Kerbside in front of a platform that
-already knows where every console of its own is. This one is for
-when there is no such platform: a lab bench, a CI job, a rack of
-appliance VMs no API will ever enumerate. The `static` driver
-is how you get the proxy's session model, its audit trail and
-its SPICE firewall without standing anything else up first.
+The [Shaken Fist](shakenfist.md), [OpenStack](openstack.md) and
+[oVirt](ovirt.md) pages put Kerbside in front of a platform that
+already knows where its consoles are. Here there is none — a lab
+bench, a CI job, a rack of appliance VMs no API will ever
+enumerate — and the `static` driver is how you get the proxy's
+session model, its audit trail and its SPICE firewall without
+standing anything else up first.
 
 - **There is nothing to stand up and nothing to authenticate
   to.** The driver makes no external call at all. There is no
@@ -37,8 +40,8 @@ its SPICE firewall without standing anything else up first.
   letting the removal land, and adding it back. See
   [Status and limitations](#status-and-limitations).
 - **Backend pinning is a field you write by hand, and this is
-  the only deployment where that is true.** All four pages
-  answer the same question — what stops Kerbside's backend
+  the only deployment where that is true.** All four source
+  types answer the same question — what stops Kerbside's backend
   connection being redirected to a host that is not the one it
   meant to reach — and all four answer it differently. oVirt
   learns the certificate subject from the engine during

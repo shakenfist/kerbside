@@ -1,20 +1,17 @@
 # Kerbside across several clouds
 
-One Kerbside in front of more than one cloud. `sources.yaml` is
-a list; each entry is a source with a type, and the daemon
-drives every one of them. Aggregation is therefore a deployment
-shape rather than a feature: it adds no driver, no
-configuration key and no API of its own, and the four sibling
-pages each describe one of the things it aggregates.
+Your consoles live on more than one platform, and your users
+should not have to care which. One Kerbside can front every
+cloud you run at once, giving a single console entry point, a
+single audit trail and a single firewall policy, with nothing
+extra to deploy: `sources.yaml` is simply a list.
 
 ## Value proposition
 
-The sibling pages each put Kerbside in front of one platform.
-Most estates are not one platform. A migration that runs for a
-year, an oVirt fleet being retired into OpenStack, two clouds
-in two regions, a rack of appliance VMs no API will ever
-enumerate — each of those is an entry in one file, and they sit
-in it together.
+A migration that runs for a year, an oVirt fleet being retired
+into OpenStack, two clouds in two regions, a rack of appliance
+VMs no API will ever enumerate: each is an entry in the same
+file, and each sibling page describes one kind of entry.
 
 - **Users keep one console entry point as workloads move.**
   The address a client connects to is Kerbside's own, and it

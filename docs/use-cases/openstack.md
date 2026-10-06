@@ -1,9 +1,10 @@
 # Kerbside for OpenStack
 
-Nova's own `spice-direct` console, answered by a protocol-aware
-proxy: the URL Nova hands the user points at Kerbside, so
-Kerbside is the console endpoint rather than something bolted on
-beside one.
+Nova's `spice-direct` console type lets OpenStack users open a
+native SPICE client, but leaves the proxy that client connects
+to as someone else's job. Kerbside is that proxy, designed
+alongside `spice-direct`, so the console URL Nova returns is a
+Kerbside URL.
 
 ## Value proposition
 

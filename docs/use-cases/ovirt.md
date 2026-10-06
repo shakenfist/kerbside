@@ -1,8 +1,11 @@
 # Kerbside for oVirt
 
-Native SPICE desktops for oVirt users, without exposing
-hypervisors to the client network and without an opaque
-byte-relay in the middle.
+oVirt users want native SPICE desktops, the hypervisors should
+not be reachable from the client network, and the usual bridge
+between the two is an HTTP CONNECT proxy relaying bytes it
+cannot see into. Kerbside replaces that relay with one that
+understands SPICE: it knows which sessions are live, can end
+them, and firewalls what clients send.
 
 ## Value proposition
 

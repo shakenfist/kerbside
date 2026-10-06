@@ -1,10 +1,10 @@
 # Kerbside placement topologies
 
-Several Kerbsides placed by user population rather than by
-cloud — one per regional office, close to its users — so the
-long hop is the Kerbside-to-hypervisor leg rather than the
-client-to-Kerbside one. No new driver, no new configuration
-key, and nothing in CI.
+Your users sit in regional offices far from the cloud, and you
+do not want every office's client network routed to every
+hypervisor's SPICE ports. Put a Kerbside in each office
+instead: clients reach only their local proxy, and the long
+hop becomes an inspected Kerbside-to-hypervisor session.
 
 ## Value proposition
 
