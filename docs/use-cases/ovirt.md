@@ -38,10 +38,9 @@ Kerbside replaces it with a protocol-aware front door:
 - **The backend leg is pinned where the engine supplies a
   subject.** Kerbside verifies the hypervisor's certificate
   against the engine CA *and* pins the certificate subject it
-  discovered from the engine, so a redirected backend
-  connection fails rather than succeeding quietly. A VM the
-  engine reports with no host leaves that subject unset
-  (`kerbside/sources/ovirt.py:99-117`), and an unset subject
+  discovered from the engine, so a redirected backend connection
+  fails rather than succeeding quietly. A VM the engine reports
+  with no host leaves that subject unset, and an unset subject
   relays the leg unpinned rather than erroring. In an ordinary
   cluster every running VM has a host, so this is the edge
   rather than the case.
