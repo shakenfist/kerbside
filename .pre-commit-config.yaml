@@ -55,6 +55,26 @@ repos:
     hooks:
       - id: skillsaw
 
+  # Documentation names code by symbol, never by line number. A
+  # `file.py:123` reference goes stale on the next edit to that file,
+  # and the edit is usually in a pull request that never touches the
+  # document, so nothing notices: several in docs/use-cases/ had
+  # already drifted when they were removed. Name the function or class
+  # instead. A GitHub #L anchor is allowed only on a link pinned to a
+  # commit sha, which cannot drift. Plans are exempt: they are dated
+  # records of the code as it was when they were written. The
+  # docs-line-references consistency audit in shakenfist/development
+  # sweeps the whole tree as well, since a hook can be skipped.
+  - repo: local
+    hooks:
+      - id: docs-line-references
+        name: No source line-number references in documentation
+        language: pygrep
+        entry: >-
+          \b[\w./-]+\.(py|pyi|rs|go|sh|proto|js|ts|c|h|cc|cpp|toml|ya?ml|j2|html):\d+(?:[-,]\d+)*(?![\d:])|/blob/(?![0-9a-f]{40}/)[^\s)#]+#L\d+
+        types: [markdown]
+        exclude: (^|/)plans/
+
   # Trailing whitespace, end-of-file, basic hygiene.
   # The vendored sfui copy under kerbside/api/static/sfui/ is
   # excluded so we do not gratuitously modify upstream files.
