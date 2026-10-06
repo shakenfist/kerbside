@@ -131,6 +131,22 @@ else
     bad 'the .vv has no ca= field with a certificate in it'
 fi
 
+# The production template marks the ticket single-use. Asserted here so
+# that the deletion check in section 2 fails for the right reason if the
+# template ever changes.
+if grep -q '^delete-this-file=1' "${VV}"; then
+    ok 'the .vv carries delete-this-file=1'
+else
+    bad 'the .vv does not set delete-this-file=1, so its single-use ticket would be left on disk'
+fi
+
+# Read the ports now, while the file still exists. ryll honours
+# delete-this-file=1 the way remote-viewer does, removing the .vv as soon
+# as it has parsed it, and section 2 needs the ports after ryll has
+# started.
+TLS_PORT="$(sed -n 's/^tls-port=//p' "${VV}" | tr -d '\r')"
+PLAIN_PORT="$(sed -n 's/^port=//p' "${VV}" | tr -d '\r')"
+
 # ── 2. Drive a real SPICE session with ryll ──────────────────────────
 #
 # ryll is built without --features digest-decode: this lane asserts that
@@ -197,6 +213,15 @@ else
             bad 'ryll could not establish a SPICE session'
         fi
 
+        # The ticket in the .vv is a single-use credential, so ryll
+        # removes the file once it has parsed it. The control socket only
+        # exists after that parse, so the file must be gone by now.
+        if [ ! -e "${VV}" ]; then
+            ok 'ryll removed the delete-this-file=1 .vv once it had read it'
+        else
+            bad 'the .vv survived ryll reading it, although it sets delete-this-file=1'
+        fi
+
         # Which port the session actually crossed. This is the failure
         # the whole demo is arranged to make visible: a session that
         # quietly ran over the plaintext port with the TLS leg broken
@@ -217,10 +242,8 @@ else
         # under test; a non-zero count on the TLS port is the
         # corroborating positive. Ports come from the .vv rather than
         # being hardcoded, so this cannot drift from what the client was
-        # actually told to use.
-        TLS_PORT="$(sed -n 's/^tls-port=//p' "${VV}" | tr -d '\r')"
-        PLAIN_PORT="$(sed -n 's/^port=//p' "${VV}" | tr -d '\r')"
-
+        # actually told to use; section 1 read them before ryll deleted
+        # the file.
         if ! command -v ss > /dev/null 2>&1; then
             # Not skipped quietly: a check that cannot run is a check
             # that is not protecting anything, and saying so is the
