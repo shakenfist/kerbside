@@ -1,6 +1,6 @@
 # Kerbside standalone
 
-A fixed list of SPICE targets and nothing behind them: the
+Kerbside can make a fixed list of SPICE targets safely accessible: the
 `static` source driver (`kerbside/sources/static.py`) reads its
 console list out of `sources.yaml`, so Kerbside brokers qemu
 directly with no cloud to discover anything from.

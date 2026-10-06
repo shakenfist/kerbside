@@ -181,6 +181,10 @@
       "sha": "04de34ecbe3153d26409d6f4c30249e963097f44",
       "date": "2026-09-18"
     },
+    "docs/spice/order.yml": {
+      "sha": "6e75369f35887b6c3338f24e00781e2d371a63b5",
+      "date": "2026-10-06"
+    },
     "docs/spice/protocol-overview.md": {
       "sha": "846625c2bbb6886e09c31178c6bb93d8d7e26fe7",
       "date": "2026-10-05"
@@ -204,6 +208,10 @@
     "docs/use-cases/openstack.md": {
       "sha": "dd286d8951f7320e9ac0c9113951bf39a65269fc",
       "date": "2026-09-27"
+    },
+    "docs/use-cases/order.yml": {
+      "sha": "c8348328df9390b38943855d95860b9d2cb47811",
+      "date": "2026-10-06"
     },
     "etc/example-static-sources.yaml": {
       "sha": "558621b0e5ee59b1a61c784a96ea9f7281d3dcd1",
