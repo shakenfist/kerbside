@@ -167,9 +167,10 @@ issuance and refusal) were confirmed by the operator on 2026-10-08.
    (Contrast the access group, whose absence already fails login.)
 
 4. **Refusal status and ordering.** Recommendation: 403, returned
-   before `db.get_console` or `db.get_source` are called, so a
-   non-admin learns nothing about which consoles exist and no oVirt
-   ticket is ever acquired on their behalf.
+   before any source is consulted, so no oVirt ticket is ever
+   acquired on a non-admin's behalf. The console row is read only to
+   decide whether to audit (question 5); the response does not
+   depend on it, and every logged in user can already list consoles.
 
 5. **Auditing.** Recommendation: record an audit event against the
    console both when a direct credential is issued and when one is
@@ -177,10 +178,11 @@ issuance and refusal) were confirmed by the operator on 2026-10-08.
    proxy-bypassing credential is exactly the security-sensitive
    operation `AGENTS.md` asks to be audited, and the console's audit
    trail is otherwise blind to direct sessions because they never
-   reach the proxy. For the refusal the console may not exist; the
-   event is recorded against the requested `(source, uuid)` without
-   a lookup, which is what the Shaken Fist token path already does
-   for rejected tokens.
+   reach the proxy. A refusal is audited only when the named console
+   exists: nothing reaps `audit_events` (see the comment on the
+   Shaken Fist token exchange in `kerbside/api.py`), so auditing
+   whatever `(source, uuid)` a caller names would let any logged in
+   user write orphan rows without bound.
 
 6. **Staleness.** The claim lives as long as the session JWT
    (`API_TOKEN_DURATION`). Removing a user from the admin group
@@ -236,8 +238,8 @@ One pull request, one commit per step.
   helper that mints a JWT with the claim, next to whatever the
   suite already uses to authenticate); add a non-admin test
   asserting 403, that the oVirt source class is never constructed,
-  that `db.get_console` is not consulted, and that the refusal is
-  audited; add a test that a token with no `kerbside_admin` claim
+  and that the refusal is audited for a real console and not for an
+  unknown one; add a test that a token with no `kerbside_admin` claim
   is refused; assert the issuance event on the success path.
 
 ### Step 3: hide the Direct button from non-admins

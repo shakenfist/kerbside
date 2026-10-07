@@ -463,10 +463,16 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
 
         api.app.config['TESTING'] = True
         self.client = api.app.test_client()
+        # The direct handler is for administrators only (issue #134).
         jwt_patch = mock.patch(
-            'kerbside.api.verify_jwt_in_request', return_value=(None, {}))
+            'kerbside.api.verify_jwt_in_request',
+            return_value=(None, {'sub': 'admin', 'kerbside_admin': True}))
         jwt_patch.start()
         self.addCleanup(jwt_patch.stop)
+
+        audit_patch = mock.patch.object(db, 'add_audit_event')
+        audit_patch.start()
+        self.addCleanup(audit_patch.stop)
 
         config_patch = mock.patch.object(api.config, 'CACERT_PATH', None)
         config_patch.start()
@@ -939,3 +945,107 @@ class AuthAdminClaimTestCase(testtools.TestCase):
 
         self.assertIs(False, self._login()['kerbside_admin'])
         self.assertIn({'group': 'kerbside-admins'}, self.logged)
+
+
+class DirectVirtViewerAdminTestCase(testtools.TestCase):
+    """/console/direct hands out the hypervisor's own SPICE ticket and points
+    the client past the proxy, so only administrators may use it (issue
+    #134). A refusal must happen before any ticket is acquired.
+    """
+
+    def setUp(self):
+        super().setUp()
+
+        self.engine = create_engine('sqlite://')
+        db.Base.metadata.create_all(
+            self.engine, tables=[db.Source.__table__, db.Console.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+        db.add_source(
+            'ovirt1', 'ovirt', 'https://engine.example.com/ovirt-engine/api',
+            'admin@internal', 'sekrit-ovirt-password', ca_cert=None)
+        db.add_console(
+            source='ovirt1', uuid='console-1', hypervisor='hv1',
+            hypervisor_ip='10.0.0.1', insecure_port=5900, secure_port=5901,
+            name='a console', host_subject='CN=hv1')
+
+        api.app.config['TESTING'] = True
+        self.client = api.app.test_client()
+
+        config_patch = mock.patch.object(api.config, 'CACERT_PATH', None)
+        config_patch.start()
+        self.addCleanup(config_patch.stop)
+
+        self.audit = mock.MagicMock()
+        audit_patch = mock.patch.object(db, 'add_audit_event', self.audit)
+        audit_patch.start()
+        self.addCleanup(audit_patch.stop)
+
+        self.ovirt = mock.MagicMock()
+        self.ovirt.return_value.errored = False
+        self.ovirt.return_value.get_console_for_vm.return_value = (
+            None, 'a-hypervisor-ticket')
+        ovirt_patch = mock.patch.object(
+            api.ovirt_source, 'oVirtSource', self.ovirt)
+        ovirt_patch.start()
+        self.addCleanup(ovirt_patch.stop)
+
+    def _session(self, claims):
+        patch = mock.patch(
+            'kerbside.api.verify_jwt_in_request', return_value=(None, claims))
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _messages(self):
+        return [c.args[6] for c in self.audit.call_args_list]
+
+    def test_admin_receives_direct_credential_and_is_audited(self):
+        self._session({'sub': 'alice', 'kerbside_admin': True})
+
+        resp = self.client.get('/console/direct/ovirt1/console-1/console.vv')
+
+        self.assertEqual(200, resp.status_code)
+        self.assertIn('a-hypervisor-ticket', resp.get_data(as_text=True))
+        self.assertEqual(
+            ['Issued direct hypervisor credential, bypassing the proxy, to '
+             'alice'], self._messages())
+        self.assertEqual(
+            ('ovirt1', 'console-1'), self.audit.call_args.args[:2])
+
+    def test_non_admin_is_refused_before_a_ticket_is_acquired(self):
+        self._session({'sub': 'bob', 'kerbside_admin': False})
+
+        resp = self.client.get('/console/direct/ovirt1/console-1/console.vv')
+
+        self.assertEqual(403, resp.status_code)
+        self.assertNotIn('a-hypervisor-ticket', resp.get_data(as_text=True))
+        self.ovirt.assert_not_called()
+        self.assertEqual(
+            ['Refused direct console credential to non-administrator bob'],
+            self._messages())
+
+    def test_session_without_the_claim_is_refused(self):
+        # A session minted before the claim existed.
+        self._session({'sub': 'carol'})
+
+        resp = self.client.get('/console/direct/ovirt1/console-1/console.vv')
+
+        self.assertEqual(403, resp.status_code)
+        self.ovirt.assert_not_called()
+
+    def test_truthy_non_boolean_claim_is_refused(self):
+        self._session({'sub': 'dave', 'kerbside_admin': 'yes'})
+
+        resp = self.client.get('/console/direct/ovirt1/console-1/console.vv')
+
+        self.assertEqual(403, resp.status_code)
+
+    def test_refusal_for_unknown_console_is_not_audited(self):
+        self._session({'sub': 'bob', 'kerbside_admin': False})
+
+        resp = self.client.get('/console/direct/ovirt1/no-such/console.vv')
+
+        self.assertEqual(403, resp.status_code)
+        self.audit.assert_not_called()

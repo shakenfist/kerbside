@@ -427,6 +427,22 @@ tls-ciphers=DEFAULT%(ca_cert)s%(host_subject)s
 class ConsolesDirectVirtViewer(sf_api.Resource):
     @verify_token
     def get(self, source=None, uuid=None):
+        # A direct .vv carries the hypervisor's own SPICE ticket and points
+        # the client past the proxy, so only administrators may have one
+        # (issue #134). Refuse before acquiring a ticket. The refusal is
+        # audited only against a console which exists: nothing reaps
+        # audit_events, so auditing whatever (source, uuid) a caller names
+        # would let any logged in user write orphan rows without bound.
+        # The response is the same 403 either way.
+        if not is_admin():
+            if db.get_console(source, uuid):
+                db.add_audit_event(
+                    source, uuid, None, None, None, None,
+                    'Refused direct console credential to non-administrator '
+                    '%s' % username())
+            return sf_api.error(
+                403, 'direct console access requires an administrator')
+
         c = db.get_console(source, uuid)
         if not c:
             return sf_api.error(404, 'console not found')
@@ -509,6 +525,10 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
             'type': s['type']
             }).info(
             'Providing virt-viewer direct configuration for console')
+        db.add_audit_event(
+            source, uuid, None, None, None, None,
+            'Issued direct hypervisor credential, bypassing the proxy, to %s'
+            % username())
 
         vv = VIRTVIEWER_TEMPLATE % {
             'node': node,
