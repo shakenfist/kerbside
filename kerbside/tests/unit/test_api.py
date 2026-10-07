@@ -7,6 +7,7 @@ from unittest import mock
 import testtools
 
 from kerbside import api
+from kerbside import config as kerbside_config
 from kerbside import db
 from kerbside import sf_token
 
@@ -42,6 +43,35 @@ class GetNavItemsTestCase(testtools.TestCase):
 
         self.assertEqual(
             [], [item['name'] for item in navitems if item['active']])
+
+
+class RequireConfiguredAuthSecretSeedTestCase(testtools.TestCase):
+    """The API must refuse to start with a JWT signing key anyone can know.
+
+    api.py calls this at import, so a refusal is what stops gunicorn
+    booting a worker that would accept forged sessions (issue #131).
+    """
+
+    def test_refuses_the_sentinel(self):
+        e = self.assertRaises(
+            RuntimeError, api.require_configured_auth_secret_seed,
+            kerbside_config.UNCONFIGURED)
+        self.assertIn('AUTH_SECRET_SEED', str(e))
+
+    def test_refuses_blank(self):
+        for seed in ('', '   ', '\n'):
+            self.assertRaises(
+                RuntimeError, api.require_configured_auth_secret_seed, seed)
+
+    def test_accepts_a_real_seed(self):
+        api.require_configured_auth_secret_seed(
+            'e6b1c0dd9a2f4b3c8e7d5a1f0b9c2d3e')
+
+    def test_the_sentinel_is_the_config_default(self):
+        """The guard is only as good as the default it compares against."""
+        self.assertEqual(
+            kerbside_config.UNCONFIGURED,
+            kerbside_config.Config.model_fields['AUTH_SECRET_SEED'].default)
 
 
 class TerminateApiTestCase(testtools.TestCase):

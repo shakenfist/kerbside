@@ -24,6 +24,7 @@ import yaml
 from shakenfist_utilities import api as sf_api, logs
 
 from .config import config
+from .config import UNCONFIGURED
 from . import consoletoken
 from . import db
 from . import sf_token
@@ -50,7 +51,32 @@ api = flask_restful.Api(app, catch_all_404s=False)
 # Use our handler to get SF log format (instead of gunicorn's handlers)
 app.logger.handlers = [HANDLER]
 
+
+def require_configured_auth_secret_seed(seed):
+    """Refuse to serve the API with a JWT signing key anyone can know.
+
+    AUTH_SECRET_SEED is the HS256 signing key for session JWTs, and
+    verify_token() checks nothing but the signature and expiry. Left at
+    its default it is a constant published in this source tree, so
+    anyone could forge a session for any user (issue #131). A blank
+    value is no better.
+
+    This raises rather than exiting so that gunicorn reports the worker
+    as having failed to boot and stops, instead of treating it as a
+    clean exit and respawning it.
+    """
+    if seed == UNCONFIGURED or not seed.strip():
+        message = (
+            'Refusing to start: AUTH_SECRET_SEED is unset, so session JWTs '
+            'would be signed with a key anyone can know and could be forged '
+            'for any user. Set it to a random value, for example with '
+            '"openssl rand -hex 32".')
+        LOG.error(message)
+        raise RuntimeError(message)
+
+
 # Configure JWT authentication
+require_configured_auth_secret_seed(config.AUTH_SECRET_SEED)
 app.config['JWT_SECRET_KEY'] = config.AUTH_SECRET_SEED
 
 # NOTE(mikal): JWT_COOKIE_CSRF_PROTECT is already the flask-jwt-extended

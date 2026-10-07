@@ -5,7 +5,6 @@ import re
 import testtools
 
 from kerbside import config as kerbside_config
-from kerbside import main
 from kerbside.config import Config
 
 
@@ -243,19 +242,18 @@ class ConfExampleSafetyTestCase(testtools.TestCase):
         the opposite: any value an operator forgets to replace signs
         with a constant published in this tree, and the sentinel is
         the only such value kerbside can tell apart from a deliberate
-        choice (main._UNCONFIGURED, checked before minting a demo
-        token). A bespoke placeholder is a public constant that is
-        also undetectable, which is strictly worse than the state
-        before this file existed.
+        choice (UNCONFIGURED, which the API refuses to start with and
+        kerbside demo token refuses to mint with). A bespoke
+        placeholder is a public constant that is also undetectable,
+        which is strictly worse than the state before this file
+        existed.
 
-        _UNCONFIGURED is imported rather than restated so the guard
-        and the example cannot drift apart. Widening the guard to
-        recognise other placeholders is a code change, and would
-        belong with issue #131 rather than here.
+        UNCONFIGURED is imported rather than restated so the guard
+        and the example cannot drift apart.
         """
         self.assertEqual(
-            main._UNCONFIGURED, self.live.get('auth_secret_seed'),
-            'the example ships an auth_secret_seed that main.py '
+            kerbside_config.UNCONFIGURED, self.live.get('auth_secret_seed'),
+            'the example ships an auth_secret_seed that kerbside '
             'cannot recognise as unset, so an operator who misses '
             'that line signs session JWTs with a constant published '
             'in this repository and nothing detects it')

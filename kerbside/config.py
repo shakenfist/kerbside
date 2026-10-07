@@ -39,10 +39,17 @@ def load_ini_settings():
             sys.exit()
 
 
+# The default of every security-relevant field which has no safe default.
+# It is a constant published in this source tree, so anything signed or
+# authenticated with it is not secret -- see issue #131. Compare against
+# this rather than restating the literal.
+UNCONFIGURED = '~~unconfigured~~'
+
+
 class Config(BaseSettings):
     # JWT configuration
     AUTH_SECRET_SEED: str = Field(
-        '~~unconfigured~~', description='A random string to seed auth secrets with'
+        UNCONFIGURED, description='A random string to seed auth secrets with'
     )
     API_TOKEN_DURATION: int = Field(
         60,
@@ -53,7 +60,7 @@ class Config(BaseSettings):
     # deployments. That is, your auth keystone can be different from the ones
     # used by target clouds if you are that way inclined.
     KEYSTONE_AUTH_URL: str = Field(
-        '~~unconfigured~~',
+        UNCONFIGURED,
         description='The URL to the keystone service we should auth against'
     )
     KEYSTONE_AUTH_VERIFY: bool | str = Field(
@@ -66,11 +73,11 @@ class Config(BaseSettings):
         )
     )
     KEYSTONE_SERVICE_AUTH_USER: str = Field(
-        '~~unconfigured~~',
+        UNCONFIGURED,
         description='The user to authenticate this service as'
     )
     KEYSTONE_SERVICE_AUTH_PASSWORD: str = Field(
-        '~~unconfigured~~',
+        UNCONFIGURED,
         description='The password to use while authenticating the service user'
     )
     KEYSTONE_SERVICE_AUTH_USER_DOMAIN_ID: str = Field(

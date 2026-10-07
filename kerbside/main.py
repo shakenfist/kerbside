@@ -13,6 +13,7 @@ import time
 import yaml
 
 from .config import config as config
+from .config import UNCONFIGURED
 from . import db as kerbside_db
 from . import proxy_supervisor
 from .rpc import server as rpc_server
@@ -465,12 +466,6 @@ def demo():
 cli.add_command(demo)
 
 
-# The sentinel every security-relevant config field defaults to. Minting a
-# token signed with it would be signing with a constant that is public in
-# this source tree -- see issue #131.
-_UNCONFIGURED = '~~unconfigured~~'
-
-
 def _demo_sources_or_fail():
     """Return the configured sources, refusing unless all are static.
 
@@ -543,7 +538,7 @@ def _demo_sources_or_fail():
                    'so stdout is not a clean channel.')
 @click.pass_context
 def demo_token(ctx, subject, duration, output):
-    if config.AUTH_SECRET_SEED == _UNCONFIGURED:
+    if config.AUTH_SECRET_SEED == UNCONFIGURED:
         _fail('Refusing to mint: AUTH_SECRET_SEED is unconfigured, so the '
               'token would be signed with a constant that is public in the '
               'kerbside source tree. Set it to a random value, for example '
