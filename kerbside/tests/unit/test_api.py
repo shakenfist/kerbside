@@ -946,6 +946,21 @@ class AuthAdminClaimTestCase(testtools.TestCase):
         self.assertIs(False, self._login()['kerbside_admin'])
         self.assertIn({'group': 'kerbside-admins'}, self.logged)
 
+    def test_ssl_error_checking_admin_group_fails_login(self):
+        self._admin_group('kerbside-admins')
+        self._groups('kerbside', 'kerbside-admins')
+
+        def check_in_group(user_id, group_id):
+            if group_id == 'kerbside-admins-id':
+                raise self.keystone_exceptions.connection.SSLError()
+
+        self.keystone.users.check_in_group.side_effect = check_in_group
+        resp = self.client.post(
+            '/auth', json={'username': 'alice', 'password': 'pw'})
+
+        self.assertEqual(500, resp.status_code)
+        self.create_token.assert_not_called()
+
 
 class DirectVirtViewerAdminTestCase(testtools.TestCase):
     """/console/direct hands out the hypervisor's own SPICE ticket and points
@@ -1041,6 +1056,49 @@ class DirectVirtViewerAdminTestCase(testtools.TestCase):
         resp = self.client.get('/console/direct/ovirt1/console-1/console.vv')
 
         self.assertEqual(403, resp.status_code)
+
+    def test_admin_unknown_console_is_404_and_not_audited(self):
+        self._session({'sub': 'alice', 'kerbside_admin': True})
+
+        resp = self.client.get('/console/direct/ovirt1/no-such/console.vv')
+
+        self.assertEqual(404, resp.status_code)
+        self.ovirt.assert_not_called()
+        self.audit.assert_not_called()
+
+    def test_real_session_jwt_round_trip(self):
+        # Everything else here stubs verify_jwt_in_request, so this is the
+        # one place the claim name is checked end to end: minted the way
+        # Auth.post mints it, and read back by the real verifier.
+        with api.app.app_context():
+            admin = api.create_access_token(
+                identity='alice', additional_claims={'kerbside_admin': True})
+            plain = api.create_access_token(
+                identity='bob', additional_claims={'kerbside_admin': False})
+
+        resp = self.client.get(
+            '/console/direct/ovirt1/console-1/console.vv',
+            headers={'Authorization': 'Bearer %s' % admin})
+        self.assertEqual(200, resp.status_code)
+
+        resp = self.client.get(
+            '/console/direct/ovirt1/console-1/console.vv',
+            headers={'Authorization': 'Bearer %s' % plain})
+        self.assertEqual(403, resp.status_code)
+
+    def test_console_named_under_the_wrong_source_is_not_found(self):
+        # A real uuid under some other source name must not reach the
+        # console, nor file an audit row where no console's trail shows it.
+        self._session({'sub': 'alice', 'kerbside_admin': True})
+        resp = self.client.get('/console/direct/other/console-1/console.vv')
+        self.assertEqual(404, resp.status_code)
+
+        self._session({'sub': 'bob', 'kerbside_admin': False})
+        resp = self.client.get('/console/direct/other/console-1/console.vv')
+        self.assertEqual(403, resp.status_code)
+
+        self.ovirt.assert_not_called()
+        self.audit.assert_not_called()
 
     def test_refusal_for_unknown_console_is_not_audited(self):
         self._session({'sub': 'bob', 'kerbside_admin': False})

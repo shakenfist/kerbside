@@ -196,11 +196,11 @@ One pull request, one commit per step.
 
 | Step | Change | Status | Merged |
 |------|--------|--------|--------|
-| 1 | Admin group setting and login claim | Not started | |
-| 2 | Gate and audit `/console/direct` | Not started | |
-| 3 | Hide the Direct button from non-admins | Not started | |
-| 4 | Documentation | Not started | |
-| 5 | Push audit over the branch | Not started | |
+| 1 | Admin group setting and login claim | Complete | |
+| 2 | Gate and audit `/console/direct` | Complete | |
+| 3 | Hide the Direct button from non-admins | Complete | |
+| 4 | Documentation | Complete | |
+| 5 | Push audit over the branch | Complete | |
 
 ### Step 1: admin group setting and login claim
 
@@ -216,7 +216,7 @@ One pull request, one commit per step.
   a missing group logs an error (question 3). Add
   `'kerbside_admin': <bool>` to `additional_claims`. Reuse the one
   `groups.list()` call rather than listing twice.
-- Add a small helper in `api.py`, `is_admin()`, that reads the
+- Add a small helper in `api.py`, `session_is_admin()`, that reads the
   verified claims with `flask_jwt_extended.get_jwt()` and returns
   `claims.get('kerbside_admin') is True`, so a pre-upgrade token
   without the claim is not an admin.
@@ -228,7 +228,7 @@ One pull request, one commit per step.
 ### Step 2: gate and audit `/console/direct`
 
 - `ConsolesDirectVirtViewer.get`: first statement after the
-  decorator checks `is_admin()`. On failure, add an audit event
+  decorator checks `session_is_admin()`. On failure, add an audit event
   (`'Refused direct console credential to non-admin user <name>'`)
   and return `sf_api.error(403, 'direct console access requires an
   administrator')`. On success, add an audit event
@@ -244,7 +244,7 @@ One pull request, one commit per step.
 
 ### Step 3: hide the Direct button from non-admins
 
-- `Consoles.get` passes `is_admin=is_admin()` to the template, and
+- `Consoles.get` passes `is_admin=session_is_admin()` to the template, and
   `consoles.html` renders the Direct anchor only when it is true.
   This is presentation only; step 2 is the control. The page is
   polled (`refresh=True`), but the button is static markup in the
@@ -728,6 +728,14 @@ chosen to defer to here, so that we do not forget them.
 - Issue #300: login is Keystone-only, so deployments without
   Keystone have no administrators and no direct access.
 - Issue #319: the proxied `.vv` GET still mints a token.
+- Keystone groups are matched by name across every domain, last
+  match wins, for both the access and admin groups. Scoping the
+  lookup to a configured domain would stop a same-named group in
+  another domain being chosen.
+- A functional check of the real-Keystone path (admin and
+  non-admin users, `KEYSTONE_ADMIN_GROUP`, then 200 or 403 on
+  `/console/direct`). It is unit-tested against mocks only; the
+  sf-e2e or kolla lane is the natural home.
 
 ### Bugs fixed during this work
 
@@ -749,4 +757,30 @@ intend to do aligns with that plan.
 
 ## Outcome
 
-Not started.
+Steps 1 to 4 landed as planned, with one refinement recorded under
+questions 4 and 5: a refusal is audited only against a console that
+exists.
+
+The push audit (step 5) ran over `origin/develop...HEAD`. Wave 1 passed
+with nothing to report. The judgment reviews raised no blocking
+findings. Their findings, and what was done with each:
+
+| Review | Finding | Disposition |
+|--------|---------|-------------|
+| Code quality | The new `is_admin()` and `username()` helpers shared names with locals in `Auth.post` | Fixed: renamed to `session_is_admin()` and `session_username()` |
+| Code quality | One line over 80 columns | Fixed |
+| Code quality | The admin `check_in_group` block repeats the access-group block | Declined: two copies, and a helper would hide the different failure handling (a missing access group refuses login; a missing admin group does not) |
+| Code quality | A missing admin group is logged on every login | Declined: intended, so a misconfiguration stays visible |
+| Tests | No test of an SSL error on the admin group check | Fixed |
+| Tests | No test of an admin requesting an unknown console | Fixed |
+| Tests | The claim name was never exercised with a real signed token | Fixed: a round-trip test mints and verifies a real JWT |
+| Tests | Exact audit strings in assertions | Declined: the wording is the audited behaviour |
+| Tests | No functional-lane coverage of the real Keystone path | Deferred to future work |
+| Docs | No upgrade note for the behaviour change | Fixed: `docs/installation.md` |
+| Docs | `docs/use-cases/openstack.md` should say the direct download is admin-only | Declined: that passage describes the proxied download, which mints a token; the direct one does not |
+| Security | The admin claim is only as strong as `AUTH_SECRET_SEED` | Accepted: #131 (PR #535) must land first or alongside |
+| Security | `get_console` ignores the source, so audit rows could be filed under a source the caller typed | Fixed: the handler treats a source mismatch as not found, before the gate |
+| Security | A refusal still writes one audit row per authenticated request | Accepted: the same as the proxied download; the comment no longer claims more |
+| Security | Groups are matched by name across Keystone domains | Deferred to future work; the access group has the same pattern |
+| Security | The docs said revocation took effect "at next login" | Fixed: it takes effect when the current session expires |
+| Security | Hypervisor addresses remain readable; the gate protects the ticket, not the network path | Declined: unchanged by this plan, and hypervisor SPICE ports already need network controls |
