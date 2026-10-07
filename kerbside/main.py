@@ -198,18 +198,28 @@ def _parse_sources():
                         {k: v for k, v in console.items()
                          if k not in kerbside_db.CONSOLE_SECRET_FIELDS}
                         ).info('Found console')
-                    change = kerbside_db.add_console(**console)
+                    change, changed = kerbside_db.add_console(**console)
                     if change == kerbside_db.CONSOLE_ADDED:
                         kerbside_db.add_audit_event(
                             console['source'], console['uuid'], None, None, None, None,
                             'Discovered new console'
                         )
-                    elif change == kerbside_db.CONSOLE_TICKET_CHANGED:
-                        # A rotated credential is worth a record of its
-                        # own, and the value itself never goes in it.
+                    elif changed:
+                        # An edit to an existing console -- a static
+                        # entry repointed at another host or port, or
+                        # its password rotated -- would otherwise be
+                        # applied without a trace (issue #459). Name
+                        # the fields only: one of them may be the
+                        # ticket.
+                        LOG.with_fields({
+                            'source': console['source'],
+                            'uuid': console['uuid'],
+                            'fields': changed
+                            }).info('Console configuration changed')
                         kerbside_db.add_audit_event(
                             console['source'], console['uuid'], None, None, None, None,
-                            'Console ticket changed'
+                            'Console configuration changed: %s'
+                            % ', '.join(changed)
                         )
                     k = (console['source'], console['uuid'])
                     if k in extra_consoles:

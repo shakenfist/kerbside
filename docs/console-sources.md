@@ -225,8 +225,10 @@ entry.  No external API calls are made and no control plane is needed.
 
 The list is re-read at startup and once per 60-second maintenance
 cycle, so adding, removing or editing an entry takes effect without a
-restart. A changed `ticket` is applied in place and audit logged as
-`Console ticket changed`.
+restart. An edited entry is applied in place, and logged and audit
+logged as `Console configuration changed` with the names of the fields
+that changed -- `ticket` among them when the password was rotated, but
+never its value.
 
 It is intended for CI pipelines that boot a QEMU guest directly and
 need kerbside to front it — the direct-qemu CI workflow uses this

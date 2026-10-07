@@ -303,7 +303,6 @@ class Console(Base):
 # What add_console() did, so the caller can audit it.
 CONSOLE_ADDED = 'added'
 CONSOLE_UPDATED = 'updated'
-CONSOLE_TICKET_CHANGED = 'ticket-changed'
 
 
 def add_console(source=None, uuid=None, hypervisor=None, hypervisor_ip=None,
@@ -319,29 +318,39 @@ def add_console(source=None, uuid=None, hypervisor=None, hypervisor_ip=None,
     the static source, whose ticket is the password in sources.yaml --
     owns it, so a changed one replaces the stored value.
 
-    Returns CONSOLE_ADDED, CONSOLE_TICKET_CHANGED or CONSOLE_UPDATED.
+    Returns a tuple of CONSOLE_ADDED or CONSOLE_UPDATED and the sorted
+    names of the fields an update changed, which is empty when the
+    console is as it was. Only names are returned, so the caller can
+    log them without ever handling the ticket's value.
     """
+    fields = {
+        'hypervisor': hypervisor,
+        'hypervisor_ip': hypervisor_ip,
+        'insecure_port': insecure_port,
+        'secure_port': secure_port,
+        'name': name,
+        'host_subject': host_subject,
+    }
+    if ticket is not None:
+        fields['ticket'] = ticket
+
     with Session(ENGINE) as session:
         try:
             console = session.query(Console).filter(Console.uuid == uuid).one()
-            console.hypervisor = hypervisor
-            console.hypervisor_ip = hypervisor_ip
-            console.insecure_port = insecure_port
-            console.secure_port = secure_port
-            console.name = name
-            console.host_subject = host_subject
-            if ticket is not None and ticket != console.ticket:
-                console.ticket = ticket
-                return CONSOLE_TICKET_CHANGED
         except exc.NoResultFound:
-            console = Console(uuid, source, hypervisor, hypervisor_ip, insecure_port,
-                              secure_port, name, host_subject, ticket)
-            session.add(console)
-            return CONSOLE_ADDED
-        finally:
+            session.add(Console(uuid, source, hypervisor, hypervisor_ip,
+                                insecure_port, secure_port, name,
+                                host_subject, ticket))
             session.commit()
+            return CONSOLE_ADDED, []
 
-    return CONSOLE_UPDATED
+        changed = sorted(field for field, value in fields.items()
+                         if getattr(console, field) != value)
+        for field in changed:
+            setattr(console, field, fields[field])
+        session.commit()
+
+    return CONSOLE_UPDATED, changed
 
 
 def get_consoles(include_audit=True, *, include_secrets: bool = False):

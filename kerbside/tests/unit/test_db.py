@@ -354,7 +354,8 @@ class AddConsoleUpdateTestCase(testtools.TestCase):
     """Pin which fields add_console() refreshes on an existing console.
 
     The update branch assigns every mutable field, and the ticket too
-    when the caller supplies one (issue #463). A caller which passes
+    when the caller supplies one (issue #463), and reports the
+    names of the fields that changed (issue #459). A caller which passes
     no ticket -- every driver but the static one -- must leave the
     stored ticket alone, because oVirt writes a per-request ticket to
     the same column and the next maintenance pass would erase it.
@@ -390,13 +391,17 @@ class AddConsoleUpdateTestCase(testtools.TestCase):
         return db.add_console(**kwargs)
 
     def test_insert_then_update_refreshes_every_field(self):
-        self.assertEqual(db.CONSOLE_ADDED, self._add())
+        self.assertEqual((db.CONSOLE_ADDED, []), self._add())
         self.assertEqual('first-password', self._console().ticket)
 
-        self.assertEqual(db.CONSOLE_TICKET_CHANGED, self._add(
-            hypervisor='bench2', hypervisor_ip='10.0.0.2',
-            insecure_port=5901, secure_port=5902, name='second name',
-            host_subject='CN=bench2', ticket='second-password'))
+        self.assertEqual(
+            (db.CONSOLE_UPDATED,
+             ['host_subject', 'hypervisor', 'hypervisor_ip',
+              'insecure_port', 'name', 'secure_port', 'ticket']),
+            self._add(
+                hypervisor='bench2', hypervisor_ip='10.0.0.2',
+                insecure_port=5901, secure_port=5902, name='second name',
+                host_subject='CN=bench2', ticket='second-password'))
 
         console = self._console()
         self.assertEqual('bench2', console.hypervisor)
@@ -407,17 +412,25 @@ class AddConsoleUpdateTestCase(testtools.TestCase):
         self.assertEqual('CN=bench2', console.host_subject)
         self.assertEqual('second-password', console.ticket)
 
-    def test_unchanged_ticket_is_a_plain_update(self):
-        self.assertEqual(db.CONSOLE_ADDED, self._add())
+    def test_unchanged_console_reports_no_fields(self):
+        # Every maintenance pass re-sees every console; only a real
+        # edit may be reported, or the log fills with noise (#459).
+        self.assertEqual((db.CONSOLE_ADDED, []), self._add())
+        self.assertEqual((db.CONSOLE_UPDATED, []), self._add())
+
+    def test_changed_fields_are_named_individually(self):
+        self.assertEqual((db.CONSOLE_ADDED, []), self._add())
         self.assertEqual(
-            db.CONSOLE_UPDATED, self._add(name='second name'))
+            (db.CONSOLE_UPDATED, ['insecure_port', 'name']),
+            self._add(name='second name', insecure_port=5901))
         self.assertEqual('first-password', self._console().ticket)
 
     def test_absent_ticket_leaves_the_stored_one_alone(self):
         # The oVirt shape: enumeration yields no ticket, and the .vv
-        # handler stores a fresh one per request.
-        self.assertEqual(db.CONSOLE_ADDED, self._add(ticket=None))
+        # handler stores a fresh one per request. Not supplying one is
+        # not a change to it either.
+        self.assertEqual((db.CONSOLE_ADDED, []), self._add(ticket=None))
         db.store_console_ticket('lab', 'console-1', 'per-request')
 
-        self.assertEqual(db.CONSOLE_UPDATED, self._add(ticket=None))
+        self.assertEqual((db.CONSOLE_UPDATED, []), self._add(ticket=None))
         self.assertEqual('per-request', self._console().ticket)

@@ -38,8 +38,8 @@
 #   loop in main.py, and in both directions: an entry added to the
 #   file is discovered, and one removed from it is deleted.  An
 #   edited field of an existing entry, the ticket included, is
-#   applied on the next pass; a changed ticket is audit logged as
-#   'Console ticket changed'.
+#   applied on the next pass and audit logged as 'Console
+#   configuration changed' with the names of the changed fields.
 # - Duplicate UUIDs within a single static source are tolerated with
 #   a warning; the last definition wins.
 # - Validation catches a malformed entry, or an absent or misspelled

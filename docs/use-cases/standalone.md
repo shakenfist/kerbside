@@ -34,8 +34,8 @@ standing anything else up first.
   stops being one, audit logged as `Console no longer available`. No
   restart is needed, and neither direction has to be taken on
   trust: both leave a record. Editing an entry that is already
-  there is applied the same way, and a changed SPICE password is
-  audit logged as `Console ticket changed`.
+  there is applied the same way, and audit logged as `Console
+  configuration changed` with the fields the edit touched.
 - **The SPICE firewall is on by default.** Kerbside terminates
   the client's connection, drives the SPICE link handshake
   itself, and classifies every framed message against a
@@ -98,10 +98,12 @@ than a claim you have to believe.
 has its host, address, ports, name, `host_subject` and SPICE
 password reassigned on every pass, so an edit lands in the same
 little over a minute as an addition, in place: the console keeps
-its row and its discovery timestamp. A changed password is audit
-logged as `Console ticket changed` — the event names the change,
-never the value — so rotating one leaves the same kind of record
-as adding or removing a target. The proxy reads the password
+its row and its discovery timestamp. An edit is audit logged as
+`Console configuration changed` with the names of the fields that
+changed — `insecure_port`, say, or `ticket` for a rotated password,
+whose value never appears — so an edit leaves the same kind of
+record as adding or removing a target. A pass which finds an entry
+unchanged records nothing. The proxy reads the password
 from the database each time it authorises a connection, so the
 change of password on qemu and the edit to the file should land
 close together: in between, one of the two disagrees.

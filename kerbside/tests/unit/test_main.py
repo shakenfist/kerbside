@@ -54,7 +54,7 @@ class ParseSourcesTestCase(testtools.TestCase):
         self.addCleanup(db_set_error_patcher.stop)
 
         db_add_console_patcher = mock.patch('kerbside.db.add_console',
-                                            return_value=db.CONSOLE_ADDED)
+                                            return_value=(db.CONSOLE_ADDED, []))
         self.mock_db_add_console = db_add_console_patcher.start()
         self.addCleanup(db_add_console_patcher.stop)
 
@@ -366,7 +366,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_shakenfist_source.return_value = self._mock_source_lookup(
                 consoles=[mock_console])
 
-            self.mock_db_add_console.return_value = db.CONSOLE_ADDED
+            self.mock_db_add_console.return_value = (db.CONSOLE_ADDED, [])
             main._parse_sources()
             self.mock_db_add_console.assert_called_once_with(**mock_console)
             # Should log audit event for new console
@@ -854,7 +854,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_static_source.return_value = self._mock_source_lookup(
                 consoles=[static_console])
 
-            self.mock_db_add_console.return_value = db.CONSOLE_ADDED
+            self.mock_db_add_console.return_value = (db.CONSOLE_ADDED, [])
             main._parse_sources()
 
             # StaticSource should be constructed
@@ -873,8 +873,8 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_db_add_audit_event.assert_called()
 
     @mock.patch('os.path.exists', return_value=True)
-    def test_parse_sources_audits_a_changed_ticket(self, mock_exists):
-        """A ticket edited in sources.yaml is applied, and audited (#463)."""
+    def test_parse_sources_audits_changed_fields(self, mock_exists):
+        """An edited console is logged and audited by field (#459, #463)."""
         from kerbside import main
 
         static_console = {
@@ -904,12 +904,13 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_static_source.return_value = self._mock_source_lookup(
                 consoles=[static_console])
 
-            self.mock_db_add_console.return_value = db.CONSOLE_TICKET_CHANGED
+            self.mock_db_add_console.return_value = (
+                db.CONSOLE_UPDATED, ['insecure_port', 'ticket'])
             main._parse_sources()
 
             self.mock_db_add_audit_event.assert_called_once_with(
                 'test-static', _STATIC_CONSOLE_UUID, None, None, None, None,
-                'Console ticket changed')
+                'Console configuration changed: insecure_port, ticket')
             # The audit record names the change, never the value.
             self.assertNotIn(
                 'rotated-password',
@@ -947,7 +948,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_static_source.return_value = self._mock_source_lookup(
                 consoles=[static_console])
 
-            self.mock_db_add_console.return_value = db.CONSOLE_UPDATED
+            self.mock_db_add_console.return_value = (db.CONSOLE_UPDATED, [])
             main._parse_sources()
 
             self.mock_db_add_audit_event.assert_not_called()
@@ -1079,7 +1080,7 @@ class SigningKeyFailureScrapeTestCase(testtools.TestCase):
                 ('get_source', {'return_value': None}),
                 ('add_source', {}),
                 ('set_source_error_state', {}),
-                ('add_console', {'return_value': db.CONSOLE_ADDED}),
+                ('add_console', {'return_value': (db.CONSOLE_ADDED, [])}),
                 ('add_audit_event', {}),
                 ('remove_console', {}),
                 ('delete_source', {})]:
