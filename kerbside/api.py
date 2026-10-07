@@ -792,11 +792,11 @@ class SfToken(sf_api.Resource):
         # are scraped (every 60s), never created here, and a token outlives a
         # scrape gap -- so a valid token for a not-yet-scraped console must
         # 404 WITHOUT burning its single-use jti, leaving a later retry able
-        # to succeed once the console appears. get_console keys on uuid alone,
-        # so assert the row's source matches the source whose key verified the
-        # token (defence against uuid reuse across sources).
+        # to succeed once the console appears. The lookup is keyed on the
+        # source whose key verified the token as well as the uuid, so another
+        # source publishing the same uuid cannot answer it.
         c = db.get_console(claims['source'], claims['sub'])
-        if c is None or c.get('source') != claims['source']:
+        if c is None:
             db.add_audit_event(
                 claims['source'], claims['sub'], None, None, None, None,
                 'Rejected Shaken Fist console token: console not found')

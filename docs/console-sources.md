@@ -255,7 +255,7 @@ Each entry in the `consoles` list requires the following fields:
 
 | Field | Description |
 |-------|-------------|
-| uuid | Unique identifier for this console (must be globally unique) |
+| uuid | Identifier for this console, unique within this source; another source may use the same one without the two colliding |
 | name | Human-readable display name |
 | hypervisor | Hostname of the hypervisor (used if hypervisor_ip is empty) |
 | hypervisor_ip | IP address of the hypervisor |

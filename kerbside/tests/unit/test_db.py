@@ -350,6 +350,80 @@ class ConsoleSecretsDbTestCase(testtools.TestCase):
         self.assertIsNone(db.get_console('sf1', 'nosuch'))
 
 
+class ConsoleKeyedOnSourceTestCase(testtools.TestCase):
+    """Two sources publishing one identifier are two consoles (#468).
+
+    The identifier is only unique within the source which published it,
+    and a static source's identifiers are whatever the operator wrote.
+    Keyed on the identifier alone, the second source overwrote the
+    first's hypervisor and ports while the row kept the first's source,
+    so a token issued for one console was relayed to the other.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.engine = create_engine('sqlite://')
+        db.Base.metadata.create_all(
+            self.engine,
+            tables=[db.Console.__table__, db.ConsoleToken.__table__,
+                    db.ProxyChannel.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+        for source, ip, ticket in (('cloud', '10.0.0.1', 'cloud-ticket'),
+                                   ('lab', '10.9.9.9', 'lab-ticket')):
+            self.assertEqual(
+                (db.CONSOLE_ADDED, []),
+                db.add_console(
+                    source=source, uuid='shared', hypervisor='hv',
+                    hypervisor_ip=ip, insecure_port=5900, secure_port=None,
+                    name=source, host_subject=None, ticket=ticket))
+
+    def test_each_source_gets_its_own_console(self):
+        cloud = db.get_console('cloud', 'shared', include_secrets=True)
+        lab = db.get_console('lab', 'shared', include_secrets=True)
+
+        self.assertEqual(('cloud', '10.0.0.1', 'cloud-ticket'),
+                         (cloud['source'], cloud['hypervisor_ip'],
+                          cloud['ticket']))
+        self.assertEqual(('lab', '10.9.9.9', 'lab-ticket'),
+                         (lab['source'], lab['hypervisor_ip'],
+                          lab['ticket']))
+        self.assertEqual(2, len(db.get_consoles(include_audit=False)))
+
+    def test_lookup_under_another_source_finds_nothing(self):
+        self.assertIsNone(db.get_console('elsewhere', 'shared'))
+
+    def test_update_touches_only_its_own_source(self):
+        self.assertEqual(
+            (db.CONSOLE_UPDATED, ['hypervisor_ip']),
+            db.add_console(
+                source='lab', uuid='shared', hypervisor='hv',
+                hypervisor_ip='10.9.9.10', insecure_port=5900,
+                secure_port=None, name='lab', host_subject=None,
+                ticket='lab-ticket'))
+
+        self.assertEqual(
+            '10.0.0.1', db.get_console('cloud', 'shared')['hypervisor_ip'])
+
+    def test_store_ticket_touches_only_its_own_source(self):
+        db.store_console_ticket('lab', 'shared', 'per-request')
+
+        self.assertEqual(
+            'cloud-ticket',
+            db.get_console('cloud', 'shared', include_secrets=True)['ticket'])
+        self.assertEqual(
+            'per-request',
+            db.get_console('lab', 'shared', include_secrets=True)['ticket'])
+
+    def test_remove_touches_only_its_own_source(self):
+        db.remove_console(source='lab', uuid='shared')
+
+        self.assertIsNone(db.get_console('lab', 'shared'))
+        self.assertIsNotNone(db.get_console('cloud', 'shared'))
+
+
 class AddConsoleUpdateTestCase(testtools.TestCase):
     """Pin which fields add_console() refreshes on an existing console.
 

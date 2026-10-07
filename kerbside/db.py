@@ -249,8 +249,12 @@ CONSOLE_SECRET_FIELDS = ['ticket']
 class Console(Base):
     __tablename__ = 'consoles'
 
+    # Keyed on the pair, like every other table naming a console: the
+    # identifier is only unique within the source which published it,
+    # and a static source's identifiers are whatever the operator
+    # wrote (issue #468).
+    source = Column(String, primary_key=True)
     uuid = Column(String, primary_key=True)
-    source = Column(String)
     discovered = Column(DateTime)
     hypervisor = Column(String)
     hypervisor_ip = Column(String)
@@ -336,7 +340,10 @@ def add_console(source=None, uuid=None, hypervisor=None, hypervisor_ip=None,
 
     with Session(ENGINE) as session:
         try:
-            console = session.query(Console).filter(Console.uuid == uuid).one()
+            console = session.query(Console).\
+                filter(Console.source == source).\
+                filter(Console.uuid == uuid).\
+                one()
         except exc.NoResultFound:
             session.add(Console(uuid, source, hypervisor, hypervisor_ip,
                                 insecure_port, secure_port, name,
@@ -410,7 +417,7 @@ def get_consoles(include_audit=True, *, include_secrets: bool = False):
 
 def get_console(source, uuid, detailed=False, *,
                 include_secrets: bool = False):
-    """Fetch a single console by uuid, or None.
+    """Fetch a single console by source and uuid, or None.
 
     Only CONSOLE_PUBLIC_FIELDS are returned unless include_secrets is
     set, which only the code paths spending the console ticket may do.
@@ -419,7 +426,10 @@ def get_console(source, uuid, detailed=False, *,
 
     with Session(ENGINE) as session:
         try:
-            console = session.query(Console).filter(Console.uuid == uuid).one()
+            console = session.query(Console).\
+                filter(Console.source == source).\
+                filter(Console.uuid == uuid).\
+                one()
             if include_secrets:
                 c = console.export()
             else:
@@ -453,20 +463,21 @@ def get_console(source, uuid, detailed=False, *,
 
 def store_console_ticket(source, uuid, ticket):
     with Session(ENGINE) as session:
-        c = session.query(Console).filter(Console.uuid == uuid).one()
+        c = session.query(Console).\
+            filter(Console.source == source).\
+            filter(Console.uuid == uuid).\
+            one()
         c.ticket = ticket
         session.commit()
 
 
 def remove_console(source=None, uuid=None, **kwargs):
     with Session(ENGINE) as session:
-        try:
-            for c in session.query(Console).filter(Console.uuid == uuid).all():
-                session.delete(c)
-        except exc.NoResultFound:
-            return None
-        finally:
-            session.commit()
+        session.query(Console).\
+            filter(Console.source == source).\
+            filter(Console.uuid == uuid).\
+            delete()
+        session.commit()
 
 
 class ConsoleToken(Base):
