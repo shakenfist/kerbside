@@ -1049,3 +1049,39 @@ class DirectVirtViewerAdminTestCase(testtools.TestCase):
 
         self.assertEqual(403, resp.status_code)
         self.audit.assert_not_called()
+
+
+class ConsolesPageDirectButtonTestCase(testtools.TestCase):
+    """The consoles page offers the Direct button only to administrators,
+    because the endpoint behind it refuses everyone else (issue #134)."""
+
+    def setUp(self):
+        super().setUp()
+        api.app.config['TESTING'] = True
+        self.client = api.app.test_client()
+
+        patch = mock.patch.object(db, 'get_consoles', return_value=[{
+            'source': 'src1', 'uuid': 'console-1', 'name': 'a console',
+            'hypervisor': 'hv1', 'hypervisor_ip': '10.0.0.1',
+            'insecure_port': 5900, 'secure_port': 5901, 'audit': [],
+            'token_count': 0, 'tokens': []}])
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _page(self, claims):
+        with mock.patch(
+                'kerbside.api.verify_jwt_in_request',
+                return_value=(None, claims)):
+            resp = self.client.get('/console', headers={'Accept': 'text/html'})
+        self.assertEqual(200, resp.status_code)
+        return resp.get_data(as_text=True)
+
+    def test_admin_is_offered_direct(self):
+        page = self._page({'sub': 'alice', 'kerbside_admin': True})
+        self.assertIn('/console/proxy/src1/console-1/console.vv', page)
+        self.assertIn('/console/direct/src1/console-1/console.vv', page)
+
+    def test_non_admin_is_not_offered_direct(self):
+        page = self._page({'sub': 'bob', 'kerbside_admin': False})
+        self.assertIn('/console/proxy/src1/console-1/console.vv', page)
+        self.assertNotIn('/console/direct/', page)

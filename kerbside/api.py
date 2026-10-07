@@ -346,7 +346,8 @@ class Consoles(sf_api.Resource):
                 flask.render_template(
                     'consoles.html', consoles=db.get_consoles(),
                     navitems=get_nav_items('Consoles'),
-                    refresh=True, when=datetime.datetime.now()),
+                    refresh=True, when=datetime.datetime.now(),
+                    is_admin=is_admin()),
                 mimetype='text/html')
         else:
             # No ticket to strip here: db.get_consoles() returns only
