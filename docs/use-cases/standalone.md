@@ -116,15 +116,12 @@ entries. Either way the source is never enumerated, falls under
 the same retention rule as an unreachable cloud, and what was
 already published stays published rather than being deleted by
 a typo. Only an explicit `consoles: []` says the source has no
-consoles, and that does delete what it had. A YAML syntax error
-anywhere in the file is the exception, and a much worse one:
-the parse happens outside the per-source error handling and the
-maintenance loop does not guard the call, so the daemon exits,
-and restarts into the same failure until the file is repaired
-([#465](https://github.com/shakenfist/kerbside/issues/465)).
-Until that is fixed, a mistake inside a source costs at most
-that source's freshness, and a mistake in the file's syntax
-costs the daemon.
+consoles, and that does delete what it had. A mistake in the
+file as a whole — a YAML syntax error, an emptied file, an entry
+with no `source` name — is refused whole: the pass logs where the
+problem is and changes nothing, so every source keeps what it had
+published until the file is repaired. Either way a mistake costs
+at most freshness, never the published inventory or the daemon.
 
 **Nothing is fetched per request.** oVirt acquires a short-lived
 credential from the engine for every `.vv` file, and OpenStack
@@ -294,7 +291,7 @@ Not covered, and worth knowing before you deploy:
 | Backend TLS needs three things, and is untested through this source | A static entry is plaintext to the target unless you declare a TLS port, unverified unless the source carries a `ca_cert`, and unpinned unless you write a `host_subject`. The CA is the one most easily missed: without it the target is checked against the public web trust store, which an internal certificate will not satisfy, so the escalation fails the handshake. The proxy's enforcement of a pin is exercised both ways in CI — a matching pin accepted, a mismatched one refused — but by `tools/direct-qemu/run-host-subject-checks.sh`, which drives the proxy from a mock control plane rather than from a source; the `direct-qemu` lane's own static entry is plaintext, and the compose demo deliberately leaves all three out. So the enforcement is proven and the path that reaches it *from this source* is not. |
 | Nobody can log in | Interactive login is Keystone-only ([#300](https://github.com/shakenfist/kerbside/issues/300)), which a deployment with no OpenStack in it has nothing to point at, and the session JWT scheme has no revocation or issuance audit ([#301](https://github.com/shakenfist/kerbside/issues/301)). A standalone deployment therefore needs something else to hold credentials and call the API. |
 | Duplicate identifiers are tolerated | Two entries in one source sharing an identifier produce a warning and the last definition wins. Nothing errors and nothing is marked unhealthy, so a copy-paste mistake silently publishes one target and hides another. |
-| A bad edit is contained, unless it is not | Validation is per source rather than per entry, so one entry missing a required field, or a missing or misspelled `consoles` key, marks the whole source errored and its published list is retained rather than refreshed — a stale list beside an errored source, not an empty one. One edit escapes that: a YAML syntax error exits the daemon into a restart loop because the parse is outside the per-source error handling ([#465](https://github.com/shakenfist/kerbside/issues/465)). |
+| A bad edit freezes, rather than empties, the inventory | Validation is per source rather than per entry, so one entry missing a required field, or a missing or misspelled `consoles` key, marks the whole source errored and its published list is retained rather than refreshed — a stale list beside an errored source, not an empty one. A file which cannot be used at all, such as one with a YAML syntax error, freezes every source the same way until it is repaired. The first shows as an errored source in the administrative interface; the second marks nothing errored and is visible only in the daemon log. |
 | The SPICE passwords are in the file | Each target's SPICE password is written in `sources.yaml` in the clear, as the cloud sources' credentials are — but here there is one per target rather than one per platform, so the file grows in sensitivity with the fleet. File permissions are the whole of the protection. |
 | Scale is untested | The demo and the CI lane each declare a single target. Every pass re-parses the file and re-records every entry, and nothing bounds how that behaves at hundreds of them. No lane covers it. |
 

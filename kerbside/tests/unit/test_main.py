@@ -1048,6 +1048,106 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_static_source.assert_called_once()
             self.mock_shakenfist_source.assert_called_once()
 
+    # --- A sources.yaml which cannot be used at all (#465) ---------------
+    @contextmanager
+    def _raw_sources_yaml(self, text):
+        f = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
+        try:
+            f.write(text)
+            f.close()
+            fake_config.SOURCES_PATH = f.name
+            yield f.name
+        finally:
+            os.unlink(f.name)
+
+    def _assert_last_configuration_kept(self, text):
+        """Parse text as sources.yaml against an existing deployment.
+
+        The database holds a source and a console from the last pass
+        which loaded. An unusable file must neither crash the pass nor
+        reconcile against it: reconciling would read "no sources" and
+        delete the lot. Returns the structured log fields emitted.
+        """
+        from kerbside import main
+
+        self.mock_db_get_sources.return_value = [{'name': 'lab'}]
+        self.mock_db_get_consoles.return_value = [
+            {'source': 'lab', 'uuid': _STATIC_CONSOLE_UUID}]
+
+        with self._raw_sources_yaml(text):
+            with mock.patch.object(main, 'LOG') as mock_log:
+                main._parse_sources()
+
+        self.mock_db_remove_console.assert_not_called()
+        self.mock_db_delete_source.assert_not_called()
+        self.mock_db_add_source.assert_not_called()
+        self.mock_db_set_source_error_state.assert_not_called()
+        self.mock_static_source.assert_not_called()
+        # Exactly one error says why, whichever form it took.
+        self.assertEqual(
+            1, mock_log.error.call_count +
+            mock_log.with_fields.return_value.error.call_count)
+        return mock_log
+
+    def test_yaml_syntax_error_keeps_the_last_configuration(self):
+        self._assert_last_configuration_kept(
+            '- source: lab\n'
+            '  type: static\n'
+            '  consoles: [\n')
+
+    def test_yaml_syntax_error_does_not_log_the_offending_line(self):
+        # PyYAML's own message quotes the line it failed on, and in this
+        # file that line is as likely as not a credential.
+        mock_log = self._assert_last_configuration_kept(
+            '- source: lab\n'
+            '  type: static\n'
+            '  password: hunter2: oops\n')
+
+        logged = repr(mock_log.mock_calls)
+        self.assertNotIn('hunter2', logged)
+        fields = mock_log.with_fields.call_args.args[0]
+        self.assertEqual(3, fields['line'])
+        self.assertEqual('mapping values are not allowed here',
+                         fields['problem'])
+
+    def test_empty_file_keeps_the_last_configuration(self):
+        # An empty file parses to None. "No sources" must be said
+        # explicitly, as "[]", for the same reason as an absent static
+        # consoles key (#464): a truncated file is the likelier cause.
+        self._assert_last_configuration_kept('')
+
+    def test_mapping_at_top_level_keeps_the_last_configuration(self):
+        self._assert_last_configuration_kept(
+            'source: lab\ntype: static\nconsoles: []\n')
+
+    def test_entry_which_is_not_a_mapping_keeps_the_last_configuration(self):
+        self._assert_last_configuration_kept('- lab\n')
+
+    def test_entry_without_a_source_name_keeps_the_last_configuration(self):
+        # An entry which cannot be identified could be any source, so
+        # nothing may be retired on the strength of not seeing one.
+        mock_log = self._assert_last_configuration_kept(
+            '- type: static\n'
+            '  password: hunter2\n'
+            '  consoles: []\n')
+
+        self.assertNotIn('hunter2', repr(mock_log.mock_calls))
+
+    def test_explicitly_empty_list_retires_everything(self):
+        """The one spelling of "no sources" still means it."""
+        from kerbside import main
+
+        self.mock_db_get_sources.return_value = [{'name': 'lab'}]
+        self.mock_db_get_consoles.return_value = [
+            {'source': 'lab', 'uuid': _STATIC_CONSOLE_UUID}]
+
+        with self._raw_sources_yaml('[]\n'):
+            main._parse_sources()
+
+        self.mock_db_remove_console.assert_called_once_with(
+            source='lab', uuid=_STATIC_CONSOLE_UUID)
+        self.mock_db_delete_source.assert_called_once_with('lab')
+
 
 class _FakeResourceNotFound(Exception):
     """Stand-in for shakenfist_client.apiclient.ResourceNotFoundException."""

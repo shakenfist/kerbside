@@ -52,6 +52,18 @@ The one exception is a source removed from `sources.yaml` altogether. It is
 deleted along with its consoles, because nothing will ever scrape it again
 and its consoles would otherwise be orphaned.
 
+That exception is why a `sources.yaml` which cannot be used at all changes
+nothing. If the file is missing, unreadable or not valid YAML, if it is not
+a list, or if any entry is not a mapping or lacks a `source` or `type` key,
+the pass logs why and stops before touching the database: every source and
+console stays as the last pass which loaded the file left them, and the
+next pass, a minute later, tries again. Reconciling against such a file
+would read it as "no sources" and delete the lot. An empty file is refused
+the same way, since a truncated file is the likelier cause; a deployment
+which really has no sources says so with `[]`. The YAML error is logged by
+problem, line and column only -- never the offending line itself, which in
+this file may well hold a password.
+
 Erroring still marks the source as errored in the administrative interface,
 which is where a persistent failure should be diagnosed from. Retaining
 consoles is not the same as reporting the source as healthy.
