@@ -1,8 +1,9 @@
 # Kerbside standalone
 
-Let's assume you have SPICE that were hand built outside of a cloud,
-and you want to hand them to users without handing out routes
-to the machines that host them. Kerbside's `static` source
+Let's assume you have SPICE consoles on machines hand built
+outside of a cloud, and you want to hand them to users
+without handing out routes to the machines that host them.
+Kerbside's `static` source
 driver reads a fixed list of targets from `sources.yaml` and
 fronts them with the same audited, firewalled proxy the cloud
 deployments get.

@@ -2,10 +2,13 @@ from unittest import mock
 import time
 
 from sqlalchemy import create_engine
+from sqlalchemy import event
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 import testtools
 
 from kerbside import db
+from kerbside.sources import static as static_source
 
 
 class SessionTerminationDbTestCase(testtools.TestCase):
@@ -422,6 +425,88 @@ class ConsoleKeyedOnSourceTestCase(testtools.TestCase):
 
         self.assertIsNone(db.get_console('lab', 'shared'))
         self.assertIsNotNone(db.get_console('cloud', 'shared'))
+
+
+class ConsoleTokenCascadeTestCase(testtools.TestCase):
+    """remove_console() deletes the console's tokens through the database.
+
+    It issues one bulk delete, with no ORM relationship, so the tokens go
+    only because fk_consoletokens_console cascades -- and they must be
+    only that console's: a reference to the identifier alone would also
+    delete another source's tokens for the same identifier (#468).
+    SQLite enforces foreign keys only when asked, so this engine asks.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.engine = create_engine('sqlite://')
+        event.listen(
+            self.engine, 'connect',
+            lambda conn, _: conn.execute('PRAGMA foreign_keys=ON'))
+        db.Base.metadata.create_all(
+            self.engine,
+            tables=[db.Console.__table__, db.ConsoleToken.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+        for source in ('cloud', 'lab'):
+            db.add_console(
+                source=source, uuid='shared', hypervisor='hv',
+                hypervisor_ip='10.0.0.1', insecure_port=5900,
+                secure_port=None, name=source, host_subject=None,
+                ticket='ticket')
+            db.add_token('%s-token' % source, None, source, 'shared',
+                         0, 2 ** 31)
+
+    def test_remove_deletes_only_that_consoles_tokens(self):
+        db.remove_console(source='lab', uuid='shared')
+
+        self.assertEqual([], db.get_tokens_by_console('lab', 'shared'))
+        self.assertEqual(
+            ['cloud-token'],
+            [t['token'] for t in db.get_tokens_by_console('cloud', 'shared')])
+
+    def test_a_token_needs_its_console(self):
+        self.assertRaises(
+            IntegrityError, db.add_token, 'orphan', None, 'elsewhere',
+            'shared', 0, 2 ** 31)
+
+
+class StaticSourceRoundTripTestCase(testtools.TestCase):
+    """A static entry must read back as unchanged on the next pass.
+
+    YAML types an unquoted 123456 as an int and a quoted "5910" as a
+    str, where the database returns the column's type. Unnormalised,
+    each would be reported as changed and audited on every 60 second
+    pass, forever.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.engine = create_engine('sqlite://')
+        db.Base.metadata.create_all(
+            self.engine, tables=[db.Console.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+    def test_yaml_typed_entry_is_stable_across_passes(self):
+        entry = {
+            'uuid': 1001, 'name': 4, 'hypervisor': 'bench',
+            'hypervisor_ip': '10.0.0.1', 'insecure_port': '5910',
+            'secure_port': '5911', 'ticket': 123456, 'host_subject': None,
+        }
+        results = []
+        for _ in range(2):
+            source = static_source.StaticSource(
+                source='lab', type='static', consoles=[dict(entry)])
+            self.assertFalse(source.errored)
+            for console in source():
+                results.append(db.add_console(**console))
+
+        self.assertEqual(
+            [(db.CONSOLE_ADDED, []), (db.CONSOLE_UPDATED, [])], results)
 
 
 class AddConsoleUpdateTestCase(testtools.TestCase):

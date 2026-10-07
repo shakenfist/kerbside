@@ -246,3 +246,54 @@ class TestStaticSourceClose(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestStaticSourceScalarTypes(unittest.TestCase):
+    """Hand-written YAML scalars are normalised to their column's type.
+
+    See StaticSourceRoundTripTestCase in test_db.py for why: a value
+    kept in YAML's type never compares equal to the stored one.
+    """
+
+    def _console(self, **overrides):
+        entry = dict(_VALID_CONSOLE)
+        entry.update(overrides)
+        src = _make_source([entry])
+        self.assertFalse(src.errored)
+        return list(src())[0]
+
+    def test_unquoted_numbers_become_strings(self):
+        console = self._console(uuid=1001, name=4, ticket=123456,
+                                host_subject=7)
+        self.assertEqual(('1001', '4', '123456', '7'),
+                         (console['uuid'], console['name'],
+                          console['ticket'], console['host_subject']))
+
+    def test_quoted_ports_become_ints(self):
+        console = self._console(insecure_port='5910', secure_port='5911')
+        self.assertEqual((5910, 5911),
+                         (console['insecure_port'], console['secure_port']))
+
+    def test_absent_optional_fields_stay_none(self):
+        console = self._console()
+        self.assertIsNone(console['secure_port'])
+        self.assertIsNone(console['host_subject'])
+
+    @mock.patch.object(static_source, 'LOG')
+    def test_other_types_error_without_logging_the_value(self, mock_log):
+        for field, value in (('ticket', ['hunter2']),
+                             ('ticket', {'hunter2': 1}),
+                             ('ticket', True),
+                             ('name', 1.5),
+                             ('uuid', ['hunter2']),
+                             ('insecure_port', 'hunter2'),
+                             ('insecure_port', True),
+                             ('insecure_port', None),
+                             ('secure_port', 59.1)):
+            entry = dict(_VALID_CONSOLE)
+            entry[field] = value
+            src = _make_source([entry])
+            self.assertTrue(src.errored, (field, value))
+            self.assertEqual([], list(src()))
+
+        self.assertNotIn('hunter2', repr(mock_log.mock_calls))

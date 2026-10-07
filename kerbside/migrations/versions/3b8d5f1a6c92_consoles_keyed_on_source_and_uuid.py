@@ -67,6 +67,19 @@ def downgrade() -> None:
     shared = (
         'SELECT uuid FROM (SELECT uuid FROM consoles GROUP BY uuid '
         'HAVING COUNT(*) > 1) AS shared')
+    bind = op.get_bind()
+    tokens = bind.execute(sa.text(
+        'SELECT COUNT(*) FROM consoletokens WHERE uuid IN (%s)'
+        % shared)).scalar()
+    consoles = bind.execute(sa.text(
+        'SELECT COUNT(*) FROM consoles WHERE uuid IN (%s)'
+        % shared)).scalar()
+    # Said out loud because it is data loss, and an operator rolling
+    # back otherwise has no trace of the sessions it cost them.
+    print('Downgrade drops %d consoles whose identifier more than one '
+          'source shares, and their %d console tokens; the next '
+          'maintenance pass rediscovers one console for each identifier'
+          % (consoles, tokens))
     op.execute('DELETE FROM consoletokens WHERE uuid IN (%s)' % shared)
     op.execute('DELETE FROM consoles WHERE uuid IN (%s)' % shared)
 

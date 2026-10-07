@@ -30,6 +30,10 @@
 # Optional fields (default to None):
 #   secure_port, host_subject
 #
+# An unquoted number where a string belongs (ticket: 123456) is read as
+# that string, and a quoted port ("5910") as that port.  Any other type
+# -- a list, a mapping, a bool -- errors the source.
+#
 # Notes:
 # - Tickets are persisted to the Console DB at enumeration time via
 #   db.add_console(..., ticket=...).  No per-request driver
@@ -64,6 +68,19 @@ _REQUIRED_FIELDS = ('uuid', 'name', 'hypervisor', 'hypervisor_ip',
 _OPTIONAL_FIELDS = {
     'secure_port': None,
     'host_subject': None,
+}
+
+# How each field is normalised to the type its database column stores.
+# See util.yaml_string() for why this matters.
+_NORMALISERS = {
+    'uuid': util.yaml_string,
+    'name': util.yaml_string,
+    'hypervisor': util.yaml_string,
+    'hypervisor_ip': util.yaml_string,
+    'insecure_port': util.yaml_port,
+    'ticket': util.yaml_string,
+    'secure_port': util.yaml_port,
+    'host_subject': util.yaml_string,
 }
 
 
@@ -127,23 +144,33 @@ class StaticSource(base.BaseSource):
                 self.errored = True
                 return
 
-            uuid = entry['uuid']
+            console = {'source': source_name}
+            for field in _REQUIRED_FIELDS:
+                console[field] = entry[field]
+            for field, default in _OPTIONAL_FIELDS.items():
+                console[field] = entry.get(field, default)
+
+            # Name the field and its type, never its value, which may be
+            # the ticket.
+            for field, normalise in _NORMALISERS.items():
+                if field in _OPTIONAL_FIELDS and console[field] is None:
+                    continue
+                try:
+                    console[field] = normalise(console[field])
+                except TypeError as e:
+                    LOG.error(
+                        'Static source %s: console field %s cannot be a %s '
+                        '(entry uuid: %s)'
+                        % (source_name, field, e,
+                           console['uuid'] if field != 'uuid' else '<invalid>'))
+                    self.errored = True
+                    return
+
+            uuid = console['uuid']
             if uuid in self._consoles_by_uuid:
                 LOG.warning(
                     'Static source %s: duplicate uuid %s — '
                     'last definition wins' % (source_name, uuid))
-
-            console = {
-                'uuid': uuid,
-                'source': source_name,
-                'name': entry['name'],
-                'hypervisor': entry['hypervisor'],
-                'hypervisor_ip': entry['hypervisor_ip'],
-                'insecure_port': entry['insecure_port'],
-                'ticket': entry['ticket'],
-            }
-            for field, default in _OPTIONAL_FIELDS.items():
-                console[field] = entry.get(field, default)
 
             self._consoles_by_uuid[uuid] = console
 

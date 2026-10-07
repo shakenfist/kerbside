@@ -281,6 +281,14 @@ Optional fields (default to null):
 | secure_port | SPICE TLS port (if QEMU exposes one) |
 | host_subject | TLS host subject for certificate verification. Enforced: when set, the proxy refuses hypervisors whose certificate subject does not match (exact attribute count/order/type). |
 
+An unquoted number in a text field, such as `ticket: 123456`, is read as
+that text, and a quoted port, such as `insecure_port: "5910"`, as that
+port. Any other type -- a list, a mapping, a boolean, a fraction -- marks
+the source errored, and it keeps the consoles it had published. The same
+rule applies to the fields every source shares (`source`, `type`, `url`,
+`username`, `password` and the like), except that a bad one refuses the
+whole file and keeps the last configuration that loaded.
+
 **Example sources.yaml entry for a static source:**
 
 ```yaml

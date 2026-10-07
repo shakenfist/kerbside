@@ -61,6 +61,13 @@ def _digest(value):
     return '<%d bytes, sha256:%s>' % (len(value), digest)
 
 
+# The sources.yaml fields _parse_sources() reads itself, as opposed to
+# those only a source driver reads. All of them are stored as strings.
+_SOURCE_REQUIRED_FIELDS = ('source', 'type')
+_SOURCE_OPTIONAL_FIELDS = ('url', 'username', 'password', 'project_name',
+                           'user_domain_id', 'project_domain_id', 'ca_cert')
+
+
 def _load_sources():
     """Read and shape-check sources.yaml, or return None if it is unusable.
 
@@ -116,13 +123,29 @@ def _load_sources():
                       f'the last configuration which loaded')
             return None
         # Name the keys, never the entry: it may carry a password.
-        missing = [k for k in ('source', 'type') if k not in source]
+        missing = [k for k in _SOURCE_REQUIRED_FIELDS if k not in source]
         if missing:
             LOG.error(f'Sources configuration at {path}: entry {index} is '
                       f'missing {missing} (keys present: '
                       f'{sorted(source.keys())}); keeping the last '
                       f'configuration which loaded')
             return None
+
+        # Every field _parse_sources() hands to the database or hashes
+        # before reaching a driver's own error handling is normalised
+        # here, so a list or a mapping cannot crash the pass, and an
+        # unquoted number compares equal to the string stored for it.
+        # Name the field and its type, never its value.
+        for field in _SOURCE_REQUIRED_FIELDS + _SOURCE_OPTIONAL_FIELDS:
+            if field in _SOURCE_OPTIONAL_FIELDS and source.get(field) is None:
+                continue
+            try:
+                source[field] = util.yaml_string(source[field])
+            except TypeError as e:
+                LOG.error(f'Sources configuration at {path}: entry {index} '
+                          f'field {field} cannot be a {e}; keeping the last '
+                          f'configuration which loaded')
+                return None
 
     return sources
 

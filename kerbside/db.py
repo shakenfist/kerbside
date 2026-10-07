@@ -5,6 +5,7 @@ import time
 from sqlalchemy import create_engine, text
 from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text
 from sqlalchemy import desc
+from sqlalchemy import ForeignKeyConstraint
 from sqlalchemy.dialects.mysql import DATETIME
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
@@ -482,6 +483,17 @@ def remove_console(source=None, uuid=None, **kwargs):
 
 class ConsoleToken(Base):
     __tablename__ = 'consoletokens'
+    # Declared to match migration 3b8d5f1a6c92, which is what creates it
+    # in a deployed database. remove_console() relies on the cascade to
+    # delete a console's tokens, and only that console's: the reference
+    # is to the (source, uuid) pair, so one source retiring an
+    # identifier leaves another source's tokens for it alone.
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['source', 'uuid'], ['consoles.source', 'consoles.uuid'],
+            onupdate='CASCADE', ondelete='CASCADE',
+            name='fk_consoletokens_console'),
+    )
 
     token = Column(String, primary_key=True)
     session_id = Column(String)
