@@ -300,9 +300,27 @@ class Console(Base):
         return {field: console[field] for field in CONSOLE_PUBLIC_FIELDS}
 
 
+# What add_console() did, so the caller can audit it.
+CONSOLE_ADDED = 'added'
+CONSOLE_UPDATED = 'updated'
+CONSOLE_TICKET_CHANGED = 'ticket-changed'
+
+
 def add_console(source=None, uuid=None, hypervisor=None, hypervisor_ip=None,
                 insecure_port=None, secure_port=None, name=None, host_subject=None,
                 ticket=None, **kwargs):
+    """Insert a console, or refresh one which already exists.
+
+    A ticket of None means the caller does not manage this console's
+    ticket, and the stored one is left alone: oVirt writes a fresh
+    ticket per .vv request with store_console_ticket(), and the
+    maintenance pass which re-enumerates the console must not erase it
+    before the proxy spends it. A caller which does supply a ticket --
+    the static source, whose ticket is the password in sources.yaml --
+    owns it, so a changed one replaces the stored value.
+
+    Returns CONSOLE_ADDED, CONSOLE_TICKET_CHANGED or CONSOLE_UPDATED.
+    """
     with Session(ENGINE) as session:
         try:
             console = session.query(Console).filter(Console.uuid == uuid).one()
@@ -312,15 +330,18 @@ def add_console(source=None, uuid=None, hypervisor=None, hypervisor_ip=None,
             console.secure_port = secure_port
             console.name = name
             console.host_subject = host_subject
+            if ticket is not None and ticket != console.ticket:
+                console.ticket = ticket
+                return CONSOLE_TICKET_CHANGED
         except exc.NoResultFound:
             console = Console(uuid, source, hypervisor, hypervisor_ip, insecure_port,
                               secure_port, name, host_subject, ticket)
             session.add(console)
-            return True
+            return CONSOLE_ADDED
         finally:
             session.commit()
 
-    return False
+    return CONSOLE_UPDATED
 
 
 def get_consoles(include_audit=True, *, include_secrets: bool = False):

@@ -224,10 +224,9 @@ mapping entirely from an inline `consoles:` list in the sources.yaml
 entry.  No external API calls are made and no control plane is needed.
 
 The list is re-read at startup and once per 60-second maintenance
-cycle, so adding or removing an entry takes effect without a restart.
-Editing the `ticket` of an entry which already exists does not: it is
-discarded rather than applied (issue #463), and changing one means
-removing the entry, letting the removal land, and adding it back.
+cycle, so adding, removing or editing an entry takes effect without a
+restart. A changed `ticket` is applied in place and audit logged as
+`Console ticket changed`.
 
 It is intended for CI pipelines that boot a QEMU guest directly and
 need kerbside to front it — the direct-qemu CI workflow uses this

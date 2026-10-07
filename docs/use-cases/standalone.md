@@ -33,12 +33,9 @@ standing anything else up first.
   `Discovered new console` — and a target removed from the file
   stops being one, audit logged as `Console no longer available`. No
   restart is needed, and neither direction has to be taken on
-  trust: both leave a record. Please note there is one
-  exceptional case: a changed SPICE
-  password for a target already in the list is discarded rather
-  than applied, and changing the password means removing the entry,
-  letting the removal land, and adding it back. See
-  [Status and limitations](#status-and-limitations).
+  trust: both leave a record. Editing an entry that is already
+  there is applied the same way, and a changed SPICE password is
+  audit logged as `Console ticket changed`.
 - **The SPICE firewall is on by default.** Kerbside terminates
   the client's connection, drives the SPICE link handshake
   itself, and classifies every framed message against a
@@ -97,24 +94,17 @@ loop sleeps a second at a time and fires once more than sixty
 have passed — and both leave an audit event you can check rather
 than a claim you have to believe.
 
-**What the reload does not carry.** A console which already
-exists has its host, address, ports, name and `host_subject`
-reassigned on every pass, but not its SPICE password: that is
-set only when the row is first created. An
-edited password is therefore dropped, with no log line, no
-audit event and no errored source. Removing the entry, letting
-the removal land, and adding it back does apply it, because that
-takes the insert path — at a cost worth knowing before you rely
-on it: the console is deleted on the first pass and absent from
-the inventory, the API and the web UI until the second, it comes
-back as a fresh row with its discovery timestamp reset, and
-rotating a password therefore takes two maintenance cycles
-rather than one. The audit trail does survive, which is the one
-piece of good news here: audit events are keyed on the source
-and the identifier rather than on the console row, and nothing
-deletes them, so re-adding the same identifier picks the history
-back up. Tracked as
-[#463](https://github.com/shakenfist/kerbside/issues/463).
+**Edits to an existing entry.** A console which already exists
+has its host, address, ports, name, `host_subject` and SPICE
+password reassigned on every pass, so an edit lands in the same
+little over a minute as an addition, in place: the console keeps
+its row and its discovery timestamp. A changed password is audit
+logged as `Console ticket changed` — the event names the change,
+never the value — so rotating one leaves the same kind of record
+as adding or removing a target. The proxy reads the password
+from the database each time it authorises a connection, so the
+change of password on qemu and the edit to the file should land
+close together: in between, one of the two disagrees.
 
 **What a bad edit does depends on how it is bad.** Three
 outcomes, and only one of them is the safe one. A console entry
@@ -304,7 +294,6 @@ Not covered, and worth knowing before you deploy:
 | Limitation | Detail |
 |------------|--------|
 | Nothing checks that the target is alive | There is no liveness check of any kind. An entry in the file is a console whether or not anything is listening on the port, so Kerbside will happily mint a `.vv` for a qemu that exited an hour ago and the user discovers it by the SPICE client failing to connect. Nothing in the console list, the web UI or the API distinguishes a live target from a dead one. This, rather than anything about the file format, is the honest reason the static source is not intended for production use. |
-| A changed SPICE password is never applied | Every other field of an entry which already exists is reassigned on the next pass; the password is not. It is set only when the console row is first inserted, and the `.vv` handler leaves the stored value alone for a static source, so an edit to it is parsed and discarded with no log line, no audit event and no errored source. The file and the database disagree and nothing says so; the first sign is the target refusing the handshake. Remove the entry, let the removal land, and add it back to change one. Tracked as [#463](https://github.com/shakenfist/kerbside/issues/463). |
 | The inventory is only as good as your editing | There is no discovery, so nothing ever corrects the file. A target rebuilt on a different port, or with a different SPICE password, is simply wrong until somebody edits it, and the wrongness shows up as a failed connection rather than as an errored source. The sixty-second reload makes the fix fast; it does not make it automatic. |
 | Backend TLS needs three things, and is untested through this source | A static entry is plaintext to the target unless you declare a TLS port, unverified unless the source carries a `ca_cert`, and unpinned unless you write a `host_subject`. The CA is the one most easily missed: without it the target is checked against the public web trust store, which an internal certificate will not satisfy, so the escalation fails the handshake. The proxy's enforcement of a pin is exercised both ways in CI — a matching pin accepted, a mismatched one refused — but by `tools/direct-qemu/run-host-subject-checks.sh`, which drives the proxy from a mock control plane rather than from a source; the `direct-qemu` lane's own static entry is plaintext, and the compose demo deliberately leaves all three out. So the enforcement is proven and the path that reaches it *from this source* is not. |
 | Nobody can log in | Interactive login is Keystone-only ([#300](https://github.com/shakenfist/kerbside/issues/300)), which a deployment with no OpenStack in it has nothing to point at, and the session JWT scheme has no revocation or issuance audit ([#301](https://github.com/shakenfist/kerbside/issues/301)). A standalone deployment therefore needs something else to hold credentials and call the API. |

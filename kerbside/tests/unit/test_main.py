@@ -5,6 +5,8 @@ import tempfile
 import testtools
 import yaml
 
+from kerbside import db
+
 # UUID shared across the static-source dispatch tests.
 _STATIC_CONSOLE_UUID = 'cccccccc-0000-0000-0000-000000000001'
 
@@ -52,7 +54,7 @@ class ParseSourcesTestCase(testtools.TestCase):
         self.addCleanup(db_set_error_patcher.stop)
 
         db_add_console_patcher = mock.patch('kerbside.db.add_console',
-                                            return_value=True)
+                                            return_value=db.CONSOLE_ADDED)
         self.mock_db_add_console = db_add_console_patcher.start()
         self.addCleanup(db_add_console_patcher.stop)
 
@@ -364,7 +366,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_shakenfist_source.return_value = self._mock_source_lookup(
                 consoles=[mock_console])
 
-            self.mock_db_add_console.return_value = True
+            self.mock_db_add_console.return_value = db.CONSOLE_ADDED
             main._parse_sources()
             self.mock_db_add_console.assert_called_once_with(**mock_console)
             # Should log audit event for new console
@@ -852,7 +854,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_static_source.return_value = self._mock_source_lookup(
                 consoles=[static_console])
 
-            self.mock_db_add_console.return_value = True
+            self.mock_db_add_console.return_value = db.CONSOLE_ADDED
             main._parse_sources()
 
             # StaticSource should be constructed
@@ -869,6 +871,86 @@ class ParseSourcesTestCase(testtools.TestCase):
 
             # Audit event should be logged for the new console
             self.mock_db_add_audit_event.assert_called()
+
+    @mock.patch('os.path.exists', return_value=True)
+    def test_parse_sources_audits_a_changed_ticket(self, mock_exists):
+        """A ticket edited in sources.yaml is applied, and audited (#463)."""
+        from kerbside import main
+
+        static_console = {
+            'source': 'test-static',
+            'uuid': _STATIC_CONSOLE_UUID,
+            'name': 'ci-vm',
+            'hypervisor': 'localhost',
+            'hypervisor_ip': '127.0.0.1',
+            'insecure_port': 5910,
+            'secure_port': None,
+            'host_subject': None,
+            'ticket': 'rotated-password',
+        }
+        with self._create_sources_yaml([{
+            'source': 'test-static',
+            'type': 'static',
+            'consoles': [{
+                'uuid': _STATIC_CONSOLE_UUID,
+                'name': 'ci-vm',
+                'hypervisor': 'localhost',
+                'hypervisor_ip': '127.0.0.1',
+                'insecure_port': 5910,
+                'ticket': 'rotated-password',
+            }]
+        }]):
+            self.mock_db_get_source.return_value = None
+            self.mock_static_source.return_value = self._mock_source_lookup(
+                consoles=[static_console])
+
+            self.mock_db_add_console.return_value = db.CONSOLE_TICKET_CHANGED
+            main._parse_sources()
+
+            self.mock_db_add_audit_event.assert_called_once_with(
+                'test-static', _STATIC_CONSOLE_UUID, None, None, None, None,
+                'Console ticket changed')
+            # The audit record names the change, never the value.
+            self.assertNotIn(
+                'rotated-password',
+                repr(self.mock_db_add_audit_event.call_args_list))
+
+    @mock.patch('os.path.exists', return_value=True)
+    def test_parse_sources_plain_update_is_not_audited(self, mock_exists):
+        """Re-seeing an unchanged console every pass is not an event."""
+        from kerbside import main
+
+        static_console = {
+            'source': 'test-static',
+            'uuid': _STATIC_CONSOLE_UUID,
+            'name': 'ci-vm',
+            'hypervisor': 'localhost',
+            'hypervisor_ip': '127.0.0.1',
+            'insecure_port': 5910,
+            'secure_port': None,
+            'host_subject': None,
+            'ticket': 'ci-spice-password',
+        }
+        with self._create_sources_yaml([{
+            'source': 'test-static',
+            'type': 'static',
+            'consoles': [{
+                'uuid': _STATIC_CONSOLE_UUID,
+                'name': 'ci-vm',
+                'hypervisor': 'localhost',
+                'hypervisor_ip': '127.0.0.1',
+                'insecure_port': 5910,
+                'ticket': 'ci-spice-password',
+            }]
+        }]):
+            self.mock_db_get_source.return_value = None
+            self.mock_static_source.return_value = self._mock_source_lookup(
+                consoles=[static_console])
+
+            self.mock_db_add_console.return_value = db.CONSOLE_UPDATED
+            main._parse_sources()
+
+            self.mock_db_add_audit_event.assert_not_called()
 
     @mock.patch('os.path.exists', return_value=True)
     def test_discovery_does_not_log_a_console_ticket(self, mock_exists):
@@ -997,7 +1079,7 @@ class SigningKeyFailureScrapeTestCase(testtools.TestCase):
                 ('get_source', {'return_value': None}),
                 ('add_source', {}),
                 ('set_source_error_state', {}),
-                ('add_console', {'return_value': True}),
+                ('add_console', {'return_value': db.CONSOLE_ADDED}),
                 ('add_audit_event', {}),
                 ('remove_console', {}),
                 ('delete_source', {})]:

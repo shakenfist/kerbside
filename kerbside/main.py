@@ -198,11 +198,18 @@ def _parse_sources():
                         {k: v for k, v in console.items()
                          if k not in kerbside_db.CONSOLE_SECRET_FIELDS}
                         ).info('Found console')
-                    console_is_new = kerbside_db.add_console(**console)
-                    if console_is_new:
+                    change = kerbside_db.add_console(**console)
+                    if change == kerbside_db.CONSOLE_ADDED:
                         kerbside_db.add_audit_event(
                             console['source'], console['uuid'], None, None, None, None,
                             'Discovered new console'
+                        )
+                    elif change == kerbside_db.CONSOLE_TICKET_CHANGED:
+                        # A rotated credential is worth a record of its
+                        # own, and the value itself never goes in it.
+                        kerbside_db.add_audit_event(
+                            console['source'], console['uuid'], None, None, None, None,
+                            'Console ticket changed'
                         )
                     k = (console['source'], console['uuid'])
                     if k in extra_consoles:

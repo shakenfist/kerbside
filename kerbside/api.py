@@ -510,8 +510,9 @@ class ConsolesProxyVirtViewer(sf_api.Resource):
         # types (shakenfist, openstack) manage tickets separately
         # and receive an empty string as a no-op.
         if s['type'] == 'static':
-            # Ticket already stored by StaticSource.__call__() via
-            # db.add_console(..., ticket=...).  Leave it intact.
+            # Ticket already stored by the maintenance pass via
+            # db.add_console(..., ticket=...), which also applies a
+            # ticket edited in sources.yaml.  Leave it intact.
             pass
         elif s['type'] == 'ovirt':
             ticket = ''
