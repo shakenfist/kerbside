@@ -3,7 +3,7 @@ import datetime
 import time
 
 from sqlalchemy import create_engine, text
-from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Double, Integer, String, Text
 from sqlalchemy import desc
 from sqlalchemy.dialects.mysql import DATETIME
 from sqlalchemy.exc import IntegrityError
@@ -688,7 +688,7 @@ class SessionTermination(Base):
     # session_id is the primary key. requested_at is a time.time() float and
     # reason is a human-readable note for audit/debugging.
     session_id = Column(String, primary_key=True)
-    requested_at = Column(Float)
+    requested_at = Column(Double)
     reason = Column(String, nullable=True)
 
     def __init__(self, session_id, requested_at, reason=None):
@@ -873,7 +873,11 @@ class SfTokenJti(Base):
     # time.time()-style float): once that has passed the token could not be
     # replayed successfully anyway, so the reaper is free to drop the row.
     jti = Column(String(32), primary_key=True)
-    expiry = Column(Float)
+    # Double, never Float: MySQL and MariaDB store Float as single precision,
+    # which rounds an epoch time to a multiple of 128 seconds and so would
+    # let the reaper drop a jti while its token can still be replayed. The
+    # same holds for every time.time() column here (issue #533).
+    expiry = Column(Double)
 
     def __init__(self, jti, expiry):
         self.jti = jti
@@ -940,7 +944,7 @@ class SfTokenKeys(Base):
     # not a stable referenced row). fetched_at is a time.time() float.
     source = Column(String(255), primary_key=True)
     keys_json = Column(Text)
-    fetched_at = Column(Float)
+    fetched_at = Column(Double)
 
     def __init__(self, source, keys_json, fetched_at):
         self.source = source
