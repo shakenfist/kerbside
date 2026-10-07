@@ -1,6 +1,6 @@
 # Kerbside standalone
 
-You have SPICE consoles but no cloud that knows about them,
+Let's assume you have SPICE that were hand built outside of a cloud,
 and you want to hand them to users without handing out routes
 to the machines that host them. Kerbside's `static` source
 driver reads a fixed list of targets from `sources.yaml` and
@@ -10,7 +10,7 @@ deployments get.
 ## Value proposition
 
 The [Shaken Fist](shakenfist.md), [OpenStack](openstack.md) and
-[oVirt](ovirt.md) pages put Kerbside in front of a platform that
+[oVirt](ovirt.md) console sources put Kerbside in front of a platform that
 already knows where its consoles are. Here there is none — a lab
 bench, a CI job, a rack of appliance VMs no API will ever
 enumerate — and the `static` driver is how you get the proxy's
@@ -29,35 +29,15 @@ standing anything else up first.
 - **The console list reloads every sixty seconds, in both
   directions.** The maintenance loop re-reads `sources.yaml` and
   rebuilds the driver from it, so a target added to the file
-  becomes a console in a little over a minute — audited as
+  becomes a console in a little over a minute — audit logged as
   `Discovered new console` — and a target removed from the file
-  stops being one, audited as `Console no longer available`. No
+  stops being one, audit logged as `Console no longer available`. No
   restart is needed, and neither direction has to be taken on
-  trust: both leave a record. It is a live inventory you edit
-  with a text editor, with one exception: a changed SPICE
+  trust: both leave a record. Please note there is one
+  exceptional case: a changed SPICE
   password for a target already in the list is discarded rather
-  than applied, and changing one means removing the entry,
+  than applied, and changing the password means removing the entry,
   letting the removal land, and adding it back. See
-  [Status and limitations](#status-and-limitations).
-- **Backend pinning is a field you write by hand, and this is
-  the only deployment where that is true.** All four source
-  types answer the same question — what stops Kerbside's backend
-  connection being redirected to a host that is not the one it
-  meant to reach — and all four answer it differently. oVirt
-  learns the certificate subject from the engine during
-  discovery. Shaken Fist learns it from the cluster's node map.
-  OpenStack cannot learn it at all, because Nova's token
-  validation response carries no certificate subject, so that
-  leg is relayed without host-subject enforcement. Here there is
-  no platform to learn from, and the answer is that the operator
-  writes `host_subject` into the target's entry. That is more
-  work and a better guarantee where you write one: the pin is
-  exactly the value you chose, and the proxy refuses a backend
-  whose subject does not match it. It is also the only one of
-  the four that can be left out by accident — the field is
-  optional, an omitted `host_subject` leaves the leg unpinned
-  rather than erroring, and the pin is only reached at all on a
-  leg that escalated to TLS. See
   [Status and limitations](#status-and-limitations).
 - **The SPICE firewall is on by default.** Kerbside terminates
   the client's connection, drives the SPICE link handshake
@@ -76,7 +56,7 @@ standing anything else up first.
   everything else. One thing comes with that; see
   [User interaction model](#user-interaction-model).
 
-Users get the SPICE features a serial console or an HTML5
+In return, users get the SPICE features a serial console or an HTML5
 wrapper cannot offer: high-resolution and multi-monitor
 desktops, USB passthrough, audio, and adaptive compression.
 
@@ -106,11 +86,9 @@ flowchart TD
 
 **The reload (A).** `_parse_sources()` re-opens the sources file
 on every call, and the maintenance loop calls it every sixty
-seconds. The driver is not kept between passes: it is
-constructed fresh from the YAML that pass parsed, so the console
-list is re-read with it. A target that has appeared in the file
-is added and audited `Discovered new console`. A target that has
-been removed from the file is deleted and audited
+seconds. A target that has appeared in the file
+is added and audit logged as `Discovered new console`. A target that has
+been removed from the file is deleted and audit logged as
 `Console no longer available` — the retention rule that keeps an OpenStack
 cloud's rows indefinitely covers only sources the pass did not
 enumerate, and this source is enumerated, so it does not apply.
@@ -122,12 +100,8 @@ than a claim you have to believe.
 **What the reload does not carry.** A console which already
 exists has its host, address, ports, name and `host_subject`
 reassigned on every pass, but not its SPICE password: that is
-set only when the row is first inserted (`add_console()` in
-`kerbside/db.py`), and the `.vv` handler then deliberately
-leaves the stored value alone for a static source, on the
-grounds that the driver persisted it at enumeration time. An
-edited password is therefore parsed, yielded by the driver,
-passed to the database layer and dropped, with no log line, no
+set only when the row is first created. An
+edited password is therefore dropped, with no log line, no
 audit event and no errored source. Removing the entry, letting
 the removal land, and adding it back does apply it, because that
 takes the insert path — at a cost worth knowing before you rely
