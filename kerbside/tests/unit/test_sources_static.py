@@ -38,31 +38,36 @@ class TestStaticSourceEmptyList(unittest.TestCase):
 
 
 class TestStaticSourceAbsentConsolesKey(unittest.TestCase):
-    """An absent consoles key is not an error, and that is issue #464.
+    """An absent consoles key errors the source (issue #464).
 
-    A change detector, like AddConsoleUpdateTestCase in test_db.py.
-    The key is read with a default, so leaving it out or misspelling
-    it yields an empty list rather than a validation failure: the
-    source constructs cleanly, is enumerated with nothing in it, and
-    the maintenance loop therefore deletes every console it had
-    published. That is the opposite of what a malformed entry does,
-    and it is asserted in docs/use-cases/standalone.md and in
-    kerbside/sources/static.py's header comment.
-
-    When #464 is fixed this test fails, and those two documents need
-    updating with it.
+    An errored source keeps what it had published, where one which
+    enumerates cleanly with nothing in it has every console deleted.
+    Leaving the key out, or misspelling it, must be the former; only
+    an explicit empty list (TestStaticSourceEmptyList) is the latter.
     """
 
-    def test_absent_consoles_key_does_not_error(self):
+    def test_absent_consoles_key_errors(self):
         src = static_source.StaticSource(source='lab', type='static')
-        self.assertFalse(src.errored)
+        self.assertTrue(src.errored)
         self.assertEqual([], list(src()))
 
-    def test_misspelled_consoles_key_does_not_error(self):
+    def test_misspelled_consoles_key_errors(self):
         src = static_source.StaticSource(
             source='lab', type='static', console=[dict(_VALID_CONSOLE)])
-        self.assertFalse(src.errored)
-        self.assertEqual([], list(src()))
+        self.assertTrue(src.errored)
+
+    def test_null_consoles_key_errors(self):
+        # 'consoles:' with nothing after it parses as None.
+        src = _make_source(None)
+        self.assertTrue(src.errored)
+
+    @mock.patch.object(static_source, 'LOG')
+    def test_error_names_the_keys_without_their_values(self, mock_log):
+        static_source.StaticSource(
+            source='lab', type='static', console=[dict(_VALID_CONSOLE)])
+        message = mock_log.error.call_args[0][0]
+        self.assertIn("'console'", message)
+        self.assertNotIn(_VALID_CONSOLE['ticket'], message)
 
 
 class TestStaticSourceSingleEntry(unittest.TestCase):

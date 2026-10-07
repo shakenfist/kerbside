@@ -42,10 +42,10 @@
 #   'Console ticket changed'.
 # - Duplicate UUIDs within a single static source are tolerated with
 #   a warning; the last definition wins.
-# - Validation catches a malformed entry and errors the whole source,
-#   which retains what it had published.  It does not catch an absent
-#   consoles key: that reads as an empty list, enumerates cleanly and
-#   deletes every console the source had.  See issue #464.
+# - Validation catches a malformed entry, or an absent or misspelled
+#   consoles key, and errors the whole source, which retains what it
+#   had published.  Only an explicitly empty list ('consoles: []')
+#   means the source has no consoles, and deletes what it had.
 
 from shakenfist_utilities import logs
 
@@ -81,7 +81,20 @@ class StaticSource(base.BaseSource):
         self._consoles_by_uuid = {}
 
         source_name = self.args.get('source', '<unknown>')
-        consoles = self.args.get('consoles', [])
+        # Absent is an error rather than an empty list. A source which
+        # enumerates cleanly with nothing in it has every console it
+        # had published deleted by the maintenance loop, so a deleted
+        # or misspelled key must fail closed like a malformed entry
+        # does. An operator who means "no consoles" writes the empty
+        # list explicitly.
+        if 'consoles' not in self.args:
+            LOG.error(
+                'Static source %s: no "consoles" key (keys present: %s); '
+                'write "consoles: []" for a source with no consoles'
+                % (source_name, sorted(self.args.keys())))
+            self.errored = True
+            return
+        consoles = self.args['consoles']
 
         if not isinstance(consoles, list):
             LOG.error(
