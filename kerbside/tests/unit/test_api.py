@@ -1,6 +1,8 @@
 import json
 import os
 from sqlalchemy import create_engine
+import subprocess
+import sys
 import tempfile
 import time
 from unittest import mock
@@ -63,6 +65,12 @@ class RequireConfiguredAuthSecretSeedTestCase(testtools.TestCase):
             self.assertRaises(
                 RuntimeError, api.require_configured_auth_secret_seed, seed)
 
+    def test_refuses_the_sentinel_with_whitespace(self):
+        """configparser strips values but an environment variable does not."""
+        for seed in (' ~~unconfigured~~', '~~unconfigured~~\n'):
+            self.assertRaises(
+                RuntimeError, api.require_configured_auth_secret_seed, seed)
+
     def test_accepts_a_real_seed(self):
         api.require_configured_auth_secret_seed(
             'e6b1c0dd9a2f4b3c8e7d5a1f0b9c2d3e')
@@ -72,6 +80,39 @@ class RequireConfiguredAuthSecretSeedTestCase(testtools.TestCase):
         self.assertEqual(
             kerbside_config.UNCONFIGURED,
             kerbside_config.Config.model_fields['AUTH_SECRET_SEED'].default)
+
+    def _import_api(self, seed):
+        """Import kerbside.api in a fresh interpreter with the given seed.
+
+        A subprocess, because reloading api here would rebuild the
+        module-global Flask app every other test in this worker uses.
+        Every other KERBSIDE_ variable is dropped so the outcome depends
+        on the seed alone; the environment still wins over any INI file
+        on the machine running the tests.
+        """
+        env = {k: v for k, v in os.environ.items()
+               if not k.startswith('KERBSIDE_')}
+        env['KERBSIDE_AUTH_SECRET_SEED'] = seed
+        return subprocess.run(
+            [sys.executable, '-c', 'import kerbside.api'],
+            env=env, capture_output=True, text=True, timeout=120)
+
+    def test_importing_the_api_with_the_sentinel_fails(self):
+        """The guard must run at import, not merely exist.
+
+        Importing is what gunicorn does to boot a worker, so this is the
+        property issue #131 needs: deleting or making conditional the
+        module-level call in api.py has to fail here.
+        """
+        result = self._import_api(kerbside_config.UNCONFIGURED)
+        self.assertNotEqual(0, result.returncode, result.stderr)
+        self.assertIn(
+            'Refusing to start: AUTH_SECRET_SEED is unset', result.stderr)
+
+    def test_importing_the_api_with_a_real_seed_succeeds(self):
+        """The control for the test above: the refusal is the seed's doing."""
+        result = self._import_api('e6b1c0dd9a2f4b3c8e7d5a1f0b9c2d3e')
+        self.assertEqual(0, result.returncode, result.stderr)
 
 
 class TerminateApiTestCase(testtools.TestCase):

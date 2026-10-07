@@ -46,6 +46,17 @@ def load_ini_settings():
 UNCONFIGURED = '~~unconfigured~~'
 
 
+def is_unconfigured(value):
+    """Return True if value was never really set.
+
+    That is the sentinel or blank, ignoring surrounding whitespace, which
+    configparser strips but an environment variable keeps. Every guard on
+    an unset secret uses this, so they cannot disagree about what counts.
+    """
+    stripped = value.strip()
+    return not stripped or stripped == UNCONFIGURED
+
+
 class Config(BaseSettings):
     # JWT configuration
     AUTH_SECRET_SEED: str = Field(

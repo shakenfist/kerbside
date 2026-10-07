@@ -13,7 +13,7 @@ import time
 import yaml
 
 from .config import config as config
-from .config import UNCONFIGURED
+from .config import is_unconfigured
 from . import db as kerbside_db
 from . import proxy_supervisor
 from .rpc import server as rpc_server
@@ -538,11 +538,13 @@ def _demo_sources_or_fail():
                    'so stdout is not a clean channel.')
 @click.pass_context
 def demo_token(ctx, subject, duration, output):
-    if config.AUTH_SECRET_SEED == UNCONFIGURED:
-        _fail('Refusing to mint: AUTH_SECRET_SEED is unconfigured, so the '
-              'token would be signed with a constant that is public in the '
-              'kerbside source tree. Set it to a random value, for example '
-              'with "openssl rand -hex 32".')
+    # Checked here as well as by kerbside.api at import, so that an unset
+    # seed gets this refusal rather than a traceback from the import below.
+    if is_unconfigured(config.AUTH_SECRET_SEED):
+        _fail('Refusing to mint: AUTH_SECRET_SEED is unconfigured (blank, '
+              'or the default published in the kerbside source tree), so '
+              'the token would be signed with a key anyone can know. Set it '
+              'to a random value, for example with "openssl rand -hex 32".')
 
     _demo_sources_or_fail()
 

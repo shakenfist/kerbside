@@ -24,7 +24,7 @@ import yaml
 from shakenfist_utilities import api as sf_api, logs
 
 from .config import config
-from .config import UNCONFIGURED
+from .config import is_unconfigured
 from . import consoletoken
 from . import db
 from . import sf_token
@@ -65,7 +65,7 @@ def require_configured_auth_secret_seed(seed):
     as having failed to boot and stops, instead of treating it as a
     clean exit and respawning it.
     """
-    if seed == UNCONFIGURED or not seed.strip():
+    if is_unconfigured(seed):
         message = (
             'Refusing to start: AUTH_SECRET_SEED is unset, so session JWTs '
             'would be signed with a key anyone can know and could be forged '
