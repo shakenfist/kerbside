@@ -89,6 +89,15 @@ class Config(BaseSettings):
         'kerbside',
         description='The keystone group users must exist in to access the proxy'
     )
+    KEYSTONE_ADMIN_GROUP: str = Field(
+        '',
+        description=(
+            'The keystone group whose members are Kerbside administrators. '
+            'Administrators may fetch direct console files, which point at '
+            'the hypervisor and bypass the proxy. Empty means there are no '
+            'administrators, and direct console access is refused.'
+        )
+    )
 
     PUBLIC_FQDN: str = Field(
         'kerbside.home.stillhq.com',

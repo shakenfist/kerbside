@@ -819,3 +819,123 @@ class NovaTokenInterfaceTestCase(testtools.TestCase):
         resp = self.client.get('/nova-console.vv?token=abc')
         self.assertEqual(500, resp.status_code)
         self.openstack.connection.Connection.assert_not_called()
+
+
+class AuthAdminClaimTestCase(testtools.TestCase):
+    """Login stamps kerbside_admin into the session JWT from membership of
+    KEYSTONE_ADMIN_GROUP, which gates /console/direct (issue #134).
+
+    Keystone is mocked at the lazily imported module globals, and the JWT
+    minting is captured rather than performed, so the claims can be read
+    directly.
+    """
+
+    def setUp(self):
+        super().setUp()
+        api.app.config['TESTING'] = True
+        self.client = api.app.test_client()
+
+        self.not_found = type('NotFound', (Exception,), {})
+        self.keystone_exceptions = mock.MagicMock()
+        self.keystone_exceptions.http.NotFound = self.not_found
+        self.keystone_exceptions.http.Unauthorized = type(
+            'Unauthorized', (Exception,), {})
+        self.keystone_exceptions.connection.SSLError = type(
+            'SSLError', (Exception,), {})
+
+        self.keystone = mock.MagicMock()
+        keystone_client = mock.MagicMock()
+        keystone_client.Client.return_value = self.keystone
+        keystone_session = mock.MagicMock()
+        keystone_session.Session.return_value.get_user_id.return_value = (
+            'user-id')
+        keystone_session.Session.return_value.get_token.return_value = (
+            'os-token')
+
+        for name, value in [
+                ('KEYSTONE_V3', mock.MagicMock()),
+                ('KEYSTONE_CLIENT', keystone_client),
+                ('KEYSTONE_EXCEPTIONS', self.keystone_exceptions),
+                ('KEYSTONE_SESSION', keystone_session)]:
+            patch = mock.patch.object(api, name, value)
+            patch.start()
+            self.addCleanup(patch.stop)
+
+        self.create_token = mock.MagicMock(return_value='a-jwt')
+        patch = mock.patch.object(
+            api, 'create_access_token', self.create_token)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+        self.logged = []
+        recorder = self
+
+        class RecordingLog:
+            def with_fields(self, fields):
+                recorder.logged.append(fields)
+                return self
+
+            def info(self, *args, **kwargs):
+                ...
+
+            def error(self, *args, **kwargs):
+                ...
+
+        patch = mock.patch.object(api, 'LOG', RecordingLog())
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _groups(self, *names):
+        groups = []
+        for name in names:
+            group = mock.MagicMock()
+            group.name = name
+            group.id = '%s-id' % name
+            groups.append(group)
+        self.keystone.groups.list.return_value = groups
+
+    def _admin_group(self, name):
+        patch = mock.patch.object(api.config, 'KEYSTONE_ADMIN_GROUP', name)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _login(self):
+        resp = self.client.post(
+            '/auth', json={'username': 'alice', 'password': 'pw'})
+        self.assertEqual(200, resp.status_code)
+        return self.create_token.call_args.kwargs['additional_claims']
+
+    def test_member_of_admin_group_is_admin(self):
+        self._admin_group('kerbside-admins')
+        self._groups('kerbside', 'kerbside-admins')
+
+        self.assertIs(True, self._login()['kerbside_admin'])
+        self.keystone.users.check_in_group.assert_any_call(
+            'user-id', 'kerbside-admins-id')
+
+    def test_non_member_is_not_admin(self):
+        self._admin_group('kerbside-admins')
+        self._groups('kerbside', 'kerbside-admins')
+
+        def check_in_group(user_id, group_id):
+            if group_id == 'kerbside-admins-id':
+                raise self.not_found()
+
+        self.keystone.users.check_in_group.side_effect = check_in_group
+        self.assertIs(False, self._login()['kerbside_admin'])
+
+    def test_unset_admin_group_makes_nobody_admin(self):
+        self._admin_group('')
+        self._groups('kerbside', 'kerbside-admins')
+
+        self.assertIs(False, self._login()['kerbside_admin'])
+        # Only the access group membership was checked.
+        self.keystone.users.check_in_group.assert_called_once_with(
+            'user-id', 'kerbside-id')
+
+    def test_missing_admin_group_withholds_admin_and_logs(self):
+        self._admin_group('kerbside-admins')
+        self._groups('kerbside')
+
+        self.assertIs(False, self._login()['kerbside_admin'])
+        self.assertIn({'group': 'kerbside-admins'}, self.logged)

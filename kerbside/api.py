@@ -97,8 +97,24 @@ def verify_token(func):
         except NoAuthorizationError as e:
             raise e
 
+        # Keep the verified claims for is_admin() and username()
+        flask.g.jwt_claims = jwt_data
         return func(*args, **kwargs)
     return wrapper
+
+
+def is_admin():
+    """Whether the verified session belongs to a Kerbside administrator.
+
+    Only a claim which is literally True counts, so a session minted before
+    the claim existed is not an administrator.
+    """
+    return flask.g.get('jwt_claims', {}).get('kerbside_admin') is True
+
+
+def username():
+    """The user the verified session was issued to."""
+    return flask.g.get('jwt_claims', {}).get('sub')
 
 
 class DateTimeEncoder(json.JSONEncoder):
@@ -237,9 +253,12 @@ class Auth(sf_api.Resource):
 
         # Ensure the user is in the correct group
         group = None
+        admin_group = None
         for g in service_keystone.groups.list():
             if g.name == config.KEYSTONE_ACCESS_GROUP:
                 group = g
+            if config.KEYSTONE_ADMIN_GROUP and g.name == config.KEYSTONE_ADMIN_GROUP:
+                admin_group = g
         if not group:
             return sf_api.error(500, 'service group not found')
 
@@ -255,13 +274,38 @@ class Auth(sf_api.Resource):
             LOG.error(f'SSL error while communicating with Keystone: {e}')
             return sf_api.error(500, 'Keystone SSL error')
 
+        # Administrators are an optional extra privilege, so a configured
+        # admin group which cannot be found withholds that privilege rather
+        # than refusing the login.
+        is_admin = False
+        if config.KEYSTONE_ADMIN_GROUP:
+            if not admin_group:
+                LOG.with_fields({
+                    'group': config.KEYSTONE_ADMIN_GROUP
+                    }).error('Configured Keystone admin group not found')
+            else:
+                try:
+                    service_keystone.users.check_in_group(
+                        user_id, admin_group.id)
+                    is_admin = True
+                except KEYSTONE_EXCEPTIONS.http.NotFound:
+                    pass
+                except (
+                        requests.exceptions.SSLError,
+                        KEYSTONE_EXCEPTIONS.connection.SSLError
+                        ) as e:
+                    LOG.error(
+                        f'SSL error while communicating with Keystone: {e}')
+                    return sf_api.error(500, 'Keystone SSL error')
+
         # Create a JWT containing the user's keystone token
         token = user_session.get_token()
         access_token = create_access_token(
             identity=username,
             additional_claims={
                 'iss': config.PUBLIC_FQDN,
-                'openstack_token': token
+                'openstack_token': token,
+                'kerbside_admin': is_admin
             },
             expires_delta=datetime.timedelta(minutes=config.API_TOKEN_DURATION))
 

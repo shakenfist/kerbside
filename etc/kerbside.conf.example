@@ -156,6 +156,13 @@ proxy_host_cert_key_path = /etc/pki/CA/certs/proxy-key.pem
 # administrative interface or the REST API.
 # keystone_access_group = kerbside
 
+# The Keystone group whose members are Kerbside administrators.
+# Only administrators may fetch a direct console file, which points
+# the client at the hypervisor with its own SPICE ticket and so
+# bypasses the proxy entirely. Empty means nobody is an
+# administrator and direct console access is refused for everyone.
+# keystone_admin_group =
+
 ####################################################################
 # Network Settings
 ####################################################################
