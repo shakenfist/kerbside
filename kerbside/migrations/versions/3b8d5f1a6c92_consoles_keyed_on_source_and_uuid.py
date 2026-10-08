@@ -1,0 +1,107 @@
+"""key consoles on (source, uuid)
+
+Revision ID: 3b8d5f1a6c92
+Revises: a8d3f6e1c9b2
+
+"""
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision = '3b8d5f1a6c92'
+down_revision = 'a8d3f6e1c9b2'
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    # consoles was keyed on uuid alone, where every other table naming a
+    # console keys on (source, uuid). Two sources publishing the same
+    # identifier -- a hand written static entry is the practical case --
+    # shared one row: the second overwrote the first's hypervisor, ports
+    # and pinned subject but not its source, and either retiring the
+    # identifier deleted it for both (issue #468).
+    #
+    # Existing rows cannot collide on the new key, since the old one was
+    # stricter. A row with no source could never be looked up by the new
+    # one, and every writer has always supplied a source, so any such
+    # row is debris; the next maintenance pass rediscovers anything real.
+    #
+    # consoletokens.uuid references consoles.uuid with a cascading delete,
+    # which on the composite key would delete one source's tokens when
+    # another source retires the same identifier. It is replaced by a
+    # reference to the pair. A token whose pair no longer names a console
+    # is unusable already (authorisation looks the console up by the
+    # same pair) and would violate the new constraint, so it goes. That
+    # includes every token of a console with no source, since NULL equals
+    # nothing, so counting before either delete counts those too.
+    #
+    # Both are said out loud, as the downgrade's deletes are, so that an
+    # operator chasing a missing session afterwards has a trace of them.
+    sourceless = 'FROM consoles WHERE source IS NULL'
+    orphaned = (
+        'FROM consoletokens WHERE NOT EXISTS ('
+        'SELECT 1 FROM consoles WHERE consoles.source = consoletokens.source '
+        'AND consoles.uuid = consoletokens.uuid)')
+    bind = op.get_bind()
+    consoles = bind.execute(sa.text('SELECT COUNT(*) ' + sourceless)).scalar()
+    tokens = bind.execute(sa.text('SELECT COUNT(*) ' + orphaned)).scalar()
+    print('Upgrade drops %d consoles with no source, and %d console tokens '
+          'whose source and identifier name no console; none of them '
+          'could be used' % (consoles, tokens))
+    op.execute('DELETE ' + orphaned)
+    op.execute('DELETE ' + sourceless)
+
+    # MySQL and MariaDB only, like the initial schema this revises,
+    # whose CURRENT_TIMESTAMP(6) default SQLite cannot create.
+    insp = sa.inspect(bind)
+    for fk in insp.get_foreign_keys('consoletokens'):
+        if fk['referred_table'] == 'consoles':
+            op.drop_constraint(fk['name'], 'consoletokens', type_='foreignkey')
+    op.alter_column(
+        'consoles', 'source',
+        existing_type=sa.String(255), nullable=False)
+    op.execute(
+        'ALTER TABLE consoles DROP PRIMARY KEY, ADD PRIMARY KEY (source, uuid)')
+    op.create_foreign_key(
+        'fk_consoletokens_console', 'consoletokens', 'consoles',
+        ['source', 'uuid'], ['source', 'uuid'],
+        onupdate='CASCADE', ondelete='CASCADE')
+
+
+def downgrade() -> None:
+    # The single column key cannot hold an identifier two sources share.
+    # Which source should keep it is not a question the data answers, so
+    # every shared identifier is dropped; the next maintenance pass puts
+    # one of them back, with the sharing this migration removed. Their
+    # tokens are deleted first, explicitly, rather than left to the
+    # cascade.
+    shared = (
+        'SELECT uuid FROM (SELECT uuid FROM consoles GROUP BY uuid '
+        'HAVING COUNT(*) > 1) AS shared')
+    bind = op.get_bind()
+    tokens = bind.execute(sa.text(
+        'SELECT COUNT(*) FROM consoletokens WHERE uuid IN (%s)'
+        % shared)).scalar()
+    consoles = bind.execute(sa.text(
+        'SELECT COUNT(*) FROM consoles WHERE uuid IN (%s)'
+        % shared)).scalar()
+    # Said out loud because it is data loss, and an operator rolling
+    # back otherwise has no trace of the sessions it cost them.
+    print('Downgrade drops %d consoles whose identifier more than one '
+          'source shares, and their %d console tokens; the next '
+          'maintenance pass rediscovers one console for each identifier'
+          % (consoles, tokens))
+    op.execute('DELETE FROM consoletokens WHERE uuid IN (%s)' % shared)
+    op.execute('DELETE FROM consoles WHERE uuid IN (%s)' % shared)
+
+    op.drop_constraint(
+        'fk_consoletokens_console', 'consoletokens', type_='foreignkey')
+    op.execute('ALTER TABLE consoles DROP PRIMARY KEY, ADD PRIMARY KEY (uuid)')
+    op.alter_column(
+        'consoles', 'source',
+        existing_type=sa.String(255), nullable=True)
+    op.create_foreign_key(
+        'consoletokens_ibfk_1', 'consoletokens', 'consoles',
+        ['uuid'], ['uuid'], onupdate='CASCADE', ondelete='CASCADE')

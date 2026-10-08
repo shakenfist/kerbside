@@ -1,11 +1,16 @@
+import io
 from unittest import mock
 import time
 
 from sqlalchemy import create_engine
+from sqlalchemy import event
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 import testtools
 
 from kerbside import db
+from kerbside import util
+from kerbside.sources import static as static_source
 
 
 class SessionTerminationDbTestCase(testtools.TestCase):
@@ -350,22 +355,174 @@ class ConsoleSecretsDbTestCase(testtools.TestCase):
         self.assertIsNone(db.get_console('sf1', 'nosuch'))
 
 
+class ConsoleKeyedOnSourceTestCase(testtools.TestCase):
+    """Two sources publishing one identifier are two consoles (#468).
+
+    The identifier is only unique within the source which published it,
+    and a static source's identifiers are whatever the operator wrote.
+    Keyed on the identifier alone, the second source overwrote the
+    first's hypervisor and ports while the row kept the first's source,
+    so a token issued for one console was relayed to the other.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.engine = create_engine('sqlite://')
+        db.Base.metadata.create_all(
+            self.engine,
+            tables=[db.Console.__table__, db.ConsoleToken.__table__,
+                    db.ProxyChannel.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+        for source, ip, ticket in (('cloud', '10.0.0.1', 'cloud-ticket'),
+                                   ('lab', '10.9.9.9', 'lab-ticket')):
+            self.assertEqual(
+                (db.CONSOLE_ADDED, []),
+                db.add_console(
+                    source=source, uuid='shared', hypervisor='hv',
+                    hypervisor_ip=ip, insecure_port=5900, secure_port=None,
+                    name=source, host_subject=None, ticket=ticket))
+
+    def test_each_source_gets_its_own_console(self):
+        cloud = db.get_console('cloud', 'shared', include_secrets=True)
+        lab = db.get_console('lab', 'shared', include_secrets=True)
+
+        self.assertEqual(('cloud', '10.0.0.1', 'cloud-ticket'),
+                         (cloud['source'], cloud['hypervisor_ip'],
+                          cloud['ticket']))
+        self.assertEqual(('lab', '10.9.9.9', 'lab-ticket'),
+                         (lab['source'], lab['hypervisor_ip'],
+                          lab['ticket']))
+        self.assertEqual(2, len(db.get_consoles(include_audit=False)))
+
+    def test_lookup_under_another_source_finds_nothing(self):
+        self.assertIsNone(db.get_console('elsewhere', 'shared'))
+
+    def test_update_touches_only_its_own_source(self):
+        self.assertEqual(
+            (db.CONSOLE_UPDATED, ['hypervisor_ip']),
+            db.add_console(
+                source='lab', uuid='shared', hypervisor='hv',
+                hypervisor_ip='10.9.9.10', insecure_port=5900,
+                secure_port=None, name='lab', host_subject=None,
+                ticket='lab-ticket'))
+
+        self.assertEqual(
+            '10.0.0.1', db.get_console('cloud', 'shared')['hypervisor_ip'])
+
+    def test_store_ticket_touches_only_its_own_source(self):
+        db.store_console_ticket('lab', 'shared', 'per-request')
+
+        self.assertEqual(
+            'cloud-ticket',
+            db.get_console('cloud', 'shared', include_secrets=True)['ticket'])
+        self.assertEqual(
+            'per-request',
+            db.get_console('lab', 'shared', include_secrets=True)['ticket'])
+
+    def test_remove_touches_only_its_own_source(self):
+        db.remove_console(source='lab', uuid='shared')
+
+        self.assertIsNone(db.get_console('lab', 'shared'))
+        self.assertIsNotNone(db.get_console('cloud', 'shared'))
+
+
+class ConsoleTokenCascadeTestCase(testtools.TestCase):
+    """remove_console() deletes the console's tokens through the database.
+
+    It issues one bulk delete, with no ORM relationship, so the tokens go
+    only because fk_consoletokens_console cascades -- and they must be
+    only that console's: a reference to the identifier alone would also
+    delete another source's tokens for the same identifier (#468).
+    SQLite enforces foreign keys only when asked, so this engine asks.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.engine = create_engine('sqlite://')
+        event.listen(
+            self.engine, 'connect',
+            lambda conn, _: conn.execute('PRAGMA foreign_keys=ON'))
+        db.Base.metadata.create_all(
+            self.engine,
+            tables=[db.Console.__table__, db.ConsoleToken.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+        for source in ('cloud', 'lab'):
+            db.add_console(
+                source=source, uuid='shared', hypervisor='hv',
+                hypervisor_ip='10.0.0.1', insecure_port=5900,
+                secure_port=None, name=source, host_subject=None,
+                ticket='ticket')
+            db.add_token('%s-token' % source, None, source, 'shared',
+                         0, 2 ** 31)
+
+    def test_remove_deletes_only_that_consoles_tokens(self):
+        db.remove_console(source='lab', uuid='shared')
+
+        self.assertEqual([], db.get_tokens_by_console('lab', 'shared'))
+        self.assertEqual(
+            ['cloud-token'],
+            [t['token'] for t in db.get_tokens_by_console('cloud', 'shared')])
+
+    def test_a_token_needs_its_console(self):
+        self.assertRaises(
+            IntegrityError, db.add_token, 'orphan', None, 'elsewhere',
+            'shared', 0, 2 ** 31)
+
+
+class StaticSourceRoundTripTestCase(testtools.TestCase):
+    """A static entry must read back as unchanged on the next pass.
+
+    YAML types an unquoted 123456 as an int and a quoted "5910" as a
+    str, where the database returns the column's type. util.load_sources()
+    reads both as text and the static source makes the port an int;
+    unnormalised, each would be reported as changed and audited on every
+    60 second pass, forever.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.engine = create_engine('sqlite://')
+        db.Base.metadata.create_all(
+            self.engine, tables=[db.Console.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+    def test_yaml_typed_entry_is_stable_across_passes(self):
+        text = (
+            '- source: lab\n'
+            '  type: static\n'
+            '  consoles:\n'
+            '    - {uuid: 1001, name: 4, hypervisor: bench,\n'
+            '       hypervisor_ip: 10.0.0.1, insecure_port: 5910,\n'
+            '       secure_port: "5911", ticket: 012345, host_subject: null}\n')
+        results = []
+        for _ in range(2):
+            source = static_source.StaticSource(
+                **util.load_sources(io.StringIO(text))[0])
+            self.assertFalse(source.errored)
+            for console in source():
+                results.append(db.add_console(**console))
+
+        self.assertEqual(
+            [(db.CONSOLE_ADDED, []), (db.CONSOLE_UPDATED, [])], results)
+
+
 class AddConsoleUpdateTestCase(testtools.TestCase):
     """Pin which fields add_console() refreshes on an existing console.
 
-    This is a change detector, deliberately. The update branch assigns
-    every mutable field except the ticket, which is set only when the
-    row is first inserted, and three documents now state that as a
-    property an operator has to work around: the standalone use case
-    page, the static source section of docs/console-sources.md, and
-    the header comment in kerbside/sources/static.py. Issue #463 is
-    open to make the update branch carry the ticket like everything
-    else.
-
-    So the assertion below is not an endorsement. It exists so that
-    fixing #463 fails here rather than silently falsifying all three
-    documents, and so that someone extending the update branch cannot
-    quietly leave a new field out the way the ticket was left out.
+    The update branch assigns every mutable field, and the ticket too
+    when the caller supplies one (issue #463), and reports the
+    names of the fields that changed (issue #459). A caller which passes
+    no ticket -- every driver but the static one -- must leave the
+    stored ticket alone, because oVirt writes a per-request ticket to
+    the same column and the next maintenance pass would erase it.
     """
 
     def setUp(self):
@@ -397,15 +554,18 @@ class AddConsoleUpdateTestCase(testtools.TestCase):
         kwargs.update(overrides)
         return db.add_console(**kwargs)
 
-    def test_insert_then_update_keeps_the_original_ticket(self):
-        self.assertTrue(self._add())
+    def test_insert_then_update_refreshes_every_field(self):
+        self.assertEqual((db.CONSOLE_ADDED, []), self._add())
         self.assertEqual('first-password', self._console().ticket)
 
-        # Every field the caller passes changes, except the ticket.
-        self.assertFalse(self._add(
-            hypervisor='bench2', hypervisor_ip='10.0.0.2',
-            insecure_port=5901, secure_port=5902, name='second name',
-            host_subject='CN=bench2', ticket='second-password'))
+        self.assertEqual(
+            (db.CONSOLE_UPDATED,
+             ['host_subject', 'hypervisor', 'hypervisor_ip',
+              'insecure_port', 'name', 'secure_port', 'ticket']),
+            self._add(
+                hypervisor='bench2', hypervisor_ip='10.0.0.2',
+                insecure_port=5901, secure_port=5902, name='second name',
+                host_subject='CN=bench2', ticket='second-password'))
 
         console = self._console()
         self.assertEqual('bench2', console.hypervisor)
@@ -414,8 +574,27 @@ class AddConsoleUpdateTestCase(testtools.TestCase):
         self.assertEqual(5902, console.secure_port)
         self.assertEqual('second name', console.name)
         self.assertEqual('CN=bench2', console.host_subject)
+        self.assertEqual('second-password', console.ticket)
 
-        # The documented gap, issue #463. When this assertion fails
-        # because #463 has been fixed, update the three documents named
-        # in this class's docstring before changing it.
-        self.assertEqual('first-password', console.ticket)
+    def test_unchanged_console_reports_no_fields(self):
+        # Every maintenance pass re-sees every console; only a real
+        # edit may be reported, or the log fills with noise (#459).
+        self.assertEqual((db.CONSOLE_ADDED, []), self._add())
+        self.assertEqual((db.CONSOLE_UPDATED, []), self._add())
+
+    def test_changed_fields_are_named_individually(self):
+        self.assertEqual((db.CONSOLE_ADDED, []), self._add())
+        self.assertEqual(
+            (db.CONSOLE_UPDATED, ['insecure_port', 'name']),
+            self._add(name='second name', insecure_port=5901))
+        self.assertEqual('first-password', self._console().ticket)
+
+    def test_absent_ticket_leaves_the_stored_one_alone(self):
+        # The oVirt shape: enumeration yields no ticket, and the .vv
+        # handler stores a fresh one per request. Not supplying one is
+        # not a change to it either.
+        self.assertEqual((db.CONSOLE_ADDED, []), self._add(ticket=None))
+        db.store_console_ticket('lab', 'console-1', 'per-request')
+
+        self.assertEqual((db.CONSOLE_UPDATED, []), self._add(ticket=None))
+        self.assertEqual('per-request', self._console().ticket)

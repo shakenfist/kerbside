@@ -62,14 +62,101 @@ def _digest(value):
     return '<%d bytes, sha256:%s>' % (len(value), digest)
 
 
+# The sources.yaml fields _parse_sources() reads itself, as opposed to
+# those only a source driver reads. All of them are stored as strings.
+_SOURCE_REQUIRED_FIELDS = ('source', 'type')
+_SOURCE_OPTIONAL_FIELDS = ('url', 'username', 'password', 'project_name',
+                           'user_domain_id', 'project_domain_id', 'ca_cert')
+
+
+def _load_sources():
+    """Read and shape-check sources.yaml, or return None if it is unusable.
+
+    None means "this pass learned nothing", and the caller must then leave
+    the database exactly as it is: it holds the last configuration that
+    did load, which is what the deployment keeps running on until the
+    file is repaired. A file which loads but is not a list of entries
+    each naming a source is refused whole rather than entry by entry,
+    because the cleanup at the end of a pass deletes every source it did
+    not see -- an entry which cannot be identified could be any of them.
+    An operator who means "no sources" writes the empty list.
+    """
+    path = config.SOURCES_PATH
+    try:
+        with open(path) as f:
+            sources = util.load_sources(f)
+    except FileNotFoundError:
+        LOG.error(f'Sources configuration at {path} does not exist!')
+        return None
+    except OSError as e:
+        LOG.error(f'Sources configuration at {path} could not be read: '
+                  f'{e.strerror}')
+        return None
+    except yaml.MarkedYAMLError as e:
+        # Never str(e): it quotes the offending line of the file, and in
+        # this file that is as likely as not a password or a ticket. The
+        # problem, its context and the position are enough to find it.
+        mark = e.problem_mark
+        LOG.with_fields({
+            'problem': e.problem,
+            'context': e.context,
+            'line': mark.line + 1 if mark else None,
+            'column': mark.column + 1 if mark else None,
+            }).error(f'Sources configuration at {path} is not valid YAML; '
+                     f'keeping the last configuration which loaded')
+        return None
+    except yaml.YAMLError as e:
+        LOG.error(f'Sources configuration at {path} is not valid YAML '
+                  f'({type(e).__name__}); keeping the last configuration '
+                  f'which loaded')
+        return None
+
+    if not isinstance(sources, list):
+        LOG.error(f'Sources configuration at {path} must be a list of '
+                  f'sources, got {type(sources).__name__}; write "[]" for '
+                  f'no sources. Keeping the last configuration which loaded')
+        return None
+
+    for index, source in enumerate(sources):
+        if not isinstance(source, dict):
+            LOG.error(f'Sources configuration at {path}: entry {index} must '
+                      f'be a mapping, got {type(source).__name__}; keeping '
+                      f'the last configuration which loaded')
+            return None
+        # Name the keys, never the entry: it may carry a password.
+        missing = [k for k in _SOURCE_REQUIRED_FIELDS if k not in source]
+        if missing:
+            LOG.error(f'Sources configuration at {path}: entry {index} is '
+                      f'missing {missing} (keys present: '
+                      f'{sorted(source.keys())}); keeping the last '
+                      f'configuration which loaded')
+            return None
+
+        # Every field _parse_sources() hands to the database or hashes
+        # before reaching a driver's own error handling is normalised
+        # here, so a list or a mapping cannot crash the pass, and an
+        # unquoted number compares equal to the string stored for it.
+        # Name the field and its type, never its value.
+        for field in _SOURCE_REQUIRED_FIELDS + _SOURCE_OPTIONAL_FIELDS:
+            if field in _SOURCE_OPTIONAL_FIELDS and source.get(field) is None:
+                continue
+            try:
+                source[field] = util.yaml_string(source[field])
+            except util.YAMLScalarError as e:
+                LOG.error(f'Sources configuration at {path}: entry {index} '
+                          f'field {field} {e}; keeping the last '
+                          f'configuration which loaded')
+                return None
+
+    return sources
+
+
 def _parse_sources():
     # TODO(mikal): this needs to be able to handle there being more than one
     # proxy behind a load balancer... That is, we should not scrape the clouds
     # unless no one has done it recently.
-    if not os.path.exists(config.SOURCES_PATH):
-        LOG.error(
-            f'Sources configuration at {config.SOURCES_PATH} does not exist!'
-            )
+    sources = _load_sources()
+    if sources is None:
         return
 
     # What we learned about each source this pass. The cleanup at the end
@@ -88,24 +175,73 @@ def _parse_sources():
     for console in kerbside_db.get_consoles():
         extra_consoles[(console['source'], console['uuid'])] = console
 
-    with open(config.SOURCES_PATH) as f:
-        sources = yaml.safe_load(f)
-        for source in sources:
-            source_count = 0
-            lookup = None
-            configured_sources.add(source['source'])
+    for source in sources:
+        source_count = 0
+        lookup = None
+        configured_sources.add(source['source'])
 
-            if source['source'] in extra_sources:
-                del extra_sources[source['source']]
-            # The comparison below includes the password, so this
-            # one lookup asks for the secrets.
-            stored_source = kerbside_db.get_source(
-                source['source'], include_secrets=True)
+        if source['source'] in extra_sources:
+            del extra_sources[source['source']]
+        # The comparison below includes the password, so this
+        # one lookup asks for the secrets.
+        stored_source = kerbside_db.get_source(
+            source['source'], include_secrets=True)
 
-            # If this source is new, record it with the configured CA cert
-            # (if any).
-            if not stored_source:
-                LOG.info('Creating new source %s' % source['source'])
+        # If this source is new, record it with the configured CA cert
+        # (if any).
+        if not stored_source:
+            LOG.info('Creating new source %s' % source['source'])
+            kerbside_db.add_source(
+                source['source'], source['type'], source.get('url'),
+                source.get('username'), source.get('password'),
+                project_name=source.get('project_name'),
+                user_domain_id=source.get('user_domain_id'),
+                project_domain_id=source.get('project_domain_id'),
+                errored=False, ca_cert=source.get('ca_cert'))
+
+        # Ensure that the sources.yaml configuration for the source has
+        # not changed.
+        else:
+            dirty = False
+            for field in ['type', 'url', 'username', 'password', 'project_name',
+                          'user_domain_id', 'project_domain_id',
+                          'deleted', 'ca_cert']:
+                if field == 'deleted':
+                    new_value = False
+                else:
+                    new_value = source.get(field)
+
+                if stored_source[field] != new_value:
+                    # Log that a secret changed, never its value.
+                    if field in kerbside_db.SOURCE_SECRET_FIELDS:
+                        old_logged = new_logged = '<redacted>'
+                    elif field == 'ca_cert':
+                        # Public, so this is volume rather than
+                        # disclosure -- but a rotation would put two
+                        # multi kilobyte PEMs, newlines and all, in
+                        # one record. A digest says the CA changed
+                        # and tells the two apart, which is all an
+                        # operator needs from a log line.
+                        old_logged = _digest(stored_source[field])
+                        new_logged = _digest(new_value)
+                    else:
+                        old_logged = stored_source[field]
+                        # new_value, not source.get(field): the two
+                        # differ for 'deleted', where the comparison
+                        # above is against a hardcoded False and the
+                        # yaml has no such key at all.
+                        new_logged = new_value
+
+                    LOG.with_fields({
+                        'field': field,
+                        'old': old_logged,
+                        'new': new_logged
+                        }).info('Source configuration changed for source %s'
+                                % source['source'])
+                    dirty = True
+
+            if dirty:
+                LOG.info('Updating source %s' % source['source'])
                 kerbside_db.add_source(
                     source['source'], source['type'], source.get('url'),
                     source.get('username'), source.get('password'),
@@ -114,118 +250,84 @@ def _parse_sources():
                     project_domain_id=source.get('project_domain_id'),
                     errored=False, ca_cert=source.get('ca_cert'))
 
-            # Ensure that the sources.yaml configuration for the source has
-            # not changed.
+        # Now lookup consoles.
+        try:
+            if source['type'] == 'shakenfist':
+                lookup = shakenfist_source.ShakenFistSource(**source)
+            elif source['type'] == 'ovirt':
+                lookup = ovirt_source.oVirtSource(**source)
+            elif source['type'] == 'static':
+                lookup = static_source.StaticSource(**source)
+            elif source['type'] == 'openstack':
+                # OpenStack now uses auth tokens instead of console scraping
+                skipped_sources.add(source['source'])
+                continue
             else:
-                dirty = False
-                for field in ['type', 'url', 'username', 'password', 'project_name',
-                              'user_domain_id', 'project_domain_id',
-                              'deleted', 'ca_cert']:
-                    if field == 'deleted':
-                        new_value = False
-                    else:
-                        new_value = source.get(field)
-
-                    if stored_source[field] != new_value:
-                        # Log that a secret changed, never its value.
-                        if field in kerbside_db.SOURCE_SECRET_FIELDS:
-                            old_logged = new_logged = '<redacted>'
-                        elif field == 'ca_cert':
-                            # Public, so this is volume rather than
-                            # disclosure -- but a rotation would put two
-                            # multi kilobyte PEMs, newlines and all, in
-                            # one record. A digest says the CA changed
-                            # and tells the two apart, which is all an
-                            # operator needs from a log line.
-                            old_logged = _digest(stored_source[field])
-                            new_logged = _digest(new_value)
-                        else:
-                            old_logged = stored_source[field]
-                            # new_value, not source.get(field): the two
-                            # differ for 'deleted', where the comparison
-                            # above is against a hardcoded False and the
-                            # yaml has no such key at all.
-                            new_logged = new_value
-
-                        LOG.with_fields({
-                            'field': field,
-                            'old': old_logged,
-                            'new': new_logged
-                            }).info('Source configuration changed for source %s'
-                                    % source['source'])
-                        dirty = True
-
-                if dirty:
-                    LOG.info('Updating source %s' % source['source'])
-                    kerbside_db.add_source(
-                        source['source'], source['type'], source.get('url'),
-                        source.get('username'), source.get('password'),
-                        project_name=source.get('project_name'),
-                        user_domain_id=source.get('user_domain_id'),
-                        project_domain_id=source.get('project_domain_id'),
-                        errored=False, ca_cert=source.get('ca_cert'))
-
-            # Now lookup consoles.
-            try:
-                if source['type'] == 'shakenfist':
-                    lookup = shakenfist_source.ShakenFistSource(**source)
-                elif source['type'] == 'ovirt':
-                    lookup = ovirt_source.oVirtSource(**source)
-                elif source['type'] == 'static':
-                    lookup = static_source.StaticSource(**source)
-                elif source['type'] == 'openstack':
-                    # OpenStack now uses auth tokens instead of console scraping
-                    skipped_sources.add(source['source'])
-                    continue
-                else:
-                    LOG.error('Unknown source type %s' % source['type'])
-                    kerbside_db.set_source_error_state(source['source'], True)
-                    continue
-
-                if lookup.errored:
-                    LOG.error('Source initialization failed for source %s' % source['source'])
-                    kerbside_db.set_source_error_state(source['source'], True)
-                    continue
-
-                for console in lookup():
-                    # This dict comes from the source driver, not from
-                    # db.get_console(), so the export_public() allowlist
-                    # has not been anywhere near it: a static source
-                    # yields the operator configured SPICE password here
-                    # and the maintenance loop runs every 60 seconds.
-                    # Redact the same way the source comparison above
-                    # does, then store the unredacted dict.
-                    LOG.with_fields(
-                        {k: v for k, v in console.items()
-                         if k not in kerbside_db.CONSOLE_SECRET_FIELDS}
-                        ).info('Found console')
-                    console_is_new = kerbside_db.add_console(**console)
-                    if console_is_new:
-                        kerbside_db.add_audit_event(
-                            console['source'], console['uuid'], None, None, None, None,
-                            'Discovered new console'
-                        )
-                    k = (console['source'], console['uuid'])
-                    if k in extra_consoles:
-                        del extra_consoles[k]
-                    source_count += 1
-
-            except Exception as e:
-                LOG.warning('Exception while querying source %s: %s' % (source['source'], e))
+                LOG.error('Unknown source type %s' % source['type'])
                 kerbside_db.set_source_error_state(source['source'], True)
                 continue
 
-            finally:
-                if lookup:
-                    lookup.close()
+            if lookup.errored:
+                LOG.error('Source initialization failed for source %s' % source['source'])
+                kerbside_db.set_source_error_state(source['source'], True)
+                continue
 
-            LOG.info('Source %s yielded %d consoles' % (source['source'], source_count))
-            kerbside_db.set_source_error_state(source['source'], False)
+            for console in lookup():
+                # This dict comes from the source driver, not from
+                # db.get_console(), so the export_public() allowlist
+                # has not been anywhere near it: a static source
+                # yields the operator configured SPICE password here
+                # and the maintenance loop runs every 60 seconds.
+                # Redact the same way the source comparison above
+                # does, then store the unredacted dict.
+                LOG.with_fields(
+                    {k: v for k, v in console.items()
+                     if k not in kerbside_db.CONSOLE_SECRET_FIELDS}
+                    ).info('Found console')
+                change, changed = kerbside_db.add_console(**console)
+                if change == kerbside_db.CONSOLE_ADDED:
+                    kerbside_db.add_audit_event(
+                        console['source'], console['uuid'], None, None, None, None,
+                        'Discovered new console'
+                    )
+                elif changed:
+                    # An edit to an existing console -- a static
+                    # entry repointed at another host or port, or
+                    # its password rotated -- would otherwise be
+                    # applied without a trace (issue #459). Name
+                    # the fields only: one of them may be the
+                    # ticket.
+                    LOG.with_fields({
+                        'source': console['source'],
+                        'uuid': console['uuid'],
+                        'fields': changed
+                        }).info('Console configuration changed')
+                    kerbside_db.add_audit_event(
+                        console['source'], console['uuid'], None, None, None, None,
+                        'Console configuration changed: %s'
+                        % ', '.join(changed)
+                    )
+                k = (console['source'], console['uuid'])
+                if k in extra_consoles:
+                    del extra_consoles[k]
+                source_count += 1
 
-            # Reached only by falling off the end of the try block, so this
-            # source was enumerated all the way to exhaustion. Every early
-            # exit above continues past this line by construction.
-            scraped_sources.add(source['source'])
+        except Exception as e:
+            LOG.warning('Exception while querying source %s: %s' % (source['source'], e))
+            kerbside_db.set_source_error_state(source['source'], True)
+            continue
+
+        finally:
+            if lookup:
+                lookup.close()
+
+        LOG.info('Source %s yielded %d consoles' % (source['source'], source_count))
+        kerbside_db.set_source_error_state(source['source'], False)
+
+        # Reached only by falling off the end of the try block, so this
+        # source was enumerated all the way to exhaustion. Every early
+        # exit above continues past this line by construction.
+        scraped_sources.add(source['source'])
 
     # Consoles we did not re-see this pass. "I did not see it" only means
     # "it is gone" for a source we actually enumerated: a source which
@@ -491,7 +593,7 @@ def _demo_sources_or_fail():
 
     try:
         with open(config.SOURCES_PATH) as f:
-            sources = yaml.safe_load(f)
+            sources = util.load_sources(f)
     except (OSError, yaml.YAMLError) as e:
         _fail('Refusing to mint: could not read sources from %s: %s'
               % (config.SOURCES_PATH, e))

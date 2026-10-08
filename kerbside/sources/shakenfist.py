@@ -1,7 +1,6 @@
 import importlib
 import json
 import time
-import yaml
 from shakenfist_utilities import logs
 
 from . import base
@@ -209,7 +208,7 @@ def refresh_all_signing_keys():
             return
 
     with open(config.SOURCES_PATH) as f:
-        sources = yaml.safe_load(f) or []
+        sources = util.load_sources(f) or []
 
     for source in sources:
         if source.get('type') != 'shakenfist':

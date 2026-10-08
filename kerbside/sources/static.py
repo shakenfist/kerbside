@@ -30,24 +30,28 @@
 # Optional fields (default to None):
 #   secure_port, host_subject
 #
+# util.load_sources() reads every unquoted number exactly as written, so
+# ticket: 012345 is the text "012345" rather than YAML 1.1's octal 5349,
+# and a port quoted or not ("5910", 5910) is that port.  Any other type
+# -- a list, a mapping, a bool, a port outside 1 to 65535 -- errors the
+# source.
+#
 # Notes:
 # - Tickets are persisted to the Console DB at enumeration time via
 #   db.add_console(..., ticket=...).  No per-request driver
 #   instantiation is needed at .vv-generation time.
 # - The consoles list is re-read every 60 seconds by the maintenance
 #   loop in main.py, and in both directions: an entry added to the
-#   file is discovered, and one removed from it is deleted.
-# - That reload does not carry a changed ticket, despite the note
-#   above: db.add_console() assigns the ticket only when it inserts
-#   the console, so editing the ticket of an entry which already
-#   exists is parsed and then discarded.  Remove the entry, let the
-#   removal land, and add it back.  See issue #463.
+#   file is discovered, and one removed from it is deleted.  An
+#   edited field of an existing entry, the ticket included, is
+#   applied on the next pass and audit logged as 'Console
+#   configuration changed' with the names of the changed fields.
 # - Duplicate UUIDs within a single static source are tolerated with
 #   a warning; the last definition wins.
-# - Validation catches a malformed entry and errors the whole source,
-#   which retains what it had published.  It does not catch an absent
-#   consoles key: that reads as an empty list, enumerates cleanly and
-#   deletes every console the source had.  See issue #464.
+# - Validation catches a malformed entry, or an absent or misspelled
+#   consoles key, and errors the whole source, which retains what it
+#   had published.  Only an explicitly empty list ('consoles: []')
+#   means the source has no consoles, and deletes what it had.
 
 from shakenfist_utilities import logs
 
@@ -68,6 +72,19 @@ _OPTIONAL_FIELDS = {
     'host_subject': None,
 }
 
+# How each field is normalised to the type its database column stores.
+# See util.yaml_string() for why this matters.
+_NORMALISERS = {
+    'uuid': util.yaml_string,
+    'name': util.yaml_string,
+    'hypervisor': util.yaml_string,
+    'hypervisor_ip': util.yaml_string,
+    'insecure_port': util.yaml_port,
+    'ticket': util.yaml_string,
+    'secure_port': util.yaml_port,
+    'host_subject': util.yaml_string,
+}
+
 
 class StaticSource(base.BaseSource):
     """Console source that reads its mapping from a static in-line list.
@@ -83,7 +100,20 @@ class StaticSource(base.BaseSource):
         self._consoles_by_uuid = {}
 
         source_name = self.args.get('source', '<unknown>')
-        consoles = self.args.get('consoles', [])
+        # Absent is an error rather than an empty list. A source which
+        # enumerates cleanly with nothing in it has every console it
+        # had published deleted by the maintenance loop, so a deleted
+        # or misspelled key must fail closed like a malformed entry
+        # does. An operator who means "no consoles" writes the empty
+        # list explicitly.
+        if 'consoles' not in self.args:
+            LOG.error(
+                'Static source %s: no "consoles" key (keys present: %s); '
+                'write "consoles: []" for a source with no consoles'
+                % (source_name, sorted(self.args.keys())))
+            self.errored = True
+            return
+        consoles = self.args['consoles']
 
         if not isinstance(consoles, list):
             LOG.error(
@@ -116,23 +146,33 @@ class StaticSource(base.BaseSource):
                 self.errored = True
                 return
 
-            uuid = entry['uuid']
+            console = {'source': source_name}
+            for field in _REQUIRED_FIELDS:
+                console[field] = entry[field]
+            for field, default in _OPTIONAL_FIELDS.items():
+                console[field] = entry.get(field, default)
+
+            # Name the field and its type, never its value, which may be
+            # the ticket.
+            for field, normalise in _NORMALISERS.items():
+                if field in _OPTIONAL_FIELDS and console[field] is None:
+                    continue
+                try:
+                    console[field] = normalise(console[field])
+                except util.YAMLScalarError as e:
+                    LOG.error(
+                        'Static source %s: console field %s %s '
+                        '(entry uuid: %s)'
+                        % (source_name, field, e,
+                           console['uuid'] if field != 'uuid' else '<invalid>'))
+                    self.errored = True
+                    return
+
+            uuid = console['uuid']
             if uuid in self._consoles_by_uuid:
                 LOG.warning(
                     'Static source %s: duplicate uuid %s — '
                     'last definition wins' % (source_name, uuid))
-
-            console = {
-                'uuid': uuid,
-                'source': source_name,
-                'name': entry['name'],
-                'hypervisor': entry['hypervisor'],
-                'hypervisor_ip': entry['hypervisor_ip'],
-                'insecure_port': entry['insecure_port'],
-                'ticket': entry['ticket'],
-            }
-            for field, default in _OPTIONAL_FIELDS.items():
-                console[field] = entry.get(field, default)
 
             self._consoles_by_uuid[uuid] = console
 

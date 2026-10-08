@@ -19,7 +19,6 @@ import os
 import requests
 from webargs import fields
 from webargs.flaskparser import use_kwargs
-import yaml
 
 from shakenfist_utilities import api as sf_api, logs
 
@@ -610,8 +609,9 @@ class ConsolesProxyVirtViewer(sf_api.Resource):
         # types (shakenfist, openstack) manage tickets separately
         # and receive an empty string as a no-op.
         if s['type'] == 'static':
-            # Ticket already stored by StaticSource.__call__() via
-            # db.add_console(..., ticket=...).  Leave it intact.
+            # Ticket already stored by the maintenance pass via
+            # db.add_console(..., ticket=...), which also applies a
+            # ticket edited in sources.yaml.  Leave it intact.
             pass
         elif s['type'] == 'ovirt':
             ticket = ''
@@ -711,7 +711,7 @@ class NovaToken(sf_api.Resource):
                 return sf_api.error(500, 'Keystone setup failure')
 
         with open(config.SOURCES_PATH) as f:
-            sources = yaml.safe_load(f)
+            sources = util.load_sources(f)
             for source in sources:
                 if source['type'] != 'openstack':
                     continue
@@ -891,11 +891,11 @@ class SfToken(sf_api.Resource):
         # are scraped (every 60s), never created here, and a token outlives a
         # scrape gap -- so a valid token for a not-yet-scraped console must
         # 404 WITHOUT burning its single-use jti, leaving a later retry able
-        # to succeed once the console appears. get_console keys on uuid alone,
-        # so assert the row's source matches the source whose key verified the
-        # token (defence against uuid reuse across sources).
+        # to succeed once the console appears. The lookup is keyed on the
+        # source whose key verified the token as well as the uuid, so another
+        # source publishing the same uuid cannot answer it.
         c = db.get_console(claims['source'], claims['sub'])
-        if c is None or c.get('source') != claims['source']:
+        if c is None:
             db.add_audit_event(
                 claims['source'], claims['sub'], None, None, None, None,
                 'Rejected Shaken Fist console token: console not found')

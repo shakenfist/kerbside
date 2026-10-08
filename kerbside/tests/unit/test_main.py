@@ -5,6 +5,8 @@ import tempfile
 import testtools
 import yaml
 
+from kerbside import db
+
 # UUID shared across the static-source dispatch tests.
 _STATIC_CONSOLE_UUID = 'cccccccc-0000-0000-0000-000000000001'
 
@@ -52,7 +54,7 @@ class ParseSourcesTestCase(testtools.TestCase):
         self.addCleanup(db_set_error_patcher.stop)
 
         db_add_console_patcher = mock.patch('kerbside.db.add_console',
-                                            return_value=True)
+                                            return_value=(db.CONSOLE_ADDED, []))
         self.mock_db_add_console = db_add_console_patcher.start()
         self.addCleanup(db_add_console_patcher.stop)
 
@@ -107,18 +109,7 @@ class ParseSourcesTestCase(testtools.TestCase):
         mock_lookup.return_value = consoles
         return mock_lookup
 
-    @mock.patch('os.path.exists', return_value=False)
-    def test_parse_sources_no_config_file(self, mock_exists):
-        from kerbside import main
-
-        fake_config.SOURCES_PATH = '/nonexistent/sources.yaml'
-        main._parse_sources()
-
-        # Should not attempt to add any sources if config file doesn't exist
-        self.assertFalse(self.mock_db_add_source.called)
-
-    @mock.patch('os.path.exists', return_value=True)
-    def test_parse_sources_new_shakenfist_source(self, mock_exists):
+    def test_parse_sources_new_shakenfist_source(self):
         from kerbside import main
 
         with self._create_sources_yaml([{
@@ -142,8 +133,7 @@ class ParseSourcesTestCase(testtools.TestCase):
                 ca_cert=None
             )
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_parse_sources_update_existing_source(self, mock_exists):
+    def test_parse_sources_update_existing_source(self):
         from kerbside import main
 
         with self._create_sources_yaml([{
@@ -180,8 +170,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_db_get_source.assert_called_once_with(
                 'test-sf', include_secrets=True)
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_parse_sources_does_not_log_a_changed_password(self, mock_exists):
+    def test_parse_sources_does_not_log_a_changed_password(self):
         from kerbside import main
 
         with self._create_sources_yaml([{
@@ -222,8 +211,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.assertNotIn('oldsecret', repr(logged))
             self.assertNotIn('newsecret', repr(logged))
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_parse_sources_logs_the_value_it_compared(self, mock_exists):
+    def test_parse_sources_logs_the_value_it_compared(self):
         from kerbside import main
 
         with self._create_sources_yaml([{
@@ -263,8 +251,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.assertIn(
                 {'field': 'deleted', 'old': True, 'new': False}, logged)
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_parse_sources_digests_a_changed_ca_cert(self, mock_exists):
+    def test_parse_sources_digests_a_changed_ca_cert(self):
         """A CA rotation reports a digest rather than two PEMs.
 
         ca_cert is public, so this is log volume rather than
@@ -315,8 +302,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.assertNotIn('a' * 100, repr(logged))
             self.assertNotIn('b' * 100, repr(logged))
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_parse_sources_openstack_skipped(self, mock_exists):
+    def test_parse_sources_openstack_skipped(self):
         from kerbside import main
 
         with self._create_sources_yaml([{
@@ -338,8 +324,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.assertFalse(self.mock_shakenfist_source.called)
             self.assertFalse(self.mock_ovirt_source.called)
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_parse_sources_with_consoles(self, mock_exists):
+    def test_parse_sources_with_consoles(self):
         from kerbside import main
 
         with self._create_sources_yaml([{
@@ -364,14 +349,13 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_shakenfist_source.return_value = self._mock_source_lookup(
                 consoles=[mock_console])
 
-            self.mock_db_add_console.return_value = True
+            self.mock_db_add_console.return_value = (db.CONSOLE_ADDED, [])
             main._parse_sources()
             self.mock_db_add_console.assert_called_once_with(**mock_console)
             # Should log audit event for new console
             self.mock_db_add_audit_event.assert_called()
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_parse_sources_unknown_type(self, mock_exists):
+    def test_parse_sources_unknown_type(self):
         from kerbside import main
 
         with self._create_sources_yaml([{
@@ -387,8 +371,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             # Should set error state for unknown source type
             self.mock_db_set_source_error_state.assert_called_with('test-unknown', True)
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_parse_sources_lookup_exception(self, mock_exists):
+    def test_parse_sources_lookup_exception(self):
         from kerbside import main
 
         with self._create_sources_yaml([{
@@ -406,8 +389,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             # Should set error state when exception occurs
             self.mock_db_set_source_error_state.assert_called_with('test-sf', True)
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_parse_sources_cleanup_extra_consoles(self, mock_exists):
+    def test_parse_sources_cleanup_extra_consoles(self):
         from kerbside import main
 
         with self._create_sources_yaml([{
@@ -433,8 +415,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_db_remove_console.assert_called_once_with(
                 source='test-sf', uuid='old-console-uuid')
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_cleanup_does_not_log_a_console_ticket(self, mock_exists):
+    def test_cleanup_does_not_log_a_console_ticket(self):
         """The cleanup line is redacted rather than trusting its source.
 
         This dict does come from db.get_consoles(), so today it is
@@ -482,9 +463,8 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_db_remove_console.assert_called_once_with(
                 source='test-static', uuid='old-console-uuid')
 
-    @mock.patch('os.path.exists', return_value=True)
     def test_source_construction_failure_retains_the_inventory(
-            self, mock_exists):
+            self):
         """A source which raises must not have its consoles deleted.
 
         The cleanup infers "this console is gone" from "I did not see it
@@ -519,8 +499,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_db_set_source_error_state.assert_called_with(
                 'test-sf', True)
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_partial_scrape_retains_the_inventory(self, mock_exists):
+    def test_partial_scrape_retains_the_inventory(self):
         """A generator which raises part way through retains everything.
 
         This is the interesting failure: by the time the exception
@@ -564,8 +543,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_db_set_source_error_state.assert_called_with(
                 'test-sf', True)
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_errored_source_retains_the_inventory(self, mock_exists):
+    def test_errored_source_retains_the_inventory(self):
         """A source which fails to initialise keeps its consoles."""
         from kerbside import main
 
@@ -589,8 +567,7 @@ class ParseSourcesTestCase(testtools.TestCase):
 
             self.assertFalse(self.mock_db_remove_console.called)
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_unknown_source_type_retains_the_inventory(self, mock_exists):
+    def test_unknown_source_type_retains_the_inventory(self):
         """An unrecognised type is not evidence its consoles are gone."""
         from kerbside import main
 
@@ -610,8 +587,7 @@ class ParseSourcesTestCase(testtools.TestCase):
 
             self.assertFalse(self.mock_db_remove_console.called)
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_openstack_consoles_are_retained(self, mock_exists):
+    def test_openstack_consoles_are_retained(self):
         """Openstack sources are not scraped, so nothing is inferred.
 
         This used to be a hardcoded source-type check in the cleanup. It
@@ -641,8 +617,7 @@ class ParseSourcesTestCase(testtools.TestCase):
 
             self.assertFalse(self.mock_db_remove_console.called)
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_a_failing_source_does_not_affect_a_healthy_one(self, mock_exists):
+    def test_a_failing_source_does_not_affect_a_healthy_one(self):
         """Retention is per source, not all or nothing.
 
         A healthy source's stale consoles must still be cleaned up while
@@ -679,8 +654,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_db_remove_console.assert_called_once_with(
                 source='healthy-static', uuid='drop-me')
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_removed_source_still_has_its_consoles_deleted(self, mock_exists):
+    def test_removed_source_still_has_its_consoles_deleted(self):
         """A source deleted from the configuration is the exception.
 
         It is never scraped, but it is genuinely gone: the source row is
@@ -716,8 +690,7 @@ class ParseSourcesTestCase(testtools.TestCase):
                 source='departed-sf', uuid='orphan-uuid')
             self.mock_db_delete_source.assert_called_once_with('departed-sf')
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_orphaned_consoles_are_cleaned_up(self, mock_exists):
+    def test_orphaned_consoles_are_cleaned_up(self):
         """A console whose source is gone from everywhere is deleted.
 
         get_sources() filters out soft deleted rows, so a source removed
@@ -753,8 +726,7 @@ class ParseSourcesTestCase(testtools.TestCase):
                 source='long-gone-sf', uuid='orphan-uuid')
             self.assertFalse(self.mock_db_delete_source.called)
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_parse_sources_cleanup_extra_sources(self, mock_exists):
+    def test_parse_sources_cleanup_extra_sources(self):
         from kerbside import main
 
         with self._create_sources_yaml([{
@@ -778,8 +750,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             # Should delete source that is no longer in config
             self.mock_db_delete_source.assert_called_once_with('old-source')
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_parse_sources_ovirt_source(self, mock_exists):
+    def test_parse_sources_ovirt_source(self):
         from kerbside import main
 
         with self._create_sources_yaml([{
@@ -800,8 +771,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.assertEqual('test-ovirt', call_args[0][0])
             self.assertEqual('ovirt', call_args[0][1])
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_parse_sources_source_initialization_failed(self, mock_exists):
+    def test_parse_sources_source_initialization_failed(self):
         from kerbside import main
 
         with self._create_sources_yaml([{
@@ -820,8 +790,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             # Should set error state when source initialization fails
             self.mock_db_set_source_error_state.assert_called_with('test-sf', True)
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_parse_sources_static_source_dispatch(self, mock_exists):
+    def test_parse_sources_static_source_dispatch(self):
         """Static source dispatches to StaticSource and passes ticket to db."""
         from kerbside import main
 
@@ -852,7 +821,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_static_source.return_value = self._mock_source_lookup(
                 consoles=[static_console])
 
-            self.mock_db_add_console.return_value = True
+            self.mock_db_add_console.return_value = (db.CONSOLE_ADDED, [])
             main._parse_sources()
 
             # StaticSource should be constructed
@@ -870,8 +839,86 @@ class ParseSourcesTestCase(testtools.TestCase):
             # Audit event should be logged for the new console
             self.mock_db_add_audit_event.assert_called()
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_discovery_does_not_log_a_console_ticket(self, mock_exists):
+    def test_parse_sources_audits_changed_fields(self):
+        """An edited console is logged and audited by field (#459, #463)."""
+        from kerbside import main
+
+        static_console = {
+            'source': 'test-static',
+            'uuid': _STATIC_CONSOLE_UUID,
+            'name': 'ci-vm',
+            'hypervisor': 'localhost',
+            'hypervisor_ip': '127.0.0.1',
+            'insecure_port': 5910,
+            'secure_port': None,
+            'host_subject': None,
+            'ticket': 'rotated-password',
+        }
+        with self._create_sources_yaml([{
+            'source': 'test-static',
+            'type': 'static',
+            'consoles': [{
+                'uuid': _STATIC_CONSOLE_UUID,
+                'name': 'ci-vm',
+                'hypervisor': 'localhost',
+                'hypervisor_ip': '127.0.0.1',
+                'insecure_port': 5910,
+                'ticket': 'rotated-password',
+            }]
+        }]):
+            self.mock_db_get_source.return_value = None
+            self.mock_static_source.return_value = self._mock_source_lookup(
+                consoles=[static_console])
+
+            self.mock_db_add_console.return_value = (
+                db.CONSOLE_UPDATED, ['insecure_port', 'ticket'])
+            main._parse_sources()
+
+            self.mock_db_add_audit_event.assert_called_once_with(
+                'test-static', _STATIC_CONSOLE_UUID, None, None, None, None,
+                'Console configuration changed: insecure_port, ticket')
+            # The audit record names the change, never the value.
+            self.assertNotIn(
+                'rotated-password',
+                repr(self.mock_db_add_audit_event.call_args_list))
+
+    def test_parse_sources_plain_update_is_not_audited(self):
+        """Re-seeing an unchanged console every pass is not an event."""
+        from kerbside import main
+
+        static_console = {
+            'source': 'test-static',
+            'uuid': _STATIC_CONSOLE_UUID,
+            'name': 'ci-vm',
+            'hypervisor': 'localhost',
+            'hypervisor_ip': '127.0.0.1',
+            'insecure_port': 5910,
+            'secure_port': None,
+            'host_subject': None,
+            'ticket': 'ci-spice-password',
+        }
+        with self._create_sources_yaml([{
+            'source': 'test-static',
+            'type': 'static',
+            'consoles': [{
+                'uuid': _STATIC_CONSOLE_UUID,
+                'name': 'ci-vm',
+                'hypervisor': 'localhost',
+                'hypervisor_ip': '127.0.0.1',
+                'insecure_port': 5910,
+                'ticket': 'ci-spice-password',
+            }]
+        }]):
+            self.mock_db_get_source.return_value = None
+            self.mock_static_source.return_value = self._mock_source_lookup(
+                consoles=[static_console])
+
+            self.mock_db_add_console.return_value = (db.CONSOLE_UPDATED, [])
+            main._parse_sources()
+
+            self.mock_db_add_audit_event.assert_not_called()
+
+    def test_discovery_does_not_log_a_console_ticket(self):
         """The 'Found console' line redacts the ticket, then stores it.
 
         This dict arrives from the source driver rather than from
@@ -929,8 +976,7 @@ class ParseSourcesTestCase(testtools.TestCase):
             # what gets persisted, or no console would ever connect.
             self.mock_db_add_console.assert_called_once_with(**static_console)
 
-    @mock.patch('os.path.exists', return_value=True)
-    def test_parse_sources_static_and_other_source_coexist(self, mock_exists):
+    def test_parse_sources_static_and_other_source_coexist(self):
         """A static source does not break dispatch for other source types."""
         from kerbside import main
 
@@ -965,6 +1011,152 @@ class ParseSourcesTestCase(testtools.TestCase):
             self.mock_static_source.assert_called_once()
             self.mock_shakenfist_source.assert_called_once()
 
+    # --- A sources.yaml which cannot be used at all (#465) ---------------
+    @contextmanager
+    def _raw_sources_yaml(self, text):
+        f = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
+        try:
+            f.write(text)
+            f.close()
+            fake_config.SOURCES_PATH = f.name
+            yield f.name
+        finally:
+            os.unlink(f.name)
+
+    def _assert_last_configuration_kept(self, text=None, path=None):
+        """Parse text, or the file at path, as sources.yaml against an
+        existing deployment.
+
+        The database holds a source and a console from the last pass
+        which loaded. An unusable file must neither crash the pass nor
+        reconcile against it: reconciling would read "no sources" and
+        delete the lot. Returns the structured log fields emitted.
+        """
+        from kerbside import main
+
+        self.mock_db_get_sources.return_value = [{'name': 'lab'}]
+        self.mock_db_get_consoles.return_value = [
+            {'source': 'lab', 'uuid': _STATIC_CONSOLE_UUID}]
+
+        if path is not None:
+            fake_config.SOURCES_PATH = path
+            with mock.patch.object(main, 'LOG') as mock_log:
+                main._parse_sources()
+        else:
+            with self._raw_sources_yaml(text):
+                with mock.patch.object(main, 'LOG') as mock_log:
+                    main._parse_sources()
+
+        self.mock_db_remove_console.assert_not_called()
+        self.mock_db_delete_source.assert_not_called()
+        self.mock_db_add_source.assert_not_called()
+        self.mock_db_set_source_error_state.assert_not_called()
+        self.mock_static_source.assert_not_called()
+        # Exactly one error says why, whichever form it took.
+        self.assertEqual(
+            1, mock_log.error.call_count +
+            mock_log.with_fields.return_value.error.call_count)
+        return mock_log
+
+    def test_missing_file_keeps_the_last_configuration(self):
+        self._assert_last_configuration_kept(
+            path='/nonexistent/sources.yaml')
+
+    def test_unreadable_file_keeps_the_last_configuration(self):
+        # A directory where the file should be is an OSError other than
+        # FileNotFoundError, which is the branch this exercises.
+        with tempfile.TemporaryDirectory() as directory:
+            self._assert_last_configuration_kept(path=directory)
+
+    def test_non_string_source_fields_keep_the_last_configuration(self):
+        # A list or mapping in a field _parse_sources() hands to the
+        # database would otherwise raise outside the per-source error
+        # handling and crash the daemon, which is what #465 prevents.
+        for text in ('- source: [a, b]\n  type: static\n  consoles: []\n',
+                     '- source: lab\n  type: {a: b}\n  consoles: []\n',
+                     '- source:\n  type: static\n  consoles: []\n',
+                     '- source: lab\n  type: static\n  consoles: []\n'
+                     '  password: [hunter2]\n'):
+            mock_log = self._assert_last_configuration_kept(text)
+            self.assertNotIn('hunter2', repr(mock_log.mock_calls))
+            self.mock_static_source.reset_mock()
+
+    def test_numeric_source_fields_are_read_as_strings(self):
+        # An unquoted number is a spelling of the string, and must
+        # compare equal to the string the database stored for it, or
+        # the source is reported as reconfigured on every pass.
+        from kerbside import main
+
+        with self._raw_sources_yaml(
+                '- source: 1234\n  type: static\n  consoles: []\n'
+                '  password: 012345\n  username: 0x1F\n'):
+            sources = main._load_sources()
+
+        # As written: YAML 1.1 would read 012345 as octal 5349 and
+        # 0x1F as 31.
+        self.assertEqual('1234', sources[0]['source'])
+        self.assertEqual('012345', sources[0]['password'])
+        self.assertEqual('0x1F', sources[0]['username'])
+
+    def test_yaml_syntax_error_keeps_the_last_configuration(self):
+        self._assert_last_configuration_kept(
+            '- source: lab\n'
+            '  type: static\n'
+            '  consoles: [\n')
+
+    def test_yaml_syntax_error_does_not_log_the_offending_line(self):
+        # PyYAML's own message quotes the line it failed on, and in this
+        # file that line is as likely as not a credential.
+        mock_log = self._assert_last_configuration_kept(
+            '- source: lab\n'
+            '  type: static\n'
+            '  password: hunter2: oops\n')
+
+        logged = repr(mock_log.mock_calls)
+        self.assertNotIn('hunter2', logged)
+        fields = mock_log.with_fields.call_args.args[0]
+        self.assertEqual(3, fields['line'])
+        self.assertEqual('mapping values are not allowed here',
+                         fields['problem'])
+
+    def test_empty_file_keeps_the_last_configuration(self):
+        # An empty file parses to None. "No sources" must be said
+        # explicitly, as "[]", for the same reason as an absent static
+        # consoles key (#464): a truncated file is the likelier cause.
+        self._assert_last_configuration_kept('')
+
+    def test_mapping_at_top_level_keeps_the_last_configuration(self):
+        self._assert_last_configuration_kept(
+            'source: lab\ntype: static\nconsoles: []\n')
+
+    def test_entry_which_is_not_a_mapping_keeps_the_last_configuration(self):
+        self._assert_last_configuration_kept('- lab\n')
+
+    def test_entry_without_a_source_name_keeps_the_last_configuration(self):
+        # An entry which cannot be identified could be any source, so
+        # nothing may be retired on the strength of not seeing one.
+        mock_log = self._assert_last_configuration_kept(
+            '- type: static\n'
+            '  password: hunter2\n'
+            '  consoles: []\n')
+
+        self.assertNotIn('hunter2', repr(mock_log.mock_calls))
+
+    def test_explicitly_empty_list_retires_everything(self):
+        """The one spelling of "no sources" still means it."""
+        from kerbside import main
+
+        self.mock_db_get_sources.return_value = [{'name': 'lab'}]
+        self.mock_db_get_consoles.return_value = [
+            {'source': 'lab', 'uuid': _STATIC_CONSOLE_UUID}]
+
+        with self._raw_sources_yaml('[]\n'):
+            main._parse_sources()
+
+        self.mock_db_remove_console.assert_called_once_with(
+            source='lab', uuid=_STATIC_CONSOLE_UUID)
+        self.mock_db_delete_source.assert_called_once_with('lab')
+
 
 class _FakeResourceNotFound(Exception):
     """Stand-in for shakenfist_client.apiclient.ResourceNotFoundException."""
@@ -997,7 +1189,7 @@ class SigningKeyFailureScrapeTestCase(testtools.TestCase):
                 ('get_source', {'return_value': None}),
                 ('add_source', {}),
                 ('set_source_error_state', {}),
-                ('add_console', {'return_value': True}),
+                ('add_console', {'return_value': (db.CONSOLE_ADDED, [])}),
                 ('add_audit_event', {}),
                 ('remove_console', {}),
                 ('delete_source', {})]:

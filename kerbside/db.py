@@ -5,6 +5,7 @@ import time
 from sqlalchemy import create_engine, text
 from sqlalchemy import Boolean, Column, DateTime, Double, Integer, String, Text
 from sqlalchemy import desc
+from sqlalchemy import ForeignKeyConstraint
 from sqlalchemy.dialects.mysql import DATETIME
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
@@ -249,8 +250,12 @@ CONSOLE_SECRET_FIELDS = ['ticket']
 class Console(Base):
     __tablename__ = 'consoles'
 
+    # Keyed on the pair, like every other table naming a console: the
+    # identifier is only unique within the source which published it,
+    # and a static source's identifiers are whatever the operator
+    # wrote (issue #468).
+    source = Column(String, primary_key=True)
     uuid = Column(String, primary_key=True)
-    source = Column(String)
     discovered = Column(DateTime)
     hypervisor = Column(String)
     hypervisor_ip = Column(String)
@@ -300,27 +305,60 @@ class Console(Base):
         return {field: console[field] for field in CONSOLE_PUBLIC_FIELDS}
 
 
+# What add_console() did, so the caller can audit it.
+CONSOLE_ADDED = 'added'
+CONSOLE_UPDATED = 'updated'
+
+
 def add_console(source=None, uuid=None, hypervisor=None, hypervisor_ip=None,
                 insecure_port=None, secure_port=None, name=None, host_subject=None,
                 ticket=None, **kwargs):
+    """Insert a console, or refresh one which already exists.
+
+    A ticket of None means the caller does not manage this console's
+    ticket, and the stored one is left alone: oVirt writes a fresh
+    ticket per .vv request with store_console_ticket(), and the
+    maintenance pass which re-enumerates the console must not erase it
+    before the proxy spends it. A caller which does supply a ticket --
+    the static source, whose ticket is the password in sources.yaml --
+    owns it, so a changed one replaces the stored value.
+
+    Returns a tuple of CONSOLE_ADDED or CONSOLE_UPDATED and the sorted
+    names of the fields an update changed, which is empty when the
+    console is as it was. Only names are returned, so the caller can
+    log them without ever handling the ticket's value.
+    """
+    fields = {
+        'hypervisor': hypervisor,
+        'hypervisor_ip': hypervisor_ip,
+        'insecure_port': insecure_port,
+        'secure_port': secure_port,
+        'name': name,
+        'host_subject': host_subject,
+    }
+    if ticket is not None:
+        fields['ticket'] = ticket
+
     with Session(ENGINE) as session:
         try:
-            console = session.query(Console).filter(Console.uuid == uuid).one()
-            console.hypervisor = hypervisor
-            console.hypervisor_ip = hypervisor_ip
-            console.insecure_port = insecure_port
-            console.secure_port = secure_port
-            console.name = name
-            console.host_subject = host_subject
+            console = session.query(Console).\
+                filter(Console.source == source).\
+                filter(Console.uuid == uuid).\
+                one()
         except exc.NoResultFound:
-            console = Console(uuid, source, hypervisor, hypervisor_ip, insecure_port,
-                              secure_port, name, host_subject, ticket)
-            session.add(console)
-            return True
-        finally:
+            session.add(Console(uuid, source, hypervisor, hypervisor_ip,
+                                insecure_port, secure_port, name,
+                                host_subject, ticket))
             session.commit()
+            return CONSOLE_ADDED, []
 
-    return False
+        changed = sorted(field for field, value in fields.items()
+                         if getattr(console, field) != value)
+        for field in changed:
+            setattr(console, field, fields[field])
+        session.commit()
+
+    return CONSOLE_UPDATED, changed
 
 
 def get_consoles(include_audit=True, *, include_secrets: bool = False):
@@ -380,7 +418,7 @@ def get_consoles(include_audit=True, *, include_secrets: bool = False):
 
 def get_console(source, uuid, detailed=False, *,
                 include_secrets: bool = False):
-    """Fetch a single console by uuid, or None.
+    """Fetch a single console by source and uuid, or None.
 
     Only CONSOLE_PUBLIC_FIELDS are returned unless include_secrets is
     set, which only the code paths spending the console ticket may do.
@@ -389,7 +427,10 @@ def get_console(source, uuid, detailed=False, *,
 
     with Session(ENGINE) as session:
         try:
-            console = session.query(Console).filter(Console.uuid == uuid).one()
+            console = session.query(Console).\
+                filter(Console.source == source).\
+                filter(Console.uuid == uuid).\
+                one()
             if include_secrets:
                 c = console.export()
             else:
@@ -423,24 +464,36 @@ def get_console(source, uuid, detailed=False, *,
 
 def store_console_ticket(source, uuid, ticket):
     with Session(ENGINE) as session:
-        c = session.query(Console).filter(Console.uuid == uuid).one()
+        c = session.query(Console).\
+            filter(Console.source == source).\
+            filter(Console.uuid == uuid).\
+            one()
         c.ticket = ticket
         session.commit()
 
 
 def remove_console(source=None, uuid=None, **kwargs):
     with Session(ENGINE) as session:
-        try:
-            for c in session.query(Console).filter(Console.uuid == uuid).all():
-                session.delete(c)
-        except exc.NoResultFound:
-            return None
-        finally:
-            session.commit()
+        session.query(Console).\
+            filter(Console.source == source).\
+            filter(Console.uuid == uuid).\
+            delete()
+        session.commit()
 
 
 class ConsoleToken(Base):
     __tablename__ = 'consoletokens'
+    # Declared to match migration 3b8d5f1a6c92, which is what creates it
+    # in a deployed database. remove_console() relies on the cascade to
+    # delete a console's tokens, and only that console's: the reference
+    # is to the (source, uuid) pair, so one source retiring an
+    # identifier leaves another source's tokens for it alone.
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['source', 'uuid'], ['consoles.source', 'consoles.uuid'],
+            onupdate='CASCADE', ondelete='CASCADE',
+            name='fk_consoletokens_console'),
+    )
 
     token = Column(String, primary_key=True)
     session_id = Column(String)
