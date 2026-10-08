@@ -80,10 +80,6 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/tests/__init__.py",
-      "author": "mikal"
-    },
-    {
       "path": "tempest-plugin/kerbside_tempest_plugin/__init__.py",
       "author": "mikal"
     },
@@ -245,10 +241,6 @@
     },
     {
       "path": "kerbside/migrations/versions/f7b2e9c4a1d8_drop_proxychannels_session_id_fk.py",
-      "author": "mikal"
-    },
-    {
-      "path": "kerbside/migrations/versions",
       "author": "mikal"
     },
     {

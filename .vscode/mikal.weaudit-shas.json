@@ -265,10 +265,6 @@
       "sha": "9508569169800aacfe7745b363175ac241ac6a7c",
       "date": "2026-08-07"
     },
-    "kerbside/tests/__init__.py": {
-      "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
-      "date": "2026-08-08"
-    },
     "kerbside/tests/functional/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-08"
