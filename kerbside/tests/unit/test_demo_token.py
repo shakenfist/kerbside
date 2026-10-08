@@ -87,6 +87,19 @@ class DemoTokenTestCase(testtools.TestCase):
 
         self._assert_refused(self._invoke(), 'AUTH_SECRET_SEED is unconfigured')
 
+    def test_refuses_a_blank_seed(self):
+        """With the same refusal, not a traceback from importing kerbside.api.
+
+        kerbside.api rejects these seeds at import too, so a check here
+        that missed them would fall through to that import and crash.
+        """
+        self._write_sources([{'source': 'demo', 'type': 'static'}])
+        for seed in ('', '   ', ' ~~unconfigured~~ '):
+            self.fake_config.AUTH_SECRET_SEED = seed
+            result = self._invoke()
+            self._assert_refused(result, 'AUTH_SECRET_SEED is unconfigured')
+            self.assertNotIsInstance(result.exception, RuntimeError)
+
     def test_refuses_a_missing_sources_file(self):
         self.fake_config.SOURCES_PATH = '/nonexistent/sources.yaml'
 
