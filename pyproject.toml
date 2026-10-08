@@ -89,7 +89,7 @@ dependencies = [
 
     # These also move as a set
     "alembic==1.20.0",                  # mit
-    "sqlalchemy==2.1.1",               # mit
+    "sqlalchemy==2.1.3",               # mit
     # not-imported: mysqlclient -- SQLAlchemy driver for the bare
     # "mysql://" form of SQL_URL, which is the configured default.
     "mysqlclient==2.3.0",               # gpl
@@ -121,12 +121,12 @@ dependencies = [
     "itsdangerous==2.2.0",
     "Jinja2==3.1.6",
     "Mako==1.4.3",
-    "MarkupSafe==3.0.3",
+    "MarkupSafe==3.0.4",
     "marshmallow==4.3.1",
     "pycparser==3.0",
-    "python-dotenv==1.2.3",
+    "python-dotenv==1.2.4",
     "pytz==2026.4",
-    "setproctitle==1.3.7",
+    "setproctitle==1.3.8",
     "six==1.17.0",
     "typing-inspection==0.4.4",
     "Werkzeug==3.1.9",
