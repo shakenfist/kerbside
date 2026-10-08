@@ -283,6 +283,30 @@ class Config(BaseSettings):
             return None
         return value
 
+    @field_validator('KEYSTONE_AUTH_VERIFY', mode='before')
+    @classmethod
+    def _parse_tls_verify(cls, value):
+        """Turn the strings the INI file and environment deliver into bools.
+
+        Without this a bool | str field keeps "false" as a string, which
+        keystoneauth hands to requests as a CA bundle path. The rules match
+        the per-source verify option: true and false in any case are bools,
+        anything else is a path. An empty value is rejected, because
+        requests would treat it as falsy and silently disable verification.
+        """
+        if not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        if stripped.lower() == 'true':
+            return True
+        if stripped.lower() == 'false':
+            return False
+        if not stripped:
+            raise ValueError(
+                'must be true, false, or a path to a CA bundle; an empty '
+                'value would silently disable TLS verification')
+        return stripped
+
     class Config:
         env_prefix = ENV_PREFIX
 

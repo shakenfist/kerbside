@@ -250,7 +250,11 @@ class Auth(sf_api.Resource):
             project_name=config.KEYSTONE_SERVICE_AUTH_PROJECT,
             user_domain_id=config.KEYSTONE_SERVICE_AUTH_USER_DOMAIN_ID,
             project_domain_id=config.KEYSTONE_SERVICE_AUTH_PROJECT_DOMAIN_ID)
-        service_session = KEYSTONE_SESSION.Session(auth=service_auth)
+        # Both sessions talk to the same Keystone, so both honour the
+        # operator's trust configuration.
+        service_session = KEYSTONE_SESSION.Session(
+            auth=service_auth,
+            verify=config.KEYSTONE_AUTH_VERIFY)
         service_keystone = KEYSTONE_CLIENT.Client(session=service_session)
 
         # Authenticate the user
@@ -277,20 +281,20 @@ class Auth(sf_api.Resource):
                 f'with verify={config.KEYSTONE_AUTH_VERIFY}: {e}')
             return sf_api.error(500, 'Keystone SSL error')
 
-        # Ensure the user is in the correct group
-        group = None
-        admin_group = None
-        for g in service_keystone.groups.list():
-            if g.name == config.KEYSTONE_ACCESS_GROUP:
-                group = g
-            if (config.KEYSTONE_ADMIN_GROUP and
-                    g.name == config.KEYSTONE_ADMIN_GROUP):
-                admin_group = g
-        if not group:
-            return sf_api.error(500, 'service group not found')
-
-        # Require that the user be in that group
+        # Ensure the user is in the correct group, then require that the
+        # user be in that group
         try:
+            group = None
+            admin_group = None
+            for g in service_keystone.groups.list():
+                if g.name == config.KEYSTONE_ACCESS_GROUP:
+                    group = g
+                if (config.KEYSTONE_ADMIN_GROUP and
+                        g.name == config.KEYSTONE_ADMIN_GROUP):
+                    admin_group = g
+            if not group:
+                return sf_api.error(500, 'service group not found')
+
             service_keystone.users.check_in_group(user_id, group.id)
         except KEYSTONE_EXCEPTIONS.http.NotFound:
             return sf_api.error(401, 'unauthorized')
@@ -298,7 +302,9 @@ class Auth(sf_api.Resource):
                 requests.exceptions.SSLError,
                 KEYSTONE_EXCEPTIONS.connection.SSLError
                 ) as e:
-            LOG.error(f'SSL error while communicating with Keystone: {e}')
+            LOG.error(
+                'SSL error while communicating with Keystone as the service '
+                f'user with verify={config.KEYSTONE_AUTH_VERIFY}: {e}')
             return sf_api.error(500, 'Keystone SSL error')
 
         # Administrators are an optional extra privilege, so a configured
@@ -322,7 +328,9 @@ class Auth(sf_api.Resource):
                         KEYSTONE_EXCEPTIONS.connection.SSLError
                         ) as e:
                     LOG.error(
-                        f'SSL error while communicating with Keystone: {e}')
+                        'SSL error while communicating with Keystone as the '
+                        'service user with '
+                        f'verify={config.KEYSTONE_AUTH_VERIFY}: {e}')
                     return sf_api.error(500, 'Keystone SSL error')
 
         # Create a JWT containing the user's keystone token
