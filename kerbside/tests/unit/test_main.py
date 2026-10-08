@@ -6,6 +6,11 @@ import testtools
 import yaml
 
 from kerbside import db
+from kerbside.sources import static as static_source
+
+# The real driver, captured before setUp patches it out, for the tests
+# whose subject is how the driver reads sources.yaml.
+_REAL_STATIC_SOURCE = static_source.StaticSource
 
 # UUID shared across the static-source dispatch tests.
 _STATIC_CONSOLE_UUID = 'cccccccc-0000-0000-0000-000000000001'
@@ -566,6 +571,34 @@ class ParseSourcesTestCase(testtools.TestCase):
             main._parse_sources()
 
             self.assertFalse(self.mock_db_remove_console.called)
+
+    def test_static_source_without_consoles_key_retains_the_inventory(self):
+        """Deleting the consoles key must not delete the consoles (#464).
+
+        Uses the real driver rather than the mock, because the defect
+        was in how the driver reads the key: a mocked lookup would
+        assert only what the test told it.
+        """
+        from kerbside import main
+
+        self.mock_static_source.side_effect = _REAL_STATIC_SOURCE
+        with self._create_sources_yaml([{
+            'source': 'test-static',
+            'type': 'static',
+            'console': []
+        }]):
+            self.mock_db_get_source.return_value = None
+            self.mock_db_get_consoles.return_value = [{
+                'source': 'test-static',
+                'uuid': 'live-console-uuid',
+                'name': 'a-vm'
+            }]
+
+            main._parse_sources()
+
+            self.assertFalse(self.mock_db_remove_console.called)
+            self.mock_db_set_source_error_state.assert_called_with(
+                'test-static', True)
 
     def test_unknown_source_type_retains_the_inventory(self):
         """An unrecognised type is not evidence its consoles are gone."""
