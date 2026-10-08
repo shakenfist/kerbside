@@ -536,10 +536,6 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/tests/unit/test_main.py",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/prune-reviews.yml",
       "author": "mikal"
     },

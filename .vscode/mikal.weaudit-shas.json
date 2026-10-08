@@ -277,10 +277,6 @@
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-08"
     },
-    "kerbside/tests/unit/test_main.py": {
-      "sha": "47bdb2f2c32d86934b2f324275d27f110667e4c7",
-      "date": "2026-10-01"
-    },
     "kerbside/tests/unit/test_sf_token.py": {
       "sha": "2b42aef35cbbaf8d8e7b15047604ba6ccba11776",
       "date": "2026-08-08"
