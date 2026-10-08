@@ -1,3 +1,4 @@
+import io
 from unittest import mock
 import time
 
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session
 import testtools
 
 from kerbside import db
+from kerbside import util
 from kerbside.sources import static as static_source
 
 
@@ -477,9 +479,10 @@ class StaticSourceRoundTripTestCase(testtools.TestCase):
     """A static entry must read back as unchanged on the next pass.
 
     YAML types an unquoted 123456 as an int and a quoted "5910" as a
-    str, where the database returns the column's type. Unnormalised,
-    each would be reported as changed and audited on every 60 second
-    pass, forever.
+    str, where the database returns the column's type. util.load_sources()
+    reads both as text and the static source makes the port an int;
+    unnormalised, each would be reported as changed and audited on every
+    60 second pass, forever.
     """
 
     def setUp(self):
@@ -492,15 +495,17 @@ class StaticSourceRoundTripTestCase(testtools.TestCase):
         self.addCleanup(engine_patch.stop)
 
     def test_yaml_typed_entry_is_stable_across_passes(self):
-        entry = {
-            'uuid': 1001, 'name': 4, 'hypervisor': 'bench',
-            'hypervisor_ip': '10.0.0.1', 'insecure_port': '5910',
-            'secure_port': '5911', 'ticket': 123456, 'host_subject': None,
-        }
+        text = (
+            '- source: lab\n'
+            '  type: static\n'
+            '  consoles:\n'
+            '    - {uuid: 1001, name: 4, hypervisor: bench,\n'
+            '       hypervisor_ip: 10.0.0.1, insecure_port: 5910,\n'
+            '       secure_port: "5911", ticket: 012345, host_subject: null}\n')
         results = []
         for _ in range(2):
             source = static_source.StaticSource(
-                source='lab', type='static', consoles=[dict(entry)])
+                **util.load_sources(io.StringIO(text))[0])
             self.assertFalse(source.errored)
             for console in source():
                 results.append(db.add_console(**console))

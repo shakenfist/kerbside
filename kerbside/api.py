@@ -19,7 +19,6 @@ import os
 import requests
 from webargs import fields
 from webargs.flaskparser import use_kwargs
-import yaml
 
 from shakenfist_utilities import api as sf_api, logs
 
@@ -612,7 +611,7 @@ class NovaToken(sf_api.Resource):
                 return sf_api.error(500, 'Keystone setup failure')
 
         with open(config.SOURCES_PATH) as f:
-            sources = yaml.safe_load(f)
+            sources = util.load_sources(f)
             for source in sources:
                 if source['type'] != 'openstack':
                     continue

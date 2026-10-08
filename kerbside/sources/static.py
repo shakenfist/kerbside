@@ -30,9 +30,11 @@
 # Optional fields (default to None):
 #   secure_port, host_subject
 #
-# An unquoted number where a string belongs (ticket: 123456) is read as
-# that string, and a quoted port ("5910") as that port.  Any other type
-# -- a list, a mapping, a bool -- errors the source.
+# util.load_sources() reads every unquoted number exactly as written, so
+# ticket: 012345 is the text "012345" rather than YAML 1.1's octal 5349,
+# and a port quoted or not ("5910", 5910) is that port.  Any other type
+# -- a list, a mapping, a bool, a port outside 1 to 65535 -- errors the
+# source.
 #
 # Notes:
 # - Tickets are persisted to the Console DB at enumeration time via
@@ -157,9 +159,9 @@ class StaticSource(base.BaseSource):
                     continue
                 try:
                     console[field] = normalise(console[field])
-                except TypeError as e:
+                except util.YAMLScalarError as e:
                     LOG.error(
-                        'Static source %s: console field %s cannot be a %s '
+                        'Static source %s: console field %s %s '
                         '(entry uuid: %s)'
                         % (source_name, field, e,
                            console['uuid'] if field != 'uuid' else '<invalid>'))

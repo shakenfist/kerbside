@@ -1089,11 +1089,14 @@ class ParseSourcesTestCase(testtools.TestCase):
 
         with self._raw_sources_yaml(
                 '- source: 1234\n  type: static\n  consoles: []\n'
-                '  password: 5678\n'):
+                '  password: 012345\n  username: 0x1F\n'):
             sources = main._load_sources()
 
+        # As written: YAML 1.1 would read 012345 as octal 5349 and
+        # 0x1F as 31.
         self.assertEqual('1234', sources[0]['source'])
-        self.assertEqual('5678', sources[0]['password'])
+        self.assertEqual('012345', sources[0]['password'])
+        self.assertEqual('0x1F', sources[0]['username'])
 
     def test_yaml_syntax_error_keeps_the_last_configuration(self):
         self._assert_last_configuration_kept(

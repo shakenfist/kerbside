@@ -16,7 +16,6 @@ import json
 import time
 
 import jwt
-import yaml
 from shakenfist_utilities import logs
 
 from .config import config
@@ -80,7 +79,7 @@ def _shakenfist_source_names():
     """Names of every configured type == 'shakenfist' source."""
     names = []
     with open(config.SOURCES_PATH) as f:
-        sources = yaml.safe_load(f) or []
+        sources = util.load_sources(f) or []
         for source in sources:
             if source.get('type') != 'shakenfist':
                 continue

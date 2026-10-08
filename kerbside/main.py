@@ -83,7 +83,7 @@ def _load_sources():
     path = config.SOURCES_PATH
     try:
         with open(path) as f:
-            sources = yaml.safe_load(f)
+            sources = util.load_sources(f)
     except FileNotFoundError:
         LOG.error(f'Sources configuration at {path} does not exist!')
         return None
@@ -141,9 +141,9 @@ def _load_sources():
                 continue
             try:
                 source[field] = util.yaml_string(source[field])
-            except TypeError as e:
+            except util.YAMLScalarError as e:
                 LOG.error(f'Sources configuration at {path}: entry {index} '
-                          f'field {field} cannot be a {e}; keeping the last '
+                          f'field {field} {e}; keeping the last '
                           f'configuration which loaded')
                 return None
 
@@ -598,7 +598,7 @@ def _demo_sources_or_fail():
 
     try:
         with open(config.SOURCES_PATH) as f:
-            sources = yaml.safe_load(f)
+            sources = util.load_sources(f)
     except (OSError, yaml.YAMLError) as e:
         _fail('Refusing to mint: could not read sources from %s: %s'
               % (config.SOURCES_PATH, e))

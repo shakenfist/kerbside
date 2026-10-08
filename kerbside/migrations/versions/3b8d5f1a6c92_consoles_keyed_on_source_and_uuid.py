@@ -1,7 +1,7 @@
 """key consoles on (source, uuid)
 
 Revision ID: 3b8d5f1a6c92
-Revises: cdb5c3529858
+Revises: a8d3f6e1c9b2
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '3b8d5f1a6c92'
-down_revision = 'cdb5c3529858'
+down_revision = 'a8d3f6e1c9b2'
 branch_labels = None
 depends_on = None
 
@@ -27,22 +27,35 @@ def upgrade() -> None:
     # stricter. A row with no source could never be looked up by the new
     # one, and every writer has always supplied a source, so any such
     # row is debris; the next maintenance pass rediscovers anything real.
-    op.execute('DELETE FROM consoles WHERE source IS NULL')
-
+    #
     # consoletokens.uuid references consoles.uuid with a cascading delete,
     # which on the composite key would delete one source's tokens when
     # another source retires the same identifier. It is replaced by a
     # reference to the pair. A token whose pair no longer names a console
     # is unusable already (authorisation looks the console up by the
-    # same pair) and would violate the new constraint, so it goes.
-    op.execute(
-        'DELETE FROM consoletokens WHERE NOT EXISTS ('
+    # same pair) and would violate the new constraint, so it goes. That
+    # includes every token of a console with no source, since NULL equals
+    # nothing, so counting before either delete counts those too.
+    #
+    # Both are said out loud, as the downgrade's deletes are, so that an
+    # operator chasing a missing session afterwards has a trace of them.
+    sourceless = 'FROM consoles WHERE source IS NULL'
+    orphaned = (
+        'FROM consoletokens WHERE NOT EXISTS ('
         'SELECT 1 FROM consoles WHERE consoles.source = consoletokens.source '
         'AND consoles.uuid = consoletokens.uuid)')
+    bind = op.get_bind()
+    consoles = bind.execute(sa.text('SELECT COUNT(*) ' + sourceless)).scalar()
+    tokens = bind.execute(sa.text('SELECT COUNT(*) ' + orphaned)).scalar()
+    print('Upgrade drops %d consoles with no source, and %d console tokens '
+          'whose source and identifier name no console; none of them '
+          'could be used' % (consoles, tokens))
+    op.execute('DELETE ' + orphaned)
+    op.execute('DELETE ' + sourceless)
 
     # MySQL and MariaDB only, like the initial schema this revises,
     # whose CURRENT_TIMESTAMP(6) default SQLite cannot create.
-    insp = sa.inspect(op.get_bind())
+    insp = sa.inspect(bind)
     for fk in insp.get_foreign_keys('consoletokens'):
         if fk['referred_table'] == 'consoles':
             op.drop_constraint(fk['name'], 'consoletokens', type_='foreignkey')

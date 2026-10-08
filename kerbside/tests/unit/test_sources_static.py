@@ -1,6 +1,8 @@
+import io
 import unittest
 from unittest import mock
 
+from kerbside import util
 from kerbside.sources import static as static_source
 
 
@@ -244,35 +246,70 @@ class TestStaticSourceClose(unittest.TestCase):
         src.close()
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-
 class TestStaticSourceScalarTypes(unittest.TestCase):
     """Hand-written YAML scalars are normalised to their column's type.
 
     See StaticSourceRoundTripTestCase in test_db.py for why: a value
-    kept in YAML's type never compares equal to the stored one.
+    kept in YAML's type never compares equal to the stored one. These
+    parse real YAML through util.load_sources(), because what reaches
+    the source depends on how the file was read.
     """
 
+    _ENTRY = (
+        '- source: test-static\n'
+        '  type: static\n'
+        '  consoles:\n'
+        '    - uuid: aaaaaaaa-0000-0000-0000-000000000001\n'
+        '      name: test-vm\n'
+        '      hypervisor: localhost\n'
+        '      hypervisor_ip: 127.0.0.1\n'
+        '      insecure_port: 5910\n'
+        '      ticket: secret-spice-password\n')
+
+    def _source(self, **overrides):
+        """Parse _ENTRY with each override written verbatim into it."""
+        text = self._ENTRY
+        for field, spelling in overrides.items():
+            line = '      %s: ' % field
+            if line in text:
+                start = text.index(line)
+                end = text.index('\n', start)
+                text = text[:start] + line + spelling + text[end:]
+            else:
+                text += line + spelling + '\n'
+        source = util.load_sources(io.StringIO(text))[0]
+        return static_source.StaticSource(**source)
+
     def _console(self, **overrides):
-        entry = dict(_VALID_CONSOLE)
-        entry.update(overrides)
-        src = _make_source([entry])
-        self.assertFalse(src.errored)
+        src = self._source(**overrides)
+        self.assertFalse(src.errored, overrides)
         return list(src())[0]
 
-    def test_unquoted_numbers_become_strings(self):
-        console = self._console(uuid=1001, name=4, ticket=123456,
-                                host_subject=7)
-        self.assertEqual(('1001', '4', '123456', '7'),
-                         (console['uuid'], console['name'],
-                          console['ticket'], console['host_subject']))
+    def test_unquoted_numbers_are_read_as_written(self):
+        # YAML 1.1 reads each of these as an int or a float whose str()
+        # is a different password: 012345 is octal 5349, 0x1F is 31,
+        # 1_000 is 1000, 12:34 is sexagesimal 754, 1.10 is 1.1.
+        for spelling in ('123456', '012345', '0x1F', '0o17', '0b101',
+                         '1_000', '12:34', '1.10', '1e3', '.inf',
+                         '2026-10-08'):
+            console = self._console(uuid=spelling, name=spelling,
+                                    ticket=spelling, host_subject=spelling)
+            self.assertEqual((spelling,) * 4,
+                             (console['uuid'], console['name'],
+                              console['ticket'], console['host_subject']))
 
-    def test_quoted_ports_become_ints(self):
-        console = self._console(insecure_port='5910', secure_port='5911')
-        self.assertEqual((5910, 5911),
-                         (console['insecure_port'], console['secure_port']))
+    def test_ports_become_ints_quoted_or_not(self):
+        for spelling in ('5910', '"5910"', '05910'):
+            console = self._console(insecure_port=spelling,
+                                    secure_port=spelling)
+            self.assertEqual((5910, 5910),
+                             (console['insecure_port'],
+                              console['secure_port']))
+
+    def test_port_range_bounds(self):
+        self.assertEqual(1, self._console(insecure_port='1')['insecure_port'])
+        self.assertEqual(
+            65535, self._console(insecure_port='65535')['insecure_port'])
 
     def test_absent_optional_fields_stay_none(self):
         console = self._console()
@@ -281,19 +318,48 @@ class TestStaticSourceScalarTypes(unittest.TestCase):
 
     @mock.patch.object(static_source, 'LOG')
     def test_other_types_error_without_logging_the_value(self, mock_log):
-        for field, value in (('ticket', ['hunter2']),
-                             ('ticket', {'hunter2': 1}),
-                             ('ticket', True),
-                             ('name', 1.5),
-                             ('uuid', ['hunter2']),
-                             ('insecure_port', 'hunter2'),
-                             ('insecure_port', True),
-                             ('insecure_port', None),
-                             ('secure_port', 59.1)):
-            entry = dict(_VALID_CONSOLE)
-            entry[field] = value
-            src = _make_source([entry])
-            self.assertTrue(src.errored, (field, value))
+        for field, spelling in (('ticket', '[hunter2]'),
+                                ('ticket', '{hunter2: 1}'),
+                                ('ticket', 'true'),
+                                ('ticket', 'null'),
+                                ('uuid', '[hunter2]'),
+                                ('insecure_port', 'hunter2'),
+                                ('insecure_port', 'true'),
+                                ('insecure_port', 'null'),
+                                ('insecure_port', '5910.0'),
+                                ('insecure_port', '0x1716'),
+                                ('insecure_port', '0'),
+                                ('insecure_port', '-1'),
+                                ('insecure_port', '65536'),
+                                ('insecure_port', '70000'),
+                                ('insecure_port', '"\u00b2"'),
+                                ('insecure_port', '"\u0665\u0669\u0661\u0660"'),
+                                ('secure_port', '59.1')):
+            src = self._source(**{field: spelling})
+            self.assertTrue(src.errored, (field, spelling))
             self.assertEqual([], list(src()))
 
-        self.assertNotIn('hunter2', repr(mock_log.mock_calls))
+        logged = repr(mock_log.mock_calls)
+        self.assertNotIn('hunter2', logged)
+        self.assertNotIn('70000', logged)
+
+    @mock.patch.object(static_source, 'LOG')
+    def test_error_names_the_field_and_the_rule(self, mock_log):
+        self.assertTrue(self._source(ticket='[hunter2]').errored)
+        self.assertIn('console field ticket must be text, not list',
+                      mock_log.error.call_args[0][0])
+        self.assertTrue(self._source(insecure_port='70000').errored)
+        self.assertIn('console field insecure_port must be a port number '
+                      'from 1 to 65535', mock_log.error.call_args[0][0])
+
+    def test_an_int_ticket_is_refused_not_guessed_at(self):
+        # Only a caller which bypassed util.load_sources() can hand over
+        # an int, and its spelling is already gone: refusing it makes a
+        # new reader of sources.yaml fail loudly instead of quietly.
+        with mock.patch.object(static_source, 'LOG'):
+            src = _make_source([dict(_VALID_CONSOLE, ticket=12345)])
+        self.assertTrue(src.errored)
+
+
+if __name__ == '__main__':
+    unittest.main()
