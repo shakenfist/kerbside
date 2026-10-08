@@ -65,3 +65,44 @@ class ProxySocketTuningConfigTestCase(testtools.TestCase):
             self.assertRaises(
                 pydantic.ValidationError, self._config,
                 **{name: '4294967296'})
+
+
+class KeystoneAuthVerifyConfigTestCase(testtools.TestCase):
+    """KEYSTONE_AUTH_VERIFY arrives from the INI file as a string.
+
+    A bool | str field would keep "false" as a string, which requests then
+    treats as a CA bundle path (issue #474).
+    """
+
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch.object(
+            kerbside_config, 'INI_PATH', '/nonexistent/kerbside.ini')
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _verify(self, value):
+        with mock.patch.dict(
+                os.environ, {'KERBSIDE_KEYSTONE_AUTH_VERIFY': value}):
+            return kerbside_config.Config().KEYSTONE_AUTH_VERIFY
+
+    def test_defaults_to_true(self):
+        self.assertIs(True, kerbside_config.Config().KEYSTONE_AUTH_VERIFY)
+
+    def test_boolean_strings_become_bools(self):
+        for value, expected in [('true', True), ('True', True),
+                                ('TRUE', True), (' true ', True),
+                                ('false', False), ('False', False),
+                                ('FALSE', False)]:
+            self.assertIs(expected, self._verify(value), value)
+
+    def test_other_strings_are_ca_bundle_paths(self):
+        self.assertEqual('/etc/kerbside/ca.pem',
+                         self._verify('/etc/kerbside/ca.pem'))
+
+    def test_empty_value_is_rejected(self):
+        # requests treats a falsy verify as "do not verify", so an empty
+        # value must not slip through as a path.
+        for value in ('', '  '):
+            self.assertRaises(
+                pydantic.ValidationError, self._verify, value)

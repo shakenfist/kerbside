@@ -1214,3 +1214,56 @@ class ConsolesPageDirectButtonTestCase(testtools.TestCase):
         page = self._page({'sub': 'bob', 'kerbside_admin': False})
         self.assertIn('/console/proxy/src1/console-1/console.vv', page)
         self.assertNotIn('/console/direct/', page)
+
+
+class KeystoneAuthVerifyTestCase(testtools.TestCase):
+    """Both Keystone sessions made during login honour KEYSTONE_AUTH_VERIFY.
+
+    The service session used for the group check used to take the
+    keystoneauth default, so a private CA made login half-work (#456).
+    """
+
+    def setUp(self):
+        super().setUp()
+        api.app.config['TESTING'] = True
+        self.client = api.app.test_client()
+
+        self.keystone_session = mock.MagicMock()
+        self.keystone_exceptions = mock.MagicMock()
+        for name in ('Unauthorized', 'NotFound'):
+            setattr(self.keystone_exceptions.http, name,
+                    type(name, (Exception,), {}))
+        self.keystone_exceptions.connection.SSLError = type(
+            'SSLError', (Exception,), {})
+        self.keystone_client = mock.MagicMock()
+        for name, value in [
+                ('KEYSTONE_V3', mock.MagicMock()),
+                ('KEYSTONE_CLIENT', self.keystone_client),
+                ('KEYSTONE_EXCEPTIONS', self.keystone_exceptions),
+                ('KEYSTONE_SESSION', self.keystone_session)]:
+            patch = mock.patch.object(api, name, value)
+            patch.start()
+            self.addCleanup(patch.stop)
+
+        patch = mock.patch.object(
+            api.config, 'KEYSTONE_AUTH_VERIFY', '/etc/kerbside/ca.pem')
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _login(self):
+        return self.client.post(
+            '/auth', json={'username': 'alice', 'password': 'sekrit'})
+
+    def test_both_sessions_use_the_configured_verify(self):
+        self._login()
+        calls = self.keystone_session.Session.call_args_list
+        self.assertEqual(2, len(calls))
+        for call in calls:
+            self.assertEqual('/etc/kerbside/ca.pem', call.kwargs['verify'])
+
+    def test_ssl_error_listing_groups_is_reported(self):
+        self.keystone_client.Client.return_value.groups.list.side_effect = \
+            self.keystone_exceptions.connection.SSLError('bad cert')
+        resp = self._login()
+        self.assertEqual(500, resp.status_code)
+        self.assertIn('Keystone SSL error', resp.get_data(as_text=True))

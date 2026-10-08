@@ -136,9 +136,11 @@ proxy_host_cert_key_path = /etc/pki/CA/certs/proxy-key.pem
 # The URL of the Keystone service to authenticate against.
 # keystone_auth_url = ~~unconfigured~~
 
-# Whether to verify TLS sessions to Keystone: false to skip
+# Whether to verify TLS sessions to Keystone, for both the user's
+# login and the service account's group check: false to skip
 # verification, true to use the system CA bundle, or a path to a CA
-# certificate or bundle.
+# certificate or bundle. true and false are case-insensitive; an empty
+# value is rejected rather than silently disabling verification.
 # keystone_auth_verify = true
 
 # The service account Kerbside authenticates itself as, and its
