@@ -534,10 +534,16 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
 
         api.app.config['TESTING'] = True
         self.client = api.app.test_client()
+        # The direct handler is for administrators only (issue #134).
         jwt_patch = mock.patch(
-            'kerbside.api.verify_jwt_in_request', return_value=(None, {}))
+            'kerbside.api.verify_jwt_in_request',
+            return_value=(None, {'sub': 'admin', 'kerbside_admin': True}))
         jwt_patch.start()
         self.addCleanup(jwt_patch.stop)
+
+        audit_patch = mock.patch.object(db, 'add_audit_event')
+        audit_patch.start()
+        self.addCleanup(audit_patch.stop)
 
         config_patch = mock.patch.object(api.config, 'CACERT_PATH', None)
         config_patch.start()
@@ -890,3 +896,321 @@ class NovaTokenInterfaceTestCase(testtools.TestCase):
         resp = self.client.get('/nova-console.vv?token=abc')
         self.assertEqual(500, resp.status_code)
         self.openstack.connection.Connection.assert_not_called()
+
+
+class AuthAdminClaimTestCase(testtools.TestCase):
+    """Login stamps kerbside_admin into the session JWT from membership of
+    KEYSTONE_ADMIN_GROUP, which gates /console/direct (issue #134).
+
+    Keystone is mocked at the lazily imported module globals, and the JWT
+    minting is captured rather than performed, so the claims can be read
+    directly.
+    """
+
+    def setUp(self):
+        super().setUp()
+        api.app.config['TESTING'] = True
+        self.client = api.app.test_client()
+
+        self.not_found = type('NotFound', (Exception,), {})
+        self.keystone_exceptions = mock.MagicMock()
+        self.keystone_exceptions.http.NotFound = self.not_found
+        self.keystone_exceptions.http.Unauthorized = type(
+            'Unauthorized', (Exception,), {})
+        self.keystone_exceptions.connection.SSLError = type(
+            'SSLError', (Exception,), {})
+
+        self.keystone = mock.MagicMock()
+        keystone_client = mock.MagicMock()
+        keystone_client.Client.return_value = self.keystone
+        keystone_session = mock.MagicMock()
+        keystone_session.Session.return_value.get_user_id.return_value = (
+            'user-id')
+        keystone_session.Session.return_value.get_token.return_value = (
+            'os-token')
+
+        for name, value in [
+                ('KEYSTONE_V3', mock.MagicMock()),
+                ('KEYSTONE_CLIENT', keystone_client),
+                ('KEYSTONE_EXCEPTIONS', self.keystone_exceptions),
+                ('KEYSTONE_SESSION', keystone_session)]:
+            patch = mock.patch.object(api, name, value)
+            patch.start()
+            self.addCleanup(patch.stop)
+
+        self.create_token = mock.MagicMock(return_value='a-jwt')
+        patch = mock.patch.object(
+            api, 'create_access_token', self.create_token)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+        self.logged = []
+        recorder = self
+
+        class RecordingLog:
+            def with_fields(self, fields):
+                recorder.logged.append(fields)
+                return self
+
+            def info(self, *args, **kwargs):
+                ...
+
+            def error(self, *args, **kwargs):
+                ...
+
+        patch = mock.patch.object(api, 'LOG', RecordingLog())
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _groups(self, *names):
+        groups = []
+        for name in names:
+            group = mock.MagicMock()
+            group.name = name
+            group.id = '%s-id' % name
+            groups.append(group)
+        self.keystone.groups.list.return_value = groups
+
+    def _admin_group(self, name):
+        patch = mock.patch.object(api.config, 'KEYSTONE_ADMIN_GROUP', name)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _login(self):
+        resp = self.client.post(
+            '/auth', json={'username': 'alice', 'password': 'pw'})
+        self.assertEqual(200, resp.status_code)
+        return self.create_token.call_args.kwargs['additional_claims']
+
+    def test_member_of_admin_group_is_admin(self):
+        self._admin_group('kerbside-admins')
+        self._groups('kerbside', 'kerbside-admins')
+
+        self.assertIs(True, self._login()['kerbside_admin'])
+        self.keystone.users.check_in_group.assert_any_call(
+            'user-id', 'kerbside-admins-id')
+
+    def test_non_member_is_not_admin(self):
+        self._admin_group('kerbside-admins')
+        self._groups('kerbside', 'kerbside-admins')
+
+        def check_in_group(user_id, group_id):
+            if group_id == 'kerbside-admins-id':
+                raise self.not_found()
+
+        self.keystone.users.check_in_group.side_effect = check_in_group
+        self.assertIs(False, self._login()['kerbside_admin'])
+
+    def test_unset_admin_group_makes_nobody_admin(self):
+        self._admin_group('')
+        self._groups('kerbside', 'kerbside-admins')
+
+        self.assertIs(False, self._login()['kerbside_admin'])
+        # Only the access group membership was checked.
+        self.keystone.users.check_in_group.assert_called_once_with(
+            'user-id', 'kerbside-id')
+
+    def test_missing_admin_group_withholds_admin_and_logs(self):
+        self._admin_group('kerbside-admins')
+        self._groups('kerbside')
+
+        self.assertIs(False, self._login()['kerbside_admin'])
+        self.assertIn({'group': 'kerbside-admins'}, self.logged)
+
+    def test_ssl_error_checking_admin_group_fails_login(self):
+        self._admin_group('kerbside-admins')
+        self._groups('kerbside', 'kerbside-admins')
+
+        def check_in_group(user_id, group_id):
+            if group_id == 'kerbside-admins-id':
+                raise self.keystone_exceptions.connection.SSLError()
+
+        self.keystone.users.check_in_group.side_effect = check_in_group
+        resp = self.client.post(
+            '/auth', json={'username': 'alice', 'password': 'pw'})
+
+        self.assertEqual(500, resp.status_code)
+        self.create_token.assert_not_called()
+
+
+class DirectVirtViewerAdminTestCase(testtools.TestCase):
+    """/console/direct hands out the hypervisor's own SPICE ticket and points
+    the client past the proxy, so only administrators may use it (issue
+    #134). A refusal must happen before any ticket is acquired.
+    """
+
+    def setUp(self):
+        super().setUp()
+
+        self.engine = create_engine('sqlite://')
+        db.Base.metadata.create_all(
+            self.engine, tables=[db.Source.__table__, db.Console.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+        db.add_source(
+            'ovirt1', 'ovirt', 'https://engine.example.com/ovirt-engine/api',
+            'admin@internal', 'sekrit-ovirt-password', ca_cert=None)
+        db.add_console(
+            source='ovirt1', uuid='console-1', hypervisor='hv1',
+            hypervisor_ip='10.0.0.1', insecure_port=5900, secure_port=5901,
+            name='a console', host_subject='CN=hv1')
+
+        api.app.config['TESTING'] = True
+        self.client = api.app.test_client()
+
+        config_patch = mock.patch.object(api.config, 'CACERT_PATH', None)
+        config_patch.start()
+        self.addCleanup(config_patch.stop)
+
+        self.audit = mock.MagicMock()
+        audit_patch = mock.patch.object(db, 'add_audit_event', self.audit)
+        audit_patch.start()
+        self.addCleanup(audit_patch.stop)
+
+        self.ovirt = mock.MagicMock()
+        self.ovirt.return_value.errored = False
+        self.ovirt.return_value.get_console_for_vm.return_value = (
+            None, 'a-hypervisor-ticket')
+        ovirt_patch = mock.patch.object(
+            api.ovirt_source, 'oVirtSource', self.ovirt)
+        ovirt_patch.start()
+        self.addCleanup(ovirt_patch.stop)
+
+    def _session(self, claims):
+        patch = mock.patch(
+            'kerbside.api.verify_jwt_in_request', return_value=(None, claims))
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _messages(self):
+        return [c.args[6] for c in self.audit.call_args_list]
+
+    def test_admin_receives_direct_credential_and_is_audited(self):
+        self._session({'sub': 'alice', 'kerbside_admin': True})
+
+        resp = self.client.get('/console/direct/ovirt1/console-1/console.vv')
+
+        self.assertEqual(200, resp.status_code)
+        self.assertIn('a-hypervisor-ticket', resp.get_data(as_text=True))
+        self.assertEqual(
+            ['Issued direct hypervisor credential, bypassing the proxy, to '
+             'alice'], self._messages())
+        self.assertEqual(
+            ('ovirt1', 'console-1'), self.audit.call_args.args[:2])
+
+    def test_non_admin_is_refused_before_a_ticket_is_acquired(self):
+        self._session({'sub': 'bob', 'kerbside_admin': False})
+
+        resp = self.client.get('/console/direct/ovirt1/console-1/console.vv')
+
+        self.assertEqual(403, resp.status_code)
+        self.assertNotIn('a-hypervisor-ticket', resp.get_data(as_text=True))
+        self.ovirt.assert_not_called()
+        self.assertEqual(
+            ['Refused direct console credential to non-administrator bob'],
+            self._messages())
+
+    def test_session_without_the_claim_is_refused(self):
+        # A session minted before the claim existed.
+        self._session({'sub': 'carol'})
+
+        resp = self.client.get('/console/direct/ovirt1/console-1/console.vv')
+
+        self.assertEqual(403, resp.status_code)
+        self.ovirt.assert_not_called()
+
+    def test_truthy_non_boolean_claim_is_refused(self):
+        self._session({'sub': 'dave', 'kerbside_admin': 'yes'})
+
+        resp = self.client.get('/console/direct/ovirt1/console-1/console.vv')
+
+        self.assertEqual(403, resp.status_code)
+
+    def test_admin_unknown_console_is_404_and_not_audited(self):
+        self._session({'sub': 'alice', 'kerbside_admin': True})
+
+        resp = self.client.get('/console/direct/ovirt1/no-such/console.vv')
+
+        self.assertEqual(404, resp.status_code)
+        self.ovirt.assert_not_called()
+        self.audit.assert_not_called()
+
+    def test_real_session_jwt_round_trip(self):
+        # Everything else here stubs verify_jwt_in_request, so this is the
+        # one place the claim name is checked end to end: minted the way
+        # Auth.post mints it, and read back by the real verifier.
+        with api.app.app_context():
+            admin = api.create_access_token(
+                identity='alice', additional_claims={'kerbside_admin': True})
+            plain = api.create_access_token(
+                identity='bob', additional_claims={'kerbside_admin': False})
+
+        resp = self.client.get(
+            '/console/direct/ovirt1/console-1/console.vv',
+            headers={'Authorization': 'Bearer %s' % admin})
+        self.assertEqual(200, resp.status_code)
+
+        resp = self.client.get(
+            '/console/direct/ovirt1/console-1/console.vv',
+            headers={'Authorization': 'Bearer %s' % plain})
+        self.assertEqual(403, resp.status_code)
+
+    def test_console_named_under_the_wrong_source_is_not_found(self):
+        # A real uuid under some other source name must not reach the
+        # console, nor file an audit row where no console's trail shows it.
+        self._session({'sub': 'alice', 'kerbside_admin': True})
+        resp = self.client.get('/console/direct/other/console-1/console.vv')
+        self.assertEqual(404, resp.status_code)
+
+        self._session({'sub': 'bob', 'kerbside_admin': False})
+        resp = self.client.get('/console/direct/other/console-1/console.vv')
+        self.assertEqual(403, resp.status_code)
+
+        self.ovirt.assert_not_called()
+        self.audit.assert_not_called()
+
+    def test_refusal_for_unknown_console_is_not_audited(self):
+        self._session({'sub': 'bob', 'kerbside_admin': False})
+
+        resp = self.client.get('/console/direct/ovirt1/no-such/console.vv')
+
+        self.assertEqual(403, resp.status_code)
+        self.audit.assert_not_called()
+
+
+class ConsolesPageDirectButtonTestCase(testtools.TestCase):
+    """The consoles page offers the Direct button only to administrators,
+    because the endpoint behind it refuses everyone else (issue #134)."""
+
+    def setUp(self):
+        super().setUp()
+        api.app.config['TESTING'] = True
+        self.client = api.app.test_client()
+
+        patch = mock.patch.object(db, 'get_consoles', return_value=[{
+            'source': 'src1', 'uuid': 'console-1', 'name': 'a console',
+            'hypervisor': 'hv1', 'hypervisor_ip': '10.0.0.1',
+            'insecure_port': 5900, 'secure_port': 5901, 'audit': [],
+            'token_count': 0, 'tokens': []}])
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _page(self, claims):
+        with mock.patch(
+                'kerbside.api.verify_jwt_in_request',
+                return_value=(None, claims)):
+            resp = self.client.get('/console', headers={'Accept': 'text/html'})
+        self.assertEqual(200, resp.status_code)
+        return resp.get_data(as_text=True)
+
+    def test_admin_is_offered_direct(self):
+        page = self._page({'sub': 'alice', 'kerbside_admin': True})
+        self.assertIn('/console/proxy/src1/console-1/console.vv', page)
+        self.assertIn('/console/direct/src1/console-1/console.vv', page)
+
+    def test_non_admin_is_not_offered_direct(self):
+        page = self._page({'sub': 'bob', 'kerbside_admin': False})
+        self.assertIn('/console/proxy/src1/console-1/console.vv', page)
+        self.assertNotIn('/console/direct/', page)

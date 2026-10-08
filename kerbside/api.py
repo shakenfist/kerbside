@@ -123,8 +123,25 @@ def verify_token(func):
         except NoAuthorizationError as e:
             raise e
 
+        # Keep the verified claims for session_is_admin() and
+        # session_username()
+        flask.g.jwt_claims = jwt_data
         return func(*args, **kwargs)
     return wrapper
+
+
+def session_is_admin():
+    """Whether the verified session belongs to a Kerbside administrator.
+
+    Only a claim which is literally True counts, so a session minted before
+    the claim existed is not an administrator.
+    """
+    return flask.g.get('jwt_claims', {}).get('kerbside_admin') is True
+
+
+def session_username():
+    """The user the verified session was issued to."""
+    return flask.g.get('jwt_claims', {}).get('sub')
 
 
 class DateTimeEncoder(json.JSONEncoder):
@@ -263,9 +280,13 @@ class Auth(sf_api.Resource):
 
         # Ensure the user is in the correct group
         group = None
+        admin_group = None
         for g in service_keystone.groups.list():
             if g.name == config.KEYSTONE_ACCESS_GROUP:
                 group = g
+            if (config.KEYSTONE_ADMIN_GROUP and
+                    g.name == config.KEYSTONE_ADMIN_GROUP):
+                admin_group = g
         if not group:
             return sf_api.error(500, 'service group not found')
 
@@ -281,13 +302,38 @@ class Auth(sf_api.Resource):
             LOG.error(f'SSL error while communicating with Keystone: {e}')
             return sf_api.error(500, 'Keystone SSL error')
 
+        # Administrators are an optional extra privilege, so a configured
+        # admin group which cannot be found withholds that privilege rather
+        # than refusing the login.
+        user_is_admin = False
+        if config.KEYSTONE_ADMIN_GROUP:
+            if not admin_group:
+                LOG.with_fields({
+                    'group': config.KEYSTONE_ADMIN_GROUP
+                    }).error('Configured Keystone admin group not found')
+            else:
+                try:
+                    service_keystone.users.check_in_group(
+                        user_id, admin_group.id)
+                    user_is_admin = True
+                except KEYSTONE_EXCEPTIONS.http.NotFound:
+                    pass
+                except (
+                        requests.exceptions.SSLError,
+                        KEYSTONE_EXCEPTIONS.connection.SSLError
+                        ) as e:
+                    LOG.error(
+                        f'SSL error while communicating with Keystone: {e}')
+                    return sf_api.error(500, 'Keystone SSL error')
+
         # Create a JWT containing the user's keystone token
         token = user_session.get_token()
         access_token = create_access_token(
             identity=username,
             additional_claims={
                 'iss': config.PUBLIC_FQDN,
-                'openstack_token': token
+                'openstack_token': token,
+                'kerbside_admin': user_is_admin
             },
             expires_delta=datetime.timedelta(minutes=config.API_TOKEN_DURATION))
 
@@ -328,7 +374,8 @@ class Consoles(sf_api.Resource):
                 flask.render_template(
                     'consoles.html', consoles=db.get_consoles(),
                     navitems=get_nav_items('Consoles'),
-                    refresh=True, when=datetime.datetime.now()),
+                    refresh=True, when=datetime.datetime.now(),
+                    is_admin=session_is_admin()),
                 mimetype='text/html')
         else:
             # No ticket to strip here: db.get_consoles() returns only
@@ -409,7 +456,30 @@ tls-ciphers=DEFAULT%(ca_cert)s%(host_subject)s
 class ConsolesDirectVirtViewer(sf_api.Resource):
     @verify_token
     def get(self, source=None, uuid=None):
+        # get_console keys on uuid alone (issue #468), so a row is only
+        # this console if its source matches the one in the URL. Without
+        # this check the audit events below would be filed under whatever
+        # source the caller typed, where no console's audit trail shows them.
         c = db.get_console(source, uuid)
+        if c and c.get('source') != source:
+            c = None
+
+        # A direct .vv carries the hypervisor's own SPICE ticket and points
+        # the client past the proxy, so only administrators may have one
+        # (issue #134). Refuse before acquiring a ticket. The refusal is
+        # audited only against a console which exists, so it cannot create
+        # orphan rows; like the proxy .vv, which records a token per
+        # request, it is otherwise one row per authenticated request.
+        # The response is the same 403 either way.
+        if not session_is_admin():
+            if c:
+                db.add_audit_event(
+                    source, uuid, None, None, None, None,
+                    'Refused direct console credential to non-administrator '
+                    '%s' % session_username())
+            return sf_api.error(
+                403, 'direct console access requires an administrator')
+
         if not c:
             return sf_api.error(404, 'console not found')
 
@@ -491,6 +561,10 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
             'type': s['type']
             }).info(
             'Providing virt-viewer direct configuration for console')
+        db.add_audit_event(
+            source, uuid, None, None, None, None,
+            'Issued direct hypervisor credential, bypassing the proxy, to %s'
+            % session_username())
 
         vv = VIRTVIEWER_TEMPLATE % {
             'node': node,

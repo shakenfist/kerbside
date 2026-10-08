@@ -137,13 +137,17 @@
 
                 {# Real anchors: both are GET downloads of a .vv
                    file, so middle click, "copy link address" and a
-                   page with no JavaScript all keep working. #}
+                   page with no JavaScript all keep working. Direct
+                   bypasses the proxy and is refused to anyone but an
+                   administrator, so only they are offered it. #}
                 <td>
                     <div class="sf-btn-group">
                         <a class="sf-btn sf-btn--sm"
                            href="/console/proxy/{{ console.source }}/{{ console.uuid }}/console.vv">Proxy</a>
+                        {% if is_admin %}
                         <a class="sf-btn sf-btn--sm"
                            href="/console/direct/{{ console.source }}/{{ console.uuid }}/console.vv">Direct</a>
+                        {% endif %}
                     </div>
                 </td>
 

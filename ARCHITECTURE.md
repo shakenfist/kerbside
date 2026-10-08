@@ -213,7 +213,7 @@ OpenStack environments).
 | `POST /auth` | Authentication (Keystone) |
 | `GET /source` | List configured sources |
 | `GET /console` | List all discovered consoles |
-| `GET /console/direct/<source>/<uuid>/console.vv` | Generate a direct-connection virt-viewer config |
+| `GET /console/direct/<source>/<uuid>/console.vv` | Generate a direct-connection virt-viewer config, bypassing the proxy; administrators only (`KEYSTONE_ADMIN_GROUP`) |
 | `GET /console/proxy/<source>/<uuid>/console.vv` | Generate a proxied virt-viewer config, minting a console token |
 | `POST /console/<source>/<uuid>/terminate` | Terminate every session for a console |
 | `GET /nova-console.vv` | Exchange a Nova spice-direct console token (validated against Nova) for a console token and virt-viewer config |
