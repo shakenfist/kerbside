@@ -151,10 +151,12 @@ is shipping example systemd units (open question 3).
   `PLAN-kerbside-deployer.md` in shakenfist/shakenfist, which is
   still building the role. Proposed there as an amendment to its
   phase 5; see "Dependencies on other plans".
-- **Publishing a first-party container image.** Filed as an
-  issue in phase 1. Compose-for-production and Kubernetes both
+- **Publishing a first-party container image.** Filed in phase
+  1 as #553. Compose-for-production and Kubernetes both
   depend on it, so a Helm chart is not written ahead of it.
 - **Upstream Kolla-Ansible work.** Tracked in `kerbside-patches`.
+  The enablement / deployment split from question 1 is recorded
+  there as kerbside-patches#1859.
 
 ## Open questions
 
