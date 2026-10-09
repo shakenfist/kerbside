@@ -23,10 +23,10 @@
 #
 # 1. A literal percent sign must be doubled. Values in this file go
 #    through Python's configparser with interpolation enabled, so a
-#    lone "%" is a syntax error -- and Kerbside currently exits
-#    *successfully* when this file fails to parse, so the daemon will
-#    disappear without an error. If your database password contains
-#    percent-encoded characters, write them as %% here. For example a
+#    lone "%" is a syntax error. Kerbside refuses to start, with exit
+#    status 1, when this file fails to parse. If your database
+#    password contains percent-encoded characters, write them as %%
+#    here. For example a
 #    password of "p@ss" percent-encodes to "p%40ss" and must be
 #    written "p%%40ss".
 #

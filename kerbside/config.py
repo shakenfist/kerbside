@@ -35,8 +35,12 @@ def load_ini_settings():
                   f'{processed}, skipped {skipped}')
 
         except configparser.Error as e:
-            print(f'PID {os.getpid()} error reading INI file: {e}')
-            sys.exit()
+            # This runs at import, before logging is configured. Exit
+            # non-zero so a supervisor sees a failed start rather than a
+            # clean shutdown (issue #313).
+            print(f'PID {os.getpid()} error reading INI file: {e}',
+                  file=sys.stderr)
+            sys.exit(1)
 
 
 # The default of every security-relevant field which has no safe default.
