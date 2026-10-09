@@ -62,7 +62,7 @@ keeps the option of a second one without redeploying.
 | Mechanism | State on 2026-10-10 | Where |
 |-----------|---------------------|-------|
 | By hand: pip, a venv, two processes | The pieces are documented; turning them into durable services is not. Kerbside ships no systemd units. | `docs/installation.md` "What a running Kerbside needs"; the CI scripts above are the nearest thing to a recipe |
-| Shaken Fist's ansible collection | A `kerbside` role exists and is the most complete deployer Kerbside has: about 1000 lines, two systemd units, validation plays, and co-located or dedicated hosts. It writes exactly one `type: shakenfist` source (`templates/sources.yaml`). It also has a bring-your-own-Kerbside path: set `kerbside_url` with an empty `kerbside` group, and Shaken Fist is configured for a Kerbside it does not deploy. | `shakenfist/deploy/collection/roles/kerbside/`; being built by `PLAN-kerbside-deployer.md`, phases 1 to 3 merged, phase 4 open as shakenfist#4479 |
+| Shaken Fist's ansible collection | A `kerbside` role exists and is the most complete deployer Kerbside has: about 2000 lines, two systemd units, validation plays, and co-located or dedicated hosts. It writes exactly one `type: shakenfist` source (`templates/sources.yaml`). It also has a bring-your-own-Kerbside path: set `kerbside_url` with an empty `kerbside` group, and Shaken Fist is configured for a Kerbside it does not deploy. | `shakenfist/deploy/collection/roles/kerbside/`; being built by `PLAN-kerbside-deployer.md`, phases 1 to 3 merged, phase 4 open as shakenfist#4479 |
 | Kolla-Ansible | The Kolla image build merged upstream (kolla 975495). The deployment (kolla-ansible 976889) and four CI and enablement changes are still open. | `kerbside-patches`; `docs/use-cases/openstack.md` "Deployment" |
 | Docker compose | Demo only, and labelled that way. Builds its image locally. | `demo/`; `installation.md` "Try it: the demo stack" |
 | A first-party container image | None. Kolla's image is the only published Kerbside image, and it is built around Kolla's `config.json` and `kolla_start` conventions. | - |
@@ -99,8 +99,10 @@ pushing gently" and "rebase only".
 explicit. Kerbside's merge-queue Kolla lane deploys from
 `kerbside-patches` (`.github/workflows/functional-tests.yml`,
 `openstack_matrix`), so a stale rebase breaks Kerbside's own
-merges. That lane is already the source of three open flake
-issues (#293, #308, #312).
+merges. The lane itself is currently reliable. Phase 1 counted 32
+successes and no failures across the 40 most recent merge runs.
+The three open flake issues against it (#293, #308, #312) date
+from mid-August.
 
 ### Gaps the pages will expose
 
@@ -180,8 +182,10 @@ is rebased rather than actively developed. Moving it to nightly
 keeps the coverage and stops a stale rebase from blocking
 unrelated merges.
 
-**Recommendation:** decide in phase 1, using the lane's recent
-pass rate, rather than now.
+**Decided in phase 1: it stays.** It was green 32 of 32 across
+the 40 most recent merge runs (2026-09-28 to 2026-10-09). If a
+stale rebase ever breaks it, the remedy is to rebase, not to
+demote the lane.
 
 ### 3. Does Kerbside ship example systemd units?
 
@@ -203,7 +207,7 @@ Shaken Fist's target.
 ### 4. One container page, or an index row only?
 
 With no first-party image, a "Containers" page would mostly say
-"not yet". **Recommendation:** one short page anyway. Operators
+"not yet". **Decided in phase 1: one short page.** Operators
 searching for Kubernetes deserve a direct answer, and the page
 is where the image issue gets linked from.
 
@@ -220,7 +224,7 @@ would creep back in. **Recommendation: yes.** Extend
 
 | Phase | Plan | Status | Merged |
 |-------|------|--------|--------|
-| 1. Survey, matrix and scaffolding | | Not started | |
+| 1. Survey, matrix and scaffolding | [PLAN-deployment-options-phase-01-survey-and-scaffolding.md](PLAN-deployment-options-phase-01-survey-and-scaffolding.md) | In progress | |
 | 2. By hand: pip, venv and systemd | | Not started | |
 | 3. OpenStack: Kolla-Ansible, and Kerbside in front of OpenStack | | Not started | |
 | 4. Containers: compose beyond the demo, and Kubernetes | | Not started | |
@@ -365,7 +369,13 @@ copy lives in shakenfist/development at
   open question 2 already names Kerbside as the long-term home
   of the systemd units.
 
-  **Proposed amendment, not yet agreed with that plan:** rewrite
+  **Amendment accepted 2026-10-10** by the session running that
+  plan, as a rewritten phase 5,
+  `PLAN-kerbside-deployer-phase-05-role-to-kerbside.md`, committed
+  as shakenfist 431d6a269 on shakenfist#4479's branch. The move needs that plan's phase 4 to merge, and a
+  Kerbside release containing #536 (the fix for #533). The newest
+  release, v0.6.0, predates it, **so a Kerbside release is on the
+  critical path.** As proposed, it rewrites
   its phase 5 so that the role moves into this repository, as an
   ansible collection, rather than Kerbside's lane reaching into
   Shaken Fist's collection. The changes would be:
