@@ -118,6 +118,28 @@ class SfTokenJtiDbTestCase(testtools.TestCase):
         self.assertRaises(
             db.ReusedJti, db.add_sf_token_jti, 'dupe-jti', time.time() + 300)
 
+    def test_concurrent_add_raises_reused_jti(self):
+        # Issue #409. Two concurrent exchanges of one token can both look for
+        # its jti before either has inserted it. Model the loser of that race
+        # by hiding the winner's row from any lookup, so that only the primary
+        # key stands between it and a second insert. That collision must
+        # surface as ReusedJti, which the API turns into an audited 401,
+        # rather than as an IntegrityError and a 500.
+        expiry = time.time() + 300
+        db.add_sf_token_jti('raced-jti', expiry)
+
+        unseen = mock.MagicMock()
+        unseen.filter.return_value.one.side_effect = (
+            db.exc.NoResultFound())
+        with mock.patch.object(Session, 'query', return_value=unseen):
+            self.assertRaises(
+                db.ReusedJti, db.add_sf_token_jti, 'raced-jti',
+                time.time() + 600)
+
+        rows = self._jtis()
+        self.assertEqual(['raced-jti'], [r.jti for r in rows])
+        self.assertEqual(expiry, rows[0].expiry)
+
     def test_reap_expired_sf_token_jtis_removes_expired_keeps_live(self):
         db.add_sf_token_jti('expired-jti', time.time() - 100)
         db.add_sf_token_jti('live-jti', time.time() + 300)
