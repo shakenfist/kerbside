@@ -12,10 +12,17 @@ INI_PATH = '/etc/kerbside/kerbside.ini'
 INI_SECTION = 'kerbside'
 
 
+def make_ini_parser():
+    # Interpolation is off so that a value means the same thing here as it
+    # does in a KERBSIDE_* environment variable: a percent-encoded password
+    # such as p%40ss is written as-is, not as p%%40ss (issue #551).
+    return configparser.ConfigParser(interpolation=None)
+
+
 def load_ini_settings():
     if os.path.exists(INI_PATH):
         print(f'PID {os.getpid()} reading configuration INI file at {INI_PATH}')
-        c = configparser.ConfigParser()
+        c = make_ini_parser()
         try:
             c.read(INI_PATH)
             processed = 0

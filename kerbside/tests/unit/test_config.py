@@ -132,16 +132,23 @@ class LoadIniSettingsTestCase(testtools.TestCase):
             SystemExit, self._load, '[kerbside]\nnot a key value pair\n')
         self.assertEqual(1, e.code)
 
-    def test_lone_percent_exits_nonzero(self):
-        # A percent-encoded password is the likely way to get here:
-        # interpolation rejects the lone "%".
-        e = self.assertRaises(
-            SystemExit, self._load,
-            '[kerbside]\nsql_url = mysql://kerbside:p%40ss@db/kerbside\n')
-        self.assertEqual(1, e.code)
-
-    def test_doubled_percent_is_read_literally(self):
+    def test_percent_is_read_literally(self):
+        # A percent-encoded password must be written the same way here
+        # as in the environment (issue #551).
         env = self._load(
-            '[kerbside]\nsql_url = mysql://kerbside:p%%40ss@db/kerbside\n')
+            '[kerbside]\nsql_url = mysql://kerbside:p%40ss@db/kerbside\n')
         self.assertEqual('mysql://kerbside:p%40ss@db/kerbside',
                          env['KERBSIDE_SQL_URL'])
+
+    def test_doubled_percent_is_not_collapsed(self):
+        env = self._load(
+            '[kerbside]\nkeystone_service_auth_password = a%%b\n')
+        self.assertEqual('a%%b',
+                         env['KERBSIDE_KEYSTONE_SERVICE_AUTH_PASSWORD'])
+
+    def test_interpolation_syntax_is_not_expanded(self):
+        env = self._load(
+            '[kerbside]\nsql_url = x\n'
+            'keystone_service_auth_password = %(sql_url)s\n')
+        self.assertEqual('%(sql_url)s',
+                         env['KERBSIDE_KEYSTONE_SERVICE_AUTH_PASSWORD'])
