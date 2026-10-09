@@ -123,7 +123,13 @@ SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
 # the failure this check already exists to prevent. The one real hit,
 # docs/proxy-architecture.md:62 on the Shaken Fist scrape-time subject,
 # is tracked as issue #472 rather than left to a plan section.
-DOC_PATHS = ('docs/use-cases/*.md', 'docs/index.md')
+#
+# The deployment pages under docs/deployment/ are in scope because they
+# describe TLS material, which is where an unconditional backend-TLS
+# claim would reappear. That directory may not exist yet; a glob over
+# it matches nothing, which is intended, so the guard is in place before
+# the first page lands.
+DOC_PATHS = ('docs/use-cases/*.md', 'docs/deployment/*.md', 'docs/index.md')
 
 
 def repository_root():

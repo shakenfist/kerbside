@@ -47,8 +47,13 @@ MUTATIONS = [
     ('file encoding left to the locale',
      "with open(path, encoding='utf-8') as f:", 'with open(path) as f:'),
     ('index.md dropped from the scanned set',
-     "DOC_PATHS = ('docs/use-cases/*.md', 'docs/index.md')",
-     "DOC_PATHS = ('docs/use-cases/*.md',)"),
+     "DOC_PATHS = ('docs/use-cases/*.md', 'docs/deployment/*.md', "
+     "'docs/index.md')",
+     "DOC_PATHS = ('docs/use-cases/*.md', 'docs/deployment/*.md')"),
+    ('deployment pages dropped from the scanned set',
+     "DOC_PATHS = ('docs/use-cases/*.md', 'docs/deployment/*.md', "
+     "'docs/index.md')",
+     "DOC_PATHS = ('docs/use-cases/*.md', 'docs/index.md')"),
     ('headings blanked before they are examined again',
      "        if stripped.startswith('#'):\n"
      '            if block:\n'
