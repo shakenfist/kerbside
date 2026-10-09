@@ -21,13 +21,11 @@ _KNOWN_REVISION_COUNT = 9
 class PackagedMigrationsTestCase(testtools.TestCase):
     """The migration tree must live inside the package.
 
-    It did not, before this was written. pyproject.toml names only the
-    kerbside and kerbside.rpc packages, and everything else that ships
-    (kerbside/api/, kerbside/sources/) does so because setuptools_scm's
-    git file-finder contributes tracked files found *beneath a package
-    directory*. The migrations lived in a top-level alembic/ directory,
-    outside the package, so no built artifact contained them and
-    `pip install kerbside` could not create its own schema.
+    It did not, before this was written. pyproject.toml finds packages
+    beneath kerbside/ and declares their data files, so nothing outside
+    that directory ships. The migrations lived in a top-level alembic/
+    directory, outside the package, so no built artifact contained them
+    and `pip install kerbside` could not create its own schema.
 
     SCOPE, and it is narrower than it looks: these are LAYOUT tests, not
     wheel-content tests. .stestr.conf sets top_dir=./, so unittest

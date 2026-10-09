@@ -71,12 +71,9 @@ docker compose config > /dev/null \
 # ── Step 3: Build against the checkout ───────────────────────────────
 #
 # KERBSIDE_SOURCE=/src needs the repository's git metadata in the build
-# context: setuptools_scm's file finder is the only thing that installs
-# kerbside/sources/ and kerbside/migrations/, neither of which has an
-# __init__.py. The workflow therefore checks out with fetch-depth: 0,
-# and .dockerignore deliberately does not exclude .git. Without either,
-# the install succeeds and then dies at import with "No module named
-# 'kerbside.sources'".
+# context, because setuptools_scm derives the version from it. The
+# workflow therefore checks out with fetch-depth: 0, and .dockerignore
+# deliberately does not exclude .git.
 echo "[lane-up] Building the demo image from the checkout"
 KERBSIDE_SOURCE=/src docker compose build \
     || dump_and_die "the demo image failed to build"

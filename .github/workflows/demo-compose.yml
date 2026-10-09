@@ -100,13 +100,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # A KERBSIDE_SOURCE=/src build needs real git metadata, and
-          # more of it than it looks: setuptools_scm's file finder is the
-          # only reason kerbside/sources/ and kerbside/migrations/ get
-          # installed (neither has an __init__.py, so neither is in
-          # pyproject's `packages`), and deriving a dev version needs the
-          # commit count since the last v* tag, which a shallow clone
-          # cannot produce. Same reason direct-qemu-functional.yml:100
+          # A KERBSIDE_SOURCE=/src build needs real git metadata:
+          # setuptools_scm derives a dev version from the commit count
+          # since the last v* tag, which a shallow clone cannot
+          # produce. Same reason direct-qemu-functional.yml:100
           # and sf-e2e-functional.yml:113 do this.
           fetch-depth: 0
 
