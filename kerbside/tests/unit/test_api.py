@@ -377,6 +377,57 @@ class SfTokenApiTestCase(testtools.TestCase):
             'sf1', 'console-uuid', None, None, None, None,
             'Rejected Shaken Fist console token: console not found')
 
+    @mock.patch('kerbside.api.db.add_audit_event')
+    @mock.patch('kerbside.api.consoletoken.create_token')
+    @mock.patch('kerbside.api.db.get_console')
+    @mock.patch('kerbside.api.db.add_sf_token_jti',
+                side_effect=db.ReusedJti('raced'))
+    @mock.patch('kerbside.api.db.sf_token_jti_exists', return_value=False)
+    def test_lost_exchange_race_is_rejected_and_audited(
+            self, mock_exists, mock_add_jti, mock_get_console,
+            mock_create_token, mock_audit):
+        # Issue #409. A concurrent exchange of the same token passes the
+        # replay fast-path, then loses on the jti insert. It must get the
+        # designed 401 and an audit event, and no console token.
+        mock_get_console.return_value = {
+            'source': 'sf1', 'uuid': 'console-uuid'}
+
+        resp = self.client.get('/sf-console.vv?token=some.jwt.value')
+
+        self.assertEqual(401, resp.status_code)
+        self.assertEqual('token already used', resp.get_json()['error'])
+        mock_create_token.assert_not_called()
+        mock_audit.assert_called_once_with(
+            'sf1', 'console-uuid', None, None, None, None,
+            'Rejected Shaken Fist console token: token already used')
+
+    @mock.patch('kerbside.api.db.add_audit_event')
+    @mock.patch('kerbside.api.consoletoken.create_token')
+    @mock.patch('kerbside.api.db.get_console')
+    @mock.patch('kerbside.api.db.add_sf_token_jti')
+    @mock.patch('kerbside.api.db.sf_token_jti_exists', return_value=False)
+    def test_unreadable_cacert_does_not_burn_jti(
+            self, mock_exists, mock_add_jti, mock_get_console,
+            mock_create_token, mock_audit):
+        # Issue #409. The CA certificate is read before the jti is consumed,
+        # so a missing or unreadable file fails the exchange without spending
+        # the single-use token: once the file is fixed, the same token works.
+        mock_get_console.return_value = {
+            'source': 'sf1', 'uuid': 'console-uuid'}
+        mock_create_token.return_value = {
+            'token': 'minted-consoletoken', 'session_id': 'sess-1'}
+
+        with mock.patch.object(
+                api.config, 'CACERT_PATH', '/nonexistent/ca-cert.pem'):
+            resp = self.client.get('/sf-console.vv?token=some.jwt.value')
+        self.assertEqual(500, resp.status_code)
+        mock_add_jti.assert_not_called()
+        mock_create_token.assert_not_called()
+
+        resp = self.client.get('/sf-console.vv?token=some.jwt.value')
+        self.assertEqual(200, resp.status_code)
+        mock_add_jti.assert_called_once_with('jti-1', self.claims['exp'])
+
     # --- 11. 404 does not burn the jti; a later retry succeeds -----------
 
     @mock.patch('kerbside.api.db.add_audit_event')

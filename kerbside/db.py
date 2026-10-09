@@ -944,15 +944,19 @@ class SfTokenJti(Base):
 
 
 def add_sf_token_jti(jti, expiry):
+    # The primary key on jti is the single-use guard, so there is no lookup
+    # first: two concurrent exchanges of one token would both find nothing
+    # and both insert. Instead the loser's commit collides on the key, and
+    # that collision is what reports the reuse.
     with Session(ENGINE) as session:
+        row = SfTokenJti(jti, expiry)
+        session.add(row)
         try:
-            session.query(SfTokenJti).filter(SfTokenJti.jti == jti).one()
-            raise ReusedJti('We already have jti %s' % jti)
-        except exc.NoResultFound:
-            row = SfTokenJti(jti, expiry)
-            session.add(row)
             session.commit()
-            return row.export()
+        except IntegrityError:
+            session.rollback()
+            raise ReusedJti('We already have jti %s' % jti)
+        return row.export()
 
 
 def sf_token_jti_exists(jti):

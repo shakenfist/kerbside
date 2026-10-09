@@ -909,6 +909,15 @@ class SfToken(sf_api.Resource):
                 'Rejected Shaken Fist console token: console not found')
             return sf_api.error(404, 'console not found')
 
+        # Read the CA certificate before consuming the jti, for the same
+        # reason the console lookup comes first: a failure here must leave
+        # the token unspent, or the retry after the fault is fixed is
+        # refused as a replay.
+        cacert = ''
+        with open(config.CACERT_PATH) as f:
+            cacert = f.read()
+        cacert = cacert.replace('\n', '\\n')
+
         # Now that there is a console to issue for, consume the jti. The
         # insert's ReusedJti (primary-key collision) is the authoritative
         # guard for the concurrent double-exchange race.
@@ -923,11 +932,6 @@ class SfToken(sf_api.Resource):
         # Issue exactly as the Nova path does: mint a kerbside consoletoken and
         # build the proxy .vv from kerbside config, never from the token.
         token_row = consoletoken.create_token(claims['source'], claims['sub'])
-
-        cacert = ''
-        with open(config.CACERT_PATH) as f:
-            cacert = f.read()
-        cacert = cacert.replace('\n', '\\n')
 
         if config.PROXY_HOST_SUBJECT:
             host_subject = '\nhost-subject=%s' % config.PROXY_HOST_SUBJECT
