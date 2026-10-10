@@ -12,6 +12,10 @@ from .. import util
 LOG, _ = logs.setup(__name__, **util.configure_logging())
 
 
+class NodeMapMismatch(Exception):
+    pass
+
+
 SHAKENFIST_CLIENT = None
 
 
@@ -143,6 +147,11 @@ class ShakenFistSource(base.BaseSource):
             namespaced_client = self._make_client(self.args['username'])
             instances = namespaced_client.get_instances()
 
+        # Instances that passed the state and VDI filters, and those of them
+        # whose node was missing from the node map.
+        candidates = 0
+        unmapped = []
+
         for inst in instances:
             log = LOG.with_fields({
                     'uuid': inst['uuid'],
@@ -157,10 +166,12 @@ class ShakenFistSource(base.BaseSource):
                 log.debug('Ignoring instance with incorrect VDI type')
                 continue
 
+            candidates += 1
             node = nodes.get(inst['node'])
             if not node:
                 log.with_fields({'node': inst['node']}).debug(
                     'Ignoring instance whose node is not in the node map')
+                unmapped.append(inst['node'])
                 continue
 
             # Pin the backend TLS leg to the hypervisor's SPICE server
@@ -187,6 +198,29 @@ class ShakenFistSource(base.BaseSource):
                 'name': '%s.%s' % (inst['name'], inst['namespace']),
                 'host_subject': host_subject
             }
+
+        # One instance whose node was deleted between the two API calls is
+        # expected. Every instance missing is not: that is the node map and
+        # the instances disagreeing about how nodes are named, which is how
+        # #201 dropped every console for a month with nothing above debug.
+        # Raise rather than return, so the caller marks the source errored
+        # and keeps its known consoles. A scrape that returns normally is
+        # taken as a full enumeration, and every console it did not yield
+        # would be deleted (issue #410).
+        if unmapped and len(unmapped) == candidates:
+            raise NodeMapMismatch(
+                'none of %d SPICE instances on source %s resolved to a node: '
+                'the node map has %d nodes, instances reference %s'
+                % (candidates, self.args['source'], len(nodes),
+                   ', '.join(sorted(set(unmapped))[:5])))
+        if unmapped:
+            LOG.with_fields({
+                'source': self.args['source'],
+                'candidates': candidates,
+                'unmapped': len(unmapped),
+                'nodes': sorted(set(unmapped))[:5]
+                }).warning('Some SPICE instances reference nodes missing '
+                           'from the node map and were skipped')
 
 
 def refresh_all_signing_keys():

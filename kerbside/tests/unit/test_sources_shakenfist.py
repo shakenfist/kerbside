@@ -190,10 +190,45 @@ class ScrapeTestCase(testtools.TestCase):
         self.assertEqual('C=US,CN=n1', consoles[0]['host_subject'])
 
     def test_instance_on_unknown_node_skipped(self):
+        # One stray instance (its node deleted between the two API calls)
+        # is skipped with a warning; the rest of the scrape stands.
         src = self._make_bare_source(username='system')
         system_client = self._system_client(_node())
         system_client.get_instances.return_value = [
-            _instance(node='node-uuid-ghost')]
+            _instance(), _instance(node='node-uuid-ghost', uuid='u2')]
+
+        with mock.patch.object(
+                src, '_make_client', return_value=system_client), \
+                mock.patch.object(shakenfist_source, 'LOG') as mock_log:
+            consoles = list(src())
+
+        self.assertEqual(['u1'], [c['uuid'] for c in consoles])
+        mock_log.with_fields.return_value.warning.assert_called_once()
+
+    def test_every_instance_unmapped_raises(self):
+        # The #201 shape: the node map and the instances disagree about
+        # node identity. Returning normally would let the caller treat the
+        # empty scrape as complete and delete every known console (#410).
+        src = self._make_bare_source(username='system')
+        system_client = self._system_client(_node())
+        system_client.get_instances.return_value = [
+            _instance(node='n1', uuid='u1'), _instance(node='n1', uuid='u2')]
+
+        with mock.patch.object(
+                src, '_make_client', return_value=system_client):
+            e = self.assertRaises(
+                shakenfist_source.NodeMapMismatch, list, src())
+
+        self.assertIn('none of 2 SPICE instances on source sf1', str(e))
+        self.assertIn('the node map has 1 nodes, instances reference n1',
+                      str(e))
+
+    def test_no_spice_instances_is_not_a_mismatch(self):
+        src = self._make_bare_source(username='system')
+        system_client = self._system_client(_node())
+        stopped = _instance(node='node-uuid-ghost')
+        stopped['state'] = 'deleted'
+        system_client.get_instances.return_value = [stopped]
 
         with mock.patch.object(
                 src, '_make_client', return_value=system_client):
