@@ -9,20 +9,12 @@
       "sha": "a8721f2f61e3fc43ac7aa3739f13716a811f1b37",
       "date": "2026-09-17"
     },
-    ".dockerignore": {
-      "sha": "efb2e768654f6bfa32d5a35d84891d2f0e6ab610",
-      "date": "2026-09-26"
-    },
     ".github/actionlint.yaml": {
       "sha": "51ca7aeb826114754b7c00811695bd9772dad18a",
       "date": "2026-09-27"
     },
     ".github/workflows/codeql-analysis.yml": {
       "sha": "41389dc343926f1f949a2524afa4b81a54dd9c06",
-      "date": "2026-09-27"
-    },
-    ".github/workflows/demo-compose.yml": {
-      "sha": "9a44d8f35bb0e75c628cedf0079053ceeda3b112",
       "date": "2026-09-27"
     },
     ".github/workflows/dev-proxy-wheel.yml": {
@@ -112,10 +104,6 @@
     "bindep.txt": {
       "sha": "028f6e239f525fa47bc96c5c283d9774661536db",
       "date": "2026-09-26"
-    },
-    "demo/Dockerfile": {
-      "sha": "e94b4457477d238ad2f2f5cc143a8859eff0145a",
-      "date": "2026-08-18"
     },
     "demo/README.md": {
       "sha": "518e58d886d3cd8257acaed5a59bdc3c4de596c0",
@@ -363,10 +351,6 @@
     },
     "tools/check-required-checks.sh": {
       "sha": "dc86bff62d2de280a5da40d61385de27367b775d",
-      "date": "2026-08-15"
-    },
-    "tools/check-wheel.py": {
-      "sha": "01953f7326bc063d2d2a45e2c3417077dc18fa58",
       "date": "2026-08-15"
     },
     "tools/create-ovirt-vnc-vm.py": {

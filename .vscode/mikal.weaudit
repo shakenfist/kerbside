@@ -192,10 +192,6 @@
       "author": "mikal"
     },
     {
-      "path": "tools/check-wheel.py",
-      "author": "mikal"
-    },
-    {
       "path": "tools/create-ovirt-vnc-vm.py",
       "author": "mikal"
     },
@@ -249,10 +245,6 @@
     },
     {
       "path": "demo/demo-env.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "demo/Dockerfile",
       "author": "mikal"
     },
     {
@@ -448,10 +440,6 @@
       "author": "mikal"
     },
     {
-      "path": ".dockerignore",
-      "author": "mikal"
-    },
-    {
       "path": ".gitignore",
       "author": "mikal"
     },
@@ -465,10 +453,6 @@
     },
     {
       "path": ".github/workflows/codeql-analysis.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/demo-compose.yml",
       "author": "mikal"
     },
     {
@@ -516,10 +500,6 @@
       "author": "mikal"
     },
     {
-      "path": "demo",
-      "author": "mikal"
-    },
-    {
       "path": "docs/performance/proxy-backpressure.md",
       "author": "mikal"
     },
@@ -561,10 +541,6 @@
     },
     {
       "path": ".github/workflows/renovate.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows",
       "author": "mikal"
     },
     {
