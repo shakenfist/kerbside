@@ -1,9 +1,11 @@
 import importlib.util
+import io
 import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from unittest import mock
 
 import testtools
 
@@ -219,6 +221,32 @@ class RepositoryTestCase(testtools.TestCase):
 
         self.assertIn('docs/index.md', paths)
         self.assertIn('docs/use-cases/ovirt.md', paths)
+
+    def test_the_deployment_pages_are_scanned(self):
+        """A page under docs/deployment/ is checked like a use case.
+
+        Those pages describe TLS material, so they are where an
+        unconditional claim would reappear. None exists in the
+        repository yet, so build a tree that has one and point the
+        guard's root at it; the glob matching nothing in the real tree
+        would otherwise make this untestable and a dropped pattern
+        invisible.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, 'docs', 'deployment'))
+            with open(os.path.join(root, 'docs', 'deployment', 'x.md'),
+                      'w', encoding='utf-8') as f:
+                f.write(UNCONDITIONAL)
+
+            with mock.patch.object(
+                    check_backend_tls_claims, 'repository_root',
+                    return_value=root):
+                paths = check_backend_tls_claims.default_paths()
+                with mock.patch('sys.stderr', new=io.StringIO()):
+                    verdict = check_backend_tls_claims.main()
+
+        self.assertEqual(['docs/deployment/x.md'], paths)
+        self.assertEqual(1, verdict)
 
     def test_the_documentation_passes(self):
         self.assertEqual(
