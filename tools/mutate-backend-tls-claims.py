@@ -27,6 +27,11 @@ import tempfile
 GUARD = 'tools/check-backend-tls-claims.py'
 TOX_PYTHON = '.tox/py3/bin/python'
 
+# The guard's scope line, verbatim. The scope mutations below search for
+# it, so a change to DOC_PATHS in the guard is a change here too.
+DOC_PATHS_LINE = ("DOC_PATHS = ('docs/use-cases/*.md', 'docs/deployment/*.md', "
+                  "'docs/index.md')")
+
 # (name, the text to replace, what to replace it with). Each is applied
 # to a fresh copy of the guard, so they do not interact.
 MUTATIONS = [
@@ -47,12 +52,10 @@ MUTATIONS = [
     ('file encoding left to the locale',
      "with open(path, encoding='utf-8') as f:", 'with open(path) as f:'),
     ('index.md dropped from the scanned set',
-     "DOC_PATHS = ('docs/use-cases/*.md', 'docs/deployment/*.md', "
-     "'docs/index.md')",
+     DOC_PATHS_LINE,
      "DOC_PATHS = ('docs/use-cases/*.md', 'docs/deployment/*.md')"),
     ('deployment pages dropped from the scanned set',
-     "DOC_PATHS = ('docs/use-cases/*.md', 'docs/deployment/*.md', "
-     "'docs/index.md')",
+     DOC_PATHS_LINE,
      "DOC_PATHS = ('docs/use-cases/*.md', 'docs/index.md')"),
     ('headings blanked before they are examined again',
      "        if stripped.startswith('#'):\n"

@@ -100,7 +100,8 @@ explicit. Kerbside's merge-queue Kolla lane deploys from
 `kerbside-patches` (`.github/workflows/functional-tests.yml`,
 `openstack_matrix`), so a stale rebase breaks Kerbside's own
 merges. The lane itself is currently reliable. Phase 1 counted 32
-successes and no failures across the 40 most recent merge runs.
+successes and no failures across the 40 most recent merge runs;
+the other 8 never started the job.
 The three open flake issues against it (#293, #308, #312) date
 from mid-August.
 
@@ -121,10 +122,10 @@ deployment page cannot honestly avoid them:
 ## Mission and problem statement
 
 A `docs/deployment/` section with one page per deployment
-mechanism, a matrix in `docs/index.md` showing which use cases
-each mechanism serves and what CI proves, and an
-`installation.md` that hands off to that section instead of
-indexing deployment by cloud.
+mechanism, a `### Deployment Options` table in `docs/index.md`
+showing which sources each mechanism configures and what CI
+proves, and an `installation.md` that hands off to that section
+instead of indexing deployment by cloud.
 
 Each page follows one structure, mirroring the use-case pages:
 
@@ -149,8 +150,8 @@ is shipping example systemd units (open question 3).
 
 - **Moving the `kerbside` role into Kerbside.** It belongs to
   `PLAN-kerbside-deployer.md` in shakenfist/shakenfist, which is
-  still building the role. Proposed there as an amendment to its
-  phase 5; see "Dependencies on other plans".
+  still building the role. Accepted there as a rewritten phase
+  5; see "Dependencies on other plans".
 - **Publishing a first-party container image.** Filed in phase
   1 as #553. Compose-for-production and Kubernetes both
   depend on it, so a Helm chart is not written ahead of it.
@@ -184,10 +185,11 @@ is rebased rather than actively developed. Moving it to nightly
 keeps the coverage and stops a stale rebase from blocking
 unrelated merges.
 
-**Decided in phase 1: it stays.** It was green 32 of 32 across
-the 40 most recent merge runs (2026-09-28 to 2026-10-09). If a
-stale rebase ever breaks it, the remedy is to rebase, not to
-demote the lane.
+**Decided in phase 1: it stays.** It passed in all 32 of the 40
+most recent merge runs (2026-09-28 to 2026-10-09) that started
+it, with no failures; phase 1's survey accounts for the other 8.
+If a stale rebase ever breaks it, the remedy is to rebase, not
+to demote the lane.
 
 ### 3. Does Kerbside ship example systemd units?
 
@@ -236,13 +238,16 @@ would creep back in. **Recommendation: yes.** Extend
 
 **Phase 1: survey, matrix and scaffolding.** Re-check the
 inventory above against the tree and against the Shaken Fist
-deployer plan. Settle the page format and create
-`docs/deployment/`. Add a `### Deployment Options` table to
+deployer plan. Settle the page format and fix the page
+filenames; the first page phase creates `docs/deployment/` and
+its `order.yml`. Add a `### Deployment Options` table to
 `docs/index.md`, beside Use Cases: one row per mechanism, rows
 without a page marked as planned (the convention the Use Cases
-table set), and a "Tested in Kerbside CI" column. Decide where
-the use case by mechanism matrix lives. Extend the TLS claim
-guard (question 5). File the image issue. Settle question 2.
+table set), and a "Tested in Kerbside CI" column. Phase 1's
+decision 1 settled that this table carries the matrix, as a
+"Sources it configures" column, with no separate use case by
+mechanism grid. Extend the TLS claim guard (question 5). File
+the image issue. Settle question 2.
 Planned at high effort: the matrix and the page boundaries are
 judgment calls that every later phase inherits.
 
@@ -274,12 +279,11 @@ Kubernetes. Links the image issue. Planned at medium effort.
 the role wherever it lives at that point, and links to Shaken
 Fist's operator guide for the parts Shaken Fist owns. It also
 covers the bring-your-own-Kerbside path, which is how a Shaken
-Fist cluster joins a front-door Kerbside. **Blocked on**
-`PLAN-kerbside-deployer.md` reaching at least its phase 6, so
-the page describes a finished role. If the role-move amendment
-is accepted, this phase instead documents a Kerbside-owned role
-that accepts several sources, and waits for that move. Planned
-at medium effort once unblocked.
+Fist cluster joins a front-door Kerbside. The role move was
+accepted, so this phase documents a Kerbside-owned role that
+accepts several sources. **Blocked on** that move landing, which
+needs the deployer plan's phase 4 to merge and a Kerbside
+release after v0.6.0. Planned at medium effort once unblocked.
 
 **Phase 6: installation hand-off and closeout.**
 `installation.md`'s "Deploying for real" becomes a pointer to
@@ -374,13 +378,13 @@ copy lives in shakenfist/development at
   **Amendment accepted 2026-10-10** by the session running that
   plan, as a rewritten phase 5,
   `PLAN-kerbside-deployer-phase-05-role-to-kerbside.md`, committed
-  as shakenfist 431d6a269 on shakenfist#4479's branch. The move needs that plan's phase 4 to merge, and a
-  Kerbside release containing #536 (the fix for #533). The newest
-  release, v0.6.0, predates it, **so a Kerbside release is on the
-  critical path.** As proposed, it rewrites
-  its phase 5 so that the role moves into this repository, as an
-  ansible collection, rather than Kerbside's lane reaching into
-  Shaken Fist's collection. The changes would be:
+  as shakenfist 431d6a269 on shakenfist#4479's branch. The move
+  needs that plan's phase 4 to merge, and a Kerbside release
+  containing #536 (the fix for #533). The newest release, v0.6.0,
+  predates it, **so a Kerbside release is on the critical path.**
+  It rewrites its phase 5 so that the role moves into this
+  repository, as an ansible collection, rather than Kerbside's
+  lane reaching into Shaken Fist's collection. The changes are:
 
   - The role's single hard-coded Shaken Fist source becomes a
     `kerbside_sources` list. Shaken Fist's `site.yml` computes its
@@ -392,8 +396,8 @@ copy lives in shakenfist/development at
   the role here should be quicker. Shaken Fist's phase 4 merge
   lane keeps proving the integration from the other side. The
   cost is a collection dependency across repositories and a
-  release step for it, which that phase would have to design.
-  This plan's phase 5 waits on whichever way that goes.
+  release step for it, which that phase has to design. This
+  plan's phase 5 waits on the move.
 
 - **`PLAN-use-case-docs.md`** (Complete) set the page format,
   the planned-row index convention, and the backend-TLS claim

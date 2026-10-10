@@ -53,9 +53,15 @@ later phases need not redo the corrections.
    filed on 2026-08-13 or 2026-08-14, and none has been updated
    since 2026-09-20. Across the 40 most recent `merge_group` runs
    of `functional-tests.yml` (2026-09-28 to 2026-10-09), the Kolla
-   job succeeded 32 times, failed 0 times, and skipped once. By
-   the same count the oVirt lane failed 3 times. This settles
-   master plan question 2 (decision 5).
+   job succeeded 32 times and failed 0 times. The other 8 runs
+   never started it: 4 were documentation-only, so path filtering
+   skipped the test matrix; 3 were superseded queue entries
+   cancelled within a minute, before the matrix started; and in 1
+   (run 36797038722) the job sat queued for 24 hours without a
+   runner and was cancelled. That one is a runner-starvation
+   timeout, not a lane failure, since the job never ran. By the
+   same count the oVirt lane failed 3 times. This settles master
+   plan question 2 (decision 5).
 2. **The Shaken Fist role is about 2000 lines, not 1000.** The
    earlier count covered only `tasks/` and `templates/`. All files
    under `shakenfist/deploy/collection/roles/kerbside/` on
@@ -154,8 +160,8 @@ Kubernetes exists.
    it then is the whole point: the first deployment page meets
    the guard rather than a review round.
 5. **Master plan question 2: the Kolla lane stays in the merge
-   queue.** It is green 32 of 32 over the last 40 merge runs,
-   and it is the only end-to-end OpenStack coverage Kerbside
+   queue.** It passed in all 32 of the last 40 merge runs that
+   started it, with no failures, and it is the only end-to-end OpenStack coverage Kerbside
    has. Revisit only if a stale `kerbside-patches` rebase starts
    failing merges. If that happens, the remedy is to rebase, not
    to demote the lane.
