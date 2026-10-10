@@ -179,11 +179,13 @@ too.
 
 ### 2. Does the Kolla lane stay in Kerbside's merge queue?
 
-It is the only end-to-end OpenStack coverage Kerbside has. It is
-also the flakiest lane, and it now depends on a patch set that
-is rebased rather than actively developed. Moving it to nightly
-keeps the coverage and stops a stale rebase from blocking
-unrelated merges.
+It is the only end-to-end OpenStack coverage Kerbside has. When
+this plan was written it was believed to be the flakiest lane,
+on the strength of three open flake issues (#293, #308, #312),
+and it now depends on a patch set that is rebased rather than
+actively developed. Moving it to nightly would keep the coverage
+and stop a stale rebase from blocking unrelated merges. Phase
+1's survey found the flakiness belief out of date.
 
 **Decided in phase 1: it stays.** It passed in all 32 of the 40
 most recent merge runs (2026-09-28 to 2026-10-09) that started

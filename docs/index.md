@@ -146,7 +146,7 @@ deployed in front of the clouds rather than by one of them, because
 | Kolla-Ansible (kerbside-patches) | Kerbside as a Kolla control-plane service, from patches carried in kerbside-patches while upstream review is open and maintained by rebase | OpenStack | `openstack_matrix`, merge tier |
 | Containers | The `demo/` compose stack today, with no first-party image yet, so no production compose or Kubernetes support | Static (the compose demo) | `demo-compose`, advisory, path-filtered |
 
-Mechanisms without a link are planned rather than written; see
+Mechanisms whose name is not a link are planned rather than written; see
 [plans/PLAN-deployment-options.md](plans/PLAN-deployment-options.md).
 
 ### Operator Documentation

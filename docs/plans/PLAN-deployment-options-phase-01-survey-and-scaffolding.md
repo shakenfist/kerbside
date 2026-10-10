@@ -161,8 +161,8 @@ Kubernetes exists.
    the guard rather than a review round.
 5. **Master plan question 2: the Kolla lane stays in the merge
    queue.** It passed in all 32 of the last 40 merge runs that
-   started it, with no failures, and it is the only end-to-end OpenStack coverage Kerbside
-   has. Revisit only if a stale `kerbside-patches` rebase starts
+   started it, with no failures, and it is the only end-to-end
+   OpenStack coverage Kerbside has. Revisit only if a stale `kerbside-patches` rebase starts
    failing merges. If that happens, the remedy is to rebase, not
    to demote the lane.
 6. **Master plan question 4: one `containers.md` page.** This
@@ -196,20 +196,22 @@ Kubernetes exists.
 
 ## Definition of done
 
-- [ ] `grep -n "docs/deployment/\*.md" tools/check-backend-tls-claims.py`
+- [x] `grep -n "docs/deployment/\*.md" tools/check-backend-tls-claims.py`
       matches `DOC_PATHS`.
-- [ ] `tools/mutate-backend-tls-claims.py` reports every mutation
+- [x] `tools/mutate-backend-tls-claims.py` reports every mutation
       caught, including one named "deployment pages dropped from
       the scanned set".
-- [ ] `tox -epy3` and `tox -eflake8` pass.
-- [ ] `docs/index.md` has a `### Deployment Options` heading
+- [x] `tox -epy3` and `tox -eflake8` pass.
+- [x] `docs/index.md` has a `### Deployment Options` heading
       between `### Use Cases` and `### Operator Documentation`,
-      with four rows, none a link, in decision 2's order.
-- [ ] `tools/check-backend-tls-claims.py` exits 0.
-- [ ] `git ls-files docs/deployment` prints nothing (decision 3).
-- [ ] Both issues from step 1d exist, and their numbers are in
+      with four rows, none a link, in decision 2's order. The
+      closing sentence says which column carries the link
+      (review round 2 of #555).
+- [x] `tools/check-backend-tls-claims.py` exits 0.
+- [x] `git ls-files docs/deployment` prints nothing (decision 3).
+- [x] Both issues from step 1d exist, and their numbers are in
       the master plan.
-- [ ] `pre-commit run --all-files` passes.
+- [x] `pre-commit run --all-files` passes.
 
 ## Back brief
 
