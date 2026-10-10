@@ -29,10 +29,6 @@
       "sha": "b9b3936053b8685ef0ae47f656b2f35aa62ba637",
       "date": "2026-10-05"
     },
-    ".github/workflows/functional-tests.yml": {
-      "sha": "3d1519bdcb3c4d66976b46f0f18b116aee1c9407",
-      "date": "2026-10-01"
-    },
     ".github/workflows/mermaid-lint.yml": {
       "sha": "d5b8377f8a98d3f68fd14469ed4d5be8fece1c6a",
       "date": "2026-10-05"

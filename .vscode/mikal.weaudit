@@ -512,10 +512,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/functional-tests.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/prune-reviews.yml",
       "author": "mikal"
     },
