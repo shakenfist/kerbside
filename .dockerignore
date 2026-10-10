@@ -7,13 +7,8 @@
 # mount, so a stray build artefact causes a spurious cache miss on the
 # expensive pip layer.
 #
-# .git is deliberately NOT excluded, and the build fails without it.
-# setuptools_scm's git file finder is what puts kerbside/sources/ and
-# kerbside/migrations/ into the install at all: neither has an
-# __init__.py, so they are not in pyproject.toml's `packages` list and
-# normal setuptools discovery does not see them. Excluding .git
-# produces an install that imports and then dies with
-# "No module named 'kerbside.sources'".
+# .git is deliberately NOT excluded: a KERBSIDE_SOURCE=/src build fails
+# without it, because setuptools_scm derives the version from it.
 
 .tox/
 .venv/

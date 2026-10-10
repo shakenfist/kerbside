@@ -140,8 +140,21 @@ dependencies = [
 [project.scripts]
 kerbside = "kerbside.main:cli"
 
-[tool.setuptools]
-packages = ["kerbside", "kerbside.rpc"]
+# Every directory under kerbside/ is a package, including the ones with no
+# __init__.py (sources, migrations) and the data-only ones under api/. Name
+# them by discovery rather than a list, and name the data files by pattern,
+# so the wheel's contents do not depend on setuptools_scm's git file finder:
+# a build from a tree without git metadata used to install cleanly and then
+# fail at import (issue #326). tools/check-wheel.py builds both ways and
+# requires the two wheels to match.
+[tool.setuptools.packages.find]
+include = ["kerbside*"]
+
+[tool.setuptools.package-data]
+"*" = [
+    "*.html", "*.svg", "*.css", "*.js", "*.md", ".sfui-commit",
+    "*.ini", "*.mako", "*.proto",
+]
 
 [tool.setuptools_scm]
 git_describe_command = "git describe --dirty --tags --match v* --first-parent"

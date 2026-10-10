@@ -23,8 +23,8 @@ FROM python:3.13-slim
 # needs of entrypoint.sh and get-console.sh.
 #
 # git is here for KERBSIDE_SOURCE=/src builds only, and it is not an
-# obvious requirement: setuptools_scm shells out to git for both the
-# version and the file list, so without the binary a checkout install
+# obvious requirement: setuptools_scm shells out to git to derive the
+# version, so without the binary a checkout install
 # fails with "setuptools-scm was unable to detect version" even when
 # .git is right there in the context. The default PyPI build does not
 # need it, but installing it unconditionally keeps one image serving
@@ -90,16 +90,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # when the step finishes, so nothing is written back and no copy of the
 # source is baked into the image.
 #
-# A /src build needs real git metadata in the context, and that is a
-# sharper requirement than it looks.
-#
-# setuptools_scm does two jobs for a checkout install. It derives the
-# version, and -- via its git file finder -- it is the only reason
-# kerbside/sources/ and kerbside/migrations/ end up installed at all:
-# neither directory has an __init__.py, so neither appears in
-# pyproject.toml's `packages` list, and setuptools' own discovery never
-# sees them. Without git the install succeeds and then dies at import
-# with "No module named 'kerbside.sources'".
+# A /src build needs real git metadata in the context, because
+# setuptools_scm derives the version from it. (The wheel's contents no
+# longer depend on git: pyproject.toml declares every package and data
+# file since issue #326, and tools/check-wheel.py checks a git-less
+# build ships the same files.)
 #
 # Two consequences worth knowing before editing this:
 #
@@ -109,9 +104,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #     Build from an ordinary clone.
 #
 # Both apply to KERBSIDE_SOURCE=/src only; the default build never
-# looks at the checkout and is happy in a worktree. This fragility is
-# not the demo's, it is the packaging's, and it still bites anyone
-# pip-installing kerbside from a git URL. Filed as issue #326.
+# looks at the checkout and is happy in a worktree.
 ARG KERBSIDE_SOURCE=kerbside
 RUN --mount=type=bind,source=.,target=/src,rw \
     pip install --no-cache-dir kerbside-proxy "${KERBSIDE_SOURCE}"
