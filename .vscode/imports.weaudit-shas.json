@@ -1,6 +1,17 @@
 {
   "version": 1,
   "files": {
+    ".github/workflows/renovate.yml": {
+      "sha": "d63b3b2872578eb241b9749d162312260dc8e8bd",
+      "date": "2026-10-09",
+      "imported": {
+        "repo": "shakenfist/development",
+        "reviewer": "mikal",
+        "path": ".github/workflows/renovate.yml",
+        "commit": "f2bc2590ba8a75fed8deebaacaf6006daaf255fc",
+        "verified": true
+      }
+    },
     "tools/ci-prune-reviews.sh": {
       "sha": "cb496c3933ea26aa855b91eb7b8927aa5597e263",
       "date": "2026-09-27",

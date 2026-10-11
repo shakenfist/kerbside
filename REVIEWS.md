@@ -31,7 +31,7 @@ for how this works, including how to verify the attestations.
 | .github/workflows/prune-reviews.yml | mikal | 2026-10-01 | 7fc119ce4625 | - |
 | .github/workflows/pypi-storage-check.yml | mikal | 2026-08-24 | b4ea2a75e61a | - |
 | .github/workflows/release.yml | mikal | 2026-09-27 | 47583d36522c | - |
-| .github/workflows/renovate.yml | mikal | 2026-10-05 | ab84e6fb10de | - |
+| .github/workflows/renovate.yml | mikal | 2026-10-09 | d63b3b287257 | development@f2bc2590ba8a |
 | .github/workflows/rust.yml | mikal | 2026-09-27 | 8b8f7d515c38 | - |
 | .github/workflows/sf-e2e-functional.yml | mikal | 2026-09-27 | 00d9aa7b1a15 | - |
 | .gitignore | mikal | 2026-09-26 | 45c7b4061c76 | - |

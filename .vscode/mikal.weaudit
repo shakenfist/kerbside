@@ -532,10 +532,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/renovate.yml",
-      "author": "mikal"
-    },
-    {
       "path": "docs/spice/capabilities.md",
       "author": "mikal"
     },
