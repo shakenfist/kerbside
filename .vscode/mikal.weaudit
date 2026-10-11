@@ -260,10 +260,6 @@
       "author": "mikal"
     },
     {
-      "path": "demo/kerbside.ini",
-      "author": "mikal"
-    },
-    {
       "path": "etc/example-static-sources.yaml",
       "author": "mikal"
     },
