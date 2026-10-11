@@ -1,4 +1,3 @@
-import configparser
 import os
 import re
 
@@ -146,23 +145,14 @@ class ConfExampleCoverageTestCase(testtools.TestCase):
     def test_the_file_parses(self):
         """It must parse the way load_ini_settings() parses it.
 
-        Same parser, same interpolation. A literal percent sign in a
-        value raises here, which matters because config.py catches
-        that and exits -- with status zero -- so a malformed file
-        takes the daemon down while reporting success.
+        Same parser, from config.make_ini_parser(), so this cannot
+        drift from the daemon. A file that fails here makes every
+        Kerbside process exit with status 1.
         """
-        parser = configparser.ConfigParser()
+        parser = kerbside_config.make_ini_parser()
         parser.read_string(self.text)
 
         self.assertEqual(['kerbside'], parser.sections())
-
-        # Reading each value is what triggers interpolation, so a
-        # bare percent sign would not be caught by read_string alone.
-        # Asserted rather than left as a bare expression so that a
-        # later tidy-up does not mistake it for dead code and delete
-        # the only check that the example is free of lone percents.
-        for key in parser['kerbside']:
-            self.assertIsInstance(parser['kerbside'][key], str)
 
     def test_live_keys_are_the_ones_without_usable_defaults(self):
         """Decision 4: live keys are a judgement, so pin the judgement.

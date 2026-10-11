@@ -12,10 +12,17 @@ INI_PATH = '/etc/kerbside/kerbside.ini'
 INI_SECTION = 'kerbside'
 
 
+def make_ini_parser():
+    # Interpolation is off so that a value means the same thing here as it
+    # does in a KERBSIDE_* environment variable: a percent-encoded password
+    # such as p%40ss is written as-is, not as p%%40ss (issue #551).
+    return configparser.ConfigParser(interpolation=None)
+
+
 def load_ini_settings():
     if os.path.exists(INI_PATH):
         print(f'PID {os.getpid()} reading configuration INI file at {INI_PATH}')
-        c = configparser.ConfigParser()
+        c = make_ini_parser()
         try:
             c.read(INI_PATH)
             processed = 0
@@ -35,8 +42,12 @@ def load_ini_settings():
                   f'{processed}, skipped {skipped}')
 
         except configparser.Error as e:
-            print(f'PID {os.getpid()} error reading INI file: {e}')
-            sys.exit()
+            # This runs at import, before logging is configured. Exit
+            # non-zero so a supervisor sees a failed start rather than a
+            # clean shutdown (issue #313).
+            print(f'PID {os.getpid()} error reading INI file: {e}',
+                  file=sys.stderr)
+            sys.exit(1)
 
 
 # The default of every security-relevant field which has no safe default.

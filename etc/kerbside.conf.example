@@ -21,14 +21,12 @@
 #
 # Two things to know before editing:
 #
-# 1. A literal percent sign must be doubled. Values in this file go
-#    through Python's configparser with interpolation enabled, so a
-#    lone "%" is a syntax error -- and Kerbside currently exits
-#    *successfully* when this file fails to parse, so the daemon will
-#    disappear without an error. If your database password contains
-#    percent-encoded characters, write them as %% here. For example a
-#    password of "p@ss" percent-encodes to "p%40ss" and must be
-#    written "p%%40ss".
+# 1. Values are read literally, with no interpolation, so write them
+#    exactly as you would in a KERBSIDE_* environment variable. A
+#    password of "p@ss" percent-encodes to "p%40ss" in a database URL,
+#    and is written "p%40ss" here too. Do not double percent signs:
+#    "%%" is read as two of them. Kerbside refuses to start, with exit
+#    status 1, when this file fails to parse.
 #
 # 2. Commented-out settings below show that setting's real default,
 #    in the exact form "# key = value". A unit test parses this file
@@ -62,7 +60,8 @@ sources_path = /etc/kerbside/sources.yaml
 # Kerbside does not create the database or the user; it does create
 # its own schema, with "kerbside db upgrade".
 #
-# Remember to double any percent sign (see note 1 in the header).
+# Percent-encode any reserved characters in the password, and write
+# the result as-is (see note 1 in the header).
 # The built-in default is a Kolla-flavoured URL with a placeholder
 # password baked in, which is never right outside that one
 # deployment -- so set this explicitly. The default also leaves the

@@ -1,4 +1,5 @@
 import os
+import tempfile
 from unittest import mock
 
 import pydantic
@@ -106,3 +107,48 @@ class KeystoneAuthVerifyConfigTestCase(testtools.TestCase):
         for value in ('', '  '):
             self.assertRaises(
                 pydantic.ValidationError, self._verify, value)
+
+
+class LoadIniSettingsTestCase(testtools.TestCase):
+    """An unparseable INI file must stop the process with a failure status.
+
+    A bare sys.exit() exits zero, which a supervisor reads as a clean
+    shutdown rather than a failed start (issue #313).
+    """
+
+    def _load(self, content):
+        tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmpdir.cleanup)
+        path = os.path.join(tmpdir.name, 'kerbside.ini')
+        with open(path, 'w') as f:
+            f.write(content)
+        with mock.patch.object(kerbside_config, 'INI_PATH', path), \
+                mock.patch.dict(os.environ, {}, clear=True):
+            kerbside_config.load_ini_settings()
+            return dict(os.environ)
+
+    def test_unparseable_file_exits_nonzero(self):
+        e = self.assertRaises(
+            SystemExit, self._load, '[kerbside]\nnot a key value pair\n')
+        self.assertEqual(1, e.code)
+
+    def test_percent_is_read_literally(self):
+        # A percent-encoded password must be written the same way here
+        # as in the environment (issue #551).
+        env = self._load(
+            '[kerbside]\nsql_url = mysql://kerbside:p%40ss@db/kerbside\n')
+        self.assertEqual('mysql://kerbside:p%40ss@db/kerbside',
+                         env['KERBSIDE_SQL_URL'])
+
+    def test_doubled_percent_is_not_collapsed(self):
+        env = self._load(
+            '[kerbside]\nkeystone_service_auth_password = a%%b\n')
+        self.assertEqual('a%%b',
+                         env['KERBSIDE_KEYSTONE_SERVICE_AUTH_PASSWORD'])
+
+    def test_interpolation_syntax_is_not_expanded(self):
+        env = self._load(
+            '[kerbside]\nsql_url = x\n'
+            'keystone_service_auth_password = %(sql_url)s\n')
+        self.assertEqual('%(sql_url)s',
+                         env['KERBSIDE_KEYSTONE_SERVICE_AUTH_PASSWORD'])
