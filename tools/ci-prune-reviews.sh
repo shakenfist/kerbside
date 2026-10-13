@@ -3,8 +3,9 @@
 # Prune stale review marks, import reviews of identical content from
 # shakenfist/development, and commit both back to the default branch
 # as one unsigned bot commit. Run by the prune-reviews workflow, which
-# supplies DEFAULT_BRANCH, PUSH_TOKEN and RUNNER_TEMP; it pushes, so it
-# is not for running by hand. See "Steady state" in
+# supplies DEFAULT_BRANCH and PUSH_TOKEN (the runner supplies
+# GITHUB_REPOSITORY and RUNNER_TEMP); it pushes, so it is not for
+# running by hand. See "Steady state" in
 # https://github.com/shakenfist/development/blob/main/docs/code-review-tracking.md
 #
 # This file is copied byte-for-byte from templates/review-tracking/ in
@@ -19,6 +20,7 @@ GITSIGN_SHA256='69213a8a0813a151e5a47d0060862952ff833a845d57309dff76f7ba6600abae
 
 : "${DEFAULT_BRANCH:?DEFAULT_BRANCH must name the branch to commit to}"
 : "${RUNNER_TEMP:?RUNNER_TEMP must name a scratch directory}"
+: "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY must name the repository to land on, as owner/name}"
 : "${PUSH_TOKEN:?PUSH_TOKEN must hold a token that can push to DEFAULT_BRANCH}"
 
 # The token, out of the environment, so that nothing this script runs
@@ -37,12 +39,17 @@ take_push_token() {
 # there could swap the development clone, whose script this job runs,
 # for another; a poisoned TUF cache could change which Fulcio roots
 # and Rekor keys gitsign trusts, or, through its remote.json, which
-# mirror it updates them from.
+# mirror it updates them from. The workspace's own .git is reused
+# state too, which is why nothing here runs git in it (clone_target).
 #
 # GIT_CONFIG_GLOBAL=/dev/null replaces both ~/.gitconfig and
 # $XDG_CONFIG_HOME/git/config, and GIT_CONFIG_NOSYSTEM skips the
-# system file, leaving only this checkout's own config. land sets the
-# commit identity there, since nothing global supplies it any more.
+# system file, leaving only the config of the clones this script
+# makes. land sets the commit identity in the target's, since nothing
+# global supplies it any more. That drops runner-wide settings an
+# operator meant, too: a runner that needs a proxy or a private CA
+# must supply it through the environment (HTTPS_PROXY,
+# GIT_SSL_CAINFO), which git still reads.
 #
 # TUF_ROOT moves gitsign's cache to a fresh directory per run. Checked
 # against the source gitsign v0.17.1 builds with: sigstore/sigstore's
@@ -113,6 +120,28 @@ clone_development() {
     export SHAKENFIST_DEVELOPMENT="${dir}"
 }
 
+# Clone the repository being landed on into RUNNER_TEMP, and work
+# there rather than in the workflow's checkout. A static runner reuses
+# its workspace, .git included, and actions/checkout removes only the
+# configuration it wrote itself: hooks an earlier pull request job left
+# in .git/hooks would run on this job's fetch, reset and commit, and
+# keys it left in .git/config -- core.fsmonitor, an include.path, a
+# pushurl or url.<x>.insteadOf -- would run commands or redirect the
+# push. A fresh clone has neither, so the checkout is used for nothing
+# but this script. The URL comes from GITHUB_REPOSITORY, which the
+# runner sets for every job; like the development clone's, nothing an
+# earlier job could write changes it. Depth 1, because nothing landed
+# here needs this repository's history: only the development clone's
+# is walked.
+clone_target() {
+    local dir="${RUNNER_TEMP}/target"
+
+    rm -rf "${dir}"
+    git clone --quiet --depth 1 --branch "${DEFAULT_BRANCH}" \
+        "https://github.com/${GITHUB_REPOSITORY}" "${dir}"
+    cd "${dir}"
+}
+
 # Refuse to report success over review state git cannot see. In a
 # repository that ignores .vscode/ without the .gitignore exception
 # for the sidecars, the imports file import writes is ignored: git
@@ -181,8 +210,8 @@ restore_prune_result() {
 # import again always produces the right commit and can never
 # conflict. It also prunes marks for any file that a merge landing
 # mid-run changed, which a rebase would carry over unpruned. The
-# workflow checked out the commit that triggered it, which may
-# already be behind; the reset to the fetched tip is intended.
+# workflow's trigger may already be behind the branch; the clone, and
+# each retry's reset to the fetched tip, are of the branch as it is.
 #
 # The concurrency group serialises these runs against each other but
 # not against human merges, so a merge can still land between the
@@ -212,7 +241,7 @@ land() {
     git config user.email 'bot@shakenfist.com'
 
     for ((attempt = 1; attempt <= attempts; attempt++)); do
-        git fetch --quiet origin "${DEFAULT_BRANCH}"
+        git fetch --quiet --depth 1 origin "${DEFAULT_BRANCH}"
         git reset --quiet --hard FETCH_HEAD
 
         # Prune first: import will not import over a native mark,
@@ -270,26 +299,24 @@ Automated commit by the prune-reviews workflow.'
 }
 
 # Push HEAD to the default branch, the one git command given the token.
-# The checkout keeps no credentials (persist-credentials: false), so
-# the token reaches git here as an http.extraheader for github.com,
-# through GIT_CONFIG_COUNT and friends on this command alone: never in
-# argv, where any process on the runner could read it, and never in
-# .git/config, where it would outlive the push. The environment of git
-# push and its git-remote-https child is still readable, through
-# /proc/<pid>/environ, by any process running as the runner's own user
-# while the push runs; what bounds that is the runner killing a job's
-# orphaned processes when the job ends. printf is a builtin, so
-# the token is not in base64's argv either. core.hooksPath is pointed
-# away from .git/hooks, which a static runner's reused workspace keeps
-# from earlier jobs, so that no hook left there runs with the token in
-# its environment. LC_ALL=C keeps the rejection reason matchable.
+# Neither clone holds credentials, so the token reaches git here as an
+# http.extraheader for github.com, through GIT_CONFIG_COUNT and friends
+# on this command alone: never in argv, where any process on the runner
+# could read it, and never in .git/config, where it would outlive the
+# push. The environment of git push and its git-remote-https child is
+# still readable, through /proc/<pid>/environ, by any process running
+# as the runner's own user while the push runs; what bounds that is the
+# runner killing a job's orphaned processes when the job ends, and the
+# fresh clone, whose empty hooks directory gives an earlier job's code
+# no way to start one inside this job. printf is a builtin, so the
+# token is not in base64's argv either. LC_ALL=C keeps the rejection
+# reason matchable.
 push_review_state() {
     local header
 
     header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${push_token}" | base64 -w 0)"
-    LC_ALL=C GIT_CONFIG_COUNT=2 \
+    LC_ALL=C GIT_CONFIG_COUNT=1 \
         GIT_CONFIG_KEY_0='http.https://github.com/.extraheader' GIT_CONFIG_VALUE_0="${header}" \
-        GIT_CONFIG_KEY_1='core.hooksPath' GIT_CONFIG_VALUE_1=/dev/null \
         git push origin "HEAD:${DEFAULT_BRANCH}"
 }
 
@@ -314,22 +341,18 @@ run() {
     # inherit the token, and the first git command the runner's config.
     take_push_token
     isolate_from_runner
-
-    # Everything uses relative paths and relative git pathspecs, so
-    # anchor to the root of the repository this script is in rather
-    # than trusting the caller's cwd. An assignment, so that set -e
-    # stops the run if git cannot find it; a bare cd "$(...)" would
-    # carry on wherever it was.
-    local repo_root
-    repo_root="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
-    cd "${repo_root}"
+    # Out of the workspace before any git command, so that none of them
+    # can discover the reused .git there.
+    cd "${RUNNER_TEMP}"
 
     install_gitsign
     clone_development
+    # Everything after this uses relative paths and relative git
+    # pathspecs, in the target's clone.
+    clone_target
     land
 }
 
-# All of the work is in functions, called from the last line, because
-# land resets the checkout, and a merge that changed this file would
-# otherwise have bash read the rest of it at a stale offset.
+# All of the work is in functions, called from the last line, so that
+# bash has read the whole file before any of it runs.
 run "$@"
