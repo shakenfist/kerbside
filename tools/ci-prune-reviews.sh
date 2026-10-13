@@ -121,18 +121,19 @@ clone_development() {
 }
 
 # Clone the repository being landed on into RUNNER_TEMP, and work
-# there rather than in the workflow's checkout. A static runner reuses
-# its workspace, .git included, and actions/checkout removes only the
-# configuration it wrote itself: hooks an earlier pull request job left
+# there rather than in the runner's workspace. A static runner reuses
+# its workspace, .git included: hooks an earlier pull request job left
 # in .git/hooks would run on this job's fetch, reset and commit, and
 # keys it left in .git/config -- core.fsmonitor, an include.path, a
 # pushurl or url.<x>.insteadOf -- would run commands or redirect the
-# push. A fresh clone has neither, so the checkout is used for nothing
-# but this script. The URL comes from GITHUB_REPOSITORY, which the
-# runner sets for every job; like the development clone's, nothing an
-# earlier job could write changes it. Depth 1, because nothing landed
-# here needs this repository's history: only the development clone's
-# is walked.
+# push. A fresh clone has neither. The workflow fetches this script
+# the same way, so nothing in the job reads the workspace at all. The
+# URL comes from GITHUB_REPOSITORY, which the runner sets for every
+# job; like the development clone's, nothing an earlier job could
+# write changes it. Depth 1, because prune and import never read this
+# repository's history -- only the development clone's is walked --
+# which scripts/tests/test_review_tracking.py in shakenfist/development
+# pins by running both in a shallow clone.
 clone_target() {
     local dir="${RUNNER_TEMP}/target"
 
