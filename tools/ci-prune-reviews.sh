@@ -45,7 +45,10 @@ take_push_token() {
 # GIT_CONFIG_GLOBAL=/dev/null replaces both ~/.gitconfig and
 # $XDG_CONFIG_HOME/git/config, and GIT_CONFIG_NOSYSTEM skips the
 # system file, leaving only the config of the clones this script
-# makes. land sets the commit identity in the target's, since nothing
+# makes. GIT_CEILING_DIRECTORIES stops git looking for a repository
+# above RUNNER_TEMP: on a self-hosted runner that is _work, the runner
+# directory and the home directory, all writable by an earlier job, so
+# a .git planted there is never discovered. land sets the commit identity in the target's, since nothing
 # global supplies it any more. That drops runner-wide settings an
 # operator meant, too: a runner that needs a proxy or a private CA
 # must supply it through the environment (HTTPS_PROXY,
@@ -63,6 +66,8 @@ take_push_token() {
 isolate_from_runner() {
     export GIT_CONFIG_GLOBAL=/dev/null
     export GIT_CONFIG_NOSYSTEM=1
+    GIT_CEILING_DIRECTORIES="$(dirname "${RUNNER_TEMP}")"
+    export GIT_CEILING_DIRECTORIES
     export TUF_ROOT="${RUNNER_TEMP}/sigstore-root"
     rm -rf "${TUF_ROOT}"
     mkdir -p "${TUF_ROOT}"

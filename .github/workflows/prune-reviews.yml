@@ -97,13 +97,16 @@ jobs:
       # left there would run during the checkout and could rewrite the
       # script before the next step ran it with the push token. Instead
       # the script comes from a fresh clone of the default branch in
-      # RUNNER_TEMP, made ignoring the runner's git configuration, in a
-      # step without the token; nothing in the job reads the workspace.
+      # RUNNER_TEMP, made ignoring the runner's git configuration and
+      # any repository above RUNNER_TEMP, in a step without the token;
+      # nothing in the job reads the workspace.
       # These repositories are public, so no clone needs credentials.
       - name: Fetch the prune script
         working-directory: ${{ runner.temp }}
         run: >-
+          rm -rf prune-script &&
           GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+          GIT_CEILING_DIRECTORIES="$(dirname "${RUNNER_TEMP}")"
           git clone --quiet --depth 1 --branch "${DEFAULT_BRANCH}"
           "https://github.com/${GITHUB_REPOSITORY}" prune-script
 
