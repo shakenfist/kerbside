@@ -48,10 +48,12 @@ take_push_token() {
 # makes. GIT_CEILING_DIRECTORIES stops git looking for a repository
 # above RUNNER_TEMP: on a self-hosted runner that is _work, the runner
 # directory and the home directory, all writable by an earlier job, so
-# a .git planted there is never discovered. land sets the commit identity in the target's, since nothing
-# global supplies it any more. That drops runner-wide settings an
-# operator meant, too: a runner that needs a proxy or a private CA
-# must supply it through the environment (HTTPS_PROXY,
+# a .git planted there is never discovered. RUNNER_TEMP itself is not
+# covered, and need not be: the runner empties it at the start of
+# every job. land sets the commit identity in the target's config,
+# since nothing global supplies it any more. That drops runner-wide
+# settings an operator meant, too: a runner that needs a proxy or a
+# private CA must supply it through the environment (HTTPS_PROXY,
 # GIT_SSL_CAINFO), which git still reads.
 #
 # TUF_ROOT moves gitsign's cache to a fresh directory per run. Checked
