@@ -54,25 +54,27 @@ concurrency:
 jobs:
   prune-and-import:
     name: Prune and import review marks
-    # The job runs the checked-out copy of ci-prune-reviews.sh with a
-    # token that can push to the default branch, so a run on any other
-    # branch would land review state on the default branch using that
-    # branch's copy of the script, before anybody has merged it. A
-    # scheduled run only ever runs on the default branch, so
-    # its event name is a sufficient guard, and the disjunct keeps the
-    # guard independent of whether the payload carries a repository
-    # object.
+    # Pushes to every branch start a run (see on: above), and only the
+    # default branch's should land anything. A scheduled run only ever
+    # runs on the default branch, so its event name is a sufficient
+    # guard, and the disjunct keeps the guard independent of whether
+    # the payload carries a repository object.
     if: >-
       github.event_name == 'schedule' ||
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: [self-hosted, static]
     # Import verifies each source commit's signature against Rekor,
-    # with a two minute timeout per commit, so a run that cannot reach
-    # it is slow rather than stuck. The budget covers one slow pass,
-    # not three: a push rejected by a concurrent merge re-runs prune
-    # and import in full, verification included. A run that needs both
-    # a Rekor outage and two races to exceed it is killed, and the
-    # next push or daily run lands the same state.
+    # with a two minute timeout per commit, and stops verifying after
+    # three timeouts in one run (VERIFY_TIMEOUT_BUDGET in
+    # scripts/review-tracking.py), skipping the rest for a later run.
+    # So a Rekor that hangs costs each pass of import at most about six
+    # minutes, and the three passes a run makes when concurrent merges
+    # reject its first two pushes about eighteen, inside this budget
+    # with room for the clone, the gitsign download and the
+    # verifications that succeed. A Rekor that answers slowly but
+    # inside the timeout never spends the budget, so for that this
+    # timeout is the only bound: a run that exceeds it is killed, and
+    # the next push or daily run lands the same state.
     timeout-minutes: 30
     # Repositories whose default branch ruleset requires a pull request
     # push with DEPENDENCIES_TOKEN, as shakenfist-bot: GitHub does not
@@ -83,17 +85,33 @@ jobs:
     # nothing to do.
     permissions:
       contents: write
+    env:
+      # The guard above means this is the default branch in every run
+      # that gets here. ref_name is the fallback should an event lack a
+      # repository object; for a scheduled run it is the default branch
+      # too.
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          token: ${{ secrets.DEPENDENCIES_TOKEN || github.token }}
+      # No actions/checkout. The static runners run pull request code
+      # and reuse the workspace, .git included, so a hook an earlier job
+      # left there would run during the checkout and could rewrite the
+      # script before the next step ran it with the push token. Instead
+      # the script comes from a fresh clone of the default branch in
+      # RUNNER_TEMP, made ignoring the runner's git configuration and
+      # any repository above RUNNER_TEMP, in a step without the token;
+      # nothing in the job reads the workspace.
+      # These repositories are public, so no clone needs credentials.
+      - name: Fetch the prune script
+        working-directory: ${{ runner.temp }}
+        run: >-
+          rm -rf prune-script &&
+          GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+          GIT_CEILING_DIRECTORIES="$(dirname "${RUNNER_TEMP}")"
+          git clone --quiet --depth 1 --branch "${DEFAULT_BRANCH}"
+          "https://github.com/${GITHUB_REPOSITORY}" prune-script
 
       - name: Prune and import review marks
-        run: tools/ci-prune-reviews.sh
+        working-directory: ${{ runner.temp }}
+        run: prune-script/tools/ci-prune-reviews.sh
         env:
-          # The guard above means this is the default branch in every
-          # run that gets here. ref_name is the fallback should an
-          # event lack a repository object; for a scheduled run it is
-          # the default branch too.
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+          PUSH_TOKEN: ${{ secrets.DEPENDENCIES_TOKEN || github.token }}
