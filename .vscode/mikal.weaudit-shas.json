@@ -45,10 +45,6 @@
       "sha": "dab99349ea1867e984ae0e5fc73f70ec00cb519b",
       "date": "2026-10-05"
     },
-    ".github/workflows/prune-reviews.yml": {
-      "sha": "7fc119ce46252ba56037d99ddf90ea9dc180e3b8",
-      "date": "2026-10-01"
-    },
     ".github/workflows/pypi-storage-check.yml": {
       "sha": "b4ea2a75e61abba4bcfd122d9f0d8222f1b25607",
       "date": "2026-08-24"
