@@ -371,6 +371,15 @@ fn set_backend_rcvbuf(stream: &SpiceStream, bytes: u32, connection_ref: &str) {
     }
 }
 
+/// The audit message for a failed hypervisor connect. Rendered with `{:#}`
+/// so the whole error chain survives: ryll wraps each connect stage in
+/// context ("TLS handshake with <addr>"), and plain Display prints only that
+/// outermost context, dropping the cause an operator needs (rustls's
+/// `NotValidForName` for a host_subject mismatch, an unknown CA, and so on).
+fn connect_failure_message(err: &Error) -> String {
+    format!("Hypervisor connection failed: {err:#}")
+}
+
 /// Record the hypervisor-connect-failure audit event. Best-effort: audit RPC
 /// errors are logged, not propagated, so the original connect error still
 /// reaches the caller. The ticket is never logged.
@@ -385,10 +394,10 @@ async fn record_connect_failure(
         %connection_ref,
         hypervisor = %target.hypervisor,
         channel_type = channel_type.name(),
-        error = %err,
+        error = %format_args!("{err:#}"),
         "hypervisor connection failed"
     );
-    let message = format!("Hypervisor connection failed: {err}");
+    let message = connect_failure_message(err);
     if let Err(e) = state
         .rpc
         .record_audit_event(
@@ -410,6 +419,20 @@ async fn record_connect_failure(
 mod tests {
     use super::*;
     use anyhow::anyhow;
+
+    #[test]
+    fn connect_failure_message_keeps_the_cause() {
+        // ryll wraps the rustls error in the stage's context; the audit
+        // message must still name the cause, or a host_subject refusal
+        // reads the same as any other failed handshake.
+        let err = anyhow!("invalid peer certificate: NotValidForName")
+            .context("TLS handshake with 127.0.0.1:5911");
+        assert_eq!(
+            connect_failure_message(&err),
+            "Hypervisor connection failed: TLS handshake with 127.0.0.1:5911: \
+             invalid peer certificate: NotValidForName"
+        );
+    }
 
     #[test]
     fn is_need_secured_matches_crate_message() {
