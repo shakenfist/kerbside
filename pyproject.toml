@@ -81,7 +81,7 @@ dependencies = [
     # leave pydantic-core alone.
     # never-pin: pydantic-core
     "pydantic==2.14.1",                 # mit
-    "pydantic-settings==2.15.0",        # mit
+    "pydantic-settings==2.16.0",        # mit
     # not-imported: typing-extensions -- pydantic's own requirement,
     # pinned here so it moves in lockstep with the set above rather than
     # drifting under the generated block.
