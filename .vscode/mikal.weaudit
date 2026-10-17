@@ -164,10 +164,6 @@
       "author": "mikal"
     },
     {
-      "path": "tools/direct-qemu/verify-rust-proxy.sh",
-      "author": "mikal"
-    },
-    {
       "path": "tools/sf-e2e/import-instance.sh",
       "author": "mikal"
     },

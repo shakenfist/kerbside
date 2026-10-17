@@ -389,10 +389,6 @@
       "sha": "7b8048db87302f07ce6d81ce006d0c10827e847f",
       "date": "2026-08-15"
     },
-    "tools/direct-qemu/verify-rust-proxy.sh": {
-      "sha": "f8631679d5a7e3c8fb244cedd1da9004768365c0",
-      "date": "2026-08-15"
-    },
     "tools/direct-qemu/verify-terminate-live.sh": {
       "sha": "ad344ca4713fbee4c2139b3504ed1ae3ca88ab6e",
       "date": "2026-08-18"
