@@ -426,8 +426,9 @@ if [ "${ACTION}" = 'assert-host-subject' ]; then
          "via ${METRICS_URL} + ${GRPC_LOG} (timeout ${ASSERT_TIMEOUT}s)"
 
     # Two logs together prove WHY the backend was refused. The audit event
-    # ("Hypervisor connection failed: invalid peer certificate:
-    # NotValidForName", via the mock's RecordAuditEvent) proves the refusal
+    # ("Hypervisor connection failed: TLS handshake with <addr>: invalid
+    # peer certificate: NotValidForName", via the mock's RecordAuditEvent;
+    # the proxy renders the whole error chain) proves the refusal
     # surfaced to the control plane -- but rustls's error rendering does not
     # name host_subject. The proxy's own log carries the ryll verifier's
     # descriptive line ("pinned host_subject <subject>: ... does not match"),
