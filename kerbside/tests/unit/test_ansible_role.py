@@ -163,6 +163,24 @@ class RoleDefaultsTestCase(testtools.TestCase):
             'role defaults not declared in argument_specs.yml: %s'
             % ', '.join(undeclared))
 
+    def test_documented_defaults_are_the_real_ones(self):
+        # Ansible does not apply an argument spec's default, so nothing
+        # but this test keeps what ansible-doc shows equal to what the
+        # role does.
+        with open(_DEFAULTS) as f:
+            defaults = yaml.safe_load(f)
+        with open(_ARGUMENT_SPECS) as f:
+            specs = yaml.safe_load(f)
+        drifted = sorted(
+            '%s.%s' % (entry_point, name)
+            for entry_point, spec in specs['argument_specs'].items()
+            for name, option in spec.get('options', {}).items()
+            if name in defaults and option.get('default') != defaults[name])
+        self.assertEqual(
+            [], drifted,
+            'argument_specs.yml documents a default other than '
+            'defaults/main.yml sets: %s' % ', '.join(drifted))
+
 
 class CheckSourcesScriptTestCase(testtools.TestCase):
     def _check(self, text):

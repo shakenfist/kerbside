@@ -82,7 +82,7 @@ Nothing is deployed unless `kerbside_hosts` is non-empty. Secrets are marked
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `kerbside_hosts` | `[]` | The hosts this run validates or deploys to, in inventory order. Run-once work (the migration and the readiness check) happens on the first. |
+| `kerbside_hosts` | `[]` | The hosts this run validates or deploys to, in inventory order. Run-once work (the migration and the readiness check) happens on the first. List only hosts this run deploys to (see [Redeploys](#redeploys)). |
 | `kerbside_public_fqdn` | `""` | The name SPICE clients use to reach the proxy. Also what a proxy certificate should be issued for. |
 | `kerbside_sql_url` | `""` | The SQLAlchemy URL of Kerbside's database, for example `mysql://kerbside:PASSWORD@db.example.com/kerbside`. A secret. |
 | `kerbside_auth_secret_seed` | `""` | Seeds Kerbside's API token signing. A secret of at least 32 characters, and never Kerbside's placeholder `~~unconfigured~~`. |
@@ -142,7 +142,7 @@ the signing key), see the
 | `kerbside_proxy_package` | `""` | The `kerbside-proxy` package. Empty installs whichever version `kerbside_package` requires, which a Kerbside release pins exactly. |
 | `kerbside_client_package` | `shakenfist-client` | The Shaken Fist client Kerbside's Shaken Fist source driver imports. Installed only when a source is of type `shakenfist`. |
 | `kerbside_local_wheels` | `[]` | Wheels on the control node to install in place of the package specs. See below. |
-| `kerbside_pip_extra` | `""` | Extra arguments for `uv pip install`, for example `--index-url`. |
+| `kerbside_pip_extra` | `""` | Extra arguments for both pip (installing uv) and `uv pip install`, for example `--index-url`; use flags both accept. |
 | `kerbside_collection_version` | `unreleased` in a checkout | Read-only: the release this collection was built as. Not a setting. |
 
 **Local wheels.** A `kerbside-*.whl` replaces `kerbside_package` and a
@@ -227,6 +227,18 @@ These rarely change. Most exist only so a test without root can redirect them.
 A redeploy restarts Kerbside only when its code (including the version of any
 package in its virtualenv other than pip and uv), configuration, systemd units
 or certificate changed. Each deploy waits for the readiness described above.
+
+Every host which needs a restart restarts in the same task, so a redeploy
+which changes Kerbside drops every console session at once, on every host.
+For a rolling restart, run the play with `serial`.
+
+The database migration and the readiness check run once, on the first host in
+`kerbside_hosts`. With `--limit` or `serial`, `kerbside_hosts` must list only
+the hosts this run deploys to. A first host which is left out of the run would
+migrate from its old virtualenv, and the hosts which are deployed would restart
+on new code against the old schema. The run-once tasks also take
+`kerbside_venv`, `kerbside_user` and the other paths from the play's first
+host, so keep those the same on every Kerbside host.
 
 ## Links
 

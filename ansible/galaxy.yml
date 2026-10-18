@@ -13,7 +13,7 @@ authors:
   - Michael Still and contributors
 description: >-
   An Ansible role for deploying Kerbside, a SPICE VDI protocol proxy
-  for Shaken Fist, OpenStack and oVirt consoles.
+  for Shaken Fist, OpenStack, oVirt and statically configured consoles.
 license:
   - Apache-2.0
 tags:

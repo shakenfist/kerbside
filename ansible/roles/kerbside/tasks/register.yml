@@ -8,7 +8,14 @@
 # kerbside_desired_state. The migration and the readiness check run once, on
 # kerbside_hosts[0], since every Kerbside host shares one database. Under the
 # default linear strategy every host finishes a task before any host starts the
-# next, so the migration completes before any host restarts on new code.
+# next, so the migration completes before any host restarts on new code. The
+# caller therefore lists only hosts this run deploys to in kerbside_hosts (see
+# its description in meta/argument_specs.yml), and keeps the paths the
+# delegated tasks use the same on every host.
+#
+# Every host that needs a restart restarts in the same task, so a redeploy
+# which changes Kerbside drops every console session at once. A caller which
+# wants a rolling restart runs the play with serial.
 #
 # What was deployed is recorded in kerbside_state_dir/.deployed-state.sha256,
 # and only after Kerbside is ready: a deploy which fails part way restarts

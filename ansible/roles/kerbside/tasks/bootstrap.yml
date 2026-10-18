@@ -68,8 +68,14 @@
   args:
     creates: "{{ kerbside_venv }}/bin/activate"
 
+# kerbside_pip_extra applies here too: on a host which can reach only a
+# private index, installing uv is the first thing which needs it.
 - name: Upgrade pip and install uv in the Kerbside virtualenv
-  ansible.builtin.command: "{{ kerbside_venv }}/bin/pip install -U pip uv"
+  # noqa: command-instead-of-shell -- shell word-splitting is required because
+  # kerbside_pip_extra may be empty or expand to several arguments.
+  ansible.builtin.shell: >-
+    {{ (kerbside_venv ~ '/bin/pip') | quote }} install -U
+    {{ kerbside_pip_extra }} pip uv
   changed_when: true
 
 # kerbside_local_wheels, from the control node, each to a path named by its

@@ -358,16 +358,19 @@ jobs:
           publish-venv/bin/pip3 install --upgrade pip
           publish-venv/bin/pip3 install ansible-core
 
-      # The token arrives through env: rather than being interpolated
-      # into the script, which would write it into the generated script
-      # file on the runner.
+      # The token reaches ansible-galaxy as its server configuration,
+      # through env: alone. Interpolating it into the script would write
+      # it into the generated script file on the runner, and passing it
+      # as --api-key would put it in argv, readable from ps by any
+      # process on the self-hosted runner while the publish runs.
       - name: Publish to Ansible Galaxy
         env:
-          ANSIBLE_GALAXY_TOKEN: ${{ secrets.ANSIBLE_GALAXY_TOKEN }}
+          ANSIBLE_GALAXY_SERVER_LIST: release_galaxy
+          ANSIBLE_GALAXY_SERVER_RELEASE_GALAXY_URL: https://galaxy.ansible.com/
+          ANSIBLE_GALAXY_SERVER_RELEASE_GALAXY_TOKEN: ${{ secrets.ANSIBLE_GALAXY_TOKEN }}
         run: |
           publish-venv/bin/ansible-galaxy collection publish \
-              "${RUNNER_TEMP}"/dist-collection/*.tar.gz \
-              --api-key "${ANSIBLE_GALAXY_TOKEN}"
+              "${RUNNER_TEMP}"/dist-collection/*.tar.gz
 
   github-release:
     name: Create GitHub Release

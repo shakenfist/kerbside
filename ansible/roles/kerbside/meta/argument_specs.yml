@@ -95,7 +95,14 @@ argument_specs:
             The Kerbside hosts this run validates or deploys to, in inventory
             order. Empty, the default, means Kerbside is not deployed, and
             validate does nothing. Run-once work (the database migration and
-            the readiness check) happens on the first.
+            the readiness check) happens on the first, delegated from the
+            first host of the play. List only hosts this run deploys to: with
+            --limit or serial, a first host left out of the run would migrate
+            from its old virtualenv, and the hosts which are deployed would
+            restart on new code against the old schema. The delegated tasks
+            take kerbside_venv, kerbside_user and the other paths from the
+            play's first host, so those must be the same on every Kerbside
+            host.
       kerbside_package:
         type: str
         default: "kerbside>=0.7.0"
@@ -160,9 +167,10 @@ argument_specs:
         default: ""
         description:
           - >-
-            Extra arguments passed to uv pip install when installing the
-            packages, for example --index-url or proxy flags. May be empty or
-            expand to several arguments.
+            Extra arguments passed to pip when it installs uv, and to uv pip
+            install when it installs the packages, for example --index-url.
+            Both read them, so use only flags pip and uv both accept. May be
+            empty or expand to several arguments.
       kerbside_api_address:
         type: str
         default: "0.0.0.0"
@@ -260,7 +268,7 @@ argument_specs:
             all.
       kerbside_pki_dir:
         type: str
-        default: "/etc/kerbside/pki"
+        default: "{{ kerbside_config_dir }}/pki"
         description:
           - >-
             Where the proxy certificate, key and CA are read from when the
