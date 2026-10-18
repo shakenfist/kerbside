@@ -5,13 +5,18 @@
 
 Usage: kerbside-check-sources.py SOURCES.yaml
        kerbside-check-sources.py - < SOURCES.yaml
+       kerbside-check-sources.py --json - < SOURCES.json
 
 Kerbside's daemon reads sources.yaml on every scrape pass, and a file it cannot
 use crash-loops it (kerbside#465), or errors a source. The role therefore runs
 this as the write task's validate command, so a bad file is refused and the old
 one stays in place. The validate entry point runs it too, on the control node
 with the file on stdin, so that a bad kerbside_sources is refused before any
-host is changed.
+host is changed. It passes kerbside_sources as JSON (--json) rather than
+rendered YAML: by then Ansible has already parsed the operator's variables,
+so an unquoted password such as 012345 is the number 5349, which rendering
+would write back as 5349 and a YAML check would accept as text. JSON keeps
+the type, and the number is refused.
 
 The file is loaded as Kerbside loads it, with a YAML loader which leaves every
 unquoted number as the text it spells, and must be a non-empty list of
@@ -35,6 +40,7 @@ Messages name sources and consoles by their position, and fields by their key.
 Exits 0 when the file is good, and 1 with the reasons on stderr when it is not.
 """
 
+import json
 import sys
 
 import yaml
@@ -197,9 +203,22 @@ def _check_source(index, source):
     return errors
 
 
-def check_stream(stream):
-    """Return a list of reasons stream is not a good sources.yaml."""
-    sources, error = _load(stream)
+def _load_json(stream):
+    """Return the loaded JSON and None, or None and the reason it failed."""
+    try:
+        return json.load(stream), None
+    except ValueError as e:
+        return None, 'the input is not valid JSON at line %d' % e.lineno
+
+
+def check_stream(stream, as_json=False):
+    """Return a list of reasons stream is not a good sources.yaml.
+
+    With as_json, stream is kerbside_sources as JSON, whose values keep the
+    types Ansible gave them, so a credential written as a number is refused
+    rather than read as the text of that number.
+    """
+    sources, error = (_load_json if as_json else _load)(stream)
     if error:
         return [error]
 
@@ -221,23 +240,24 @@ def check_stream(stream):
     return errors
 
 
-def check(path):
+def check(path, as_json=False):
     """Return a list of reasons path is not a good sources.yaml."""
     if path == '-':
-        return check_stream(sys.stdin)
+        return check_stream(sys.stdin, as_json)
     try:
         with open(path) as f:
-            return check_stream(f)
+            return check_stream(f, as_json)
     except OSError as e:
         return ['the file could not be read: %s' % e.strerror]
 
 
 def main(argv):
-    if len(argv) != 2:
-        sys.stderr.write('usage: %s SOURCES.yaml\n' % argv[0])
+    as_json = len(argv) == 3 and argv[1] == '--json'
+    if len(argv) != (3 if as_json else 2):
+        sys.stderr.write('usage: %s [--json] SOURCES\n' % argv[0])
         return 2
 
-    errors = check(argv[1])
+    errors = check(argv[-1], as_json)
     for error in errors:
         sys.stderr.write('sources.yaml refused: %s\n' % error)
     return 1 if errors else 0

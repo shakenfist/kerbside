@@ -165,7 +165,7 @@ FQDN='console.example.com'
 # The secrets: one password for each source type which has one, a static
 # console's ticket, the seed and the SQL URL's password. The seed is exactly
 # 32 characters, validate's minimum. The SQL URL's password carries a %,
-# which the INI must double; its distinctive part is what the output is
+# which the INI keeps as written; its distinctive part is what the output is
 # searched for, so that a doubled copy is found too.
 SYSTEM_KEY='kb-system-key-Vt7qL2mXc9Rw'
 SF2_KEY='kb-second-cluster-Hp3sW8dQ'
@@ -646,6 +646,18 @@ case_7_sources() {
       "username": "n", "password": ["p"], "project_name": "s",
       "user_domain_id": true, "project_domain_id": "d"}]' \
         'source 0: password is not text' 'source 0: user_domain_id is not text'
+
+    # An unquoted 012345 in group_vars is the number 5349 by the time the role
+    # sees it; rendered, it would read back as the text 5349, a password
+    # nobody chose. validate checks the variable's own types, so it is
+    # refused rather than changed.
+    CURRENT_CASE='case 7g: validate refuses a credential Ansible parsed as a number'
+    sources_refused numeric '[{"source": "a", "type": "shakenfist", "url": "u",
+      "username": "system", "password": 5349, "ca_cert": "c"},
+      {"source": "b", "type": "static", "consoles": [{"uuid": "1",
+      "name": "n", "hypervisor": "h", "hypervisor_ip": "i",
+      "insecure_port": 5910, "ticket": 31}]}]' \
+        'source 0: password is not text' 'source 1 console 0: ticket is not text'
 
     # The same checks, with secrets in every other source and at -vvv, for
     # case 18: a refusal must name positions, never print a value.

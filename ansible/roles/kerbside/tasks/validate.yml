@@ -56,17 +56,22 @@
           serves, at least one.
         quiet: true
 
-    # The same rendering config writes, so what is checked here is what
-    # Kerbside will read. It is passed on stdin, so the rendered file, and its
-    # secrets, are on no command line and left in no file. The check needs no
-    # privilege on the control node, whatever the play becomes on the host.
+    # kerbside_sources as JSON, which keeps the types Ansible parsed the
+    # operator's variables into: an unquoted password of 012345 is already
+    # the number 5349, which the rendered sources.yaml would carry as text
+    # Kerbside then reads. JSON lets the checker refuse it, where a check of
+    # the rendering could not. config checks the rendering itself before
+    # writing it. The value is passed on stdin, so the secrets are on no
+    # command line and left in no file. The check needs no privilege on the
+    # control node, whatever the play becomes on the host.
     - name: Check kerbside_sources by Kerbside's rules
       ansible.builtin.command:
         argv:
           - "{{ ansible_playbook_python }}"
           - "{{ role_path }}/files/kerbside-check-sources.py"
+          - "--json"
           - "-"
-        stdin: "{{ lookup('ansible.builtin.template', 'sources.yaml') }}"
+        stdin: "{{ kerbside_sources | to_json }}"
       register: kerbside_sources_check
       changed_when: false
       failed_when: false

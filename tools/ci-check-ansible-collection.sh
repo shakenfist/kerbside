@@ -15,6 +15,11 @@
 # Both checks always run, so one failure does not hide the other, and the
 # script exits non-zero naming each that failed.
 #
+# The collection is built by tools/build-collection.sh, the release
+# build, with a stand-in version, so every pull request exercises the
+# stamps a release makes: a reworded line one of them depends on fails
+# here, not after a tag has published the Python packages.
+#
 # The importer is told not to run ansible-test, which needs a container
 # runtime, and to require one of Galaxy's category tags, as Galaxy does.
 #
@@ -29,7 +34,6 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COLLECTION_DIR="${REPO_ROOT}/ansible"
 
 fail() {
     echo "FAIL: $*" >&2
@@ -58,11 +62,10 @@ echo '==> ansible-lint'
 # the tarball, returning non-zero with the reason on stderr if either
 # fails.
 build_and_import() {
-    echo '==> ansible-galaxy collection build'
+    echo '==> tools/build-collection.sh (the release build, version 0.0.1rc1)'
     mkdir -p "${WORK}/build"
-    if ! ansible-galaxy collection build "${COLLECTION_DIR}" \
-            --output-path "${WORK}/build"; then
-        echo 'ansible-galaxy could not build the collection' >&2
+    if ! "${REPO_ROOT}/tools/build-collection.sh" 0.0.1rc1 "${WORK}/build"; then
+        echo 'the release build could not build the collection' >&2
         return 1
     fi
     local tarballs

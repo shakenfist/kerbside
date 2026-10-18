@@ -207,6 +207,16 @@ class CheckSourcesScriptTestCase(testtools.TestCase):
             self._check('- {source: a, type: shakenfist, url: u, '
                         'username: system, password: true, ca_cert: c}\n'))
 
+    def test_json_keeps_a_numeric_credential_a_number(self):
+        # As YAML, the rendered 5349 would read back as text; as JSON, the
+        # variable's own type, it is refused.
+        text = ('[{"source": "a", "type": "shakenfist", "url": "u", '
+                '"username": "system", "password": 5349, "ca_cert": "c"}]')
+        self.assertEqual([], self._check(text))
+        self.assertEqual(
+            ['source 0: password is not text'],
+            check_sources.check_stream(io.StringIO(text), as_json=True))
+
     def test_an_empty_list_is_refused(self):
         self.assertEqual(
             ['the file is not a non-empty list of sources'],
