@@ -1,6 +1,6 @@
 # Test fixtures
 
-Binary fixtures consumed by the kerbside test harness.
+Fixtures consumed by the kerbside test harness.
 
 **uncalibrated-sextant.qcow2** — the Uncalibrated Sextant UEFI guest image, built from
 https://github.com/shakenfist/uncalibrated-sextant by running `make release` in that repo
@@ -18,3 +18,11 @@ https://images.shakenfist.com/testimages/uefi-latency-guest.qcow2.
 Used by the direct-qemu CI lane's non-gating latency loadtest
 (`tools/direct-qemu/run-loadtest.sh`).
 Last refreshed: 2026-07-16.
+
+**host-subject-renderings.json** — the SPICE host subjects Shaken Fist's
+`shakenfist/node.py` renders for a set of certificate subjects, and the
+subjects it refuses, with the short-name table it uses. The `_source` key
+names the Shaken Fist commit it was generated from. The ansible role's
+`kerbside-host-subject.py` must render the same way, and
+`kerbside/tests/unit/test_ansible_role.py` holds it to this file. Do not
+edit it by hand; regenerate it from node.py if Shaken Fist's rules change.

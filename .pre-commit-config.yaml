@@ -129,6 +129,35 @@ repos:
         description: Run Python 3 unit tests with stestr
         entry: tox -e py3
         language: system
-        files: ^kerbside/|^tempest-plugin/
+        # ansible/ and the host-subject fixture are here because
+        # kerbside/tests/unit/test_ansible_role.py reads the role's
+        # defaults, argument specs and host subject script, and the
+        # fixture it holds that script to.
+        files: >-
+          ^(kerbside/|tempest-plugin/|ansible/|tests/fixtures/host-subject-renderings\.json$)
         pass_filenames: false
-        types: [python]
+        types_or: [python, yaml, json]
+
+  # The shakenfist.kerbside collection under ansible/. Both hooks need
+  # ansible-core and ansible-lint on PATH (pip install ansible-lint),
+  # and the role test needs openssl too. CI runs the same two checks in
+  # sanity_checks, and adds galaxy-importer over the built tarball
+  # (tools/ci-check-ansible-collection.sh), which is too heavy a
+  # dependency to ask of every clone.
+  - repo: local
+    hooks:
+      - id: ansible-lint
+        name: Lint the ansible collection
+        description: Run ansible-lint over ansible/ with its configuration
+        entry: ansible-lint -c ansible/.ansible-lint ansible/
+        language: system
+        files: ^ansible/
+        pass_filenames: false
+
+      - id: test-ansible-role
+        name: Test the ansible role
+        description: Drive the kerbside role's validate, bootstrap and config entry points, rootless
+        entry: tools/ci-test-ansible-role.sh
+        language: system
+        files: ^(ansible/|tools/ci-test-ansible-role\.sh$)
+        pass_filenames: false

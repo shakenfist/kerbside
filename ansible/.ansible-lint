@@ -1,0 +1,24 @@
+---
+# ansible-lint configuration for the shakenfist.kerbside collection.
+#
+# Run manually from the repository root:
+#
+#     ansible-lint -c ansible/.ansible-lint ansible/
+#
+# The skip_list documents each disabled check and why. Remove an entry
+# once nothing in the collection needs it.
+
+profile: basic
+
+skip_list:
+  # api_url and deploy_name are role variables without the kerbside_
+  # prefix, and so is the apt_action register in the bootstrap tasks.
+  - var-naming[no-role-prefix]
+
+  # The apt installs deliberately use state: latest, so a redeploy
+  # picks up security updates to the build dependencies.
+  - package-latest
+
+  # No changelog is maintained for the collection. It is released with
+  # Kerbside and shares its version.
+  - galaxy[no-changelog]

@@ -1,0 +1,138 @@
+{
+  "_source": "Generated once from shakenfist/node.py at shakenfist/shakenfist commit 0016c5dad8002ece47cb68f429911905d5bdc1ae, by rendering each subject below with _spice_host_subject_from_cert() and recording _SPICE_SUBJECT_SHORT_NAMES. The subjects are those pinned in shakenfist/tests/test_kerbside_host_subject.py at the same commit. Subjects are [dotted OID, value] pairs in certificate order. Do not edit it by hand: it records what node.py did at that commit.",
+  "short_names": {
+    "2.5.4.6": "C",
+    "2.5.4.8": "ST",
+    "2.5.4.7": "L",
+    "2.5.4.10": "O",
+    "2.5.4.11": "OU",
+    "2.5.4.3": "CN",
+    "0.9.2342.19200300.100.1.25": "DC",
+    "1.2.840.113549.1.9.1": "emailAddress"
+  },
+  "renderable": [
+    {
+      "name": "internal_ca",
+      "subject": [
+        [
+          "2.5.4.10",
+          "Shaken Fist CA for sf"
+        ],
+        [
+          "2.5.4.3",
+          "kerbside.example.com"
+        ]
+      ],
+      "host_subject": "O=Shaken Fist CA for sf,CN=kerbside.example.com"
+    },
+    {
+      "name": "comma",
+      "subject": [
+        [
+          "2.5.4.10",
+          "Acme, Inc"
+        ],
+        [
+          "2.5.4.3",
+          "kerbside"
+        ]
+      ],
+      "host_subject": "O=Acme\\, Inc,CN=kerbside"
+    },
+    {
+      "name": "backslash",
+      "subject": [
+        [
+          "2.5.4.10",
+          "Acme\\Labs"
+        ],
+        [
+          "2.5.4.3",
+          "kerbside"
+        ]
+      ],
+      "host_subject": "O=Acme\\\\Labs,CN=kerbside"
+    },
+    {
+      "name": "backslash_then_comma",
+      "subject": [
+        [
+          "2.5.4.10",
+          "a\\,b"
+        ]
+      ],
+      "host_subject": "O=a\\\\\\,b"
+    },
+    {
+      "name": "long",
+      "subject": [
+        [
+          "2.5.4.6",
+          "AU"
+        ],
+        [
+          "2.5.4.8",
+          "New South Wales"
+        ],
+        [
+          "2.5.4.7",
+          "Sydney"
+        ],
+        [
+          "2.5.4.10",
+          "Shaken Fist"
+        ],
+        [
+          "2.5.4.11",
+          "Consoles"
+        ],
+        [
+          "0.9.2342.19200300.100.1.25",
+          "example"
+        ],
+        [
+          "2.5.4.3",
+          "kerbside.example.com"
+        ],
+        [
+          "1.2.840.113549.1.9.1",
+          "ops@example.com"
+        ]
+      ],
+      "host_subject": "C=AU,ST=New South Wales,L=Sydney,O=Shaken Fist,OU=Consoles,DC=example,CN=kerbside.example.com,emailAddress=ops@example.com"
+    },
+    {
+      "name": "certificate_order",
+      "subject": [
+        [
+          "2.5.4.3",
+          "kerbside"
+        ],
+        [
+          "2.5.4.10",
+          "Shaken Fist"
+        ]
+      ],
+      "host_subject": "CN=kerbside,O=Shaken Fist"
+    }
+  ],
+  "unrenderable": [
+    {
+      "name": "unknown_oid",
+      "subject": [
+        [
+          "2.5.4.3",
+          "kerbside"
+        ],
+        [
+          "2.5.4.5",
+          "12345"
+        ]
+      ]
+    },
+    {
+      "name": "empty",
+      "subject": []
+    }
+  ]
+}
