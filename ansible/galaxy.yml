@@ -1,0 +1,35 @@
+---
+# Ansible Galaxy collection metadata for shakenfist.kerbside.
+#
+# The version below is a placeholder. The release build stamps the
+# real Kerbside version into a staged copy of this file, so the
+# collection and the Python packages it installs share one version.
+# This file itself is never rewritten.
+namespace: shakenfist
+name: kerbside
+version: 0.0.0
+readme: README.md
+authors:
+  - Michael Still and contributors
+description: >-
+  An Ansible role for deploying Kerbside, a SPICE VDI protocol proxy
+  for Shaken Fist, OpenStack and oVirt consoles.
+license:
+  - Apache-2.0
+tags:
+  - spice
+  - vdi
+  - console
+  - proxy
+  - kerbside
+  - infrastructure
+dependencies: {}
+repository: https://github.com/shakenfist/kerbside
+homepage: https://github.com/shakenfist/kerbside
+issues: https://github.com/shakenfist/kerbside/issues
+build_ignore:
+  - tests
+  - '**/__pycache__'
+  - '*.pyc'
+  - '*.retry'
+  - .ansible

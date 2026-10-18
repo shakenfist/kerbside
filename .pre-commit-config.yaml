@@ -100,6 +100,9 @@ repos:
       - id: end-of-file-fixer
         exclude: ^(kerbside/api/static/sfui/|\.vscode/.*\.weaudit)
       - id: check-yaml
+        # The ansible role's templates are Jinja that renders to YAML,
+        # not YAML: sources.yaml opens with a {%- set %} block.
+        exclude: ^ansible/roles/[^/]+/templates/
       - id: check-merge-conflict
       - id: check-added-large-files
         args: ['--maxkb=1024']
