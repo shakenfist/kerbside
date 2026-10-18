@@ -80,3 +80,9 @@ kerbside_ready_fetched_at: >-
   {{ (((kerbside_ready_output | from_json).fetched_at
        if kerbside_ready_output is match(kerbside_ready_pattern) else none)
       | default('null', true)) | string }}
+
+# The version of this collection. The committed value is the marker
+# `unreleased`, and an install from a checkout reports it. The release build
+# (tools/build-collection.sh) replaces it, in a staged copy only, with the
+# release version, so an installed collection can say which release it is.
+kerbside_collection_version: unreleased

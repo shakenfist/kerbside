@@ -165,6 +165,26 @@ different environments with different trust postures (see "Dev releases"
 below), and PyPI trusted publishers are scoped per workflow+environment,
 not per project.
 
+### 6. Configure the Ansible Galaxy token
+
+The `shakenfist.kerbside` ansible collection under `ansible/` is built from
+the same `v*` tag as the Python packages and published to Ansible Galaxy by
+the `publish-collection` job, after `publish-pypi`. Galaxy has no trusted
+publisher scheme, so this job uses a token.
+
+1. Sign in to <https://galaxy.ansible.com> as a member of the `shakenfist`
+   namespace (owned by `mikalstill` and `shakenfist-bot`) and copy the API
+   token from the Preferences page.
+2. In the repository settings, add a secret named `ANSIBLE_GALAXY_TOKEN`
+   with that value. The `publish-collection` job runs in the `release`
+   environment, so the secret may be scoped to it.
+
+The workflow passes the token to `ansible-galaxy collection publish` through
+`env:`, never interpolated into the script. A Galaxy version cannot be
+republished, so if a publish fails after the upload, tag the next release
+rather than the same version again. The collection tarball is also attached
+to the GitHub release.
+
 ## How Releases Work
 
 1. A maintainer pushes a tag matching `v*` (e.g., `v0.1.0`)
@@ -175,6 +195,7 @@ not per project.
    - Creates a signed git tag using gitsign (Sigstore)
    - Generates Sigstore attestations for the built artifacts
    - Publishes to PyPI using OIDC (no tokens)
+   - Publishes the ansible collection to Ansible Galaxy (token)
    - Creates a GitHub Release with the artifacts
 
 ### Dev releases
