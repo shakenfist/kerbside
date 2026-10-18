@@ -1,34 +1,33 @@
 ---
 # Refuse a Kerbside configuration which cannot work, before any host is
 # changed. The consuming playbook runs this on every Kerbside host, with
-# kerbside_hosts set to the kerbside group, kerbside_colocated to whether this
-# host is also a Shaken Fist node, and kerbside_url_on_sf_nodes to kerbside_url
-# as the Shaken Fist nodes see it. Each host is checked with its own variables, rather than
-# the control node's or one host's for all, since operators commonly keep the
-# Kerbside settings in group_vars/kerbside, which the control node cannot see,
-# and may override them per host in host_vars, which no other host sees. Every
-# task here is an assert or a debug, so nothing is changed on any host, and
+# kerbside_hosts set to every Kerbside host this run deploys to. Each host is
+# checked with its own variables, rather than the control node's or one host's
+# for all, since operators commonly keep the Kerbside settings in the Kerbside
+# hosts' group variables, which the control node cannot see, and may override
+# them per host, which no other host sees. Nothing here changes any host, and
 # nothing here assumes it runs on one host only. The messages name the host
 # whose variables failed, since one host's may be fine and another's not.
 #
-# An empty group means Kerbside is not being deployed, and nothing here
-# applies. That includes kerbside_url set on its own: Shaken Fist is then
-# pointed at a Kerbside this role does not deploy, which is legal.
+# An empty kerbside_hosts means Kerbside is not being deployed, and nothing
+# here applies.
 #
-# kerbside_system_key, kerbside_auth_secret_seed and kerbside_sql_url are
-# secrets. no_log on an assert would hide its message too, leaving an operator
-# with nothing to act on, so these asserts instead only ever print their own
-# fixed messages and the text of their conditions, neither of which contains a
+# kerbside_sources, kerbside_auth_secret_seed and kerbside_sql_url are secrets.
+# no_log on an assert would hide its message too, leaving an operator with
+# nothing to act on, so these asserts instead only ever print their own fixed
+# messages and the text of their conditions, neither of which contains a
 # secret. The required-variable check loops over variable names and looks each
 # value up, rather than looping over the values, so that no secret is ever a
-# loop item either.
+# loop item either. kerbside_sources is checked by the same helper script
+# which checks sources.yaml before config writes it, run on the control node
+# under no_log, and only its reasons, which name positions and keys and never
+# a value, are printed.
 
 - name: Say that Kerbside is not being deployed
   ansible.builtin.debug:
     msg: >-
-      The kerbside group is empty, so Kerbside is not being deployed and there
-      is nothing to validate.{{ ' kerbside_url is set, so Shaken Fist will use
-      a Kerbside deployed some other way.' if kerbside_url | length > 0 else '' }}
+      kerbside_hosts is empty, so Kerbside is not being deployed and there is
+      nothing to validate.
   when: kerbside_hosts | length == 0
 
 - name: Validate the Kerbside configuration
@@ -38,15 +37,67 @@
       ansible.builtin.assert:
         that: lookup('ansible.builtin.vars', item) | string | length > 0
         fail_msg: >-
-          {{ item }} is empty on {{ inventory_hostname }}, but the kerbside
-          group is not. Set it, or remove every host from the kerbside group.
+          {{ item }} is empty on {{ inventory_hostname }}, but kerbside_hosts
+          is not. Set it, or deploy Kerbside to no host.
         quiet: true
       loop:
-        - kerbside_url
-        - kerbside_system_key
         - kerbside_public_fqdn
         - kerbside_sql_url
         - kerbside_auth_secret_seed
+
+    - name: Refuse an empty kerbside_sources
+      ansible.builtin.assert:
+        that: >-
+          kerbside_sources is sequence and kerbside_sources is not string
+          and kerbside_sources is not mapping and kerbside_sources | length > 0
+        fail_msg: >-
+          kerbside_sources on {{ inventory_hostname }} is empty, or not a
+          list, but kerbside_hosts is not. List the console sources Kerbside
+          serves, at least one.
+        quiet: true
+
+    # The same rendering config writes, so what is checked here is what
+    # Kerbside will read. It is passed on stdin, so the rendered file, and its
+    # secrets, are on no command line and left in no file. The check needs no
+    # privilege on the control node, whatever the play becomes on the host.
+    - name: Check kerbside_sources by Kerbside's rules
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ role_path }}/files/kerbside-check-sources.py"
+          - "-"
+        stdin: "{{ lookup('ansible.builtin.template', 'sources.yaml') }}"
+      register: kerbside_sources_check
+      changed_when: false
+      failed_when: false
+      delegate_to: localhost
+      become: false
+      no_log: true
+
+    - name: Refuse a kerbside_sources Kerbside could not use
+      ansible.builtin.assert:
+        that: kerbside_sources_check.rc | default(1) == 0
+        fail_msg: >-
+          kerbside_sources on {{ inventory_hostname }} cannot be used by
+          Kerbside. Sources are counted from 0 in the order kerbside_sources
+          lists them. {{ kerbside_sources_check.stderr | default('') | trim
+          | default('The check printed no reason.', true) }}
+        quiet: true
+
+    # A Shaken Fist cluster mints console tokens for the Kerbside at its
+    # KERBSIDE_URL, and config renders kerbside_url as the audience Kerbside
+    # accepts. Without a Shaken Fist source Kerbside verifies no such token,
+    # and an empty kerbside_url leaves Kerbside's own default audience.
+    - name: Refuse an empty kerbside_url when a source is of type shakenfist
+      ansible.builtin.assert:
+        that: kerbside_url | length > 0 or kerbside_shakenfist_sources | length == 0
+        fail_msg: >-
+          kerbside_url is empty on {{ inventory_hostname }}, but
+          kerbside_sources has a source of type shakenfist
+          ({{ kerbside_shakenfist_sources | join(', ') }}). Set it to the URL
+          the Shaken Fist cluster renders as its KERBSIDE_URL: it is the
+          audience of every console token that cluster mints.
+        quiet: true
 
     # Kerbside ships this sentinel as the seed's default (kerbside#131), and a
     # seed which is public signs tokens anyone can forge.
@@ -67,61 +118,82 @@
           32 characters. Generate a longer random value.
         quiet: true
 
-    # Shaken Fist hands out instance console ports from 30000 upwards, so on a
-    # Kerbside host which is also a hypervisor a port there would collide with
-    # an instance's. Ports are not secrets, so the messages name the values.
-    - name: Refuse a Kerbside port in Shaken Fist's instance console range
-      ansible.builtin.assert:
-        that: item.value | int < 30000
-        fail_msg: >-
-          {{ item.key }} is {{ item.value }} on {{ inventory_hostname }}, but
-          every Kerbside port must be below 30000: Shaken Fist allocates
-          instance console ports from 30000 upwards. Choose a lower port.
-        quiet: true
-      loop: "{{ kerbside_ports | dict2items }}"
-      loop_control:
-        label: "{{ item.key }}"
-      vars: &kerbside_ports_vars
+    # Ports are not secrets, so the messages name the values.
+    - name: Validate the Kerbside ports
+      vars:
         kerbside_ports:
           kerbside_api_port: "{{ kerbside_api_port }}"
           kerbside_vdi_secure_port: "{{ kerbside_vdi_secure_port }}"
           kerbside_vdi_insecure_port: "{{ kerbside_vdi_insecure_port }}"
           kerbside_metrics_port: "{{ kerbside_metrics_port }}"
+      block:
+        - name: Refuse a malformed kerbside_reserved_ports entry
+          ansible.builtin.assert:
+            that:
+              - kerbside_reserved_ends | length == 2
+              - >-
+                kerbside_reserved_ends | map('string')
+                | select('match', '^[0-9]+$') | list | length == 2
+              - kerbside_reserved_ends[0] | int >= 1
+              - kerbside_reserved_ends[0] | int <= kerbside_reserved_ends[1] | int
+              - kerbside_reserved_ends[1] | int <= 65535
+            fail_msg: >-
+              kerbside_reserved_ports entry {{ kerbside_reserved_index }} on
+              {{ inventory_hostname }} is {{ item | to_json }}, but each entry
+              must be a port from 1 to 65535, or a [low, high] range of them
+              whose low is no higher than its high.
+            quiet: true
+          loop: "{{ kerbside_reserved_ports }}"
+          loop_control:
+            index_var: kerbside_reserved_index
+            label: "{{ kerbside_reserved_index }}"
+          vars:
+            kerbside_reserved_ends: >-
+              {{ [item, item] if item is integer or item is string
+                 else (item if item is iterable and item is not mapping
+                       else []) }}
 
-    # On a Kerbside host which is also a Shaken Fist node, a Kerbside listener
-    # on one of Shaken Fist's ports (kerbside_sf_listener_ports, vars/main.yml)
-    # fails to bind, or takes the port from the Shaken Fist daemon, whichever
-    # starts second. A dedicated Kerbside host runs no Shaken Fist daemon, so
-    # the ports are free there. The listener is looked up with get() because
-    # the message is templated whether or not the assert fails.
-    - name: Refuse a Kerbside port which a Shaken Fist daemon on this host uses
-      ansible.builtin.assert:
-        that: >-
-          not kerbside_colocated | bool
-          or item.value | int not in kerbside_sf_listener_ports
-        fail_msg: >-
-          {{ item.key }} is {{ item.value }}, but {{ inventory_hostname }} is
-          also a Shaken Fist node, where
-          {{ kerbside_sf_listener_ports.get(item.value | int, 'a Shaken Fist daemon') }}
-          listens on that port. Choose another port.
-        quiet: true
-      loop: "{{ kerbside_ports | dict2items }}"
-      loop_control:
-        label: "{{ item.key }}"
-      vars: *kerbside_ports_vars
+        # Each port is compared with every entry, a single port being a range
+        # of one. kerbside_port_reserved_by is the entries which reserve it,
+        # as text, and empty when none does.
+        - name: Refuse a Kerbside port in kerbside_reserved_ports
+          ansible.builtin.assert:
+            that: kerbside_port_reserved_by | string | length == 0
+            fail_msg: >-
+              {{ item.key }} is {{ item.value }} on {{ inventory_hostname }},
+              but kerbside_reserved_ports reserves
+              {{ kerbside_port_reserved_by }} there, for something else on
+              that host. Choose another port.
+            quiet: true
+          loop: "{{ kerbside_ports | dict2items }}"
+          loop_control:
+            label: "{{ item.key }}"
+          vars:
+            kerbside_port_reserved_by: >-
+              {%- set ns = namespace(hits=[]) -%}
+              {%- for entry in kerbside_reserved_ports -%}
+              {%- set ends = [entry, entry] if entry is integer
+                             or entry is string else entry -%}
+              {%- set low = ends[0] | int -%}
+              {%- set high = ends[1] | int -%}
+              {%- if low <= item.value | int and item.value | int <= high -%}
+              {%- set ns.hits = ns.hits
+                  + [(low | string) if low == high else (low ~ '-' ~ high)] -%}
+              {%- endif -%}
+              {%- endfor -%}
+              {{ ns.hits | join(', ') }}
 
-    - name: Refuse two Kerbside listeners on the same port
-      ansible.builtin.assert:
-        that: >-
-          kerbside_ports.values() | map('int') | unique | list | length
-          == kerbside_ports | length
-        fail_msg: >-
-          Two Kerbside ports on {{ inventory_hostname }} are equal, but each
-          needs a port of its own:
-          {% for name, port in kerbside_ports.items() %}{{ name }}={{ port
-          }}{{ ', ' if not loop.last else '.' }}{% endfor %}
-        quiet: true
-      vars: *kerbside_ports_vars
+        - name: Refuse two Kerbside listeners on the same port
+          ansible.builtin.assert:
+            that: >-
+              kerbside_ports.values() | map('int') | unique | list | length
+              == kerbside_ports | length
+            fail_msg: >-
+              Two Kerbside ports on {{ inventory_hostname }} are equal, but each
+              needs a port of its own:
+              {% for name, port in kerbside_ports.items() %}{{ name }}={{ port
+              }}{{ ', ' if not loop.last else '.' }}{% endfor %}
+            quiet: true
 
     # Paths are not secrets, so the message names which are set.
     - name: Refuse a partial set of Kerbside certificate overrides
@@ -133,8 +205,8 @@
           {{ kerbside_overrides | dict2items | selectattr('value', 'equalto', '')
           | map(attribute='key') | join(', ') }} {{ 'is' if
           kerbside_overrides_set | length == 2 else 'are' }} empty. Set all
-          three to use your own certificate, or none of them to have one
-          issued from the deployment's internal CA.
+          three to use your own certificate, or none of them to use the one
+          installed under kerbside_pki_dir.
         quiet: true
       vars:
         kerbside_overrides:
@@ -145,52 +217,45 @@
           {{ kerbside_overrides | dict2items
              | rejectattr('value', 'equalto', '') | map(attribute='key') | list }}
 
-    # Kerbside fetches the console token signing key from api_url, as this host
-    # sees it. Its default, http://localhost:13000, works on a Kerbside host
-    # which is also a Shaken Fist node, since sf-api listens on every node, and
-    # reaches nothing from one which is not. So it is judged per host: a
-    # co-located host may use loopback even when another Kerbside host is
-    # dedicated and uses a routable address. Loopback here is localhost and any name under it,
-    # 127.0.0.0/8 (including the short forms such as 127.1 which the resolver
-    # accepts), ::1 in any spelling, its IPv4-mapped form, and the unspecified
-    # addresses 0.0.0.0 and ::, which Linux connects to the local host. Host
-    # names are not secrets; the message names the host part of api_url
-    # rather than the whole URL, in case the URL carries a credential.
-    - name: Refuse a loopback api_url on a Kerbside host which is not a Shaken Fist node
+    # Each local wheel replaces one package spec, chosen by the wheel's file
+    # name, so a name which matches neither, or two wheels for one package,
+    # would be installed beside the package or leave one of the two unused.
+    # bootstrap copies them from the control node, where they are looked for
+    # here. Paths are not secrets, so the messages name them.
+    - name: Refuse a local wheel which replaces no Kerbside package
       ansible.builtin.assert:
         that: >-
-          kerbside_colocated | bool or not (
-            kerbside_api_host in ['0.0.0.0', '::']
-            or kerbside_api_host is match('^(.*[.])?localhost[.]?$')
-            or kerbside_api_host is match('^127([.][0-9]+){0,3}$')
-            or kerbside_api_host is match('^[0:]*:0{0,3}1$')
-            or kerbside_api_host is match('^(0{0,4}:)*:?ffff:127[.]'))
+          item | basename is match(kerbside_wheel_pattern)
+          or item | basename is match(kerbside_proxy_wheel_pattern)
         fail_msg: >-
-          api_url's host on {{ inventory_hostname }} is {{ kerbside_api_host }},
-          a loopback address, but {{ inventory_hostname }} is not a Shaken Fist
-          node, so nothing answers there. Kerbside reaches Shaken Fist at
-          api_url, so on this host it must be an address of the Shaken Fist
-          API which this host can reach, such as the cluster's load balancer
-          or an API node's address.
+          kerbside_local_wheels on {{ inventory_hostname }} lists {{ item }},
+          which is neither a kerbside wheel (kerbside-*.whl) nor a
+          kerbside_proxy wheel (kerbside_proxy-*.whl). Only those two replace
+          a package; install anything else with kerbside_pip_extra.
         quiet: true
-      vars:
-        kerbside_api_host: "{{ api_url | urlsplit('hostname') | default('', true) | lower }}"
+      loop: "{{ kerbside_local_wheels }}"
 
-    # kerbside_url is the single source of truth for the console token
-    # audience: the node role renders it as Shaken Fist's KERBSIDE_URL, and
-    # config renders it as Kerbside's SF_CONSOLE_TOKEN_AUDIENCE. Set where
-    # only one side reads it, such as group_vars/kerbside, the two differ, and
-    # Kerbside rejects every console token (or Shaken Fist never issues one).
-    # URLs are not secrets, so the message names both values.
-    - name: Refuse a kerbside_url which Shaken Fist's nodes see differently
+    - name: Refuse two local wheels for one Kerbside package
       ansible.builtin.assert:
-        that: kerbside_url_on_sf_nodes is none or kerbside_url == kerbside_url_on_sf_nodes
+        that: >-
+          kerbside_local_wheel_names | select('match', item) | list | length <= 1
         fail_msg: >-
-          {{ inventory_hostname }} sees kerbside_url as {{ kerbside_url }}, but
-          Shaken Fist's nodes render {{ ('a different kerbside_url, ' ~
-          kerbside_url_on_sf_nodes) if kerbside_url_on_sf_nodes | default('', true)
-          | length > 0 else 'no kerbside_url at all' }}. It is both Shaken Fist's
-          KERBSIDE_URL and Kerbside's token audience, so it must be set once,
-          where both the allsf and the kerbside hosts read it, for example in
-          group_vars/all.
+          kerbside_local_wheels on {{ inventory_hostname }} lists more than
+          one {{ 'kerbside_proxy' if item == kerbside_proxy_wheel_pattern
+          else 'kerbside' }} wheel
+          ({{ kerbside_local_wheel_names | select('match', item) | join(', ') }}),
+          but each replaces the one package spec. List one.
         quiet: true
+      loop:
+        - "{{ kerbside_wheel_pattern }}"
+        - "{{ kerbside_proxy_wheel_pattern }}"
+
+    - name: Refuse a local wheel which is not on the control node
+      ansible.builtin.assert:
+        that: item is file
+        fail_msg: >-
+          kerbside_local_wheels on {{ inventory_hostname }} lists {{ item }},
+          which is not a file on the control node, where bootstrap copies it
+          from.
+        quiet: true
+      loop: "{{ kerbside_local_wheels }}"

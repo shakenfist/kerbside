@@ -1,7 +1,8 @@
 ---
 # Migrate Kerbside's database, restart Kerbside if what it runs with changed,
-# and wait until it has fetched the Shaken Fist console token signing keys with
-# the credential the node role just minted.
+# and wait until it is ready: until its API answers and, for every source of
+# type shakenfist, until it has fetched that cluster's console token signing
+# keys with the credential the source carries.
 #
 # Runs on every Kerbside host together, after config has set
 # kerbside_desired_state. The migration and the readiness check run once, on
@@ -17,7 +18,9 @@
 # Tasks needing a running system are tagged, so a test without root can skip
 # them: kerbside-database (the migration), kerbside-services (the units and
 # the API's answer) and kerbside-readiness (the signing key wait). The
-# restart decision and the marker are not tagged.
+# restart decision and the marker are not tagged. With no source of type
+# shakenfist there are no signing keys to wait for, and readiness is the API
+# answering alone.
 #
 # The migration and the readiness check run as kerbside_user, through runuser
 # from root (the play must become root), not through become_user: becoming an
@@ -148,10 +151,11 @@
   run_once: true
   tags: [kerbside-database]
 
-# Both units together, as the node role restarts its daemons. They are wanted by
-# multi-user.target, so the node role isolating sf.target on a co-located host
-# leaves them running. daemon_reload is false: the handler flushed above has
-# already reloaded if the units changed.
+# Both units together. They are wanted by multi-user.target, so another
+# deployment on the same host isolating a target which requires
+# multi-user.target (as Shaken Fist's node role does) leaves them running.
+# daemon_reload is false: the handler flushed above has already reloaded if the
+# units changed.
 - name: Start Kerbside
   ansible.builtin.systemd_service:
     name: "{{ item }}"
@@ -187,11 +191,23 @@
                else kerbside_api_check_address) }}
   tags: [kerbside-services]
 
-# Readiness is a signing key fetch after kerbside_ready_after: proof that
-# Kerbside's credential, which the node role re-mints on every deploy, still
-# authenticates, against a CA which still matches. It is waited for on every
-# deploy, even one which restarted nothing, which costs up to one scrape
-# interval (60 seconds). The script prints one JSON object and never a secret.
+- name: Say that readiness is the API answering alone
+  ansible.builtin.debug:
+    msg: >-
+      No source is of type shakenfist, so there are no console token signing
+      keys to wait for, and Kerbside's API answering is its readiness.
+  run_once: true
+  when: kerbside_shakenfist_sources | length == 0
+  tags: [kerbside-readiness]
+
+# Readiness is a signing key fetch after kerbside_ready_after by every source
+# of type shakenfist (kerbside_shakenfist_sources, vars/main.yml): proof that
+# each source's credential, which its cluster may have re-minted during this
+# deploy, still authenticates, against a CA which still matches. The script
+# reports the oldest of the sources' fetches, so the wait ends only when every
+# one has fetched. It is waited for on every deploy, even one which restarted
+# nothing, which costs up to one scrape interval (60 seconds). The script
+# prints one JSON object and never a secret.
 # kerbside_ready_fetched_at (vars/main.yml) reads fetched_at from it, and
 # anything else it prints, including nothing, counts as not ready; its exit
 # status is ignored (kerbside#313): until alone decides when to stop, and an
@@ -201,16 +217,13 @@
 # would not do that: ansible marks a task which ran out of retries failed
 # whatever failed_when says, so only ignore_errors lets the run reach the
 # assert.
-- name: Wait for Kerbside to fetch Shaken Fist's signing keys
+- name: Wait for Kerbside to fetch every Shaken Fist source's signing keys
   ansible.builtin.command:
-    argv:
-      - runuser
-      - -u
-      - "{{ kerbside_user }}"
-      - --
-      - "{{ kerbside_venv }}/bin/python"
-      - "{{ kerbside_helper_dir }}/kerbside-ready.py"
-      - "{{ deploy_name }}"
+    argv: >-
+      {{ ['runuser', '-u', kerbside_user, '--',
+          kerbside_venv ~ '/bin/python',
+          kerbside_helper_dir ~ '/kerbside-ready.py']
+         + kerbside_shakenfist_sources }}
   register: kerbside_ready
   changed_when: false
   ignore_errors: true
@@ -221,24 +234,26 @@
     and kerbside_ready_fetched_at | float > kerbside_ready_after | float
   run_once: true
   delegate_to: "{{ kerbside_hosts[0] }}"
+  when: kerbside_shakenfist_sources | length > 0
   tags: [kerbside-readiness]
 
-- name: Require Kerbside to have fetched Shaken Fist's signing keys
+- name: Require Kerbside to have fetched every Shaken Fist source's signing keys
   ansible.builtin.assert:
     that:
       - kerbside_ready_fetched_at != 'null'
       - kerbside_ready_fetched_at | float > kerbside_ready_after | float
     fail_msg: >-
-      Kerbside did not fetch the console token signing keys for source
-      {{ deploy_name }} from Shaken Fist within
-      {{ kerbside_ready_retries | int * 3 }} seconds of this deploy starting
-      its wait at {{ kerbside_ready_after }}. The last check on
+      Kerbside did not fetch the console token signing keys of every source
+      of type shakenfist ({{ kerbside_shakenfist_sources | join(', ') }})
+      within {{ kerbside_ready_retries | int * 3 }} seconds of this deploy
+      starting its wait at {{ kerbside_ready_after }}. The last check on
       {{ kerbside_hosts[0] }} printed:
       {{ kerbside_ready.stdout | default('') | trim | default('nothing', true) }}.
-      A null fetched_at means Kerbside has never stored the keys, and an
-      older one that it has not stored them since: usually Kerbside's CA
-      certificate does not match the one Shaken Fist serves, or Shaken Fist
-      refused its kerbside credential. See
+      fetched_at is the oldest of those sources' fetches. A null fetched_at
+      means Kerbside has never stored at least one source's keys, and an
+      older one that it has not stored them since: usually that source's
+      ca_cert does not match the CA its cluster serves, or the cluster
+      refused the source's credential. See
       journalctl -u kerbside-daemon -u kerbside-api on the Kerbside hosts.
       An "error" naming AttributeError or ImportError is different: the
       installed Kerbside is incompatible with this role's readiness check,
@@ -247,6 +262,7 @@
       credential problem.
     quiet: true
   run_once: true
+  when: kerbside_shakenfist_sources | length > 0
   tags: [kerbside-readiness]
 
 - name: Record what was deployed

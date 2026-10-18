@@ -11,10 +11,6 @@
 profile: basic
 
 skip_list:
-  # api_url and deploy_name are role variables without the kerbside_
-  # prefix, and so is the apt_action register in the bootstrap tasks.
-  - var-naming[no-role-prefix]
-
   # The apt installs deliberately use state: latest, so a redeploy
   # picks up security updates to the build dependencies.
   - package-latest

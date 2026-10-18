@@ -15,8 +15,9 @@ comma escaped in values, joined by a comma with no space.
 
 This is a copy of that function's rules rather than an import of it, because
 it runs with Kerbside's virtualenv on a host which need not have Shaken Fist
-installed. shakenfist/tests/test_kerbside_host_subject.py compares the two
-over generated certificates, so they cannot drift apart unnoticed.
+installed. kerbside/tests/unit/test_ansible_role.py holds it to
+tests/fixtures/host-subject-renderings.json, the renderings and refusals
+node.py produced, recorded with the commit they came from.
 
 Where node.py returns None (an attribute with no short name, a value which is
 not a string, or an empty subject) this prints nothing and exits non-zero with

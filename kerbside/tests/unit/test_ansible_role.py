@@ -12,7 +12,10 @@ Shaken Fist is not a dependency of Kerbside, so the script is held to
 tests/fixtures/host-subject-renderings.json: the renderings and
 refusals node.py produced, recorded with the commit they came from.
 
-The role's defaults are checked against its argument specs here too.
+The role's defaults are checked against its argument specs here too,
+and the logic of two more of its helper scripts: the one which checks
+sources.yaml, and the one register polls for readiness, which reports
+several Shaken Fist sources as one.
 """
 
 import datetime
@@ -36,17 +39,24 @@ import yaml
 # tests find them from this file instead.
 _ROOT = Path(__file__).resolve().parents[3]
 _ROLE = _ROOT / 'ansible' / 'roles' / 'kerbside'
-_SCRIPT = _ROLE / 'files' / 'kerbside-host-subject.py'
 _DEFAULTS = _ROLE / 'defaults' / 'main.yml'
 _ARGUMENT_SPECS = _ROLE / 'meta' / 'argument_specs.yml'
 _FIXTURE = _ROOT / 'tests' / 'fixtures' / 'host-subject-renderings.json'
 
-# The script is a standalone file in the role, with a hyphenated name,
-# so load it by path.
-_spec = importlib.util.spec_from_file_location(
-    'kerbside_host_subject', _SCRIPT)
-script = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(script)
+
+def _load_script(name, filename):
+    """Load one of the role's helper scripts, which have hyphenated names."""
+    spec = importlib.util.spec_from_file_location(
+        name, _ROLE / 'files' / filename)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+script = _load_script('kerbside_host_subject', 'kerbside-host-subject.py')
+check_sources = _load_script(
+    'kerbside_check_sources', 'kerbside-check-sources.py')
+ready = _load_script('kerbside_ready', 'kerbside-ready.py')
 
 with open(_FIXTURE) as _f:
     FIXTURE = json.load(_f)
@@ -152,3 +162,75 @@ class RoleDefaultsTestCase(testtools.TestCase):
             [], undeclared,
             'role defaults not declared in argument_specs.yml: %s'
             % ', '.join(undeclared))
+
+
+class CheckSourcesScriptTestCase(testtools.TestCase):
+    def _check(self, text):
+        return check_sources.check_stream(io.StringIO(text))
+
+    def test_numbers_are_read_as_kerbside_reads_them(self):
+        # An unquoted 012345 is the text Kerbside reads, not octal 5349,
+        # so it is a password; a port may be written either way.
+        self.assertEqual([], self._check(
+            '- {source: a, type: shakenfist, url: u, username: system,\n'
+            '   password: 012345, ca_cert: c}\n'
+            '- source: b\n'
+            '  type: static\n'
+            '  consoles:\n'
+            '  - {uuid: 1, name: n, hypervisor: h, hypervisor_ip: i,\n'
+            '     insecure_port: "5910", secure_port: 5911, ticket: 0x1F}\n'))
+
+    def test_a_boolean_is_not_text(self):
+        self.assertEqual(
+            ['source 0: password is not text'],
+            self._check('- {source: a, type: shakenfist, url: u, '
+                        'username: system, password: true, ca_cert: c}\n'))
+
+    def test_an_empty_list_is_refused(self):
+        self.assertEqual(
+            ['the file is not a non-empty list of sources'],
+            self._check('[]\n'))
+
+    def test_a_yaml_error_names_only_the_line(self):
+        errors = self._check('- source: a\n  password: "secret\n  :\n')
+        self.assertEqual(1, len(errors))
+        self.assertNotIn('secret', errors[0])
+        self.assertIn('line', errors[0])
+
+
+class ReadyScriptTestCase(testtools.TestCase):
+    def test_combine_reports_the_oldest_fetch(self):
+        self.assertEqual(
+            (False, 100.0),
+            ready.combine([(False, 300.0), (False, 100.0), (False, 200.0)]))
+
+    def test_combine_reports_null_until_every_source_fetched(self):
+        self.assertEqual(
+            (False, None), ready.combine([(False, 300.0), (False, None)]))
+
+    def test_combine_reports_any_error_and_any_missing_source(self):
+        self.assertEqual(
+            (True, None), ready.combine([(None, None), (True, 1.0)]))
+        self.assertEqual(
+            (None, 1.0), ready.combine([(None, 1.0), (False, 2.0)]))
+
+    def test_main_reads_every_source_named(self):
+        states = {'sf': (False, 200.0), 'sf2': (False, 150.0)}
+        stdout = io.StringIO()
+        with mock.patch.object(ready, 'load_db',
+                               return_value=(object(), None)), \
+                mock.patch.object(ready, 'read_state',
+                                  side_effect=lambda db, name: states[name]), \
+                mock.patch('sys.stdout', stdout):
+            rc = ready.main(['kerbside-ready.py', 'sf', 'sf2'])
+        self.assertEqual(0, rc)
+        self.assertEqual(
+            {'errored': False, 'fetched_at': 150.0},
+            json.loads(stdout.getvalue()))
+
+    def test_main_needs_a_source_name(self):
+        stdout = io.StringIO()
+        with mock.patch('sys.stdout', stdout):
+            rc = ready.main(['kerbside-ready.py'])
+        self.assertEqual(2, rc)
+        self.assertIn('usage', json.loads(stdout.getvalue())['error'])

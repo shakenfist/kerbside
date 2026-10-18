@@ -1,8 +1,6 @@
 ---
-# The kerbside role depends on no other role, because the common role's
-# handlers manage a Shaken Fist node's journald and logind, which a dedicated
-# Kerbside host does not need. It carries its own daemon reload instead, for
-# the units the config entry point writes.
+# The kerbside role depends on no other role, so it carries its own daemon
+# reload, for the units the config entry point writes.
 #
 # A reload is only needed when the units were written where the system manager
 # loads units from. A test without root points kerbside_unit_dir at a directory

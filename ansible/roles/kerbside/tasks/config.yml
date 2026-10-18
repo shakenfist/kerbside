@@ -4,7 +4,8 @@
 #
 # Runs on each Kerbside host after bootstrap, which installs Kerbside and sets
 # kerbside_code_hash, and after the consuming playbook has put the proxy
-# certificate in place (from internal_ca, or the operator's override paths).
+# certificate in place (under kerbside_pki_dir, or at the operator's override
+# paths).
 # Nothing is started or restarted here: register compares the desired state
 # with what was last deployed, and records it only once Kerbside is ready.
 #
@@ -20,18 +21,6 @@
       desired state, so run the bootstrap entry point on this host first.
     quiet: true
 
-# The CA certificate is not a secret, but its absence is only otherwise caught
-# by the sources.yaml check, which cannot say where the value should come from.
-- name: Require the Shaken Fist CA certificate
-  ansible.builtin.assert:
-    that: "'-----BEGIN CERTIFICATE-----' in kerbside_sf_ca_cert"
-    fail_msg: >-
-      kerbside_sf_ca_cert does not hold a PEM certificate. It must be the CA
-      which Shaken Fist's /admin/cacert serves (the API node's
-      /etc/pki/libvirt-spice/ca-cert.pem), or Kerbside will refuse to fetch
-      the console token signing key.
-    quiet: true
-
 # The service reads its configuration and may not change it: the directory and
 # the files in it are owned by kerbside_file_owner and readable by the group.
 - name: Create Kerbside's configuration directory
@@ -42,10 +31,10 @@
     group: "{{ kerbside_group }}"
     mode: "0750"
 
-# internal_ca's distribute_certificates entry point creates this directory
-# 0755 before config runs, so it is created here with the same mode: anything
-# else would be flipped back and forth on every deploy. The key in it is
-# protected by its own mode (0640, readable by kerbside_group).
+# 0755, the mode Shaken Fist's internal_ca role creates it with when a
+# consuming playbook installs the certificate with it before config runs:
+# anything else would be flipped back and forth on every deploy. The key in it
+# is protected by its own mode (0640, readable by kerbside_group).
 - name: Create Kerbside's certificate directory
   ansible.builtin.file:
     path: "{{ kerbside_pki_dir }}"
@@ -78,8 +67,9 @@
 
 # Kerbside embeds PROXY_HOST_SUBJECT in the console files it hands to SPICE
 # clients, which compare it with the certificate the proxy presents. It is
-# rendered by Shaken Fist's rules for a hypervisor's subject, by a script a
-# unit test pins to shakenfist/node.py, from whichever certificate is in use.
+# rendered by the rules Shaken Fist uses for a hypervisor's subject, by a
+# script a unit test holds to renderings recorded from Shaken Fist's node.py,
+# from whichever certificate is in use.
 # A certificate whose subject cannot be rendered fails here, with the reason.
 - name: Render the proxy certificate's subject
   ansible.builtin.command:

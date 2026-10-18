@@ -5,35 +5,53 @@
 
 # The certificate, key and CA Kerbside's proxy and API are configured with:
 # the operator's override paths when they are set (validate requires all three
-# or none), otherwise the internal_ca destination names (cert_dest_cert_name,
-# cert_dest_key_name and cert_dest_ca_name) under kerbside_pki_dir, where the
-# consuming playbook has internal_ca install them.
+# or none), otherwise kerbside_proxy_cert_name, kerbside_proxy_key_name and
+# kerbside_proxy_cacert_name under kerbside_pki_dir, where the consuming
+# playbook installs them.
 kerbside_proxy_cert_file: >-
   {{ kerbside_proxy_cert_path if kerbside_proxy_cert_path | length > 0
-     else kerbside_pki_dir ~ '/server-cert.pem' }}
+     else kerbside_pki_dir ~ '/' ~ kerbside_proxy_cert_name }}
 kerbside_proxy_key_file: >-
   {{ kerbside_proxy_key_path if kerbside_proxy_key_path | length > 0
-     else kerbside_pki_dir ~ '/server-key.pem' }}
+     else kerbside_pki_dir ~ '/' ~ kerbside_proxy_key_name }}
 kerbside_cacert_file: >-
   {{ kerbside_cacert_path if kerbside_cacert_path | length > 0
-     else kerbside_pki_dir ~ '/ca-cert.pem' }}
+     else kerbside_pki_dir ~ '/' ~ kerbside_proxy_cacert_name }}
 
-# The ports Shaken Fist's daemons listen on, by default, on every node they run
-# on, and the daemon behind each. validate refuses any of them as a Kerbside
-# port on a Kerbside host which is also a Shaken Fist node (kerbside_colocated).
-# sf-api binds 13000 in roles/node/templates/sf-api.service:33; the others are
-# the defaults of RESOURCES_METRICS_PORT and CLUSTER_METRICS_PORT
-# (shakenfist/config.py:537-542) and of MARIADB_GATEWAY_PORT and
-# MARIADB_GATEWAY_METRICS_PORT (shakenfist/config.py:896-901). sf-database
-# runs only on the database tier, but which nodes those are is the
-# inventory's, so its ports are refused on every co-located host. A change to
-# any of those defaults belongs here too.
-kerbside_sf_listener_ports:
-  13000: sf-api
-  13001: sf-resources' metrics (RESOURCES_METRICS_PORT)
-  13005: sf-database's gRPC gateway (MARIADB_GATEWAY_PORT)
-  13006: sf-database's metrics (MARIADB_GATEWAY_METRICS_PORT)
-  13007: sf-cluster's metrics (CLUSTER_METRICS_PORT)
+# The names of the sources of type shakenfist, in the order kerbside_sources
+# lists them. register waits for Kerbside to fetch each one's console token
+# signing keys, bootstrap installs the Shaken Fist client their driver imports
+# only when there is one, and validate requires kerbside_url, their tokens'
+# audience, only then. Only the names are read, never a credential.
+kerbside_shakenfist_sources: >-
+  {{ kerbside_sources | selectattr('type', 'defined')
+     | selectattr('type', 'equalto', 'shakenfist')
+     | map(attribute='source') | map('string') | list }}
+
+# Where bootstrap copies kerbside_local_wheels on the Kerbside host, and the
+# package each replaces. A wheel is installed from a fixed path named by its
+# file name alone, so the same wheel copied from anywhere on the control node
+# freezes the same, and gives the same code hash. A kerbside wheel replaces
+# kerbside_package and a kerbside_proxy wheel kerbside_proxy_package (validate
+# refuses any other name, and two of either).
+kerbside_wheel_dir: "{{ kerbside_state_dir }}/wheels"
+kerbside_local_wheel_names: "{{ kerbside_local_wheels | map('basename') | list }}"
+kerbside_wheel_pattern: '^kerbside-[^-]+-.*[.]whl$'
+kerbside_proxy_wheel_pattern: '^kerbside_proxy-[^-]+-.*[.]whl$'
+kerbside_install_package: >-
+  {{ (kerbside_wheel_dir ~ '/'
+      ~ (kerbside_local_wheel_names | select('match', kerbside_wheel_pattern)
+         | first))
+     if kerbside_local_wheel_names | select('match', kerbside_wheel_pattern)
+        | list | length > 0
+     else kerbside_package }}
+kerbside_install_proxy_package: >-
+  {{ (kerbside_wheel_dir ~ '/'
+      ~ (kerbside_local_wheel_names
+         | select('match', kerbside_proxy_wheel_pattern) | first))
+     if kerbside_local_wheel_names
+        | select('match', kerbside_proxy_wheel_pattern) | list | length > 0
+     else kerbside_proxy_package }}
 
 # Where the role's helper scripts are copied on the Kerbside host. They run
 # there, with the virtualenv's Python: the validate commands which check

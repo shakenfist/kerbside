@@ -5,7 +5,7 @@
 {% set kerbside_api_bind = ('[' ~ kerbside_api_address ~ ']')
      if ':' in kerbside_api_address and not kerbside_api_address.startswith('[')
      else kerbside_api_address %}
-# Kerbside's REST API, written by the shakenfist.shakenfist kerbside role.
+# Kerbside's REST API, written by the shakenfist.kerbside kerbside role.
 #
 # Wanted by multi-user.target, and deliberately not by Shaken Fist's own
 # target unit: on a host which is also a Shaken Fist node, the node role

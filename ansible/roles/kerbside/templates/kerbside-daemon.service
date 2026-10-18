@@ -1,5 +1,5 @@
 # Kerbside's daemon, which scrapes its sources and supervises the SPICE proxy
-# (kerbside-proxy) as a child. Written by the shakenfist.shakenfist kerbside
+# (kerbside-proxy) as a child. Written by the shakenfist.kerbside kerbside
 # role.
 #
 # Wanted by multi-user.target, and deliberately not by Shaken Fist's own
