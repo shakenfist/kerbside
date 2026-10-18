@@ -1,0 +1,13 @@
+---
+galaxy_info:
+  author: Michael Still and contributors
+  description: >-
+    Deploy a Kerbside SPICE VDI console proxy in front of any of the console
+    sources Kerbside supports (Shaken Fist, oVirt, OpenStack and static): its
+    system user, packages and virtualenv, configuration, systemd units and
+    readiness. Depends on no other role and carries its own handler. Reads
+    only role variables, never an inventory group name or another host's
+    facts.
+  license: Apache-2.0
+  min_ansible_version: '2.15'
+dependencies: []

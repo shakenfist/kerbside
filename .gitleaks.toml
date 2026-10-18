@@ -53,5 +53,14 @@ title = "Kerbside"
 # tracked separately as issue #357 rather than done here.
 useDefault = true
 
-# There are no accepted findings: the history is clean as scanned. Add
-# an [allowlist] block with a "regexes" list here when that changes.
+# Accepted findings, keyed on their text. Each regex is unanchored,
+# because 8.16 matches it against the whole match (see above).
+[allowlist]
+description = "Test fixtures, not credentials"
+regexes = [
+  # tools/ci-test-ansible-role.sh's throwaway oVirt source password. The
+  # role test plants one invented password per source type, and searches
+  # the role's output for each to prove none leaks; this one is the only
+  # value generic-api-key's entropy threshold catches.
+  '''ovirt-pw-Zr6kN1vB4tYe''',
+]

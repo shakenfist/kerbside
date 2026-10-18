@@ -68,6 +68,40 @@ jobs:
           name: dist
           path: dist/
 
+  build-collection:
+    name: Build ansible collection
+    runs-on: [self-hosted, static]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: |
+          rm -rf collection-venv
+          python3 -m venv collection-venv
+          collection-venv/bin/pip3 install --upgrade pip
+          collection-venv/bin/pip3 install ansible-core
+
+      # The version is the one the Python packages are built with. A
+      # workflow_dispatch build has no tag and is never published, so it
+      # builds 0.0.0. The build stamps a staged copy, never the checkout
+      # (see tools/build-collection.sh).
+      - name: Build collection
+        run: |
+          VERSION=0.0.0
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          PATH="${PWD}/collection-venv/bin:${PATH}" \
+            tools/build-collection.sh "${VERSION}" dist-collection
+
+      - name: Upload collection artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: collection
+          path: dist-collection/
+
   build-proxy-wheels:
     name: Build kerbside-proxy wheels
     # The vm/debian-13 runner carries the Rust build environment the crate
@@ -293,9 +327,54 @@ jobs:
           # not hard-error on a file PyPI already has.
           skip-existing: true
 
+  publish-collection:
+    name: Publish ansible collection to Galaxy
+    # After publish-pypi because the collection's default package pin,
+    # kerbside==<version>, names a release which has to exist on PyPI
+    # before a collection pointing at it is public.
+    needs: [build-collection, sign-tag, publish-pypi]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: [self-hosted, static]
+    environment: release
+
+    permissions: {}
+
+    steps:
+      # No checkout: ansible-galaxy runs on the runner host, so it reads
+      # an absolute runner.temp path, and the per-job runner.temp is a
+      # directory nothing else has written to. The glob below matches the
+      # one tarball build-collection uploads; ansible-galaxy fails
+      # loudly on a path which does not exist.
+      - name: Download collection artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: collection
+          path: ${{ runner.temp }}/dist-collection/
+
+      - name: Install ansible-core
+        run: |
+          rm -rf publish-venv
+          python3 -m venv publish-venv
+          publish-venv/bin/pip3 install --upgrade pip
+          publish-venv/bin/pip3 install ansible-core
+
+      # The token reaches ansible-galaxy as its server configuration,
+      # through env: alone. Interpolating it into the script would write
+      # it into the generated script file on the runner, and passing it
+      # as --api-key would put it in argv, readable from ps by any
+      # process on the self-hosted runner while the publish runs.
+      - name: Publish to Ansible Galaxy
+        env:
+          ANSIBLE_GALAXY_SERVER_LIST: release_galaxy
+          ANSIBLE_GALAXY_SERVER_RELEASE_GALAXY_URL: https://galaxy.ansible.com/
+          ANSIBLE_GALAXY_SERVER_RELEASE_GALAXY_TOKEN: ${{ secrets.ANSIBLE_GALAXY_TOKEN }}
+        run: |
+          publish-venv/bin/ansible-galaxy collection publish \
+              "${RUNNER_TEMP}"/dist-collection/*.tar.gz
+
   github-release:
     name: Create GitHub Release
-    needs: [build, sign-tag, publish-pypi]
+    needs: [build, build-collection, sign-tag, publish-pypi]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: [self-hosted, static]
 
@@ -320,11 +399,19 @@ jobs:
           name: dist
           path: ${{ runner.temp }}/dist/
 
+      - name: Download collection artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: collection
+          path: ${{ runner.temp }}/dist-collection/
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
-          files: ${{ runner.temp }}/dist/*
+          files: |
+            ${{ runner.temp }}/dist/*
+            ${{ runner.temp }}/dist-collection/*.tar.gz
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -339,6 +339,37 @@ jobs:
           uv pip install build
           python3 tools/check-wheel.py
 
+      # The shakenfist.kerbside collection under ansible/. Its tools get a
+      # venv of their own: galaxy-importer brings a large dependency tree
+      # which has no business in the tox venv. ansible-core comes in with
+      # ansible-lint, and brings the cryptography and PyYAML the role's
+      # helper scripts need when the role test runs them.
+      - name: Install the Ansible tools
+        timeout-minutes: 5
+        run: |
+          python3 -mvenv /tmp/venv-ansible
+          /tmp/venv-ansible/bin/pip3 install uv
+          /tmp/venv-ansible/bin/uv pip install --python /tmp/venv-ansible/bin/python \
+              ansible-core ansible-lint galaxy-importer
+
+      # Rootless test of the kerbside role's validate, bootstrap (against
+      # a stub virtualenv) and config entry points. register needs
+      # systemd, MariaDB and a console source, so it is not run here.
+      - name: Test the ansible role
+        timeout-minutes: 10
+        run: |
+          . /tmp/venv-ansible/bin/activate
+          tools/ci-test-ansible-role.sh
+
+      # ansible-lint over ansible/, then galaxy-importer over the built
+      # tarball: the importer is what Galaxy runs on an upload, so a
+      # metadata error fails here rather than at release.
+      - name: Lint, build and import-check the ansible collection
+        timeout-minutes: 10
+        run: |
+          . /tmp/venv-ansible/bin/activate
+          tools/ci-check-ansible-collection.sh
+
       - name: List failing tests
         if: failure()
         id: failures

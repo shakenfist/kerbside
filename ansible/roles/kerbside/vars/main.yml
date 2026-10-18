@@ -1,0 +1,88 @@
+---
+# Values derived from the role's variables. They live here rather than in
+# defaults/main.yml because they are not settings: each follows from variables
+# which are, and nothing should override one independently of those.
+
+# The certificate, key and CA Kerbside's proxy and API are configured with:
+# the operator's override paths when they are set (validate requires all three
+# or none), otherwise kerbside_proxy_cert_name, kerbside_proxy_key_name and
+# kerbside_proxy_cacert_name under kerbside_pki_dir, where the consuming
+# playbook installs them.
+kerbside_proxy_cert_file: >-
+  {{ kerbside_proxy_cert_path if kerbside_proxy_cert_path | length > 0
+     else kerbside_pki_dir ~ '/' ~ kerbside_proxy_cert_name }}
+kerbside_proxy_key_file: >-
+  {{ kerbside_proxy_key_path if kerbside_proxy_key_path | length > 0
+     else kerbside_pki_dir ~ '/' ~ kerbside_proxy_key_name }}
+kerbside_cacert_file: >-
+  {{ kerbside_cacert_path if kerbside_cacert_path | length > 0
+     else kerbside_pki_dir ~ '/' ~ kerbside_proxy_cacert_name }}
+
+# The names of the sources of type shakenfist, in the order kerbside_sources
+# lists them. register waits for Kerbside to fetch each one's console token
+# signing keys, bootstrap installs the Shaken Fist client their driver imports
+# only when there is one, and validate requires kerbside_url, their tokens'
+# audience, only then. Only the names are read, never a credential.
+kerbside_shakenfist_sources: >-
+  {{ kerbside_sources | selectattr('type', 'defined')
+     | selectattr('type', 'equalto', 'shakenfist')
+     | map(attribute='source') | map('string') | list }}
+
+# Where bootstrap copies kerbside_local_wheels on the Kerbside host, and the
+# package each replaces. A wheel is installed from a fixed path named by its
+# file name alone, so the same wheel copied from anywhere on the control node
+# freezes the same, and gives the same code hash. A kerbside wheel replaces
+# kerbside_package and a kerbside_proxy wheel kerbside_proxy_package (validate
+# refuses any other name, and two of either).
+kerbside_wheel_dir: "{{ kerbside_state_dir }}/wheels"
+kerbside_local_wheel_names: "{{ kerbside_local_wheels | map('basename') | list }}"
+kerbside_wheel_pattern: '^kerbside-[^-]+-.*[.]whl$'
+kerbside_proxy_wheel_pattern: '^kerbside_proxy-[^-]+-.*[.]whl$'
+kerbside_install_package: >-
+  {{ (kerbside_wheel_dir ~ '/'
+      ~ (kerbside_local_wheel_names | select('match', kerbside_wheel_pattern)
+         | first))
+     if kerbside_local_wheel_names | select('match', kerbside_wheel_pattern)
+        | list | length > 0
+     else kerbside_package }}
+kerbside_install_proxy_package: >-
+  {{ (kerbside_wheel_dir ~ '/'
+      ~ (kerbside_local_wheel_names
+         | select('match', kerbside_proxy_wheel_pattern) | first))
+     if kerbside_local_wheel_names
+        | select('match', kerbside_proxy_wheel_pattern) | list | length > 0
+     else kerbside_proxy_package }}
+
+# Where the role's helper scripts are copied on the Kerbside host. They run
+# there, with the virtualenv's Python: the validate commands which check
+# kerbside.ini and sources.yaml before either replaces the running file, the
+# script which renders the proxy certificate's subject, and the script register
+# polls for readiness.
+kerbside_helper_dir: "{{ kerbside_state_dir }}/bin"
+
+# Where register records the desired state it last brought to readiness.
+kerbside_deployed_state_file: "{{ kerbside_state_dir }}/.deployed-state.sha256"
+
+# What register's readiness wait reads from kerbside-ready.py: its output must
+# be exactly the one-line JSON object the script prints, matched by
+# kerbside_ready_pattern before it is parsed, since from_json on anything else
+# would fail the task rather than count as not ready. The pattern admits only
+# what the script's json.dumps() can produce, and no backslash, so every match
+# parses. kerbside_ready_fetched_at is the parsed fetched_at as a string, or
+# 'null' when the keys were never fetched or the output was anything else.
+# Evaluated lazily, so each reads the latest kerbside_ready the wait registered.
+kerbside_ready_pattern: >-
+  ^[{]"errored": (true|false|null),
+  "fetched_at": (null|-?[0-9]+([.][0-9]+)?([eE][-+]?[0-9]+)?)(,
+  "error": "[A-Za-z0-9 .:_-]*")?[}]$
+kerbside_ready_output: "{{ kerbside_ready.stdout | default('') | trim }}"
+kerbside_ready_fetched_at: >-
+  {{ (((kerbside_ready_output | from_json).fetched_at
+       if kerbside_ready_output is match(kerbside_ready_pattern) else none)
+      | default('null', true)) | string }}
+
+# The version of this collection. The committed value is the marker
+# `unreleased`, and an install from a checkout reports it. The release build
+# (tools/build-collection.sh) replaces it, in a staged copy only, with the
+# release version, so an installed collection can say which release it is.
+kerbside_collection_version: unreleased

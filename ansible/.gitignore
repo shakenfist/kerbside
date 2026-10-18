@@ -1,0 +1,3 @@
+# ansible-lint installs the collection under .ansible/ beside its
+# configuration, so that it can resolve the role by its full name.
+.ansible/
