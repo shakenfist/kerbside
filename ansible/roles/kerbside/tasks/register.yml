@@ -95,9 +95,9 @@
 # alembic upgrade head, which is idempotent but takes no lock, so it runs once.
 # A failure leaves the old units running on the old schema.
 #
-# kerbside db upgrade exits 0 having done nothing when it cannot parse the INI
-# (kerbside#313), so its exit status is not enough. Two things in its output
-# prove it ran: Kerbside prints "INI file processing complete" on stdout once
+# kerbside db upgrade's exit status is checked, but it is not enough: without a
+# kerbside.ini it would migrate a default URL and succeed. Two things in its
+# output prove it ran against this deployment's database: Kerbside prints "INI file processing complete" on stdout once
 # it has read kerbside.ini (without the INI it would migrate a default URL),
 # and alembic logs "Context impl" on stderr once it has connected to the
 # database. The output is hidden because Kerbside's INI error quotes a line of
@@ -127,8 +127,8 @@
     fail_msg: >-
       kerbside db upgrade on {{ kerbside_hosts[0] }} did not read
       /etc/kerbside/kerbside.ini (exit status
-      {{ kerbside_db_upgrade.rc | default('unknown') }}). Kerbside exits 0 when
-      it cannot parse that file (kerbside#313), and reads no other. Its output
+      {{ kerbside_db_upgrade.rc | default('unknown') }}), the only file it
+      reads its configuration from. Its output
       is withheld here because it can quote the file, which holds secrets; run
       "runuser -u {{ kerbside_user }} -- {{ kerbside_venv }}/bin/kerbside db
       upgrade" as root on that host to see it. This check looks for Kerbside
@@ -217,7 +217,7 @@
 # prints one JSON object and never a secret.
 # kerbside_ready_fetched_at (vars/main.yml) reads fetched_at from it, and
 # anything else it prints, including nothing, counts as not ready; its exit
-# status is ignored (kerbside#313): until alone decides when to stop, and an
+# status is ignored: until alone decides when to stop, and an
 # attempt which exits non-zero is retried like any other. Exhausting the
 # retries is ignored on purpose, by ignore_errors, and reported by the assert
 # which follows, which names what the last check printed. failed_when: false

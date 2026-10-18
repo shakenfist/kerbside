@@ -14,8 +14,9 @@
 # order, and installs and hashes the Shaken Fist client only for a Shaken
 # Fist source; that local wheels are copied, installed in place of the
 # package they are named for, and give the same hash for the same bytes;
-# that config renders a kerbside.ini which configparser reads back with
-# interpolation (a % in kerbside_sql_url included), whose token audience is
+# that config renders a kerbside.ini which configparser reads back, as
+# Kerbside does with interpolation off, to exactly the values given (a % in
+# kerbside_sql_url included, never doubled), whose token audience is
 # kerbside_url byte for byte, and a sources.yaml which loads back as
 # kerbside_sources exactly; that a Shaken Fist deployment renders both files
 # as the role did before it took any source; that a render either checker
@@ -711,7 +712,8 @@ import configparser
 import sys
 
 path, sql_url, url, pki = sys.argv[1:]
-parser = configparser.ConfigParser()
+# As kerbside/config.py reads it: interpolation off, every value literal.
+parser = configparser.ConfigParser(interpolation=None)
 if parser.read(path) != [path]:
     sys.exit('kerbside.ini could not be read')
 values = {k: parser.get('kerbside', k) for k in parser.options('kerbside')}
@@ -737,7 +739,9 @@ PYEOF
 )" || fail "${out}"
     [ "$(stat -c %a "${CONF}/kerbside.ini")" = 640 ] \
         || fail "kerbside.ini has mode $(stat -c %a "${CONF}/kerbside.ini"), not 640"
-    grep -qF '%%25' "${CONF}/kerbside.ini" || fail "kerbside.ini does not double the SQL URL's %"
+    if grep -qF '%%' "${CONF}/kerbside.ini"; then
+        fail "kerbside.ini doubles a %, which Kerbside reads literally"
+    fi
 }
 
 # sources_match VARS_FILE: sources.yaml, loaded as Kerbside loads it, must
@@ -962,7 +966,9 @@ PYEOF
 # Recorded from the role as copied from Shaken Fist, with this script's
 # values; @WORK@, @SYSTEM_KEY@, @SEED@ and @SQL_SECRET@ stand for them. Each
 # file's first two lines, a comment naming the collection which wrote it,
-# are left out, since the collection's name is all that changed there.
+# are left out, since the collection's name is all that changed there. One
+# deliberate difference: the old role doubled the SQL URL's %, which Kerbside
+# 0.7.0 and later read literally, so sql_url here keeps its single %.
 cat > "${WORK}/shakenfist-sources.yaml.in" << 'EOF'
 - ca_cert: '-----BEGIN CERTIFICATE-----
 
@@ -981,7 +987,7 @@ cat > "${WORK}/shakenfist-sources.yaml.in" << 'EOF'
 EOF
 cat > "${WORK}/shakenfist-kerbside.ini.in" << 'EOF'
 [kerbside]
-sql_url = mysql+pymysql://kerbside:pw%%25@SQL_SECRET@@db.example.com/kerbside
+sql_url = mysql+pymysql://kerbside:pw%25@SQL_SECRET@@db.example.com/kerbside
 auth_secret_seed = @SEED@
 sources_path = @WORK@/etc/kerbside/sources.yaml
 public_fqdn = console.example.com

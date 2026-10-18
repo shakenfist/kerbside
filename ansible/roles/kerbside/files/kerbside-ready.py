@@ -47,9 +47,9 @@ sources' credentials are never selected.
 Importing kerbside.db reads /etc/kerbside/kerbside.ini (the path is fixed in
 Kerbside) and prints its progress on stdout. On an INI it cannot parse,
 Kerbside prints the parser's error, which can quote a line of the file, and
-calls sys.exit() with status 0 (kerbside#313). The import's output is therefore
-captured and discarded, so it never reaches stdout or the deploy log, and its
-SystemExit is caught and reported as an error. The caller must still parse
+calls sys.exit(). The import's output is therefore captured and discarded, so
+it never reaches stdout or the deploy log, and its SystemExit is caught and
+reported as an error. The caller must still parse
 stdout rather than trust the exit status: anything which is not this JSON
 object means not ready.
 

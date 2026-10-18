@@ -26,8 +26,8 @@ WorkingDirectory={{ kerbside_state_dir }}
 # Shaken Fist to refresh its keys inside the request.
 ExecStart={{ kerbside_venv }}/bin/gunicorn --bind {{ kerbside_api_bind }}:{{ kerbside_api_port }} --workers {{ kerbside_api_workers }} --timeout 300 --name kerbside-api kerbside.api:app
 
-# always rather than on-failure: Kerbside exits 0 on a configuration it cannot
-# read (kerbside#313), and it never exits 0 on purpose.
+# always rather than on-failure: Kerbside never exits on purpose, so any exit,
+# clean or not, is one to restart from.
 Restart=always
 RestartSec=5
 

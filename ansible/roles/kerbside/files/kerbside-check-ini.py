@@ -5,17 +5,16 @@
 
 Usage: kerbside-check-ini.py KERBSIDE.ini
 
-Kerbside reads its INI with configparser's default (basic) interpolation and,
-on any configparser error, prints the error and exits 0 (kerbside#313). Under
-systemd that is a service which restarts forever while looking as though it
-ran. The role therefore runs this as the template task's validate command, so
-a file Kerbside could not read is refused and the old one stays in place.
+A kerbside.ini Kerbside cannot parse stops it at start: it prints the error
+and exits non-zero, so under systemd the service restarts forever. The role
+therefore runs this as the template task's validate command, so a file
+Kerbside could not read is refused and the old one stays in place.
 
-The file is read the way kerbside/config.py reads it, and then every value in
-the [kerbside] section is fetched, since interpolation errors only surface when
-a value is read. A value which spans lines is refused too: configparser would
-accept it, but no Kerbside setting is multi-line, so it means a value carried a
-newline the role did not expect.
+The file is read the way kerbside/config.py reads it, with interpolation off,
+so a % in a value is literal, exactly as Kerbside will see it, and every value
+in the [kerbside] section is then fetched. A value which spans lines is refused
+too: configparser would accept it, but no Kerbside setting is multi-line, so it
+means a value carried a newline the role did not expect.
 
 The file holds secrets, so no message here ever includes a value, or the text
 of a line (which configparser's own messages do). Messages name the option or
@@ -31,9 +30,14 @@ import sys
 SECTION = 'kerbside'
 
 
+def make_parser():
+    """Return a parser which reads the file as Kerbside's config.py does."""
+    return configparser.ConfigParser(interpolation=None)
+
+
 def check(path):
     """Return a list of reasons path is not a good kerbside.ini."""
-    parser = configparser.ConfigParser()
+    parser = make_parser()
     # Only the type and line number of an error are reported: configparser's
     # own messages quote the offending line. MissingSectionHeaderError is a
     # ParsingError with a line number but no list of errors, so the list is

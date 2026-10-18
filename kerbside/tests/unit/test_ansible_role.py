@@ -33,6 +33,8 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 import testtools
 import yaml
 
+from kerbside import config
+
 
 # The repository root. The role and the fixture are repository data,
 # outside the kerbside package, so no wheel contains them and the
@@ -57,6 +59,7 @@ script = _load_script('kerbside_host_subject', 'kerbside-host-subject.py')
 check_sources = _load_script(
     'kerbside_check_sources', 'kerbside-check-sources.py')
 ready = _load_script('kerbside_ready', 'kerbside-ready.py')
+check_ini = _load_script('kerbside_check_ini', 'kerbside-check-ini.py')
 
 with open(_FIXTURE) as _f:
     FIXTURE = json.load(_f)
@@ -252,3 +255,55 @@ class ReadyScriptTestCase(testtools.TestCase):
             rc = ready.main(['kerbside-ready.py'])
         self.assertEqual(2, rc)
         self.assertIn('usage', json.loads(stdout.getvalue())['error'])
+
+
+class CheckIniScriptTestCase(testtools.TestCase):
+    def _check(self, text):
+        with tempfile.NamedTemporaryFile('w', suffix='.ini') as f:
+            f.write(text)
+            f.flush()
+            return check_ini.check(f.name)
+
+    def test_reads_as_kerbside_reads(self):
+        # The checker must parse exactly as kerbside/config.py does, or it
+        # refuses files Kerbside accepts, or the reverse. A percent-encoded
+        # password, a lone % and an interpolation-shaped value are all
+        # literal to Kerbside.
+        text = ('[kerbside]\n'
+                'sql_url = mysql://u:pw%40x@db/kerbside\n'
+                'auth_secret_seed = 100%(really)s%%\n')
+        with tempfile.NamedTemporaryFile('w', suffix='.ini') as f:
+            f.write(text)
+            f.flush()
+            ours = check_ini.make_parser()
+            ours.read(f.name)
+            theirs = config.make_ini_parser()
+            theirs.read(f.name)
+        self.assertEqual(dict(theirs['kerbside']), dict(ours['kerbside']))
+        self.assertEqual([], self._check(text))
+
+    def test_a_good_file_passes(self):
+        self.assertEqual(
+            [], self._check('[kerbside]\nsql_url = sqlite://\n'))
+
+    def test_a_missing_section_is_refused(self):
+        self.assertEqual(
+            ['the file has no [kerbside] section'],
+            self._check('[other]\nsql_url = sqlite://\n'))
+
+    def test_no_section_header_is_refused_by_line(self):
+        self.assertEqual(
+            ['MissingSectionHeaderError at line 1'],
+            self._check('sql_url = secret-value\n'))
+
+    def test_a_multi_line_value_is_refused(self):
+        self.assertEqual(
+            ['sql_url spans more than one line'],
+            self._check('[kerbside]\nsql_url = first\n  second\n'))
+
+    def test_no_message_quotes_a_value(self):
+        for text in ('sql_url = secret-value\n',
+                     '[kerbside]\nsql_url = secret-value\n  more\n',
+                     '[kerbside]\nsql_url = a\nsql_url = secret-value\n'):
+            for reason in self._check(text):
+                self.assertNotIn('secret-value', reason)

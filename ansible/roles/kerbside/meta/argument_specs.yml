@@ -430,8 +430,7 @@ argument_specs:
         Run on every Kerbside host together, after config. Runs kerbside db
         upgrade once, on the first of kerbside_hosts, as kerbside_user, before
         any host restarts, and fails unless its output shows it read
-        kerbside.ini and connected to the database (Kerbside exits 0 on an INI
-        it cannot parse).
+        kerbside.ini and connected to the database.
       - >-
         Then enables kerbside-api and kerbside-daemon on every host, restarting
         both where kerbside_desired_state differs from the one recorded in

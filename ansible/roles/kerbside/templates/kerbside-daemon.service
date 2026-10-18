@@ -34,8 +34,8 @@ ExecStart={{ kerbside_venv }}/bin/kerbside daemon run
 KillMode=mixed
 TimeoutStopSec=30
 
-# always rather than on-failure: Kerbside exits 0 on a configuration it cannot
-# read (kerbside#313), and it never exits 0 on purpose.
+# always rather than on-failure: Kerbside never exits on purpose, so any exit,
+# clean or not, is one to restart from.
 Restart=always
 RestartSec=5
 
