@@ -49,10 +49,6 @@
       "sha": "b4ea2a75e61abba4bcfd122d9f0d8222f1b25607",
       "date": "2026-08-24"
     },
-    ".github/workflows/release.yml": {
-      "sha": "47583d36522c431a179f2dd0865fe130d6673a11",
-      "date": "2026-09-27"
-    },
     ".github/workflows/rust.yml": {
       "sha": "8b8f7d515c38bd90b7c093a0c4d7bd19cdf226c9",
       "date": "2026-09-27"
@@ -65,10 +61,6 @@
       "sha": "45c7b4061c76ee62e15d7efceb2cc2f53451b12e",
       "date": "2026-09-26"
     },
-    ".gitleaks.toml": {
-      "sha": "9cb3943ca56de7ec27c6090195989f2b98100e10",
-      "date": "2026-09-26"
-    },
     ".skillsaw.yaml": {
       "sha": "7f2245e1fb8311d66a1aac849346283ee7441425",
       "date": "2026-09-26"
@@ -79,10 +71,6 @@
     },
     "README.md": {
       "sha": "3e30f25f4d7a68f8dfb4aff5e24bd14aecfe2601",
-      "date": "2026-09-26"
-    },
-    "RELEASE-SETUP.md": {
-      "sha": "ec35cb4f3fbafce57b2718cfa6bceeff893423a7",
       "date": "2026-09-26"
     },
     "alembic.ini": {
