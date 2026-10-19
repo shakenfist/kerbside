@@ -146,9 +146,19 @@ kerbside = "kerbside.main:cli"
 # so the wheel's contents do not depend on setuptools_scm's git file finder:
 # a build from a tree without git metadata used to install cleanly and then
 # fail at import (issue #326). tools/check-wheel.py builds both ways and
-# requires the two wheels to match.
+# requires the two wheels to match. The tests are excluded: they run from
+# the checkout, never from an install.
 [tool.setuptools.packages.find]
 include = ["kerbside*"]
+exclude = ["kerbside.tests*"]
+
+# include-package-data defaults to true under pyproject.toml, and
+# setuptools_scm's file finder offers every git-tracked file as package
+# data, so without this the tests excluded above come straight back as
+# data. Everything the package does read at runtime is named by pattern in
+# package-data below, which is what issue #326 already required.
+[tool.setuptools]
+include-package-data = false
 
 [tool.setuptools.package-data]
 "*" = [
