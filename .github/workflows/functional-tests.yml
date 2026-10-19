@@ -217,8 +217,8 @@ jobs:
     # branch. Key those runs on the base branch so they share one group.
     # A re-run is not a queue build, though. It keeps its original
     # event, so with the base-branch key a "Re-run jobs" on an old queue
-    # run, the release recovery in docs/development.md, would cancel the
-    # live queue entry or be cancelled by it. Re-runs therefore keep
+    # run (docs/development.md says when a release needs one) would
+    # cancel the live queue entry or be cancelled by it. Re-runs therefore keep
     # their own queue branch's group. The merge_group- prefix keeps a
     # queue run from colliding with a workflow_dispatch run on develop,
     # whose github.ref is the same branch.

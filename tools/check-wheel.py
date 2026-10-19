@@ -8,8 +8,8 @@ importlib.resources.files('kerbside') resolves to ./kerbside in the
 checkout rather than to anything installed. So the unit suite is a layout
 guard: it catches the migration tree being moved back out of the package,
 but it is blind to the files being dropped from the built artifact by an
-exclude-package-data entry, include-package-data being switched off, or a
-build-backend change.
+exclude-package-data entry, a package-data pattern that no longer matches,
+or a build-backend change.
 
 That is exactly the regression class that produced the defect this script
 exists for. kerbside's migrations lived in a top-level alembic/ directory

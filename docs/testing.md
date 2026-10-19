@@ -256,9 +256,9 @@ branch. **Raising `max_entries_to_build` above 1 would make this wrong**
 
 Only a run's first attempt takes the base-branch key. A re-run keeps
 its original `merge_group` event, so with that key a "Re-run jobs" on
-an old queue run, which is how a release recovers from a flaky queue
-run (see [Releasing](development.md#releasing)), would cancel the live
-queue entry or be cancelled by it. A re-run therefore keeps its own
+an old queue run (see [Releasing](development.md#releasing) for when a
+release needs one) would cancel the live queue entry or be cancelled
+by it. A re-run therefore keeps its own
 queue branch's group.
 
 The sibling smoke workflows (`direct-qemu-functional.yml`,

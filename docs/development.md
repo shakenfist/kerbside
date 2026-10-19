@@ -584,10 +584,17 @@ released until a later commit has gone through the queue. A gate
 failure means nothing was signed or published, so every failure is
 recoverable: the release template's
 [recovery table](https://github.com/shakenfist/development/blob/main/templates/release-automation/README.md#recovering-from-a-gate-failure)
-says what to do for each cause, which is usually moving the tag, or
-using "Re-run jobs" on the flaky merge queue run itself and then
-re-running the `ci-gate` job. A run started some other way, such as a
-`workflow_dispatch`, does not count.
+says what to do for each cause, which is usually moving the tag. A run
+started some other way, such as a `workflow_dispatch`, does not count.
+
+A flaky queue run is not recovered by re-running it. The queue merges
+an entry only once `Can merge` passes, so a failed queue run gets its
+entry ejected and the commit it built never reaches `develop`: no tag
+can name it. Re-queue the pull request instead, and tag the commit
+that merges. Re-running a queue run helps only when the tagged
+commit's own run was re-run after it merged and that later attempt
+failed, because the gate judges each run at its latest attempt. Then
+use "Re-run failed jobs" on that run, and re-run the `ci-gate` job.
 
 Running `release.yml` by hand with `workflow_dispatch` skips the gate
 and the publishing jobs, and only builds and checks the packages. The
