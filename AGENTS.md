@@ -136,6 +136,11 @@ https://www.spice-space.org/spice-protocol.html.
   step to a gated job does not rename it. See "Gate jobs and required
   checks" in [`docs/testing.md`](docs/testing.md).
 
+- **Merge to `develop` through the merge queue, never around it:** a
+  release tag is only accepted on a commit whose queue run of
+  `functional-tests.yml` passed. See "Releasing" in
+  [`docs/development.md`](docs/development.md).
+
 - **Components on different nodes coordinate only through the shared
   database, never by direct RPC.** API and proxy nodes may be on
   different machines behind a load balancer, so the API cannot reach

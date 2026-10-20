@@ -70,17 +70,20 @@ jobs:
         id: filter
         if: github.event_name != 'workflow_dispatch'
         with:
-          # On merge_group there is no PR payload, so make the
-          # comparison base explicit rather than letting the action
-          # infer one: develop is the queue's target branch, which by
-          # definition does not yet contain the queued PRs' changes,
-          # so a wrong code_changed=false -- the outcome that would
-          # let "Can merge" go green on skips having tested nothing --
-          # is structurally impossible; if develop advances mid-queue
-          # the diff only grows, erring toward running the tier. On
-          # pull_request events the action ignores base and compares
-          # against the PR's base branch as before.
-          base: develop
+          # On merge_group, compare against the base_sha fixed in the
+          # event payload, the develop commit the queue built this
+          # entry on, not against the develop branch itself. The
+          # branch moves: once the queue has merged this entry, develop
+          # contains the queued commit, so a "Re-run all jobs" of the
+          # run would diff against a base already holding HEAD, find
+          # nothing, and let "Can merge" go green on skips having
+          # tested nothing -- a run the release gate would then count.
+          # A re-run keeps its original payload, so it sees the same
+          # diff as the first attempt. On pull_request events the
+          # action ignores base and compares against the PR's base
+          # branch; develop is only the fallback for an event with no
+          # merge_group payload.
+          base: ${{ github.event.merge_group.base_sha || 'develop' }}
           # By default a file matches the filter if it matches ANY
           # listed pattern, which makes '**' match everything and
           # silently defeats the exclusions. 'every' requires a file
@@ -127,7 +130,7 @@ jobs:
     concurrency:
       group: >-
         ${{ github.workflow }}-credentials-${{
-        github.event_name == 'merge_group'
+        github.event_name == 'merge_group' && github.run_attempt == '1'
         && format('merge_group-{0}', github.event.merge_group.base_ref)
         || github.ref }}
       cancel-in-progress: true
@@ -164,10 +167,11 @@ jobs:
     # including code-only ones costs nothing worth saving.
     runs-on: [self-hosted, static]
     timeout-minutes: 5
+    # Keyed as sanity_checks' is, for the reasons given there.
     concurrency:
       group: >-
         ${{ github.workflow }}-docs-${{
-        github.event_name == 'merge_group'
+        github.event_name == 'merge_group' && github.run_attempt == '1'
         && format('merge_group-{0}', github.event.merge_group.base_ref)
         || github.ref }}
       cancel-in-progress: true
@@ -211,16 +215,20 @@ jobs:
     #
     # Cancelling them is safe here because the develop ruleset sets
     # max_entries_to_build: 1, so the queue only ever builds one entry at
-    # a time and any other in-flight merge_group run is by definition
-    # superseded -- GitHub has already abandoned its queue branch. Key
-    # those runs on the base branch so they share one group. The
-    # merge_group- prefix keeps them from colliding with a
-    # workflow_dispatch run on develop, whose github.ref is the same
-    # branch.
+    # a time and any other first attempt of a merge_group run is by
+    # definition superseded -- GitHub has already abandoned its queue
+    # branch. Key those runs on the base branch so they share one group.
+    # A re-run is not a queue build, though. It keeps its original
+    # event, so with the base-branch key a "Re-run jobs" on an old queue
+    # run (docs/development.md says when a release needs one) would
+    # cancel the live queue entry or be cancelled by it. Re-runs therefore keep
+    # their own queue branch's group. The merge_group- prefix keeps a
+    # queue run from colliding with a workflow_dispatch run on develop,
+    # whose github.ref is the same branch.
     concurrency:
       group: >-
         ${{ github.workflow }}-lint-${{
-        github.event_name == 'merge_group'
+        github.event_name == 'merge_group' && github.run_attempt == '1'
         && format('merge_group-{0}', github.event.merge_group.base_ref)
         || github.ref }}
       cancel-in-progress: true
@@ -338,6 +346,23 @@ jobs:
           . /tmp/venv-test/bin/activate
           uv pip install build
           python3 tools/check-wheel.py
+
+      # The wheel the release publishes is built through the sdist, which
+      # check-wheel.py above does not do, so build it that way here and
+      # run the same wheel check release.yml runs before publishing. A
+      # packaging change that would ship the tests then fails on its pull
+      # request rather than at release time.
+      - name: Build the sdist and wheel
+        timeout-minutes: 5
+        run: |
+          . /tmp/venv-test/bin/activate
+          python3 -m build --outdir "${RUNNER_TEMP}/dist" .
+
+      - name: Check the wheel contents
+        timeout-minutes: 2
+        uses: shakenfist/actions/check-dist@main
+        with:
+          path: ${{ runner.temp }}/dist
 
       # The shakenfist.kerbside collection under ansible/. Its tools get a
       # venv of their own: galaxy-importer brings a large dependency tree
@@ -475,7 +500,7 @@ jobs:
     concurrency:
       group: >-
         ${{ github.workflow }}-${{ matrix.test.name }}-${{
-        github.event_name == 'merge_group'
+        github.event_name == 'merge_group' && github.run_attempt == '1'
         && format('merge_group-{0}', github.event.merge_group.base_ref)
         || github.ref }}
       cancel-in-progress: true
@@ -977,7 +1002,7 @@ jobs:
     concurrency:
       group: >-
         ${{ github.workflow }}-${{ matrix.test.name }}-${{
-        github.event_name == 'merge_group'
+        github.event_name == 'merge_group' && github.run_attempt == '1'
         && format('merge_group-{0}', github.event.merge_group.base_ref)
         || github.ref }}
       cancel-in-progress: true
