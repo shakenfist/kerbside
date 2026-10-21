@@ -1,0 +1,84 @@
+{#-
+  CI ONLY. Every credential in this file is a throwaway value for a
+  disposable single-node CI cluster, committed on purpose, as
+  shakenfist/actions' own ci* defaults are. Never copy one into a real
+  deployment.
+
+  The deploy profile .github/workflows/sf-e2e-functional.yml hands to
+  shakenfist/actions' build-smoke-cluster, which renders it with
+  tools/ci-apply-deploy-profile.py against the topology facts, with
+  StrictUndefined, and validates it. That script's docstring is the schema,
+  and docs/consuming.md in shakenfist/actions is its guide. The template sees
+  only nodes and workspace, the absolute GITHUB_WORKSPACE.
+
+  It turns the localhost topology's single Shaken Fist node into a cluster
+  with Kerbside on:
+
+    * Kerbside is co-located on primary, the only node, and reaches Shaken
+      Fist's API on localhost, which is api_url's default.
+    * kerbside_url, the console token audience and exchange base, is a
+      loopback URL: the drivers run on primary too.
+    * Kerbside's database lives on primary's MariaDB, created here before
+      the deploy.
+    * The kerbside role is this checkout's, installed from ansible/ before
+      the first deploy, and it installs this checkout's Kerbside and proxy,
+      from the wheels tools/sf-e2e/build-wheels.sh builds, rather than a
+      release. So a pull request tests its own role and its own code against
+      Shaken Fist develop.
+    * The cluster is deployed twice, and no sf-* or kerbside-* unit may
+      restart on the second deploy.
+
+  The wheels' file names carry setuptools_scm versions, which this template
+  cannot know, so kerbside_local_wheels holds ansible expressions rather than
+  paths: ansible templates extra vars when it reads them, on the control
+  node, which is this runner. Each finds the one wheel of its kind
+  build-wheels.sh left, and fails the deploy if there is none, rather than
+  letting the role fall back to installing a release.
+
+  Every secret is lower-case letters, digits and hyphens only, so none needs
+  escaping in a URL (the password sits in kerbside_sql_url), in YAML or in a
+  single-quoted SQL string. Keep it that way if one is changed.
+  kerbside_system_key must differ from actions' CI system key (the workflow's
+  SYSTEM_KEY) and be at least 16 characters; the seed must be at least 32.
+-#}
+{%- set db_password = 'sf-e2e-kerbside-db-not-for-production' -%}
+{%- set wheel_dir = workspace ~ '/kerbside/dist/sf-e2e-wheels' -%}
+---
+groups:
+  kerbside:
+    hosts: [primary]
+
+# Set once, here, rather than as group vars of kerbside: kerbside_url and
+# kerbside_system_key must be visible to the Shaken Fist node as well, which
+# renders KERBSIDE_URL and mints the "kerbside" system key from them.
+extra_vars:
+  kerbside_url: 'http://127.0.0.1:13002'
+  kerbside_public_fqdn: '127.0.0.1'
+  kerbside_system_key: 'sf-e2e-kerbside-key-not-for-production'
+  kerbside_auth_secret_seed: 'sf-e2e-kerbside-seed-not-for-production-use'
+  kerbside_sql_url: >-
+    mysql://kerbside:{{ db_password }}@127.0.0.1/kerbside
+  # A double-quoted YAML string folds each line break into a space, which
+  # the ansible expression ignores.
+  kerbside_local_wheels:
+    - "{{ '{{' }} query('ansible.builtin.fileglob',
+        '{{ wheel_dir }}/kerbside-*.whl') | first {{ '}}' }}"
+    - "{{ '{{' }} query('ansible.builtin.fileglob',
+        '{{ wheel_dir }}/kerbside_proxy-*.whl') | first {{ '}}' }}"
+
+# Run once with sudo mariadb on primary, before the first deploy.
+mariadb_sql: |
+  CREATE DATABASE IF NOT EXISTS kerbside;
+  CREATE USER IF NOT EXISTS 'kerbside'@'%'
+      IDENTIFIED BY '{{ db_password }}';
+  GRANT ALL PRIVILEGES ON kerbside.* TO 'kerbside'@'%';
+  FLUSH PRIVILEGES;
+
+redeploy_check:
+  units: ['sf-*.service', 'kerbside-*.service']
+
+# This checkout's collection. A checkout reports kerbside_collection_version
+# unreleased, which Shaken Fist's site.yml accepts with a warning.
+collections:
+  - name: '{{ workspace }}/kerbside/ansible'
+    type: dir

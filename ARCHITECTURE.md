@@ -422,10 +422,11 @@ tools/                 # Utility scripts (incl. run-tempest-tests)
     rebuild-sextant-qcow2.sh  # Developer tool: refresh Sextant qcow2
   sf-e2e/              # Shaken Fist end-to-end CI lane: drive a
                        #   real SF cluster + co-located kerbside
-    provision-sf.sh    # Set KERBSIDE_URL + signing key, restart sf-api
-    gen-sources.py     # Write the type: shakenfist sources.yaml
-    deploy-kerbside.sh # Build ryll, venv-install kerbside, reuse
-                       #   direct-qemu/start-kerbside.sh on the primary
+    build-wheels.sh    # Build the PR's kerbside + proxy wheels
+    deploy-profile.yml.j2  # build-smoke-cluster profile: deploy the
+                       #   PR's role + wheels with the SF cluster
+    prepare-drivers.sh # Build ryll, write kerbside.env from the
+                       #   role's configuration on the primary
     import-instance.sh # Upload Sextant, boot a UEFI+SPICE SF instance
     drive-happy-path.py    # Mint → verify → exchange → proxied session
     drive-adversarial.py   # replay/expired/aud/kid/cross-namespace

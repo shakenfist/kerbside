@@ -1,10 +1,10 @@
 #!/bin/bash
 # Gather sf-e2e artifacts from the SF primary onto the runner.
 #
-# Runs ON the runner. Collects kerbside logs, gunicorn logs, ryll
-# stdout/stderr, the console.vv, sources.yaml, and the SF journald logs for
-# sf-api / sf-console, the rest of the SF daemons, and libvirtd into a local
-# directory for upload-artifact.
+# Runs ON the runner. Collects ryll stdout/stderr, the console.vv, the
+# Sextant serial log, and the journald logs of the kerbside-api and
+# kerbside-daemon units, of sf-api / sf-console, of the rest of the SF
+# daemons, and of libvirtd into a local directory for upload-artifact.
 #
 # The SF daemon and libvirtd journals are here because an instance that never
 # starts leaves no trace in sf-api: the domain is defined by the per-node
@@ -12,15 +12,19 @@
 # ("spice graphics are not supported with this QEMU") was undiagnosable from a
 # failed run's own artifacts. See shakenfist/kerbside#482.
 #
-# SECURITY: NEVER collects the SF token JWT, the auth seed, or instance.env
-# (which holds the test namespace key). Everything that is collected --
-# journals, logs, the console.vv and sources.yaml alike -- then goes through
-# one redaction pass over the whole output directory, followed by a check
-# that nothing matching the secret shapes survived. libvirtd echoes the domain
-# XML when it refuses a definition, and that XML carries the instance's SPICE
-# password; an SF daemon may log a dict holding one. Redacting per file would
-# leave whichever file the next change adds unredacted, so the pass is over
-# the directory instead.
+# SECURITY: NEVER collects the SF token JWT, the auth seed, instance.env
+# (which holds the test namespace key), kerbside.env (which holds the SQL
+# URL), or anything the kerbside role wrote under /etc/kerbside:
+# kerbside.ini and sources.yaml hold the auth seed, the SQL URL and every
+# source's password, and the role makes them readable only by root and the
+# kerbside group. Kerbside's own output is collected from its journal
+# instead. Everything that is collected -- journals, logs and the console.vv
+# alike -- then goes through one redaction pass over the whole output
+# directory, followed by a check that nothing matching the secret shapes
+# survived. libvirtd echoes the domain XML when it refuses a definition, and
+# that XML carries the instance's SPICE password; an SF daemon may log a dict
+# holding one. Redacting per file would leave whichever file the next change
+# adds unredacted, so the pass is over the directory instead.
 #
 # Usage: gather-artifacts.sh BASE_USER PRIMARY OUTDIR
 
@@ -37,14 +41,10 @@ mkdir -p "${OUTDIR}"
 
 # Best-effort file copies (a missing file must not fail the gather).
 for f in \
-    run/kerbside.log \
-    run/kerbside.log.gunicorn-access \
-    run/kerbside.log.gunicorn-error \
     run/ryll.stdout \
     run/ryll.stderr \
     run/console.vv \
-    run/sextant-serial.log \
-    run/sources.yaml ; do
+    run/sextant-serial.log ; do
     scp "${SSH_OPTS[@]}" \
         "${BASE_USER}@${PRIMARY}:/tmp/sf-e2e/${f}" \
         "${OUTDIR}/$(basename "${f}")" 2>/dev/null || true
@@ -69,6 +69,12 @@ journal() {
 # The mint/console daemons, kept as their own files for greppability.
 journal sf-api.journal -u sf-api
 journal sf-console.journal -u sf-console
+
+# Kerbside runs as the kerbside role's systemd units, kerbside-api (gunicorn)
+# and kerbside-daemon (the scrape loop and the proxy it supervises), which log
+# only to the journal. Matched by glob, like the SF daemons below, so a unit
+# the role adds is collected too.
+journal kerbside.journal -u '"kerbside-*"'
 
 # The remaining SF daemons and libvirtd, which is where an instance that never
 # starts actually fails. Matched by unit glob rather than by name: the units
