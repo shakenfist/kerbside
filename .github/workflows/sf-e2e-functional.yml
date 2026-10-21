@@ -132,14 +132,17 @@ jobs:
           deploy_profile: kerbside/tools/sf-e2e/deploy-profile.yml.j2
 
       # The drivers, the Sextant fixture and the direct-qemu helpers they
-      # reuse run from this checkout on the primary.
+      # reuse run from this checkout on the primary. Streamed through tar to
+      # leave behind what they never read: the git history, the wheels and
+      # cargo's target directory from building them.
       - name: Stage the checkout and prepare the drivers on the primary
         env:
           PRIMARY: ${{ steps.cluster.outputs.primary }}
         run: |
           ssh_opts=(-i /srv/github/id_ci -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
           ssh "${ssh_opts[@]}" "debian@${PRIMARY}" 'rm -rf /tmp/sf-e2e/kerbside; mkdir -p /tmp/sf-e2e'
-          scp -rp "${ssh_opts[@]}" "${GITHUB_WORKSPACE}/kerbside" "debian@${PRIMARY}:/tmp/sf-e2e/kerbside"
+          tar -C "${GITHUB_WORKSPACE}" --exclude=.git --exclude=target --exclude=kerbside/dist -cf - kerbside \
+              | ssh "${ssh_opts[@]}" "debian@${PRIMARY}" 'tar -C /tmp/sf-e2e -xf -'
           ssh "${ssh_opts[@]}" "debian@${PRIMARY}" 'bash /tmp/sf-e2e/kerbside/tools/sf-e2e/prepare-drivers.sh'
 
       - name: Import and boot the Sextant instance
@@ -151,7 +154,9 @@ jobs:
 
       # The drivers run as root, with the role's venv, because they read
       # the configuration the role wrote readable only by the kerbside
-      # group, and that is left as the role wrote it.
+      # group, and that is left as the role wrote it. Everything they start
+      # inherits root, ryll included: acceptable on a single-use VM, and it
+      # means a step rerun by hand on a retained one needs sudo too.
       - name: Drive the happy path
         run: |
           ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \

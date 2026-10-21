@@ -46,8 +46,8 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# Where the kerbside role puts things: its defaults for kerbside_venv and
-# kerbside_config_dir, which deploy-profile.yml.j2 does not override.
+# Where the kerbside role puts things: kerbside_venv and kerbside_config_dir,
+# which deploy-profile.yml.j2 pins. Change them there and here together.
 VENV='/srv/kerbside/venv'
 CONFIG_DIR='/etc/kerbside'
 INI_PATH="${CONFIG_DIR}/kerbside.ini"

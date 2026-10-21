@@ -72,9 +72,10 @@ journal sf-console.journal -u sf-console
 
 # Kerbside runs as the kerbside role's systemd units, kerbside-api (gunicorn)
 # and kerbside-daemon (the scrape loop and the proxy it supervises), which log
-# only to the journal. Matched by glob, like the SF daemons below, so a unit
-# the role adds is collected too.
-journal kerbside.journal -u '"kerbside-*"'
+# only to the journal. Named, so a unit that failed to load is still
+# collected, and matched by glob as well, so a unit the role adds is too (see
+# the SF daemons below for why both).
+journal kerbside.journal -u kerbside-api -u kerbside-daemon -u '"kerbside-*"'
 
 # The remaining SF daemons and libvirtd, which is where an instance that never
 # starts actually fails. Matched by unit glob rather than by name: the units
@@ -100,30 +101,39 @@ journal libvirtd.journal -u libvirtd -u virtqemud
 SECRET_KEY="(passw(or)?d['\"]?[[:space:]]*[=:][[:space:]]*|--passw(or)?d[[:space:]]+)"
 SECRET_VALUE="('[^']*'|\"[^\"]*\"|[^[:space:],}'\"]*)"
 
+# URL_USERINFO is a password in a URL's userinfo, as in an SQL URL
+# (mysql://kerbside:...@127.0.0.1/kerbside) which a traceback or a connection
+# error may print. The password ends at the first @, and RFC 3986 forbids a
+# raw / in userinfo, so a host:port followed by a path is not matched.
+URL_USERINFO="(://[^:/@[:space:]]+:)[^/@[:space:]]*@"
+
 # The check's own spelling of the same shapes, written out separately on
 # purpose: were it derived from SECRET_KEY, narrowing SECRET_KEY would narrow
 # the check with it, and the check would only ever confirm the redaction
 # agreed with itself.
 LEAK_SHAPE="(--password|--passwd)[[:space:]=]|(password|passwd)[\"']?[[:space:]]*[=:]"
+URL_LEAK_SHAPE="://[^:/@[:space:]]+:[^/@[:space:]]*@"
 
 LEAKED=0
 while IFS= read -r -d '' f; do
-    sed -i -E "s/${SECRET_KEY}${SECRET_VALUE}/\1REDACTED/gI" "${f}"
+    sed -i -E -e "s/${SECRET_KEY}${SECRET_VALUE}/\1REDACTED/gI" \
+        -e "s#${URL_USERINFO}#\1REDACTED@#g" "${f}"
 
     # A redaction that silently stops matching looks exactly like one that
     # worked (tools/demo/redact-artifacts.sh learned this first). Remove
     # every redacted key whose REDACTED ends cleanly (REDACTED'rest' is a
     # quoted value the redaction split, not a redacted one), then look for
-    # any key-and-separator left over.
+    # any key-and-separator left over, and likewise every user:REDACTED@ in
+    # a URL before looking for a URL password left over.
     # Prose ("spice password not supported") has no separator and is not
     # flagged, which matters: a false alarm deletes a journal. Report
     # the file name only: printing the match would copy the secret into the
     # workflow log, which is as public as the artifact. The file is deleted
     # rather than the gather failed, because the upload step runs regardless
     # and the other files are still worth having.
-    if sed -E "s/(${LEAK_SHAPE})[[:space:]]*REDACTED([^[:alnum:]'\"]|$)/ /gI" \
-            "${f}" \
-            | grep -qiE "${LEAK_SHAPE}"; then
+    if sed -E -e "s/(${LEAK_SHAPE})[[:space:]]*REDACTED([^[:alnum:]'\"]|$)/ /gI" \
+            -e "s#://[^:/@[:space:]]+:REDACTED@# #g" "${f}" \
+            | grep -qiE "${LEAK_SHAPE}|${URL_LEAK_SHAPE}"; then
         echo "[sf-e2e] ERROR: a secret survived redaction in" \
             "$(basename "${f}"); not uploading it" >&2
         rm -f "${f}"

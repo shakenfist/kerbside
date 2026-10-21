@@ -64,7 +64,8 @@ The workflow runs, in order:
    for its Shaken Fist source to fetch the signing keys. The cluster is
    deployed a second time, and no `sf-*` or `kerbside-*` unit may
    restart.
-3. The checkout is copied to the primary at `/tmp/sf-e2e/kerbside`, and
+3. The checkout, less its git history and build output, is copied to
+   the primary at `/tmp/sf-e2e/kerbside`, and
    `prepare-drivers.sh` builds ryll from source and writes
    `/tmp/sf-e2e/kerbside.env` from the configuration the role wrote.
 
@@ -102,10 +103,11 @@ serial log, and the whole-run journals of Kerbside's units
 `sf-console.journal`, `sf-daemons.journal`) and of libvirt
 (`libvirtd.journal`). It never collects anything under `/etc/kerbside/`,
 `kerbside.env` or the auth seed file. The journals can carry secrets: a
-libvirt refusal echoes the domain XML, SPICE `passwd='...'` included. So
-every collected file is redacted in one pass over the output directory,
-and a file in which a password-shaped value survives is withheld from the
-upload and fails the step by name. See shakenfist/kerbside#482.
+libvirt refusal echoes the domain XML, SPICE `passwd='...'` included,
+and a database error can print the SQL URL with its password. So every
+collected file is redacted in one pass over the output directory, and a
+file in which a password-shaped value survives, as a key or in a URL, is
+withheld from the upload and fails the step by name. See shakenfist/kerbside#482.
 
 ## Env-file contract
 

@@ -54,6 +54,10 @@ groups:
 extra_vars:
   kerbside_url: 'http://127.0.0.1:13002'
   kerbside_public_fqdn: '127.0.0.1'
+  # Pinned at the role's defaults because prepare-drivers.sh and the
+  # workflow's driver steps name both paths.
+  kerbside_venv: '/srv/kerbside/venv'
+  kerbside_config_dir: '/etc/kerbside'
   kerbside_system_key: 'sf-e2e-kerbside-key-not-for-production'
   kerbside_auth_secret_seed: 'sf-e2e-kerbside-seed-not-for-production-use'
   kerbside_sql_url: >-
