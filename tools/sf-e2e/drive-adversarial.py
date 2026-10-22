@@ -184,7 +184,7 @@ def case_cross_namespace(ctx):
     """A second namespace minting for the first's instance: SF 404."""
     system = apiclient.Client(
         base_url=ctx['sf_url'], namespace='system',
-        key=ctx['system_key'], async_strategy=apiclient.ASYNC_BLOCK)
+        key=ctx['kerbside_key'], async_strategy=apiclient.ASYNC_BLOCK)
     other_ns = 'vdie2e-other'
     other_key = uuidlib.uuid4().hex
     if other_ns in system.get_namespaces():
@@ -226,8 +226,11 @@ def main():
         'sf_url': os.environ['SF_URL'],
         'namespace': os.environ['SF_NAMESPACE'],
         'namespace_key': os.environ['SF_NAMESPACE_KEY'],
-        # The system key is the shakenfist source password in sources.yaml.
-        'system_key': _read_source_password(
+        # The source password in sources.yaml is the dedicated "kerbside"
+        # key in the system namespace, which the deploy mints. It is not the
+        # workflow's CI system key, but any system-namespace key may create
+        # and delete the scratch namespace case_cross_namespace needs.
+        'kerbside_key': _read_source_password(
             os.environ['KERBSIDE_SOURCES_PATH']),
     }
     ctx['client'] = apiclient.Client(
@@ -264,7 +267,7 @@ def main():
 
 
 def _read_source_password(sources_path):
-    """Read the shakenfist source password (the SF system key) from yaml."""
+    """Read the shakenfist source password (the kerbside key) from yaml."""
     import yaml
 
     with open(sources_path) as f:

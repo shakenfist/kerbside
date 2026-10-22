@@ -24,7 +24,7 @@ SF_BIN='/srv/shakenfist/venv/bin'
 mkdir -p "${SF_E2E_ROOT}"
 
 # The kerbside checkout (with the fixture) was copied to the primary by the
-# deploy action; kerbside.env records where.
+# workflow; kerbside.env records where.
 # shellcheck disable=SC1090,SC1091
 . "${SF_E2E_ROOT}/kerbside.env"
 QCOW2="${KERBSIDE_SRC}/tests/fixtures/uncalibrated-sextant.qcow2"

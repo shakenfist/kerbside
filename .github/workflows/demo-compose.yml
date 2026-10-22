@@ -104,7 +104,7 @@ jobs:
           # setuptools_scm derives a dev version from the commit count
           # since the last v* tag, which a shallow clone cannot
           # produce. Same reason direct-qemu-functional.yml:100
-          # and sf-e2e-functional.yml:113 do this.
+          # and sf-e2e-functional.yml's kerbside checkout do this.
           fetch-depth: 0
 
       # The runner image ships no docker at all. Trixie's archive would
