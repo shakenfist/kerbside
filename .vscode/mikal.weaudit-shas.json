@@ -53,10 +53,6 @@
       "sha": "8b8f7d515c38bd90b7c093a0c4d7bd19cdf226c9",
       "date": "2026-09-27"
     },
-    ".github/workflows/sf-e2e-functional.yml": {
-      "sha": "00d9aa7b1a15273cfb15d7ad8ae752bb0bd2de41",
-      "date": "2026-09-27"
-    },
     ".gitignore": {
       "sha": "45c7b4061c76ee62e15d7efceb2cc2f53451b12e",
       "date": "2026-09-26"
@@ -428,26 +424,6 @@
     "tools/preview-templates.py": {
       "sha": "e1c001cf6ed50a8b02cac739193e204319113a73",
       "date": "2026-09-18"
-    },
-    "tools/sf-e2e/deploy-kerbside.sh": {
-      "sha": "b374194e55859c4c3b8d8dbac368b3d17b299b1d",
-      "date": "2026-08-15"
-    },
-    "tools/sf-e2e/drive-adversarial.py": {
-      "sha": "12ab1f0f45a642ab9a3cd0c5c237e75ae232a1ee",
-      "date": "2026-08-15"
-    },
-    "tools/sf-e2e/gen-sources.py": {
-      "sha": "ac916339e3b206a5cb2ddbc5c85866f5f69cf5d0",
-      "date": "2026-08-15"
-    },
-    "tools/sf-e2e/import-instance.sh": {
-      "sha": "7037f8372e2ebdd387c9bbd0ee072e90d47013bc",
-      "date": "2026-08-15"
-    },
-    "tools/sf-e2e/provision-sf.sh": {
-      "sha": "e8db5e0a6203e02464c53e3a8ffe74b31ff5b799",
-      "date": "2026-08-15"
     },
     "tools/shellcheck-wrap.sh": {
       "sha": "47ec81ad241f49e8b3e64107124617e38ddfa8ee",
