@@ -257,10 +257,6 @@
       "sha": "986a0e57e486d95869634f76d307579210f6d31e",
       "date": "2026-08-18"
     },
-    "rust/kerbside-proxy/src/allowlist.rs": {
-      "sha": "f2adab6fb95e5085f48b9b558926b1ff457e1636",
-      "date": "2026-08-15"
-    },
     "rust/kerbside-proxy/src/metrics.rs": {
       "sha": "521fa7d251dc05fbf4d92f440069ae8d73570ddb",
       "date": "2026-08-15"
@@ -352,10 +348,6 @@
     "tools/direct-qemu/rebuild-sextant-qcow2.sh": {
       "sha": "4cfa3daff656b6df494d362d2b09ccd39ab00079",
       "date": "2026-08-09"
-    },
-    "tools/direct-qemu/run-host-subject-checks.sh": {
-      "sha": "aaddc0bf0732e30310bcb0ee2ac852fca7c0d3d2",
-      "date": "2026-08-15"
     },
     "tools/direct-qemu/run-scenario.sh": {
       "sha": "6b989adb040d27dc9ba49f765c0ae7881ac65f80",
