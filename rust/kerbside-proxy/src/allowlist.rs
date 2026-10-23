@@ -24,8 +24,10 @@
 //!
 //! Channel coverage:
 //! - Main, Display, Inputs, Cursor, Playback -> their own name tables.
-//! - Usbredir, Port, Webdav -> the `spicevmc` tables (these three ride the
-//!   SpiceVMC message set, as documented in the ryll `constants.rs`).
+//! - Usbredir -> the `spicevmc` tables (the SpiceVMC message set, as
+//!   documented in the ryll `constants.rs`).
+//! - Port, Webdav -> the `port` tables: the SpiceVMC set plus PORT_INIT and
+//!   PORT_EVENT, which spice-server sends as soon as a port channel connects.
 //! - Record, Smartcard, Tunnel -> **no** modeled grammar. These return
 //!   [`MsgClass::ChannelUnmodeled`] so the engine can apply L0-only + observe
 //!   (never terminate on type) rather than treating every type as disallowed.
@@ -125,13 +127,12 @@ fn channel_table(channel: ChannelType, dir: Direction) -> Option<fn(u16) -> &'st
         (ChannelType::Cursor, ClientToServer) => message_names::cursor_client,
         (ChannelType::Playback, ServerToClient) => message_names::playback_server,
         (ChannelType::Playback, ClientToServer) => message_names::playback_client,
-        // usbredir/port/webdav all ride the SpiceVMC message set.
-        (ChannelType::Usbredir | ChannelType::Port | ChannelType::Webdav, ServerToClient) => {
-            message_names::spicevmc_server
-        }
-        (ChannelType::Usbredir | ChannelType::Port | ChannelType::Webdav, ClientToServer) => {
-            message_names::spicevmc_client
-        }
+        // usbredir rides the plain SpiceVMC message set; port and webdav add
+        // the port messages on top of it.
+        (ChannelType::Usbredir, ServerToClient) => message_names::spicevmc_server,
+        (ChannelType::Usbredir, ClientToServer) => message_names::spicevmc_client,
+        (ChannelType::Port | ChannelType::Webdav, ServerToClient) => message_names::port_server,
+        (ChannelType::Port | ChannelType::Webdav, ClientToServer) => message_names::port_client,
         // No modeled grammar in the ryll crate. Tunnel is obsolete.
         (ChannelType::Record | ChannelType::Smartcard | ChannelType::Tunnel, _) => return None,
     };
@@ -268,6 +269,49 @@ mod tests {
                 MsgClass::Allowed
             );
         }
+    }
+
+    // spice-server sends PORT_INIT as soon as a port or webdav channel
+    // connects, so before these were modeled every such channel was
+    // terminated in enforce mode (#570).
+    #[test]
+    fn port_messages_allowed_on_port_and_webdav() {
+        use shakenfist_spice_protocol::constants::{port_client, port_server};
+
+        for ch in [ChannelType::Port, ChannelType::Webdav] {
+            for msg_type in [port_server::INIT, port_server::EVENT] {
+                assert_eq!(
+                    classify(ch, Direction::ServerToClient, msg_type),
+                    MsgClass::Allowed
+                );
+            }
+            assert_eq!(
+                classify(ch, Direction::ClientToServer, port_client::EVENT),
+                MsgClass::Allowed
+            );
+        }
+    }
+
+    // usbredir has no port messages, so the port opcodes stay disallowed
+    // there.
+    #[test]
+    fn port_messages_disallowed_on_usbredir() {
+        use shakenfist_spice_protocol::constants::{port_client, port_server};
+
+        for msg_type in [port_server::INIT, port_server::EVENT] {
+            assert_eq!(
+                classify(ChannelType::Usbredir, Direction::ServerToClient, msg_type),
+                MsgClass::Disallowed
+            );
+        }
+        assert_eq!(
+            classify(
+                ChannelType::Usbredir,
+                Direction::ClientToServer,
+                port_client::EVENT
+            ),
+            MsgClass::Disallowed
+        );
     }
 
     // --- Disallowed: modeled channel+direction, bogus type. ---
