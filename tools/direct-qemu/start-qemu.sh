@@ -130,6 +130,10 @@ fi
 
 echo "[start-qemu] Launching QEMU with SPICE on port ${SPICE_PORT}"
 
+# The webdav spiceport gives spice-server a WebDAV channel, so clients that
+# support folder sharing (ryll does) open it and the proxy relays a port-type
+# channel. spice-server sends PORT_INIT on it as soon as it connects, guest
+# agent or not, which is the traffic the firewall once misclassified (#570).
 qemu-system-x86_64 \
     -machine "q35,accel=${ACCEL}" \
     -m 512 \
@@ -137,6 +141,9 @@ qemu-system-x86_64 \
     -drive "if=pflash,format=raw,file=${VARS_COPY}" \
     -drive "file=${QCOW2},format=qcow2" \
     -vga qxl \
+    -device virtio-serial-pci \
+    -chardev spiceport,id=webdav0,name=org.spice-space.webdav.0 \
+    -device virtserialport,chardev=webdav0,name=org.spice-space.webdav.0 \
     -object "secret,id=spice-ticket,data=${TICKET}" \
     -spice "${SPICE_OPTS}" \
     -serial "file:${SERIAL_LOG}" \
