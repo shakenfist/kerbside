@@ -83,8 +83,8 @@ section is the mental model: what has to exist before a console works.
 [configuration.md](configuration.md) is the reference for every
 setting; this is the short list of things you cannot skip.
 
-**Two processes, co-located.** The REST API is a WSGI application
-served by gunicorn, and the SPICE proxy is a daemon that supervises
+**Two processes.** The REST API is a WSGI application served by
+gunicorn, and the SPICE proxy is a daemon that supervises
 the Rust binary:
 
 ```bash
@@ -94,11 +94,14 @@ kerbside daemon run
 
 Neither is optional and they are not interchangeable: the API is where
 brokers and users ask for consoles, and `daemon run` is what discovers
-consoles and moves SPICE traffic. They talk to each other over a unix
-socket (`API_SOCKET_PATH`, default `/run/kerbside/api.sock`), so **they
-must be co-located** — the same host, the same container, or two
-containers sharing that path. Note that the API's port is a gunicorn
-argument rather than a Kerbside setting; `PUBLIC_FQDN` is how Kerbside
+consoles and moves SPICE traffic. The daemon and the proxy it
+supervises talk to each other over a unix socket (`API_SOCKET_PATH`,
+default `/run/kerbside/api.sock`), so **the daemon and its proxy must
+share a host** — the same host, the same container, or two containers
+sharing that path. The API never dials that socket. It reaches the
+daemon only through the database, so it may run on another host.
+Note that the API's port is a gunicorn argument rather than a
+Kerbside setting; `PUBLIC_FQDN` is how Kerbside
 tells clients where to find it. Every port the two processes listen on
 or dial is listed in [network-ports.md](network-ports.md).
 
@@ -314,7 +317,7 @@ genuinely wrong.
 | No real authentication | Login is Keystone-only ([#300](https://github.com/shakenfist/kerbside/issues/300)), and the session JWT scheme has no revocation or issuance audit ([#301](https://github.com/shakenfist/kerbside/issues/301)). The web UI on `http://127.0.0.1:13002` cannot be logged into |
 | A self-signed CA | Generated into a volume on first start, and destroyed by `down -v` |
 | Loopback only | Every published port binds to `127.0.0.1` on purpose. Widening it puts an unauthenticated console proxy on your network |
-| Two processes in one container | The shortest way to co-locate them for a demo, not a shape to copy. Real deployments run them as separate units sharing the socket |
+| Two processes in one container | The shortest way to co-locate them for a demo, not a shape to copy. Real deployments run the daemon and its proxy on one host, and the API may run elsewhere |
 | A plaintext backend leg | Kerbside talks plaintext SPICE to the qemu container. Real deployments should pin the backend too; [ovirt.md](use-cases/ovirt.md) shows what that looks like |
 | A static source, not a cloud | The `static` driver points at a fixed target, so nothing is being discovered from a real cloud |
 
