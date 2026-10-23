@@ -135,10 +135,11 @@ echo "[demo] REST API up on port ${API_PORT}"
 # compose reports it. Backgrounding both processes and waiting would
 # hide exactly the failure that matters most.
 #
-# Two processes in one container is a demo convenience, not a pattern to
-# copy. In a real deployment they are separate units or containers that
-# share API_SOCKET_PATH -- the proxy must be co-located with the daemon
-# to reach that unix socket, which docs/configuration.md records against
-# the API_SOCKET_PATH setting.
+# Running the API and the daemon in one container is a demo convenience,
+# not a pattern to copy. In a real deployment they are separate units or
+# containers, and need not share a host: the API reaches the daemon only
+# through the database. Only the daemon and the Rust proxy it launches
+# share API_SOCKET_PATH, which docs/configuration.md records against
+# that setting.
 echo "[demo] Starting kerbside daemon run"
 exec kerbside daemon run

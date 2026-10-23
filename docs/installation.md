@@ -94,12 +94,12 @@ kerbside daemon run
 
 Neither is optional and they are not interchangeable: the API is where
 brokers and users ask for consoles, and `daemon run` is what discovers
-consoles and moves SPICE traffic. The daemon and the proxy it
-supervises talk to each other over a unix socket (`API_SOCKET_PATH`,
-default `/run/kerbside/api.sock`), so **the daemon and its proxy must
-share a host** — the same host, the same container, or two containers
-sharing that path. The API never dials that socket. It reaches the
-daemon only through the database, so it may run on another host.
+consoles and moves SPICE traffic. `daemon run` launches the Rust
+proxy as its own child process, and the two talk over a unix socket
+(`API_SOCKET_PATH`, default `/run/kerbside/api.sock`), so **the daemon
+and its proxy always run together** on one host or in one container.
+The API never dials that socket. It reaches the daemon only through
+the database, so it may run on another host.
 Note that the API's port is a gunicorn argument rather than a
 Kerbside setting; `PUBLIC_FQDN` is how Kerbside
 tells clients where to find it. Every port the two processes listen on

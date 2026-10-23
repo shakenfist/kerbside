@@ -58,13 +58,13 @@ reachable from your network. This demo has no real authentication, so
 binding it more widely would put an unauthenticated console proxy in
 front of a VM. If you change it, that is what you are accepting.
 
-**Two processes in one container is not a shape to copy.** The SPICE
-proxy daemon and its Rust proxy share a unix socket
-(`API_SOCKET_PATH`), so they must share a host, and running everything
-under one entrypoint is the shortest way to get there for a demo. A
-real deployment keeps the daemon and its proxy together, but the REST
-API reaches the daemon only through the database, so it may run
-elsewhere. `docs/configuration.md` covers the constraint.
+**Two processes in one container is not a shape to copy.** Running
+the REST API and the SPICE proxy daemon under one entrypoint is the
+shortest way to a working demo. A real deployment runs them as
+separate units, and they need not share a host: the API reaches the
+daemon only through the database. Only the daemon and the Rust proxy
+it launches share a unix socket (`API_SOCKET_PATH`), and
+`docs/configuration.md` covers that constraint.
 
 **The TLS is genuine, and `get-console.sh` proves it rather than
 assuming it.** The proxy leg uses TLS on port 5900 with a self-signed
