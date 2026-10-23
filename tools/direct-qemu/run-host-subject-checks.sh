@@ -13,6 +13,12 @@
 # `verify-rust-proxy.sh assert-host-subject`, and tears the lane down before
 # moving on.
 #
+# The match mode is also the gate on the SPICE firewall's allowlist: a
+# legitimate session must trip zero verdicts (`assert-firewall`, enforce
+# mode), and it must include a WebDAV channel (start-qemu.sh exposes one and
+# ryll is given a share directory), since port-type channels are where the
+# allowlist once fell short (#570).
+#
 #   match    -- the client is expected to succeed; a client failure here is
 #               gating (something is genuinely broken).
 #   mismatch -- the client is expected to FAIL to get a session (the
@@ -91,9 +97,11 @@ trap cleanup EXIT
 
 _drive_client() {
     echo "[host-subject-checks] launching ryll headless against ${CONSOLE_VV}"
+    mkdir -p "${WORKDIR}/share"
     "${RYLL_BIN}" --verbose --headless --file "${CONSOLE_VV}" \
         --control-socket "${RYLL_SOCK}" \
         --enable-paste-as-keystrokes \
+        --share-dir "${WORKDIR}/share" \
         > "${RYLL_STDOUT}" 2> "${RYLL_STDERR}" &
     local ryll_pid=$!
     printf '%d' "${ryll_pid}" > "${RYLL_PID_FILE}"
@@ -120,6 +128,20 @@ _drive_client() {
     return "${client_rc}"
 }
 
+# ── Firewall gate (match mode only) ─────────────────────────────────────────
+#
+# Zero verdicts proves nothing about port-type channels unless one was
+# relayed, so require the proxy to have started a webdav relay first.
+
+_assert_webdav_clean() {
+    if ! grep -q 'relay starting.*channel_type="webdav"' "${WORKDIR}/rust-proxy.log"; then
+        echo "ERROR: the proxy never relayed a webdav channel; the firewall check" \
+             "would not cover port-type channels" >&2
+        exit 1
+    fi
+    "${HARNESS}" assert-firewall
+}
+
 # ── One full up/drive/assert/down cycle for a single mode ───────────────────
 
 _run_mode() {
@@ -144,6 +166,9 @@ _run_mode() {
     fi
 
     "${HARNESS}" assert-host-subject
+    if [ "${tolerate_client_failure}" = '0' ]; then
+        _assert_webdav_clean
+    fi
     "${HARNESS}" down
     RYLL_PID_FILE=''
 }
