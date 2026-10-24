@@ -9,6 +9,7 @@ from click.testing import CliRunner
 import testtools
 
 from kerbside import main
+from kerbside.tests.unit.offline_migration import offline_sql
 
 
 # The revisions present when the migration tree was moved into the
@@ -233,3 +234,42 @@ class MigrationUrlEscapingTestCase(testtools.TestCase):
         self.assertRaises(
             ValueError, config.set_main_option, 'sqlalchemy.url',
             'mysql+pymysql://kerbside:p%40ssw0rd@db/kerbside')
+
+
+class SessionBackendTicketMigrationTestCase(testtools.TestCase):
+    """The token row gains a backend ticket, and oVirt consoles lose theirs.
+
+    Rendered offline as MySQL, since the initial schema cannot be created
+    on SQLite. The migration has also been run up, down and up again
+    against MariaDB with a static and an oVirt console present.
+    """
+
+    def test_upgrade_adds_both_columns(self):
+        sql = offline_sql('upgrade', '3b8d5f1a6c92:d019b0e3c87a')
+        self.assertIn(
+            'ALTER TABLE consoletokens ADD COLUMN backend_ticket VARCHAR(255);',
+            sql)
+        self.assertIn(
+            'ALTER TABLE consoletokens ADD COLUMN backend_ticket_expires '
+            'INTEGER;', sql)
+
+    def test_upgrade_clears_only_ovirt_tickets(self):
+        sql = offline_sql('upgrade', '3b8d5f1a6c92:d019b0e3c87a')
+        updates = [line for line in sql.splitlines()
+                   if line.startswith('UPDATE consoles ')]
+        self.assertEqual(
+            ['UPDATE consoles SET ticket = \'\' WHERE ticket != \'\' AND '
+             'source IN (SELECT name FROM sources WHERE type = \'ovirt\');'],
+            updates)
+
+    def test_downgrade_drops_both_columns(self):
+        sql = offline_sql('downgrade', 'd019b0e3c87a:3b8d5f1a6c92')
+        self.assertIn(
+            'ALTER TABLE consoletokens DROP COLUMN backend_ticket_expires;',
+            sql)
+        self.assertIn(
+            'ALTER TABLE consoletokens DROP COLUMN backend_ticket;', sql)
+
+    def test_downgrade_leaves_console_tickets_alone(self):
+        sql = offline_sql('downgrade', 'd019b0e3c87a:3b8d5f1a6c92')
+        self.assertNotIn('consoles', sql.replace('consoletokens', ''))

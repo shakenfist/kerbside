@@ -10,6 +10,7 @@ import testtools
 
 from kerbside import db
 from kerbside import util
+from kerbside.sources import base as source_base
 from kerbside.sources import static as static_source
 
 
@@ -620,3 +621,215 @@ class AddConsoleUpdateTestCase(testtools.TestCase):
 
         self.assertEqual((db.CONSOLE_UPDATED, []), self._add(ticket=None))
         self.assertEqual('per-request', self._console().ticket)
+
+
+class SessionBackendTicketTestCase(testtools.TestCase):
+    """A session's backend ticket is minted once and kept on its token row.
+
+    SQLite ignores SELECT ... FOR UPDATE, so these tests show what
+    session_ticket() stores, reuses and replaces, but nothing about two
+    channels racing for one session. That the row lock makes concurrent
+    channels mint exactly once is proven separately, against MariaDB.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.engine = create_engine('sqlite://')
+        db.Base.metadata.create_all(
+            self.engine,
+            tables=[db.Console.__table__, db.ConsoleToken.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+        self.now = int(time.time())
+        db.add_console(
+            source='engine', uuid='vm-1', hypervisor='hv',
+            hypervisor_ip='10.0.0.1', insecure_port=5900, secure_port=5901,
+            name='vm', host_subject=None, ticket=None)
+        db.add_token('client-token', 'sess', 'engine', 'vm-1',
+                     self.now, self.now + 60)
+        self.minted = []
+
+    def _mint(self, lifetime):
+        self.minted.append(lifetime)
+        return source_base.MintedTicket(
+            'minted-%d' % len(self.minted), self.now + lifetime)
+
+    def _token(self, token='client-token'):
+        with Session(self.engine) as session:
+            return session.query(db.ConsoleToken).\
+                filter(db.ConsoleToken.token == token).one().\
+                export(include_secrets=True)
+
+    def _store(self, ticket, expires, token='client-token'):
+        with Session(self.engine) as session:
+            row = session.query(db.ConsoleToken).\
+                filter(db.ConsoleToken.token == token).one()
+            row.backend_ticket = ticket
+            row.backend_ticket_expires = expires
+            session.commit()
+
+    def test_mints_and_stores_when_empty(self):
+        ticket = db.session_ticket('sess', self._mint, 90, 10)
+
+        self.assertEqual([90], self.minted)
+        self.assertEqual(
+            source_base.MintedTicket('minted-1', self.now + 90), ticket)
+        token = self._token()
+        self.assertEqual('minted-1', token['backend_ticket'])
+        self.assertEqual(self.now + 90, token['backend_ticket_expires'])
+
+    def test_stored_expiry_is_whole_seconds(self):
+        def mint(lifetime):
+            return source_base.MintedTicket('fractional', self.now + 30.75)
+
+        ticket = db.session_ticket('sess', mint, 30, 10)
+
+        self.assertEqual(self.now + 30, ticket.expires)
+        self.assertEqual(self.now + 30,
+                         self._token()['backend_ticket_expires'])
+
+    def test_reuses_a_ticket_within_the_margin(self):
+        first = db.session_ticket('sess', self._mint, 90, 10)
+        second = db.session_ticket('sess', self._mint, 90, 10)
+
+        self.assertEqual([90], self.minted)
+        self.assertEqual(first, second)
+
+    def test_remints_a_ticket_past_the_margin(self):
+        self._store('nearly-gone', int(time.time()) + 5)
+
+        ticket = db.session_ticket('sess', self._mint, 30, 10)
+
+        self.assertEqual([30], self.minted)
+        self.assertEqual('minted-1', ticket.ticket)
+        self.assertEqual('minted-1', self._token()['backend_ticket'])
+
+    def test_failed_mint_stores_nothing_and_reraises(self):
+        self._store('nearly-gone', int(time.time()) + 5)
+
+        def mint(lifetime):
+            raise RuntimeError('engine unreachable')
+
+        self.assertRaises(
+            RuntimeError, db.session_ticket, 'sess', mint, 30, 10)
+        token = self._token()
+        self.assertEqual('nearly-gone', token['backend_ticket'])
+
+        # And the next channel tries again.
+        self.assertEqual(
+            'minted-1', db.session_ticket('sess', self._mint, 30, 10).ticket)
+
+    def test_failed_first_mint_leaves_the_row_empty(self):
+        def mint(lifetime):
+            raise RuntimeError('engine unreachable')
+
+        self.assertRaises(
+            RuntimeError, db.session_ticket, 'sess', mint, 30, 10)
+        token = self._token()
+        self.assertIsNone(token['backend_ticket'])
+        self.assertIsNone(token['backend_ticket_expires'])
+
+    def test_unknown_session_raises_without_minting(self):
+        self.assertRaises(
+            db.UnknownSession, db.session_ticket, 'nosuch', self._mint, 30, 10)
+        self.assertEqual([], self.minted)
+
+    def test_clear_expired_backend_tickets(self):
+        now = int(time.time())
+        # (token, token expires, ticket expires)
+        rows = [
+            ('live', now + 60, now + 90),
+            ('ticket-expired', now + 60, now - 1),
+            ('token-expired', now - 1, now + 90),
+        ]
+        for token, expires, ticket_expires in rows:
+            db.add_token(token, 'sess-' + token, 'engine', 'vm-1',
+                         now - 60, expires)
+            self._store('ticket-' + token, ticket_expires, token=token)
+
+        self.assertEqual(2, db.clear_expired_backend_tickets())
+
+        self.assertEqual('ticket-live', self._token('live')['backend_ticket'])
+        for token in ('ticket-expired', 'token-expired'):
+            cleared = self._token(token)
+            self.assertIsNone(cleared['backend_ticket'], token)
+            self.assertIsNone(cleared['backend_ticket_expires'], token)
+        # The rows themselves stay: reap_expired_tokens() decides that.
+        self.assertIsNotNone(db.get_token_by_session_id('sess-token-expired'))
+
+    def test_clear_ignores_rows_without_a_ticket(self):
+        # client-token from setUp has no ticket; an expired token without
+        # one is not counted as cleared either.
+        db.add_token('old', 'sess-old', 'engine', 'vm-1', 0, 1)
+
+        self.assertEqual(0, db.clear_expired_backend_tickets())
+
+
+class ConsoleTokenSecretsTestCase(testtools.TestCase):
+    """A token row's backend ticket is never exported unless asked for.
+
+    The token getters feed API handlers (session termination returns the
+    tokens it revoked), so the ticket must stay out of every one of them.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.engine = create_engine('sqlite://')
+        db.Base.metadata.create_all(
+            self.engine,
+            tables=[db.Console.__table__, db.ConsoleToken.__table__,
+                    db.ProxyChannel.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+        now = int(time.time())
+        db.add_console(
+            source='engine', uuid='vm-1', hypervisor='hv',
+            hypervisor_ip='10.0.0.1', insecure_port=5900, secure_port=5901,
+            name='vm', host_subject=None, ticket=None)
+        db.add_token('client-token', 'sess', 'engine', 'vm-1', now, now + 60)
+        db.session_ticket(
+            'sess',
+            lambda lifetime: source_base.MintedTicket(
+                'sekrit-backend-ticket', now + lifetime),
+            90, 10)
+
+    def test_export_omits_the_ticket_by_default(self):
+        exported = [
+            db.get_token_by_token('client-token'),
+            db.get_token_by_session_id('sess'),
+        ] + db.get_tokens_by_console('engine', 'vm-1')
+
+        for token in exported:
+            self.assertNotIn('backend_ticket', token)
+            self.assertIn('backend_ticket_expires', token)
+            self.assertNotIn('sekrit-backend-ticket', repr(token))
+
+    def test_export_with_secrets_is_opt_in(self):
+        with Session(self.engine) as session:
+            row = session.query(db.ConsoleToken).one()
+            self.assertEqual(
+                'sekrit-backend-ticket',
+                row.export(include_secrets=True)['backend_ticket'])
+
+    def test_reaped_tokens_omit_the_ticket(self):
+        with Session(self.engine) as session:
+            row = session.query(db.ConsoleToken).one()
+            row.expires = 1
+            session.commit()
+
+        reaped = db.reap_expired_tokens()
+
+        self.assertEqual(1, len(reaped))
+        self.assertNotIn('backend_ticket', reaped[0])
+
+    def test_secret_fields_are_exported_only_with_secrets(self):
+        with Session(self.engine) as session:
+            row = session.query(db.ConsoleToken).one()
+            public = set(row.export())
+            secret = set(row.export(include_secrets=True))
+
+        self.assertEqual(set(db.CONSOLE_TOKEN_SECRET_FIELDS), secret - public)

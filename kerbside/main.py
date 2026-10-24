@@ -386,6 +386,13 @@ def _reap_expired_console_tokens():
             None, None, None, 'Reaped expired and unused token')
 
 
+def _clear_expired_backend_tickets():
+    # The ticket values are not logged, just a count.
+    count = kerbside_db.clear_expired_backend_tickets()
+    if count:
+        LOG.info('Cleared %d expired backend console tickets' % count)
+
+
 def _reap_expired_sf_token_jtis():
     # A jti has no session or live channel to protect -- it is a random,
     # purely time-bounded single-use marker -- so there is no audit event to
@@ -448,6 +455,7 @@ def _run_rust_proxy(last_maintenance):
         if time.time() - last_maintenance > 60:
             _parse_sources()
             _reap_expired_console_tokens()
+            _clear_expired_backend_tickets()
             _reap_expired_sf_token_jtis()
             _reap_session_terminations()
             last_maintenance = time.time()
@@ -458,6 +466,7 @@ def _run_rust_proxy(last_maintenance):
 def daemon_run(ctx):
     _parse_sources()
     _reap_expired_console_tokens()
+    _clear_expired_backend_tickets()
     _reap_expired_sf_token_jtis()
     last_maintenance = time.time()
 
