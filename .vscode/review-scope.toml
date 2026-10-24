@@ -29,12 +29,17 @@
 #   UI. Autoescape behaviour and any |safe filter live in these files
 #   and nowhere else, so they are part of the same attack surface as
 #   the endpoints that render them, not decoration.
-# - Packaging and tool configuration -- pyproject.toml, Cargo.toml,
-#   tox.ini, alembic.ini, renovate.json, bindep.txt, .stestr.conf,
-#   the Dockerfiles and the rust Makefile -- decides what gets built,
-#   installed and published. .gitleaks.toml decides what the
-#   credential scan catches, so an over-broad allow rule there is a
-#   hole that hides holes.
+# - Packaging and tool configuration -- pyproject.toml, MANIFEST.in,
+#   Cargo.toml, tox.ini, alembic.ini, renovate.json, bindep.txt,
+#   .stestr.conf, the Dockerfiles and the rust Makefile -- decides
+#   what gets built, installed and published. .gitleaks.toml decides
+#   what the credential scan catches, so an over-broad allow rule
+#   there is a hole that hides holes, and ansible/.ansible-lint
+#   decides which lint rules the collection is excused from.
+# - Deployment templates are executable in practice too: the systemd
+#   units the Ansible role installs decide how Kerbside runs and with
+#   which privileges, and the Jinja deploy profile (*.j2) decides how
+#   the sf-e2e lane builds the cluster it tests against.
 # - The ignore files are included for the same reason: .dockerignore
 #   decides what ends up inside a published image.
 # - Three files carry no extension and so are named individually:
@@ -83,12 +88,17 @@ include = [
     '*.conf',
     '*.txt',
     '*.example',
+    '*.in',
+    '*.ansible-lint',
     '*Dockerfile',
     'Makefile',
     '*/Makefile',
     '*.dockerignore',
     '*.gitignore',
     'demo/kerbside-demo-env',
+    # Deployment templates.
+    '*.service',
+    '*.j2',
     # The rendered web surface.
     '*.html',
     '*.mako',
