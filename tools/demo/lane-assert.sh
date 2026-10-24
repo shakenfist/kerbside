@@ -12,8 +12,8 @@
 # 3 and 4 are what make this more than a smoke test. A proxy that hangs
 # when its backend vanishes is a real defect, and this is the cheapest
 # lane positioned to catch it; the mint guard is unit-tested against
-# fixtures in phase 1, but here it runs against a real deployment, which
-# is where it has to hold.
+# fixtures, but here it runs against a real deployment, which is where it
+# has to hold.
 #
 # Note what this does NOT reimplement: demo/get-console.sh already
 # proves the TLS leg, by connecting to the port the .vv advertises and
@@ -48,8 +48,8 @@ fi
 
 # How long a console request may take once the backend is gone before we
 # call it a hang. The proxy's own backend connection attempt failed in
-# about 9 seconds when this was measured by hand during phase 3, so 60
-# is generous while still being decisively shorter than a hang.
+# about 9 seconds when this was measured by hand, so 60 is generous while
+# still being decisively shorter than a hang.
 BACKEND_FAIL_TIMEOUT="${BACKEND_FAIL_TIMEOUT:-60}"
 
 mkdir -p "${WORKDIR}"
@@ -302,8 +302,8 @@ fi
 # this script asserted on get-console.sh here and passed a stopped
 # backend as success.
 #
-# Phase 3 verified this case with remote-viewer, and recorded both halves
-# of the evidence: the client exited in about 9 seconds, and the proxy
+# Checked by hand with remote-viewer, this case leaves both halves of
+# the evidence: the client exited in about 9 seconds, and the proxy
 # logged `hypervisor connection failed ... error=failed to lookup address
 # information`. Both are asserted here; the log line is the half that
 # names the cause.

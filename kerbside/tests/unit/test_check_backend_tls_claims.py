@@ -21,9 +21,9 @@ check_backend_tls_claims = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(check_backend_tls_claims)
 
 
-# The bullet docs/use-cases/ovirt.md carried before phase 4 swept it. A
-# VM the engine reports with no host yields no subject, so the claim is
-# false as written, and it names no condition at all.
+# A bullet docs/use-cases/ovirt.md once carried. A VM the engine
+# reports with no host yields no subject, so the claim is false as
+# written, and it names no condition at all.
 UNCONDITIONAL = """- **The backend leg is pinned.** Kerbside verifies the
   hypervisor's certificate against the engine CA *and* pins the
   certificate subject it discovered from the engine, so a

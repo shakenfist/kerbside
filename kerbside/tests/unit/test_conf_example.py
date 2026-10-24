@@ -30,8 +30,8 @@ def _example_path():
     The example is repository data rather than package data -- it is
     not under a package directory, so setuptools_scm's file finder
     does not contribute it and no wheel contains it (this is the same
-    rule that stranded the migrations before phase 1 moved them into
-    kerbside/migrations/). So importlib.resources cannot find it and
+    rule that kept the migrations out of the wheel until they moved
+    into kerbside/migrations/). So importlib.resources cannot find it and
     the tests walk up from __file__ instead.
     """
     path = os.path.dirname(os.path.abspath(__file__))
@@ -155,7 +155,7 @@ class ConfExampleCoverageTestCase(testtools.TestCase):
         self.assertEqual(['kerbside'], parser.sections())
 
     def test_live_keys_are_the_ones_without_usable_defaults(self):
-        """Decision 4: live keys are a judgement, so pin the judgement.
+        """Live keys are a judgement, so pin the judgement.
 
         No field on Config is required -- all 34 have defaults -- so
         nothing in the model distinguishes these. Without this
@@ -169,8 +169,7 @@ class ConfExampleCoverageTestCase(testtools.TestCase):
                     'proxy_host_subject', 'public_fqdn', 'sources_path',
                     'sql_url']),
             sorted(self.live),
-            'the live/commented split is a judgement (decision 4 of '
-            'PLAN-demo-install-phase-02-conf-example.md): a key is '
+            'the live/commented split is a judgement: a key is '
             'live only if its default is a sentinel, a credential, a '
             'hostname, or a path into a necessarily-local PKI. If you '
             'promoted or demoted a key deliberately, update this list')
@@ -267,9 +266,9 @@ class IniLoadingTestCase(testtools.TestCase):
     docs/configuration.md:3 promises that environment variables take
     priority over the INI file. That promise is one `if` in
     load_ini_settings(), it is the reason a container can override a
-    baked-in config file, and until now no test held it. Phase 2 is
-    what turns the INI file into the documented way to configure
-    kerbside, so the precedence stops being incidental.
+    baked-in config file, and these tests are what hold it. The INI
+    file is the documented way to configure kerbside, so the
+    precedence is a contract rather than an accident.
 
     These tests drive the real function against the real example file
     rather than a fixture, so they also prove the shipped example is
