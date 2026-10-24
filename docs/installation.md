@@ -17,7 +17,7 @@ On Debian:
 
 ```bash
 sudo apt-get install build-essential pkg-config python3-dev \
-    libmariadb-dev-compat libxml2-dev libxslt1-dev
+    python3-venv libmariadb-dev-compat libxml2-dev libxslt1-dev
 ```
 
 On Ubuntu the same list applies with `libmysqlclient-dev` in place of
