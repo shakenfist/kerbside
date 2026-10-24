@@ -483,6 +483,29 @@ connection drops, via the proxy log line `session terminated by
 control plane`. This exercises the DB→`ProxyControl` bridge end to
 end rather than the mock.
 
+### SPICE password rotation
+
+`verify-ticket-rotation.sh` runs on an isolated lane too. A source
+that mints a SPICE password per session replaces the password qemu
+holds each time it mints, and lets it expire, so the lane checks what
+that does to a client already connected through the proxy. Over the
+QMP socket `lane-up.sh` gives its qemu (`start-qemu.sh --qmp-socket`,
+mode 0600, driven by `qmp-client.py`) it calls `set_password` with a
+new password and no `connected` argument, as oVirt and Proxmox do, and
+then `expire_password` with `now`. After each, and a ten-second
+settle, the first session must still be up: its ryll still running,
+its control socket still reporting a surface and a screenshot, and
+qemu's `query-spice` listing exactly the channels it listed before,
+down to each connection's client port. A fresh session through the
+proxy, which the lane's static source still gives the original
+ticket, must be refused: the proxy logs `hypervisor connection
+failed` with `PermissionDenied` for its backend leg. Last, as a
+positive control, a ryll connected straight to qemu with the new
+password must get a display once the expiry is lifted. That runs last
+because spice-server drops its current client when a new one links.
+The new password lives only in an owner-only file in the lane's
+working directory; it is never on a command line or in a log.
+
 ### The latency loadtest
 
 Both legs run `run-loadtest.sh` (non-gating, `continue-on-error`). It

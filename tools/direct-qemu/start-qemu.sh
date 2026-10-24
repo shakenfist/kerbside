@@ -9,7 +9,8 @@
 #   --ticket STR \
 #   --serial-log PATH \
 #   --pid-file PATH \
-#   [--tls-port N --x509-dir PATH]
+#   [--tls-port N --x509-dir PATH] \
+#   [--qmp-socket PATH]
 #
 # Backgrounds qemu and writes the PID to --pid-file.
 # Falls back to accel=tcg if /dev/kvm is not writable, with a warning.
@@ -21,6 +22,10 @@
 # with SPICE TLS behaves, and the path the kerbside proxy's backend leg
 # implements. --x509-dir must contain qemu's fixed filenames ca-cert.pem,
 # server-cert.pem, and server-key.pem (see generate-tls.sh's qemu-x509/).
+#
+# --qmp-socket additionally opens a QMP monitor on a Unix socket at PATH,
+# mode 0600, so a test can change the SPICE password of the running guest
+# (see qmp-client.py). Without it qemu has no monitor at all.
 
 set -euo pipefail
 
@@ -33,6 +38,7 @@ SERIAL_LOG=''
 PID_FILE=''
 TLS_PORT=''
 X509_DIR=''
+QMP_SOCKET=''
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -45,6 +51,7 @@ while [ $# -gt 0 ]; do
         --pid-file)   PID_FILE="$2";   shift 2 ;;
         --tls-port)   TLS_PORT="$2";   shift 2 ;;
         --x509-dir)   X509_DIR="$2";   shift 2 ;;
+        --qmp-socket) QMP_SOCKET="$2"; shift 2 ;;
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
@@ -128,13 +135,27 @@ if [ -n "${TLS_PORT}" ]; then
     echo "[start-qemu] SPICE TLS enabled on port ${TLS_PORT} (x509-dir=${X509_DIR})"
 fi
 
+# A QMP socket can change the guest's SPICE password, so it is created
+# owner-only: qemu runs under umask 077 when it has one, which covers the
+# moment between qemu's bind and the chmod after launch, and the chmod then
+# sets the mode exactly. Without a socket qemu keeps the caller's umask.
+MONITOR_ARGS=()
+if [ -n "${QMP_SOCKET}" ]; then
+    MONITOR_ARGS=(-qmp "unix:${QMP_SOCKET},server=on,wait=off")
+    echo "[start-qemu] QMP monitor on ${QMP_SOCKET}"
+fi
+
 echo "[start-qemu] Launching QEMU with SPICE on port ${SPICE_PORT}"
 
 # The webdav spiceport gives spice-server a WebDAV channel, so clients that
 # support folder sharing (ryll does) open it and the proxy relays a port-type
 # channel. spice-server sends PORT_INIT on it as soon as it connects, guest
 # agent or not, which is the traffic the firewall once misclassified (#570).
-qemu-system-x86_64 \
+(
+if [ -n "${QMP_SOCKET}" ]; then
+    umask 077
+fi
+exec qemu-system-x86_64 \
     -machine "q35,accel=${ACCEL}" \
     -m 512 \
     -drive "if=pflash,format=raw,readonly=on,file=${OVMF_CODE}" \
@@ -149,8 +170,10 @@ qemu-system-x86_64 \
     -serial "file:${SERIAL_LOG}" \
     -display none \
     -no-reboot \
+    "${MONITOR_ARGS[@]}" \
     -daemonize \
     -pidfile "${PID_FILE}"
+)
 # The SPICE ticket is supplied via `-object secret` +
 # `password-secret=` because the legacy inline `password=` parameter
 # was removed in newer QEMU releases (it fails on QEMU 10 with
@@ -170,5 +193,9 @@ qemu-system-x86_64 \
 # ryll side, and the smoke client times out waiting for a usable
 # display.  Mirrors the Sextant reference recipe at
 # uncalibrated-sextant/scripts/spice.sh:63.
+
+if [ -n "${QMP_SOCKET}" ]; then
+    chmod 0600 "${QMP_SOCKET}"
+fi
 
 echo "[start-qemu] QEMU daemonized, pid=$(cat "${PID_FILE}")"

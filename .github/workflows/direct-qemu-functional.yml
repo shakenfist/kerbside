@@ -184,6 +184,13 @@ jobs:
       - name: Verify API-terminate drops the in-flight connection
         run: tools/direct-qemu/verify-terminate-live.sh
 
+      # Prove that replacing and expiring the guest's SPICE password over QMP
+      # leaves a connected session up, while a new connection presenting the
+      # old password is refused. Its own isolated lane, torn down inside the
+      # script, like the terminate test above.
+      - name: Verify a new SPICE password keeps connected clients
+        run: tools/direct-qemu/verify-ticket-rotation.sh
+
       # Non-gating: measure keypress-to-screen latency through the proxy and
       # record p50/p95 as an artifact. The orchestrator injects real keypresses
       # (send_key), which drives the Sextant guest off its Awaiting screen, so
@@ -235,6 +242,7 @@ jobs:
             /tmp/kerbside-ci/scenario/
             /tmp/kerbside-ci/tempest.log
             /tmp/terminate-artifacts/
+            /tmp/rotation-artifacts/
             /tmp/loadtest-artifacts/
 
       - name: Tear down the lane
