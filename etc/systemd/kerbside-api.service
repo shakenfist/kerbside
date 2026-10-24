@@ -1,0 +1,37 @@
+# Kerbside's REST API, run by gunicorn. Copy this file to
+# /etc/systemd/system/ as it is; docs/deployment/manual.md says how, and what
+# to create first (the kerbside user and the virtualenv in /srv/kerbside).
+#
+# The API binds to loopback only. It carries bearer tokens and Keystone
+# credentials, so it should not be reachable in plain HTTP from other hosts.
+# Put TLS in front of it before anything off this host talks to it, either
+# with a TLS-terminating reverse proxy which forwards to 127.0.0.1:13002, or
+# by adding --certfile and --keyfile to the gunicorn command below together
+# with a bind address other hosts can reach.
+#
+# Wanted by multi-user.target, and by nothing more specific. A Shaken Fist
+# node isolates its own target, which stops every unit that multi-user.target
+# does not want, so a Kerbside sharing a host with one has to hang off
+# multi-user.target to survive that.
+[Unit]
+Description=Kerbside VDI console proxy API
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=kerbside
+Group=kerbside
+WorkingDirectory=/srv/kerbside
+
+# The timeout matches sf-api's: an unknown signing key id makes Kerbside call
+# Shaken Fist to refresh its keys inside the request.
+ExecStart=/srv/kerbside/venv/bin/gunicorn --bind 127.0.0.1:13002 --workers 2 --timeout 300 --name kerbside-api kerbside.api:app
+
+# always rather than on-failure: Kerbside never exits on purpose, so any exit,
+# clean or not, is one to restart from.
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
