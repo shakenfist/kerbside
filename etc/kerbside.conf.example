@@ -1,9 +1,11 @@
 ####################################################################
 # Example Kerbside configuration.
 #
-# Install this at /etc/kerbside/kerbside.ini, owned by the user
-# Kerbside runs as and mode 0600: the finished file holds the JWT
-# signing key and, for Keystone deployments, a cleartext service
+# Install this at /etc/kerbside/kerbside.ini, owned by root, group
+# kerbside and mode 0640, in a /etc/kerbside that is root:kerbside
+# 0750, so the service can read its configuration but not rewrite
+# it. Keep it readable by nobody else: the finished file holds the
+# JWT signing key and, for Keystone deployments, a cleartext service
 # password. Kerbside reads exactly that path -- it is a constant
 # (INI_PATH in kerbside/config.py), not a search path and not a
 # command line option. If the file is absent Kerbside starts anyway,
