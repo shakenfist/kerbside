@@ -46,9 +46,15 @@ jobs:
   # sf-e2e-functional.yml, the trigger-level paths-ignore in
   # codeql-analysis.yml, and the .vscode whitelist in .gitignore.
   # One difference is deliberate: only codeql-analysis.yml skips
-  # .vscode/review-scope.toml, since CodeQL does not read it. The
-  # scope config decides what is reviewed at all, so everywhere
-  # else a change to it is tested and reviewed like code.
+  # .vscode/review-scope.toml. The scope config decides which files
+  # are reviewed at all, so a pull request narrowing it needs the
+  # same lint and automated review as a code change, and both sit
+  # behind the check_paths filter in functional-tests.yml
+  # (sanity_checks, and the automated_reviewer job that needs it).
+  # The other check_paths copies match that one rather than skip
+  # the file, so the three lists stay identical; a scope-only change
+  # pays for a full run, which happens a few times a year. CodeQL
+  # does not read the file, so it alone may skip it.
   check_paths:
     name: "Check paths"
     if: github.event_name != 'merge_group'
