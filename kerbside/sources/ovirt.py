@@ -3,6 +3,7 @@ import os
 import requests
 from shakenfist_utilities import logs
 import tempfile
+import time
 
 from . import base
 from .. import util
@@ -14,8 +15,16 @@ LOG, _ = logs.setup(__name__, **util.configure_logging())
 OVIRT_SDK = None
 OVIRT_SDK_TYPES = None
 
+# Seconds to wait for any one request to the engine: the CA certificate fetch,
+# and each API call on an SDK connection. A console ticket is minted while a
+# client waits to connect, so a stalled engine has to fail the request rather
+# than hold it indefinitely.
+MINT_TIMEOUT = 15
+
 
 class oVirtSource(base.BaseSource):
+    MINTS_TICKETS = True
+
     def __init__(self, **kwargs):
         global OVIRT_SDK
         global OVIRT_SDK_TYPES
@@ -42,10 +51,19 @@ class oVirtSource(base.BaseSource):
                 f.write(self.args['ca_cert'])
             self.args['ca_file'] = self.ca_tempfile
 
-        # Fetch the engine CA certificate
-        r = requests.get(
-            '%s/services/pki-resource?resource=ca-certificate&format=X509-PEM-CA'
-            % self.args['url'], verify=self.args['ca_file'])
+        # Fetch the engine CA certificate. An engine which cannot be reached
+        # is reported as an errored source, as a missing certificate is, so
+        # that the caller still gets an object it can close().
+        try:
+            r = requests.get(
+                '%s/services/pki-resource?resource=ca-certificate&format=X509-PEM-CA'
+                % self.args['url'], verify=self.args['ca_file'],
+                timeout=MINT_TIMEOUT)
+        except requests.exceptions.RequestException as e:
+            LOG.warning('Ignoring source %s as its engine CA certificate could not be '
+                        'fetched: %s' % (self.args['source'], type(e).__name__))
+            self.errored = True
+            return
         if r.status_code != 200:
             LOG.warning('Ignoring source %s due to missing CA certificate from engine.'
                         % self.args['source'])
@@ -63,6 +81,11 @@ class oVirtSource(base.BaseSource):
             return
 
     def _ensure_connection(self, connection):
+        # The SDK applies timeout to each API request, the ticket action
+        # included. It does not apply it to the SSO login the connection
+        # performs before its first request, which runs on a separate curl
+        # handle with no timeout, so a caller which must bound a whole mint
+        # needs a deadline of its own around it.
         if not connection:
             connection = OVIRT_SDK.Connection(
                 url=self.args['url'] + '/api',
@@ -71,6 +94,7 @@ class oVirtSource(base.BaseSource):
                 ca_file=self.args['ca_file'],
                 debug=False,
                 log=LOG,
+                timeout=MINT_TIMEOUT,
             )
         return connection
 
@@ -80,9 +104,14 @@ class oVirtSource(base.BaseSource):
                         % self.args['source'])
             return
 
-        host_cache = {}
-
         connection = self._ensure_connection(None)
+        try:
+            yield from self._discover(connection)
+        finally:
+            connection.close()
+
+    def _discover(self, connection):
+        host_cache = {}
         vms_service = connection.system_service().vms_service()
         hosts_service = connection.system_service().hosts_service()
 
@@ -100,8 +129,7 @@ class oVirtSource(base.BaseSource):
                 host = hosts_service.list(search='id=%s' % vm.host.id)[0]
                 host_cache[host.id] = host.certificate.subject
 
-            console, _ = self.get_console_for_vm(
-                vm.id, connection=connection, acquire_ticket=False)
+            console, _, _ = self.get_console_for_vm(vm.id, connection=connection)
             if not console:
                 log.debug('Ignoring instance with no SPICE console.')
                 continue
@@ -117,15 +145,30 @@ class oVirtSource(base.BaseSource):
                 'host_subject': host_cache.get(vm.host.id)
             }
 
-        # Close the connection to the server:
-        connection.close()
-
     def close(self):
         if self.ca_tempfile:
             os.unlink(self.ca_tempfile)
 
-    def get_console_for_vm(self, id, connection=None, acquire_ticket=False):
-        connection = self._ensure_connection(connection)
+    def get_console_for_vm(self, id, connection=None, ticket_lifetime=None):
+        """Find a VM's SPICE console, and optionally mint a ticket for it.
+
+        Returns (console, ticket, ticket_ttl). console is None if the VM has
+        no SPICE console. If ticket_lifetime is set, a ticket valid for that
+        many seconds is requested, and ticket and ticket_ttl are its value
+        and the lifetime in seconds the engine granted; otherwise both are
+        None. A connection opened here is closed before returning; one passed
+        in is left open for its owner.
+        """
+        if connection:
+            return self._get_console_for_vm(id, connection, ticket_lifetime)
+
+        connection = self._ensure_connection(None)
+        try:
+            return self._get_console_for_vm(id, connection, ticket_lifetime)
+        finally:
+            connection.close()
+
+    def _get_console_for_vm(self, id, connection, ticket_lifetime):
         vms_service = connection.system_service().vms_service()
         vm_service = vms_service.vm_service(id)
         consoles_service = vm_service.graphics_consoles_service()
@@ -142,9 +185,38 @@ class oVirtSource(base.BaseSource):
             None
         )
 
-        ticket = None
-        if console and acquire_ticket:
-            console_service = consoles_service.console_service(console.id)
-            ticket = console_service.ticket().value
+        if not console or ticket_lifetime is None:
+            return console, None, None
 
-        return console, ticket
+        # Ticket.expiry is a time to live in seconds, not a timestamp. The
+        # engine uses two hours if none is requested, so one always is. Its
+        # response echoes the value and expiry it applied.
+        console_service = consoles_service.console_service(console.id)
+        granted = console_service.ticket(
+            ticket=OVIRT_SDK_TYPES.Ticket(expiry=int(ticket_lifetime)))
+        if not granted or not granted.value:
+            return console, None, None
+
+        # An engine which leaves expiry out of its response applied what was
+        # asked for, so report the requested lifetime in that case.
+        ttl = granted.expiry
+        if ttl is None:
+            ttl = int(ticket_lifetime)
+        return console, granted.value, int(ttl)
+
+    def mint_console_ticket(self, uuid, lifetime):
+        if self.errored or not OVIRT_SDK:
+            raise base.ConsoleTicketUnavailable(
+                'source %s is not usable' % self.args.get('source'))
+
+        # The time is taken before the request, so that the expiry reported
+        # is never later than the one the engine applies.
+        now = int(time.time())
+        console, ticket, ttl = self.get_console_for_vm(uuid, ticket_lifetime=lifetime)
+        if not console:
+            raise base.ConsoleTicketUnavailable(
+                'VM %s has no SPICE console' % uuid)
+        if not ticket:
+            raise base.ConsoleTicketUnavailable(
+                'the engine returned no ticket for VM %s' % uuid)
+        return base.MintedTicket(ticket, now + ttl)

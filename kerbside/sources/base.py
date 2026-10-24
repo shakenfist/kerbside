@@ -7,6 +7,10 @@ from collections import namedtuple
 MintedTicket = namedtuple('MintedTicket', ['ticket', 'expires'])
 
 
+class ConsoleTicketUnavailable(Exception):
+    """A source could not mint a console ticket. The message carries no secret."""
+
+
 class BaseSource(ABC):
     # Set to True by sources which can mint a console ticket on demand.
     MINTS_TICKETS = False
@@ -27,6 +31,8 @@ class BaseSource(ABC):
         seconds). lifetime is the requested validity in seconds. Sources
         honour it where their API allows, and otherwise report the shorter
         expiry the upstream actually granted. Only sources with MINTS_TICKETS
-        set implement this.
+        set implement this. Failure raises, never returns None: the source
+        raises ConsoleTicketUnavailable for what it can diagnose itself, and
+        lets its API client's exceptions through otherwise.
         """
         raise NotImplementedError()

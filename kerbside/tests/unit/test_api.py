@@ -12,6 +12,7 @@ from kerbside import api
 from kerbside import config as kerbside_config
 from kerbside import db
 from kerbside import sf_token
+from kerbside.sources import base as source_base
 
 
 class GetNavItemsTestCase(testtools.TestCase):
@@ -839,7 +840,7 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
             name='an ovirt console', host_subject='CN=hv5')
         mock_ovirt.return_value.errored = False
         mock_ovirt.return_value.get_console_for_vm.return_value = (
-            None, 'a-ticket')
+            None, 'a-ticket', 60)
 
         with mock.patch.object(api.config, 'CACERT_PATH', self.cacert_path):
             resp = self.client.get(
@@ -853,11 +854,7 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
         self.assertIn('password=a-proxy-token', resp.get_data(as_text=True))
         self.assertNotIn('a-ticket', resp.get_data(as_text=True))
 
-    @mock.patch('kerbside.sources.ovirt.oVirtSource')
-    def test_ovirt_direct_vv_is_given_the_password(self, mock_ovirt):
-        # The opt in is load bearing rather than decorative: oVirt
-        # cannot acquire a ticket without the credential, so assert it
-        # arrives, and that it still does not reach the log.
+    def _ovirt_direct_console(self):
         db.add_source(
             'ovirt1', 'ovirt', 'https://ovirt.example.com/ovirt-engine/api',
             'admin@internal', 'sekrit-ovirt-password', ca_cert='CA')
@@ -865,9 +862,17 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
             source='ovirt1', uuid='console-2', hypervisor='hv2',
             hypervisor_ip='10.0.0.2', insecure_port=5900, secure_port=5901,
             name='an ovirt console', host_subject='CN=hv2')
+
+    @mock.patch('kerbside.sources.ovirt.oVirtSource')
+    def test_ovirt_direct_vv_is_given_the_password(self, mock_ovirt):
+        # The opt in is load bearing rather than decorative: oVirt
+        # cannot acquire a ticket without the credential, so assert it
+        # arrives, and that it still does not reach the log.
+        self._ovirt_direct_console()
+        mock_ovirt.MINTS_TICKETS = True
         mock_ovirt.return_value.errored = False
-        mock_ovirt.return_value.get_console_for_vm.return_value = (
-            None, 'a-ticket')
+        mock_ovirt.return_value.mint_console_ticket.return_value = (
+            source_base.MintedTicket('a-ticket', 0))
 
         resp = self.client.get('/console/direct/ovirt1/console-2/console.vv')
 
@@ -878,6 +883,56 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
         for fields in self.logged:
             self.assertNotIn('password', fields)
             self.assertNotIn('sekrit-ovirt-password', repr(fields))
+        mock_ovirt.return_value.close.assert_called_once_with()
+
+    @mock.patch('kerbside.sources.ovirt.oVirtSource')
+    def test_ovirt_direct_vv_ticket_lasts_as_long_as_a_token(self, mock_ovirt):
+        # A direct .vv's ticket covers the same download-to-connect gap
+        # as a proxied .vv's token, so it asks for the token's lifetime
+        # rather than taking the engine's two hour default.
+        self._ovirt_direct_console()
+        mock_ovirt.MINTS_TICKETS = True
+        mock_ovirt.return_value.errored = False
+        mock_ovirt.return_value.mint_console_ticket.return_value = (
+            source_base.MintedTicket('a-ticket', 0))
+
+        with mock.patch.object(api.config, 'CONSOLE_TOKEN_DURATION', 5):
+            resp = self.client.get(
+                '/console/direct/ovirt1/console-2/console.vv')
+
+        self.assertEqual(200, resp.status_code)
+        mock_ovirt.return_value.mint_console_ticket.assert_called_once_with(
+            'console-2', 300)
+
+    @mock.patch('kerbside.sources.ovirt.oVirtSource')
+    def test_ovirt_direct_vv_mint_failure_is_a_502(self, mock_ovirt):
+        self._ovirt_direct_console()
+        mock_ovirt.MINTS_TICKETS = True
+        mock_ovirt.return_value.errored = False
+        mock_ovirt.return_value.mint_console_ticket.side_effect = (
+            RuntimeError('request carried sekrit-ovirt-password'))
+
+        resp = self.client.get('/console/direct/ovirt1/console-2/console.vv')
+
+        self.assertEqual(502, resp.status_code)
+        mock_ovirt.return_value.close.assert_called_once_with()
+        # Only the exception's class name is logged.
+        for fields in self.logged:
+            self.assertNotIn('sekrit-ovirt-password', repr(fields))
+        self.assertIn(
+            'RuntimeError', [f.get('error') for f in self.logged])
+
+    @mock.patch('kerbside.sources.ovirt.oVirtSource')
+    def test_ovirt_direct_vv_errored_source_is_closed(self, mock_ovirt):
+        self._ovirt_direct_console()
+        mock_ovirt.MINTS_TICKETS = True
+        mock_ovirt.return_value.errored = True
+
+        resp = self.client.get('/console/direct/ovirt1/console-2/console.vv')
+
+        self.assertEqual(404, resp.status_code)
+        mock_ovirt.return_value.mint_console_ticket.assert_not_called()
+        mock_ovirt.return_value.close.assert_called_once_with()
 
 
 class NovaTokenInterfaceTestCase(testtools.TestCase):
@@ -1121,9 +1176,10 @@ class DirectVirtViewerAdminTestCase(testtools.TestCase):
         self.addCleanup(audit_patch.stop)
 
         self.ovirt = mock.MagicMock()
+        self.ovirt.MINTS_TICKETS = True
         self.ovirt.return_value.errored = False
-        self.ovirt.return_value.get_console_for_vm.return_value = (
-            None, 'a-hypervisor-ticket')
+        self.ovirt.return_value.mint_console_ticket.return_value = (
+            source_base.MintedTicket('a-hypervisor-ticket', 0))
         ovirt_patch = mock.patch.object(
             api.ovirt_source, 'oVirtSource', self.ovirt)
         ovirt_patch.start()

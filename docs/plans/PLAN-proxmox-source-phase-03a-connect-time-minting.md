@@ -456,6 +456,29 @@ session's established channels up, which is what 3a.5 relies
 on. 3a.8 documents the two-session case as a disconnect, not as
 a revoked password.
 
+The back brief's third gate fired before 3a.4 ran. ovirtsdk4's
+`Connection(timeout=)` sets `pycurl.TIMEOUT` on the API handle
+(`ovirtsdk4/__init__.py:413`), so it bounds the ticket call,
+but the SSO login runs on its own curl handle with no timeout
+(`_get_sso_response`, `:654-690`), and a fresh connection logs
+in on its first request. Decision 5's timeouts therefore cannot
+bound a whole mint. The operator chose, on 2026-10-25, a
+deadline in the authorize path: 3a.5 runs the mint in a worker
+thread and waits at most `MINT_TIMEOUT`, denying on expiry and
+releasing the row lock, and a stuck worker's late result is
+discarded. It wraps whichever driver mints, so phase 4 inherits
+it. 3a.4 keeps the SDK and `requests` timeouts as the inner
+bound.
+
+3a.4 went beyond its brief in three ways, all kept: the direct
+handler mints through `mint_console_ticket`, so a VM with no
+SPICE console now fails instead of handing out a `.vv` with
+`password=None`; a failed direct mint returns 502 and logs only
+the exception's class name; and a CA fetch that raises marks
+the source errored rather than raising from `__init__`, so its
+temporary CA file is still removed. It also closes the SDK
+connection that `get_console_for_vm` used to leak.
+
 ## Outcome
 
 Not started.

@@ -27,6 +27,7 @@ from .config import is_unconfigured
 from . import consoletoken
 from . import db
 from . import sf_token
+from .sources import driver_class
 from .sources import ovirt as ovirt_source
 from . import util
 
@@ -503,9 +504,15 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
 
         # Acquire the ticket for embedding in the .vv file.  The
         # static driver persists its ticket at enumeration time; read
-        # it back from the Console DB row.  oVirt fetches a fresh
-        # ticket on every request.  All other types (shakenfist,
-        # openstack) use an empty string here.
+        # it back from the Console DB row.  A source which mints tickets
+        # (oVirt) is asked for a fresh one on every request.  All other
+        # types (shakenfist, openstack) use an empty string here.
+        try:
+            driver = driver_class(s['type'])
+        except KeyError:
+            # openstack has no driver, and mints nothing.
+            driver = None
+
         if s['type'] == 'static':
             # The persisted ticket is this console's SPICE password, so
             # it is read in the one branch which puts it in the .vv file
@@ -520,20 +527,38 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
             # a fresh ticket with stale ports, or the reverse.
             vv_console = authed_console
             ticket = authed_console.get('ticket') or ''
-        elif s['type'] == 'ovirt':
-            ticket = ''
-            # Authenticating to oVirt is the only thing in this handler
-            # which is entitled to the source secrets, so it is the only
-            # thing which asks for them. s itself stays public, which is
-            # why the log line below needs no scrubbing step.
+        elif driver and driver.MINTS_TICKETS:
+            # Authenticating to the source to mint is the only thing in
+            # this handler which is entitled to the source secrets, so it
+            # is the only thing which asks for them. s itself stays
+            # public, which is why the log line below needs no scrubbing
+            # step.
             authed = db.get_source(source, include_secrets=True)
             if not authed:
                 return sf_api.error(404, 'source not found')
-            lookup = ovirt_source.oVirtSource(**authed)
-            if lookup.errored:
-                return sf_api.error(404, 'source error')
-            _, ticket = lookup.get_console_for_vm(c['uuid'], acquire_ticket=True)
-            lookup.close()
+
+            # The ticket in a direct .vv has to last from download until
+            # the client connects, which is the gap a proxied .vv's
+            # console token covers, so it is given the same lifetime.
+            lifetime = config.CONSOLE_TOKEN_DURATION * 60
+            lookup = driver(**authed)
+            try:
+                if lookup.errored:
+                    return sf_api.error(404, 'source error')
+                try:
+                    ticket = lookup.mint_console_ticket(
+                        c['uuid'], lifetime).ticket
+                except Exception as e:
+                    # The class name only: an API client's exception can
+                    # quote the request or response it failed on.
+                    LOG.with_fields({
+                        'source': c['source'],
+                        'uuid': c['uuid'],
+                        'error': type(e).__name__
+                        }).warning('Console ticket mint failed')
+                    return sf_api.error(502, 'console ticket unavailable')
+            finally:
+                lookup.close()
         else:
             ticket = ''
 
@@ -632,7 +657,8 @@ class ConsolesProxyVirtViewer(sf_api.Resource):
             lookup = ovirt_source.oVirtSource(**authed)
             if lookup.errored:
                 return sf_api.error(404, 'source error')
-            _, ticket = lookup.get_console_for_vm(c['uuid'], acquire_ticket=True)
+            _, ticket, _ = lookup.get_console_for_vm(
+                c['uuid'], ticket_lifetime=config.CONSOLE_TOKEN_DURATION * 60)
             lookup.close()
             db.store_console_ticket(source, uuid, ticket)
         else:
