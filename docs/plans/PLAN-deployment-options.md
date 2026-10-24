@@ -230,7 +230,7 @@ would creep back in. **Recommendation: yes.** Extend
 
 | Phase | Plan | Status | Merged |
 |-------|------|--------|--------|
-| 1. Survey, matrix and scaffolding | [PLAN-deployment-options-phase-01-survey-and-scaffolding.md](PLAN-deployment-options-phase-01-survey-and-scaffolding.md) | In progress | |
+| 1. Survey, matrix and scaffolding | [PLAN-deployment-options-phase-01-survey-and-scaffolding.md](PLAN-deployment-options-phase-01-survey-and-scaffolding.md) | Complete | 200d6b3 |
 | 2. By hand: pip, venv and systemd | | Not started | |
 | 3. OpenStack: Kolla-Ansible, and Kerbside in front of OpenStack | | Not started | |
 | 4. Containers: compose beyond the demo, and Kubernetes | | Not started | |
