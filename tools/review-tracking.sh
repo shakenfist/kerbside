@@ -8,7 +8,10 @@
 #           shakenfist/development as reviewed, pointing at the signed
 #           review there, regen
 #   regen   regenerate REVIEWS.md from current state
-#   next    pick a random unreviewed in-scope file and open it
+#   next    pick an unreviewed in-scope file and open it: at random,
+#           or in include order where review-scope.toml sets
+#           order = 'listed'; paths given narrow the pick to files
+#           under them
 #   status  report effective review coverage against HEAD (read-only)
 #   scope-orphans
 #           list tracked files that are in neither include nor

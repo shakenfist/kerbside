@@ -50,8 +50,8 @@ the merge queue rather than on the PR, blocking the queue and
 costing a rerun.
 
 Both tiers also skip entirely when a change touches only files no
-lane exercises: the review-tracking state (`REVIEWS.md`, the
-`.vscode` weaudit files and review scope) and `docs/`. Each gating
+lane exercises: the review-tracking state (`REVIEWS.md` and the
+`.vscode` weaudit files) and `docs/`. Each gating
 workflow carries a `check_paths` filter job whose output the heavy
 jobs skip on — a filter job rather than trigger-level
 `paths-ignore`, because a required check that never reports blocks
@@ -59,7 +59,13 @@ the merge forever while a skipped one satisfies it (see the
 comments in `functional-tests.yml`). The filter list is duplicated
 in the three `check_paths` jobs and in `codeql-analysis.yml`'s
 trigger-level `paths-ignore` (safe there because CodeQL is not a
-required check); keep the copies in sync. In the merge queue only
+required check); keep the copies in sync. One difference is
+deliberate: only `codeql-analysis.yml` skips
+`.vscode/review-scope.toml`. The scope config decides which files are
+reviewed at all, so a pull request narrowing it needs the same lint
+and automated review as a code change, and both sit behind the
+`check_paths` filter. CodeQL does not read the file, so it alone may
+skip it. In the merge queue only
 `functional-tests.yml` runs its filter, so a review-marks-only or
 docs-only queue entry skips the cloud matrices too — confirmed
 live on the queue entry for PR 304. The one job exempt from all of
