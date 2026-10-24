@@ -26,6 +26,9 @@ TLS_DIR="${TLS_DIR:-${WORKDIR}/tls}"
 SOURCES_PATH="${SOURCES_PATH:-${WORKDIR}/sources.yaml}"
 QEMU_PID_FILE="${QEMU_PID_FILE:-${WORKDIR}/qemu.pid}"
 QEMU_SERIAL_LOG="${QEMU_SERIAL_LOG:-${WORKDIR}/sextant-serial.log}"
+# qemu's QMP monitor, owner-only; verify-ticket-rotation.sh uses it to change
+# the guest's SPICE password under a live session.
+QEMU_QMP_SOCK="${QEMU_QMP_SOCK:-${WORKDIR}/qmp.sock}"
 KERBSIDE_PID_FILE="${KERBSIDE_PID_FILE:-${WORKDIR}/kerbside.pid}"
 KERBSIDE_LOG="${KERBSIDE_LOG:-${WORKDIR}/kerbside.log}"
 RYLL_SOCK="${RYLL_SOCK:-${WORKDIR}/ryll-ci.sock}"
@@ -97,7 +100,8 @@ fi
     --spice-port "${SPICE_PORT}" \
     --ticket "${TICKET}" \
     --serial-log "${QEMU_SERIAL_LOG}" \
-    --pid-file "${QEMU_PID_FILE}"
+    --pid-file "${QEMU_PID_FILE}" \
+    --qmp-socket "${QEMU_QMP_SOCK}"
 
 # ── Step 5: Start kerbside ────────────────────────────────────────────────────
 

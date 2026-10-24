@@ -434,6 +434,28 @@ request waits for a separate ask. 3a.2's measurement runs in
 CI while 3a.3 and 3a.4 proceed, and 3a.5 waits for its
 result.
 
+3a.2 ran the full rotation lane locally before CI, against qemu
+10.0.13, MariaDB 11 and the Rust proxy: a connected session
+survived `set_password` and `expire_password now`, and a fresh
+session through the proxy presenting the old password was
+refused with `PermissionDenied`. That settles the back brief's
+second gate; 3a.5 may rely on it. The step added two checks
+beyond its brief and both were kept: a refusal check after
+`set_password` as well as after `expire_password` (once the
+password is expired qemu refuses everything, so only the first
+proves the old password is refused for being wrong), and a
+positive control connecting with the new password.
+
+It also found that spice-server drops its connected client when
+a new client links. Decision 8's reasoning is therefore wrong
+for two sessions on one VM: the second session's main channel
+disconnects the first session outright, whatever the password,
+today and after this phase. Supersession still matters within
+one session, where a re-mint for a late channel leaves the
+session's established channels up, which is what 3a.5 relies
+on. 3a.8 documents the two-session case as a disconnect, not as
+a revoked password.
+
 ## Outcome
 
 Not started.
