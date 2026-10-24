@@ -31,10 +31,11 @@ In scope:
 
 Out of scope:
 
-- **Fixing the role.** It cannot deploy a working oVirt source
-  (survey finding 4), and the fix is an engineering change to
-  `ansible/`. Phase 2 files it, and phase 5 documents whatever
-  state it is in by then.
+- **Fixing the role.** It installs no client library beyond
+  `shakenfist-client`, so it cannot deploy a working oVirt or
+  OpenStack source or a working Keystone login (survey finding 4),
+  and the fix is an engineering change to `ansible/`. Phase 2 files
+  it, and phase 5 documents whatever state it is in by then.
 - **The role's API listener default.** The role binds gunicorn to
   `0.0.0.0` in plain HTTP. This page's example binds to loopback
   instead (decision 3), so the two differ on purpose. Whether the
@@ -107,8 +108,25 @@ commit as this file:
 The survey also found two problems the master plan does not
 mention:
 
-4. **Nothing installs the oVirt SDK, and the docs never say it is
-   needed.** `ovirt-engine-sdk-python` is deliberately not a
+4. **Nothing installs the client libraries, and the docs never
+   say they are needed.** `pyproject.toml:103-107` lists four
+   optional libraries in a comment, none of them a dependency:
+   `shakenfist-client`, `ovirt-engine-sdk-python`, `keystoneauth1`
+   and `openstacksdk`. Each is imported lazily. The Keystone login
+   (`kerbside/api.py:232-244`) imports `keystoneauth1` and
+   `keystoneclient`, from `python-keystoneclient`, which the comment
+   does not list. OpenStack token exchange (`api.py:699-720`) imports
+   `openstack` and the same two. Without them, the login and the
+   OpenStack exchange each return a 500 and log the import failure.
+   Interactive login is Keystone-only (#300), so this hits every
+   deployment that lets users log in, not just OpenStack sources.
+   Of the deployment paths, only Kolla's image installs any of them:
+   it adds `openstacksdk` as a build plugin
+   (kerbside-patches `_patches/patch013-kerbside-container-build.patch`)
+   on a Kolla base image. (A correction made during
+   implementation: the survey first found only the oVirt half
+   below, and said OpenStack sources need nothing extra.)
+   `ovirt-engine-sdk-python` is deliberately not a
    dependency (`pyproject.toml:105,193`). `kerbside/sources/ovirt.py:30`
    imports it lazily, and the source is ignored without it
    (`:79`). The only place that installs it is the oVirt CI lane
@@ -200,7 +218,11 @@ in front of it needs no header plumbing.
    needs `ovirt-engine-sdk-python` together with the OS packages its
    build needs, both installed into Kerbside's venv. It also says
    that without them the source is ignored and the daemon logs why.
-   OpenStack and static sources need nothing extra.
+   An `openstack` source needs `openstacksdk`, `keystoneauth1` and
+   `python-keystoneclient`. Interactive login needs the last two,
+   whatever the sources, because it is Keystone-only. Without them
+   the API answers 500 and logs the import failure. Static sources
+   need nothing extra.
 6. **Upgrades are a short section in the page, linked to
    `installation.md`'s "Upgrading".** By hand, an upgrade means
    installing the new tagged release into the venv, running
@@ -222,9 +244,9 @@ in front of it needs no header plumbing.
 | Step | Effort | Model | Isolation | Brief for sub-agent |
 |------|--------|-------|-----------|---------------------|
 | 2a | medium | sonnet | none | Ship example systemd units and a drift test. Create `etc/systemd/kerbside-api.service` and `etc/systemd/kerbside-daemon.service` by rendering `ansible/roles/kerbside/templates/kerbside-api.service` and `kerbside-daemon.service` with the values in `ansible/roles/kerbside/defaults/main.yml` (`kerbside_user` and `kerbside_group` `kerbside`, `kerbside_state_dir` `/srv/kerbside`, `kerbside_venv` `/srv/kerbside/venv`, port 13002, 2 workers). There is one deliberate difference: the API unit binds `127.0.0.1` rather than the role's `0.0.0.0` (decision 3 of `docs/plans/PLAN-deployment-options-phase-02-manual.md`). Keep every directive and its order. Rewrite the comments for someone copying the file by hand. Keep the role's reasons (why `Restart=always`, why `KillMode=mixed`, why `RuntimeDirectory`, why the 300 second timeout), and replace "written by the role" with a pointer to `docs/deployment/manual.md`. Keep the reason for `WantedBy=multi-user.target`, but say it plainly: a co-located Shaken Fist node isolates its own target. Say in the API unit that the loopback bind expects TLS in front, and name the two options. Then add `kerbside/tests/unit/test_systemd_units.py`. It loads `defaults/main.yml` with `yaml.safe_load`, renders each template with `jinja2.Environment(keep_trailing_newline=True)` from a `FileSystemLoader` on the templates directory, and passes those defaults plus an override dict holding only `kerbside_api_address: '127.0.0.1'`, with a comment citing decision 3. It parses both the rendering and the `etc/systemd/` file into a list of `(section, directive line)` pairs, ignoring comment and blank lines, and asserts the lists are equal, with a message naming the first difference. Also add one test that changes a directive in a rendered copy, and asserts the comparison then fails, so the test is shown to bite. Find the repository root the way other tests do (look at `kerbside/tests/unit/test_check_backend_tls_claims.py`'s `repository_root` use, or `test_docs_links.py`), and add no new helper if one exists. Run `tox -epy3 -- kerbside.tests.unit.test_systemd_units` and `tox -eflake8`. Then edit one directive in `etc/systemd/kerbside-daemon.service` by hand, confirm the test fails, and restore it with `git checkout`. Commit subject: "Ship example systemd units." |
-| 2b | medium | sonnet | none | Two corrections the page depends on. (1) `etc/kerbside.conf.example` lines 4-6 say to install the file "owned by the user Kerbside runs as and mode 0600". Change that to the layout the ansible role uses (`ansible/roles/kerbside/tasks/config.yml`, "Create Kerbside's configuration directory", and `tasks/config_file.yml:25-27`): owned by root, group `kerbside`, mode 0640, in a `/etc/kerbside` that is `root:kerbside 0750`, so the service can read its configuration but not rewrite it. Keep the sentence about the file holding the JWT signing key and a cleartext service password. Do not touch any `# key = value` line: `kerbside/tests/unit/` parses them. (2) In `docs/installation.md` "Installing with pip" (lines ~40-78), add a short paragraph or three-row table after the `kerbside-proxy` paragraphs. It says that two source drivers import a client library which is not a Kerbside dependency, and which has to be installed into the same venv. A `shakenfist` source needs `shakenfist-client`, 0.8.3 or later (see `docs/use-cases/shakenfist.md:371`). An `ovirt` source needs `ovirt-engine-sdk-python`, which builds a C extension and needs `libcurl4-openssl-dev` and `libssl-dev` on Debian (check `tools/ovirt-e2e/deploy-kerbside.sh:105-116` for the list the CI lane uses, and give the RHEL names if they are clear, `libcurl-devel` and `openssl-devel`). `openstack` and `static` sources need nothing extra. Without its library, a source is ignored and the daemon logs why (`kerbside/sources/ovirt.py:79`; find the equivalent message in `kerbside/sources/shakenfist.py` around line 64 and quote neither message, describe them). Add the oVirt packages to the "Before you install: OS packages" section only as a conditional sentence, not to the main command lines. Run `tox -epy3 -- kerbside.tests.unit.test_docs_links` and `pre-commit run --all-files`. Commit subject: "Document the source drivers' client libraries." |
+| 2b | medium | sonnet | none | Two corrections the page depends on. (1) `etc/kerbside.conf.example` lines 4-6 say to install the file "owned by the user Kerbside runs as and mode 0600". Change that to the layout the ansible role uses (`ansible/roles/kerbside/tasks/config.yml`, "Create Kerbside's configuration directory", and `tasks/config_file.yml:25-27`): owned by root, group `kerbside`, mode 0640, in a `/etc/kerbside` that is `root:kerbside 0750`, so the service can read its configuration but not rewrite it. Keep the sentence about the file holding the JWT signing key and a cleartext service password. Do not touch any `# key = value` line: `kerbside/tests/unit/` parses them. (2) In `docs/installation.md` "Installing with pip" (lines ~40-78), add a short paragraph or three-row table after the `kerbside-proxy` paragraphs. It says that two source drivers import a client library which is not a Kerbside dependency, and which has to be installed into the same venv. A `shakenfist` source needs `shakenfist-client`, 0.8.3 or later (see `docs/use-cases/shakenfist.md:371`). An `ovirt` source needs `ovirt-engine-sdk-python`, which builds a C extension and needs `libcurl4-openssl-dev` and `libssl-dev` on Debian (check `tools/ovirt-e2e/deploy-kerbside.sh:105-116` for the list the CI lane uses, and give the RHEL names if they are clear, `libcurl-devel` and `openssl-devel`). An `openstack` source needs `openstacksdk`, `keystoneauth1` and `python-keystoneclient` (`kerbside/api.py:699-720`), and interactive login needs `keystoneauth1` and `python-keystoneclient` whatever the sources (`api.py:232-244`), because login is Keystone-only (#300); without them the API answers 500 and logs the import failure. `static` sources need nothing extra. Read those imports yourself before writing this, and give no version floor for these three: none is tested. Without its library, a source is ignored and the daemon logs why (`kerbside/sources/ovirt.py:79`; find the equivalent message in `kerbside/sources/shakenfist.py` around line 64 and quote neither message, describe them). Add the oVirt packages to the "Before you install: OS packages" section only as a conditional sentence, not to the main command lines. Run `tox -epy3 -- kerbside.tests.unit.test_docs_links` and `pre-commit run --all-files`. Commit subject: "Document the source drivers' client libraries." |
 | 2c | high | opus | none | Write `docs/deployment/manual.md` and create `docs/deployment/order.yml`. Read first: `docs/plans/PLAN-deployment-options-phase-02-manual.md` (decisions and survey), `docs/installation.md` (all of it: this page must not restate "What a running Kerbside needs" or "Upgrading", only link them), `docs/use-cases/standalone.md` (for tone and its Status and limitations table), the role's `ansible/roles/kerbside/tasks/bootstrap.yml`, `config.yml`, `config_file.yml` and `register.yml` (the role is the tested form of this recipe, so every mode, owner and order on the page must match it or say why not), and the units from step 2a. Use exactly four `##` sections, in this order: `## Who this is for`, `## What it deploys`, `## How to use it`, `## Status and limitations` (phase 1 decision 7). The last holds a table headed `Not covered \| Why`. **Who this is for:** an operator who will not run Ansible, or who uses another configuration manager and wants to know what to make it do. It says the role (`ansible/README.md`) is the tested way to get the same result. **What it deploys:** the two units, the `kerbside` system user with no shell and a root-owned home at `/srv/kerbside`, the venv at `/srv/kerbside/venv`, `/etc/kerbside` laid out as in decision 4, `/run/kerbside` via `RuntimeDirectory`, logs to the journal through syslog (`LOG_OUTPUT_PATH`), and no state directory, because Kerbside keeps its state in the database. It also says what it leaves to the operator: the database server, the certificates, TLS for the API leg, and the firewall (link `docs/network-ports.md`). **How to use it:** numbered steps. (1) OS packages, by link to installation.md. (2) The user and group, with `useradd --system --no-create-home --home-dir /srv/kerbside --shell /usr/sbin/nologin`. (3) The venv, then `pip install kerbside==X.Y.Z`, a tagged release, per installation.md, plus the source client libraries, by link to step 2b's text. (4) `/etc/kerbside`, `kerbside.ini` from `etc/kerbside.conf.example` (link it by absolute GitHub URL, as installation.md does), and `sources.yaml`, with the modes. (5) TLS material for the proxy leg, by link, with the key 0640 `root:kerbside`. (6) The database and its user, then `runuser -u kerbside -- /srv/kerbside/venv/bin/kerbside db upgrade`, which is the role's own invocation. (7) Copy the units to `/etc/systemd/system/`, then `systemctl daemon-reload` and `systemctl enable --now kerbside-daemon kerbside-api`. (8) Check it works: `systemctl status`, `journalctl -u`, and a request to the API on the loopback port. Read `ansible/roles/kerbside/tasks/register.yml` "Wait for Kerbside's API to answer" and use the same request. (9) TLS in front of the API: a reverse proxy, or gunicorn's `--certfile`/`--keyfile` added to the unit's `ExecStart` together with a non-loopback bind. Neither is tested in CI. Then an `### Upgrading` subsection per decision 6, and one paragraph per decision 7 that links `../use-cases/placement.md`. **Status and limitations** rows, at least: no CI lane runs these units, though they are held to the role's templates by `kerbside/tests/unit/test_systemd_units.py` and the role is exercised by `sf-e2e`; TLS on the API leg is untested either way; no distribution packages; an upgrade ends live sessions; single host only; and nobody can log in without Keystone (#300). Link `../use-cases/*.md` for *why* someone deploys Kerbside, and do not explain it. **Backend TLS:** say nothing about the proxy-to-hypervisor leg except, if you need to, that it follows `rust/kerbside-proxy/src/backend.rs` and is described in the use-case pages. `tools/check-backend-tls-claims.py` scans this page, so run it. Create `docs/deployment/order.yml` in the format of `docs/use-cases/order.yml` (copy its header comment) with one entry, `- manual.md: By hand`. In `docs/index.md`'s Deployment Options table, make "By hand: pip, venv and systemd" a link to `deployment/manual.md`, and leave the other rows alone. In `docs/development.md` (~line 127), change the "`docs/deployment/`, once it exists, carries" sentence to the present tense. Run `tools/check-backend-tls-claims.py`, `tox -epy3 -- kerbside.tests.unit.test_docs_links`, and `pre-commit run --all-files`. Commit subject: "Document deploying Kerbside by hand." |
-| 2d | low | (management session) | n/a | File one issue against kerbside. It is outward-facing, so confirm the wording with Mikal first. Title: "The ansible role cannot deploy a working oVirt source". Body: the role's argument specs accept `type: ovirt`, but `tasks/bootstrap.yml`'s install task adds `shakenfist-client` for Shaken Fist sources and nothing for oVirt. `ovirt-engine-sdk-python` is deliberately not a Kerbside dependency (`pyproject.toml:105`), so an oVirt source deployed by the role is ignored at `kerbside/sources/ovirt.py:79`. The SDK also needs `libcurl4-openssl-dev` and `libssl-dev` to build, which the role's apt task does not install. Nothing in CI deploys an oVirt source through the role: the oVirt lane uses `tools/ovirt-e2e/deploy-kerbside.sh`. Link `PLAN-deployment-options.md`. Then, in `docs/index.md`'s Deployment Options table, change the Ansible row's "Any" to "Any but oVirt, until #NNN". Put the issue number in the master plan's phase 5 paragraph too, so phase 5 picks it up. Commit subject: "Record that the role cannot deploy oVirt." |
+| 2d | low | (management session) | n/a | File one issue against kerbside. It is outward-facing, so confirm the wording with Mikal first. Title: "The ansible role installs no client library but shakenfist-client". Body: the role's argument specs accept `ovirt` and `openstack` sources, but `tasks/bootstrap.yml`'s install task adds only `shakenfist-client`, and only when a source is of type `shakenfist`. The other client libraries are deliberately not Kerbside dependencies (`pyproject.toml:103-107`) and are imported lazily: an oVirt source deployed by the role is ignored for want of `ovirt-engine-sdk-python` (`kerbside/sources/ovirt.py:79`), whose build also needs `libcurl4-openssl-dev` and `libssl-dev`; OpenStack token exchange returns 500 for want of `openstacksdk`, `keystoneauth1` and `python-keystoneclient` (`kerbside/api.py:699-720`); and Keystone login, the only interactive login (#300), returns 500 for want of the last two (`api.py:232-244`). `keystoneclient` is imported but missing from `pyproject.toml`'s list of optional libraries. Nothing in CI deploys an oVirt or OpenStack source through the role: the oVirt lane uses `tools/ovirt-e2e/deploy-kerbside.sh`, and the OpenStack lane uses Kolla's image. Link `PLAN-deployment-options.md`. Then, in `docs/index.md`'s Deployment Options table, change the Ansible row's "Any" to "Shaken Fist and static, until #NNN". Put the issue number in the master plan's phase 5 paragraph too, so phase 5 picks it up. Commit subject: "Record the role's missing client libraries." |
 
 ## Risks and mitigations
 
@@ -234,7 +256,7 @@ in front of it needs no header plumbing.
 | The loopback bind in the example is read as Kerbside's recommendation, while the role binds `0.0.0.0`, and the two documents disagree with no reason given. | The override dict in the drift test carries the reason, and the page says outright that the role differs. Phase 5 asks whether the role's default is right for a dedicated Kerbside host, and records the answer there. |
 | The page restates `installation.md` after all, which is the failure phase 1 decision 7 exists to prevent. | The management session diffs the page's claims against "What a running Kerbside needs" before committing 2c. The definition of done names the claims that must appear only by link. |
 | The client-library paragraph in 2b gives a version floor or package name that is wrong on the day. | The floor comes from `use-cases/shakenfist.md:371`, which the use-case plan's review checked. The oVirt package names come from the lane that installs them. Neither is guessed. |
-| The role's oVirt gap goes unfixed, and the index's "Any but oVirt" hardens into a permanent caveat. | The issue is filed, and phase 5 cannot complete its page without stating the role's current state. |
+| The role's client-library gap goes unfixed, and the index's narrowed sources cell hardens into a permanent caveat. | The issue is filed, and phase 5 cannot complete its page without stating the role's current state. |
 
 ## Definition of done
 
@@ -249,8 +271,11 @@ in front of it needs no header plumbing.
       key.
 - [ ] `head -12 etc/kerbside.conf.example` no longer says 0600 or
       "owned by the user Kerbside runs as".
-- [ ] `grep -n 'ovirt-engine-sdk-python' docs/installation.md` and
-      `grep -n 'shakenfist-client' docs/installation.md` both match.
+- [ ] `docs/installation.md` names all five client libraries:
+      `for p in shakenfist-client ovirt-engine-sdk-python openstacksdk
+      keystoneauth1 python-keystoneclient; do grep -q "$p"
+      docs/installation.md || echo "missing $p"; done` prints
+      nothing.
 - [ ] `docs/deployment/manual.md` exists with exactly the four `##`
       headings of phase 1 decision 7, in order:
       `grep '^## ' docs/deployment/manual.md`.
@@ -266,14 +291,30 @@ in front of it needs no header plumbing.
       else.
 - [ ] The By hand row of the `docs/index.md` Deployment Options
       table links `deployment/manual.md`, and the Ansible row's
-      sources cell names the oVirt issue.
-- [ ] The oVirt issue from step 2d exists, and its number is in the
-      master plan's phase 5 paragraph.
+      sources cell names the client-library issue.
+- [ ] The client-library issue from step 2d exists, and its number
+      is in the master plan's phase 5 paragraph.
 - [ ] `tools/check-backend-tls-claims.py` exits 0, and
       `tools/mutate-backend-tls-claims.py` still reports every
       mutation caught.
 - [ ] `tox -epy3`, `tox -eflake8` and `pre-commit run --all-files`
       pass.
+
+## Execution notes
+
+- 2026-10-25 (AEDT): before any step ran, the management session
+  found survey finding 4 too narrow. The Keystone login and the
+  OpenStack token exchange also import client libraries that are
+  not dependencies. Finding 4, decision 5, steps 2b and 2d, the
+  risks and the definition of done were corrected to cover all
+  five libraries, and the index row with them.
+- Back brief answered on 2026-10-25. Mikal approved step 2d's issue
+  wording as shown (filed after 2c), and gave this session
+  permission to push and open the pull request once the definition
+  of done is checked.
+- Steps 2a, 2b and 2c run in sequence, one sub-agent each. They
+  share the worktree and its tox environment, and 2c's page links
+  2a's units and 2b's installation text.
 
 ## Back brief
 
