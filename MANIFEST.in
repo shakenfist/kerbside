@@ -1,0 +1,3 @@
+# setuptools_scm offers every tracked file to the sdist. docs/plans is
+# working history, not source, and was about 40% of the sdist's size.
+prune docs/plans
