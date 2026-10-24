@@ -296,8 +296,12 @@ covers the bring-your-own-Kerbside path, which is how a Shaken
 Fist cluster joins a front-door Kerbside. The role move was
 accepted, so this phase documents a Kerbside-owned role that
 accepts several sources. The move has landed (see Dependencies
-on other plans), so this phase is unblocked. Planned at medium
-effort.
+on other plans), so this phase is unblocked. Phase 2 found that
+the role installs no client library but `shakenfist-client`, so it
+cannot yet deploy a working oVirt or OpenStack source or a Keystone
+login (#602), and the index's sources cell for the role says so;
+this page states the role's state on the day and updates that
+cell. Planned at medium effort.
 
 **Phase 6: installation hand-off and closeout.**
 `installation.md`'s "Deploying for real" becomes a pointer to

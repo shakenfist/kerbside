@@ -315,6 +315,13 @@ in front of it needs no header plumbing.
 - Steps 2a, 2b and 2c run in sequence, one sub-agent each. They
   share the worktree and its tox environment, and 2c's page links
   2a's units and 2b's installation text.
+- The step 2b agent kept waking on background work of its own after
+  reporting, so the management session stopped it before 2c started
+  in the same worktree.
+- Step 2c found that `installation.md`'s Debian package list lacked
+  `python3-venv`, which the role installs. The fix went into
+  `installation.md` rather than the page, which links it.
+- Step 2d filed #602 on 2026-10-25 with the approved wording.
 
 ## Back brief
 
