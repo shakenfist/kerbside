@@ -61,8 +61,8 @@ on:
       - '.github/workflows/demo-compose.yml'
   workflow_dispatch:
 
-# docs/installation.md is in the filter on purpose: phase 5 makes that
-# page the narrative version of this demo, and the page and the thing it
+# docs/installation.md is in the filter on purpose: that page is the
+# narrative version of this demo, and the page and the thing it
 # documents should not be able to drift without the lane running.
 # kerbside/migrations/** and pyproject.toml are there because the
 # packaging is the part most likely to break silently -- and pyproject
@@ -79,8 +79,9 @@ jobs:
     # release build of ryll, on one runner. Never an unsized vm label --
     # rust.yml:36-38 records that one defaults to xs (1 core / 2 GB) in
     # private-ci. Sized below rust.yml's xl because the *proxy* is not
-    # built here (decision 3); ryll still is, so this is not a
-    # cargo-free lane.
+    # built here -- the daemon is paired with the newest dev proxy wheel
+    # instead, as tools/demo/lane-up.sh explains; ryll still is, so this
+    # is not a cargo-free lane.
     #
     # Measured on the first green run, at l: 4.5 minutes end to end --
     # ryll 1.7, stack up 1.6, docker install 0.2, assertions 0.3. So `l`

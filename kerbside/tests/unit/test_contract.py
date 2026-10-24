@@ -10,9 +10,10 @@ from kerbside.rpc import kerbside_pb2
 class ContractHashTestCase(testtools.TestCase):
     """Pin CONTRACT_HASH to the actual bytes of kerbside.proto.
 
-    This is the safety net for decision 3: if the proto changes without
-    re-running `tox -egenprotos`, this test fails tox -epy3 rather than
-    letting a stale CONTRACT_HASH silently ship.
+    CONTRACT_HASH is written by tools/gen-protos.sh rather than by hand,
+    so this is its safety net: if the proto changes without re-running
+    `tox -egenprotos`, this test fails tox -epy3 rather than letting a
+    stale CONTRACT_HASH silently ship.
     """
 
     def test_hash_matches_proto_bytes(self):

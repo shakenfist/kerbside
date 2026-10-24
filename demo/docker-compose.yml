@@ -54,7 +54,8 @@ services:
         # pairing, and glue that depends on an unreleased CLI or config
         # surface breaks the documented demo silently. That is exactly
         # the `kerbside db upgrade` / "No such command 'db'" failure
-        # that forced phase 3's reversal. A nightly run with
+        # that once forced this default to /src until a release
+        # carried the command. A nightly run with
         # KERBSIDE_SOURCE unset is the tracked fix; see
         # docs/plans/PLAN-demo-install-phase-04-ci-lane.md's Future work.
         KERBSIDE_SOURCE: ${KERBSIDE_SOURCE:-kerbside}
@@ -90,8 +91,9 @@ services:
       # `compose restart`, removed by `compose down -v`.
       - state:/var/lib/kerbside-demo
       - ./sources.yaml:/etc/kerbside/sources.yaml:ro
-      # The INI form phase 2 documented, at the one path kerbside
-      # reads. Environment variables above override anything set here.
+      # The INI form etc/kerbside.conf.example documents, at the one
+      # path kerbside reads. Environment variables above override
+      # anything set here.
       - ./kerbside.ini:/etc/kerbside/kerbside.ini:ro
     # The daemon is exec'd as PID 1, so its death exits the container.
     # gunicorn is not: it is backgrounded by the entrypoint, and if it

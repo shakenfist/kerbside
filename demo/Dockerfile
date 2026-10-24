@@ -78,8 +78,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #
 # The two only disagree while a proto change is unreleased and no dev
 # wheel has been published for it yet. That fails loudly rather than
-# subtly -- phase 3 of PLAN-proxy-dev-releases added a proto-hash
-# handshake, and proxy_supervisor.check_contract() refuses to launch a
+# subtly -- the daemon and the proxy share a proto-hash handshake,
+# and proxy_supervisor.check_contract() refuses to launch a
 # binary whose hash differs or which cannot answer --contract-hash at
 # all. Confirm the pairing directly when in doubt:
 #
