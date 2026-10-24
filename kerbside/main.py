@@ -18,9 +18,7 @@ from . import db as kerbside_db
 from . import proxy_supervisor
 from .rpc import server as rpc_server
 from .rpc import servicer as rpc_servicer
-from .sources import ovirt as ovirt_source
-from .sources import shakenfist as shakenfist_source
-from .sources import static as static_source
+from .sources import driver_class as source_driver_class
 from . import util
 
 
@@ -252,20 +250,18 @@ def _parse_sources():
 
         # Now lookup consoles.
         try:
-            if source['type'] == 'shakenfist':
-                lookup = shakenfist_source.ShakenFistSource(**source)
-            elif source['type'] == 'ovirt':
-                lookup = ovirt_source.oVirtSource(**source)
-            elif source['type'] == 'static':
-                lookup = static_source.StaticSource(**source)
-            elif source['type'] == 'openstack':
+            if source['type'] == 'openstack':
                 # OpenStack now uses auth tokens instead of console scraping
                 skipped_sources.add(source['source'])
                 continue
-            else:
+
+            try:
+                driver = source_driver_class(source['type'])
+            except KeyError:
                 LOG.error('Unknown source type %s' % source['type'])
                 kerbside_db.set_source_error_state(source['source'], True)
                 continue
+            lookup = driver(**source)
 
             if lookup.errored:
                 LOG.error('Source initialization failed for source %s' % source['source'])
