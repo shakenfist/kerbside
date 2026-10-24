@@ -15,7 +15,7 @@
 # pyproject.toml carries a dev-inclusive floor (kerbside-proxy>=X.dev0),
 # so a checkout install resolves the newest dev wheel published from
 # develop by dev-proxy-wheel.yml and the daemon is paired with a binary
-# that tracks develop. See demo/Dockerfile and the phase 4 plan.
+# that tracks develop. See demo/Dockerfile.
 
 set -euo pipefail
 

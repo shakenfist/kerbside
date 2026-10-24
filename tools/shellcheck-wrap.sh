@@ -1,11 +1,10 @@
 #!/bin/bash
 # Run shellcheck over every shell script in tools/ and demo/.
 #
-# This exists so shellcheck runs in CI. The pre-commit hook has covered
-# tools/ and demo/ since phase 3 of PLAN-demo-install, but pre-commit is
-# not invoked by any workflow or tox environment -- so until now the
-# shell was checked only on machines where a developer had installed
-# the hooks.
+# This exists so shellcheck runs in CI. The pre-commit hook covers
+# tools/ and demo/, but pre-commit is not invoked by any workflow or tox
+# environment -- so without this the shell would be checked only on
+# machines where a developer had installed the hooks.
 #
 # The scope deliberately matches .pre-commit-config.yaml's shellcheck
 # hook exactly: files under tools/ or demo/, shell only, with -x so
@@ -86,9 +85,9 @@ mapfile -t FILES < <(
 )
 
 if [ "${#FILES[@]}" -eq 0 ]; then
-    # Never pass by finding nothing. Phase 3 hit exactly this: an
-    # all-files pre-commit run went green while demo/ was still
-    # untracked, so the check appeared to hold while testing nothing.
+    # Never pass by finding nothing. This has happened: an all-files
+    # pre-commit run went green while demo/ was still untracked, so the
+    # check appeared to hold while testing nothing.
     echo "ERROR: no shell scripts found under tools/ or demo/; the file" >&2
     echo "  selection above is broken, or this is not a git checkout." >&2
     exit 1

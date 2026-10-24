@@ -1,10 +1,9 @@
 # ── Stage 1: Build ryll from upstream main ───────────────────────────────────
-# No rust-toolchain.toml in the ryll repo; use a pinned rust image per the
-# phase-4 plan.  The plan named a bookworm tag; bookworm is now end of
-# life, so this tracks trixie like the stage 2 runtime below.  Clone from
-# main HEAD — no pinned ref, by design.
-# See docs/plans/PLAN-test-harness-phase-04-port-latency.md (decisions
-# section: "The ryll source is not pinned in this phase").
+# No rust-toolchain.toml in the ryll repo, so the rust image tag is what
+# pins the toolchain.  It tracks trixie like the stage 2 runtime below.
+# Clone from main HEAD — no pinned ref, by design: ryll cuts no release
+# tags to pin to, and pinning a commit is worth its upkeep only once an
+# unpinned build has failed to reproduce.
 FROM rust:1.97-trixie AS builder
 
 # System build dependencies required by the ryll workspace:
@@ -52,15 +51,13 @@ FROM debian:trixie AS runtime
 # makeconsole.sh provisioning logic, and the system shared
 # libraries that the ryll binary links against at runtime.
 #
-# Phase 6 step 6d (kerbside test-harness plan):
-# `cargo build --no-default-features -p ryll` no longer links
-# eframe/egui-winit/cpal/opus-decoder thanks to the new `gui` and
-# `audio` Cargo features (both default-on; both opted out by the
-# stage-1 build above).  The runtime image therefore drops the six
-# GUI/audio shared libraries that the previous Dockerfile installed:
-# libasound2, libgl1, libx11-6, libxcb1, libxkbcommon0,
-# libwayland-client0.  libssl3 stays (still needed by tokio-rustls
-# / reqwest).
+# `cargo build --no-default-features -p ryll` does not link
+# eframe/egui-winit/cpal/opus-decoder: those sit behind ryll's `gui`
+# and `audio` Cargo features (both default-on; both opted out by the
+# stage-1 build above).  So the runtime image needs none of the
+# GUI/audio shared libraries -- libasound2, libgl1, libx11-6, libxcb1,
+# libxkbcommon0, libwayland-client0.  libssl3 stays (still needed by
+# tokio-rustls / reqwest).
 RUN apt-get update && \
     apt-get dist-upgrade -y && \
     apt-get install -y --no-install-recommends \
