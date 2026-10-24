@@ -77,10 +77,6 @@
       "sha": "028f6e239f525fa47bc96c5c283d9774661536db",
       "date": "2026-09-26"
     },
-    "demo/README.md": {
-      "sha": "518e58d886d3cd8257acaed5a59bdc3c4de596c0",
-      "date": "2026-09-27"
-    },
     "demo/demo-env.sh": {
       "sha": "a5cbc188afcbf3811142a84e55aaa423c6e0e60a",
       "date": "2026-08-18"
@@ -88,10 +84,6 @@
     "demo/docker-compose.yml": {
       "sha": "375ed68f4aa5146b183f0f1235d8c3a18e54bb58",
       "date": "2026-09-27"
-    },
-    "demo/entrypoint.sh": {
-      "sha": "8401f99b8352e66059b6fc85cea84b1b44b34d1f",
-      "date": "2026-08-18"
     },
     "demo/get-console.sh": {
       "sha": "a5af2d69d9dae1bec75c5179b7b695c750af2009",

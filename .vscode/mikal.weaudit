@@ -216,10 +216,6 @@
       "author": "mikal"
     },
     {
-      "path": "demo/entrypoint.sh",
-      "author": "mikal"
-    },
-    {
       "path": "demo/get-console.sh",
       "author": "mikal"
     },
@@ -437,10 +433,6 @@
     },
     {
       "path": "demo/docker-compose.yml",
-      "author": "mikal"
-    },
-    {
-      "path": "demo/README.md",
       "author": "mikal"
     },
     {
