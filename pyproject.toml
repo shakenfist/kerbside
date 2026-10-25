@@ -88,8 +88,8 @@ dependencies = [
     "typing-extensions==4.16.0",        # (indirect dependency)
 
     # These also move as a set
-    "alembic==1.20.0",                  # mit
-    "sqlalchemy==2.1.5",               # mit
+    "alembic==1.20.1",                  # mit
+    "sqlalchemy==2.1.6",               # mit
     # not-imported: mysqlclient -- SQLAlchemy driver for the bare
     # "mysql://" form of SQL_URL, which is the configured default.
     "mysqlclient==2.3.0",               # gpl
