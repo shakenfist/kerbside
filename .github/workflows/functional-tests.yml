@@ -435,6 +435,7 @@ jobs:
           zip -r cover.zip cover
 
       - uses: actions/upload-artifact@v7
+        continue-on-error: true  # a failed upload must not fail a lane that passed (#403)
         with:
           name: coverage
           retention-days: 90
@@ -903,6 +904,7 @@ jobs:
               /srv/github/artifacts
 
       - uses: actions/upload-artifact@v7
+        continue-on-error: true  # a failed upload must not fail a lane that passed (#403)
         if: always()
         with:
           name: bundle-${{ matrix.test.name }}
@@ -926,6 +928,7 @@ jobs:
       # gen-sources.py writes it 0600); do not add them here. The daemon
       # log already reports which source it loaded and why it errored.
       - uses: actions/upload-artifact@v7
+        continue-on-error: true  # a failed upload must not fail a lane that passed (#403)
         if: always()
         with:
           name: kerbside-ovirt-${{ github.run_id }}
@@ -1172,6 +1175,7 @@ jobs:
               /tmp/kolla-logs
 
       - uses: actions/upload-artifact@v7
+        continue-on-error: true  # a failed upload must not fail a lane that passed (#403)
         if: always()
         with:
           name: bundle-${{ matrix.test.name }}

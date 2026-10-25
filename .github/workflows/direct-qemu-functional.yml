@@ -218,6 +218,7 @@ jobs:
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v7
+        continue-on-error: true  # a failed upload must not fail a lane that passed (#403)
         with:
           name: direct-qemu-artifacts-${{ github.run_id }}
           retention-days: 90
@@ -254,6 +255,7 @@ jobs:
       - name: Upload host-subject-checks artifacts
         if: always()
         uses: actions/upload-artifact@v7
+        continue-on-error: true  # a failed upload must not fail a lane that passed (#403)
         with:
           name: direct-qemu-host-subject-artifacts-${{ github.run_id }}
           retention-days: 90
