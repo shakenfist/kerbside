@@ -174,6 +174,12 @@ ruleset. Because a skipped required check satisfies the rule, one
 list serves both refs: on a pull request `Can merge` skips, and in
 the merge queue the three `Can enqueue` checks skip.
 
+The two smoke workflows cancel a whole run when a newer push
+supersedes it, and their gates run under `!cancelled()` rather than
+`always()`, so a superseded run's gate reports cancelled instead of
+red. A gate skipped that way reports cancelled, not skipped, so it
+still blocks a head whose run someone cancelled by hand.
+
 The binding between a required check and the job that satisfies it
 is the job's display name, matched as a string. **Renaming a gate
 job without updating the ruleset blocks every merge in the
