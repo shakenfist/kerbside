@@ -66,11 +66,22 @@ cd "${crate_dir}"
 
 # If the tree is unstamped (pyproject.toml still declares a dynamic version,
 # which maturin resolves from Cargo.toml's 0.1.0 placeholder), stamp the
-# setuptools_scm dev version first. kerbside's committed dependency floor
+# setuptools_scm version first. kerbside's committed dependency floor
 # (kerbside-proxy>=X.Y.Z.dev0) rejects a 0.1.0 wheel, so an unstamped local
 # wheel cannot be co-installed with kerbside. The stamp is reverted on exit
 # so the working tree is left as found. Requires setuptools_scm and full git
 # history (a shallow clone cannot count commits since the last v* tag).
+#
+# setuptools_scm usually gives a dev version, but on a clean checkout of a
+# v* tag it gives the release version itself, which
+# tools/stamp-dev-proxy-version.sh refuses -- it guards the dev publishing
+# path, which must never publish a release version. Every lane that runs on
+# develop met that the night after each release, when develop still sat on
+# the tag (#578). A release version builds fine and satisfies the floor, so
+# it is stamped here directly, into the crate pyproject the trap restores.
+# tools/stamp-proxy-version.sh is not used, because it also rewrites
+# Cargo.toml and kerbside's own pin, which a local build must not leave
+# behind.
 #
 # This block CANNOT fire on a release build: tools/stamp-proxy-version.sh
 # replaces the `dynamic = ["version"]` declaration with a static release
@@ -89,7 +100,14 @@ if grep -q '^dynamic = \["version"\]$' pyproject.toml; then
         rm -f "${saved_pyproject}"
     }
     trap restore_pyproject EXIT
-    "${repo_root}/tools/stamp-dev-proxy-version.sh"
+    version="$( { cd "${repo_root}" && python3 -m setuptools_scm; } 2>/dev/null || true)"
+    version="${version%%+*}"
+    if [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "HEAD is the release ${version}: stamping it as a static version..."
+        sed -i "s/^dynamic = \[\"version\"\]\$/version = \"${version}\"/" pyproject.toml
+    else
+        "${repo_root}/tools/stamp-dev-proxy-version.sh" ${version:+"${version}"}
+    fi
 fi
 
 if [ "${native}" = 1 ]; then
