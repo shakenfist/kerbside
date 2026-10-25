@@ -412,10 +412,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/mermaid-lint.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/pin-indirect-dependencies.yml",
       "author": "mikal"
     },
