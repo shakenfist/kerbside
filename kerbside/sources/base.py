@@ -1,4 +1,8 @@
 # A base class for VDI console source drivers
+#
+# kerbside.db imports MintedTicket from here, and the drivers import db, so
+# this module, like the package's __init__, must not import db or a driver
+# at module level.
 
 from abc import ABC
 from collections import namedtuple

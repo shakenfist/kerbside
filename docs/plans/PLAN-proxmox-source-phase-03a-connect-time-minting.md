@@ -367,8 +367,8 @@ One commit per step. Every commit passes `tox -eflake8`,
 - [ ] `verify-ticket-rotation.sh` runs in the direct-qemu
       lane and passes: the session survives `set_password`
       and `expire_password`, and the old password is refused.
-- [x] An `ovirt_matrix` run on this phase's pull request is
-      green with 3a.7's assertions, and is linked in
+- [x] A `workflow_dispatch` run of the oVirt lane on the phase
+      branch is green with 3a.7's assertions, and is linked in
       *Outcome*.
 - [x] No page under `docs/`, nor `ARCHITECTURE.md`, nor
       `tools/ovirt-e2e/`, states oVirt's ticket lifetime as

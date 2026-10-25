@@ -125,7 +125,12 @@ failure answers 502.
 when a second client links, the hypervisor drops the first. A second
 kerbside session on the same VM therefore disconnects the first,
 whatever the tickets. This is how SPICE behaves, not something
-kerbside adds, and the ticket handling above does not change it.
+kerbside adds, and the ticket handling above does not change it. Each
+mint also sets the VM's one SPICE password, so a second session's
+mint, or a direct console download, leaves the first session's stored
+ticket stale: a channel of the first session connecting afterwards is
+refused at the hypervisor, even while that ticket is within its reuse
+window.
 
 **The client leg (4).** The `.vv` points at `PUBLIC_FQDN` and
 kerbside's own ports, carries kerbside's CA, and uses a

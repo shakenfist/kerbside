@@ -1,6 +1,7 @@
 import time
 
 import grpc
+from sqlalchemy import exc as sqlalchemy_exc
 
 from shakenfist_utilities import logs
 
@@ -96,6 +97,22 @@ def build_firewall_policy():
 
     return kerbside_pb2.FirewallPolicy(
         mode=proto_mode, permitted_channels=permitted)
+
+
+def _error_summary(e):
+    """Name an exception without quoting its text.
+
+    For a database error the driver's numeric error code is added, such as
+    1205 for MariaDB's lock wait timeout, so that an operator can tell the
+    expected database failures apart without the message, which can quote
+    the statement.
+    """
+    summary = type(e).__name__
+    if isinstance(e, sqlalchemy_exc.DBAPIError):
+        args = getattr(e.orig, 'args', ())
+        if args and isinstance(args[0], int):
+            summary += ' (database error %d)' % args[0]
+    return summary
 
 
 def _mint_backend_ticket(driver, source_name, uuid, lifetime):
@@ -259,7 +276,7 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
             # The class name only: a source driver's API client, or
             # requests, can quote the request it failed on, and that
             # request can carry a credential.
-            LOG.error('AuthorizeConnection failed: %s' % type(e).__name__)
+            LOG.error('AuthorizeConnection failed: %s' % _error_summary(e))
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details('AuthorizeConnection failed (see server logs)')
             return kerbside_pb2.AuthorizeConnectionReply()

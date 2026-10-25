@@ -273,7 +273,10 @@ from the source, and the rest reuse it. The sequence is:
    the hypervisor's password after a newer mint had set and stored its
    own, and every later channel would be refused. A worker still running
    after five minutes (`MINT_STUCK_AFTER`) stops holding mints up. Daemons
-   on different nodes do not see each other's workers.
+   on different nodes do not see each other's workers, nor does the direct
+   `.vv` handler, which mints in the web workers; and any mint for a VM,
+   whichever session it is for, replaces the password other sessions'
+   stored tickets were for.
 4. A failed or timed-out mint stores nothing, denies the channel with
    `console ticket unavailable`, and is audited with the exception's class
    name (never its text, which an API client can fill with the request it
@@ -301,8 +304,12 @@ each in turn, and the later ones can wait past MariaDB's lock wait timeout
 internal error rather than `console ticket unavailable`, and the client sees
 the connection refused either way. Sessions on other VMs are not held up by
 the lock, but all sessions share the worker pool, so a hung engine can
-exhaust it for every source until the waits end. The deadline caps each
-wait; it does not make a hung engine cheap.
+exhaust it for every source until the waits end. Each waiting channel also
+holds a database connection, from the daemon's SQLAlchemy pool (5 plus 10
+overflow by default), which the maintenance loop and the other gRPC calls
+share; raising `API_GRPC_WORKERS` much above that makes a hung engine
+exhaust the pool too. The deadline caps each wait; it does not make a hung
+engine cheap.
 
 ### Audit Logging
 

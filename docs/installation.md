@@ -452,7 +452,9 @@ stored on consoles, since nothing reads them any more.
 
 The proxy's authorization call is what mints, so a daemon from before
 this change cannot authorize an oVirt channel against a database
-upgraded to it: it would present the cleared, empty ticket. Upgrade
-every node's daemon together, not one at a time. Kerbside also now
+upgraded to it: it would present the cleared, empty ticket, and the
+proxy would log `hypervisor connection failed` with `PermissionDenied`
+for each oVirt channel. Upgrade every node's daemon together, not one
+at a time. Kerbside also now
 needs the oVirt engine to be reachable when a session connects, not
 only for discovery; see [Console Sources](console-sources.md#ovirt).

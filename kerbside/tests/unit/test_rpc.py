@@ -6,6 +6,7 @@ import time
 
 import grpc
 from sqlalchemy import create_engine
+from sqlalchemy import exc as sqlalchemy_exc
 from sqlalchemy.orm import Session
 import testtools
 
@@ -197,6 +198,29 @@ class KerbsideProxyRpcTestCase(testtools.TestCase):
         logged = repr(mock_log.mock_calls)
         self.assertNotIn('sekrit-backend-ticket', logged)
         self.assertIn('RuntimeError', logged)
+
+    @mock.patch('kerbside.db.get_token_by_token')
+    def test_authorize_database_error_logs_its_code(self, mock_get_token):
+        # A lock wait timeout is an expected failure, so its driver error
+        # code is logged; its message, which can quote the statement, is
+        # not.
+        mock_get_token.side_effect = sqlalchemy_exc.OperationalError(
+            'SELECT ... sekrit-backend-ticket', {},
+            Exception(1205, 'Lock wait timeout; sekrit-backend-ticket'))
+
+        with mock.patch.object(servicer_module, 'LOG') as mock_log:
+            try:
+                self.stub.AuthorizeConnection(
+                    kerbside_pb2.AuthorizeConnectionRequest(
+                        token='T', connection_ref='cr', channel_type='main'),
+                    timeout=5)
+                self.fail('expected grpc.RpcError')
+            except grpc.RpcError as e:
+                self.assertEqual(grpc.StatusCode.INTERNAL, e.code())
+
+        logged = repr(mock_log.mock_calls)
+        self.assertNotIn('sekrit-backend-ticket', logged)
+        self.assertIn('OperationalError (database error 1205)', logged)
 
     @mock.patch('kerbside.db.record_channel_info_by_ref')
     def test_register_channel(self, mock_record):
