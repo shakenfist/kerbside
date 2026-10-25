@@ -48,10 +48,6 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/sources/base.py",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/rpc/__init__.py",
       "author": "mikal"
     },
@@ -125,10 +121,6 @@
     },
     {
       "path": "tools/direct-qemu/lane-down.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/direct-qemu/lane-up.sh",
       "author": "mikal"
     },
     {
@@ -264,10 +256,6 @@
       "author": "mikal"
     },
     {
-      "path": "tools/ovirt-e2e/drive-console.py",
-      "author": "mikal"
-    },
-    {
       "path": "tools/ovirt-e2e/gen-sources.py",
       "author": "mikal"
     },
@@ -293,18 +281,6 @@
     },
     {
       "path": ".claude/skills/add-database-migration",
-      "author": "mikal"
-    },
-    {
-      "path": ".claude/skills/add-source-type/SKILL.md",
-      "author": "mikal"
-    },
-    {
-      "path": ".claude/skills/add-source-type",
-      "author": "mikal"
-    },
-    {
-      "path": ".claude/skills",
       "author": "mikal"
     },
     {
@@ -345,10 +321,6 @@
     },
     {
       "path": "tools/preview-templates.py",
-      "author": "mikal"
-    },
-    {
-      "path": ".claude",
       "author": "mikal"
     },
     {
