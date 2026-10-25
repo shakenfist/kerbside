@@ -17,14 +17,6 @@
       "sha": "41389dc343926f1f949a2524afa4b81a54dd9c06",
       "date": "2026-09-27"
     },
-    ".github/workflows/dev-proxy-wheel.yml": {
-      "sha": "e8f8f57003823289d6079826d29f718a9d76df2c",
-      "date": "2026-09-27"
-    },
-    ".github/workflows/direct-qemu-functional.yml": {
-      "sha": "27e67fd39ee151726e5da3312ac5421fd502041b",
-      "date": "2026-09-27"
-    },
     ".github/workflows/export-repo-config.yml": {
       "sha": "b9b3936053b8685ef0ae47f656b2f35aa62ba637",
       "date": "2026-10-05"
@@ -48,10 +40,6 @@
     ".github/workflows/pypi-storage-check.yml": {
       "sha": "b4ea2a75e61abba4bcfd122d9f0d8222f1b25607",
       "date": "2026-08-24"
-    },
-    ".github/workflows/rust.yml": {
-      "sha": "8b8f7d515c38bd90b7c093a0c4d7bd19cdf226c9",
-      "date": "2026-09-27"
     },
     ".gitignore": {
       "sha": "45c7b4061c76ee62e15d7efceb2cc2f53451b12e",
@@ -289,10 +277,6 @@
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-18"
     },
-    "tools/build-proxy-wheel.sh": {
-      "sha": "8518f3d3f40af01159cd35f86c121ca21c007d97",
-      "date": "2026-09-18"
-    },
     "tools/check-pypi-storage.py": {
       "sha": "0b9338af495617ba437b95feda3d9519126bed7c",
       "date": "2026-09-18"
@@ -361,10 +345,6 @@
       "sha": "d3fc3319691bbe89f253f6ae56dace22c1a91763",
       "date": "2026-08-15"
     },
-    "tools/file-nightly-failure-issue.sh": {
-      "sha": "645f302940ecf097535401095753c8f78bf09d6e",
-      "date": "2026-08-15"
-    },
     "tools/file-pypi-storage-issue.sh": {
       "sha": "9c16ea1489d31e2e26c99c309fe685d60c4e6bf1",
       "date": "2026-09-18"
@@ -380,10 +360,6 @@
     "tools/gitleaks-scan.sh": {
       "sha": "8b2625dca2a9c5f0c171086e87e154bff91a9afd",
       "date": "2026-09-18"
-    },
-    "tools/ovirt-e2e/README.md": {
-      "sha": "20e8fe84c47bc6851f0246d60057e4c5ae8d6027",
-      "date": "2026-08-18"
     },
     "tools/ovirt-e2e/drive-console.py": {
       "sha": "5abf82e72acb8a1e4fd2f8fa5b43365d8da8ff29",
@@ -412,10 +388,6 @@
     "tools/test-ovirt-console.py": {
       "sha": "c3ee796b2c44079bcacd21fa166e104e9a3930b1",
       "date": "2026-08-06"
-    },
-    "tools/verify-wheel-stamping.sh": {
-      "sha": "37c6a675aaded9b471302a04f962f94100175999",
-      "date": "2026-08-18"
     },
     "tox.ini": {
       "sha": "d5df9f97ea180376bad48ade0081dc2aa934e639",

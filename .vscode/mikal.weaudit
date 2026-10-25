@@ -168,10 +168,6 @@
       "author": "mikal"
     },
     {
-      "path": "tools/file-nightly-failure-issue.sh",
-      "author": "mikal"
-    },
-    {
       "path": "kerbside/migrations/versions/5c8101ff14d7_sources_can_be_deleted.py",
       "author": "mikal"
     },
@@ -276,10 +272,6 @@
       "author": "mikal"
     },
     {
-      "path": "tools/ovirt-e2e/README.md",
-      "author": "mikal"
-    },
-    {
       "path": "tools/gen-protos.sh",
       "author": "mikal"
     },
@@ -289,10 +281,6 @@
     },
     {
       "path": "tools/stamp-proxy-version.sh",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/verify-wheel-stamping.sh",
       "author": "mikal"
     },
     {
@@ -337,10 +325,6 @@
     },
     {
       "path": "docs/spice/vd-agent-protocol.md",
-      "author": "mikal"
-    },
-    {
-      "path": "tools/build-proxy-wheel.sh",
       "author": "mikal"
     },
     {
@@ -397,18 +381,6 @@
     },
     {
       "path": ".github/workflows/codeql-analysis.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/dev-proxy-wheel.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/direct-qemu-functional.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/rust.yml",
       "author": "mikal"
     },
     {
