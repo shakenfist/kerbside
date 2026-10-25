@@ -12,21 +12,28 @@ on:
         options:
         - '["ovirt-45-rocky-8"]'
         - '["kolla-ansible-master-debian-13"]'
-        # Deprecated alias for the entry above, kept only because
-        # kerbside-patches' trigger-downstream.yml dispatches this
-        # workflow with the old name on every develop push, and a
-        # choice input rejects a value that is not in this list. The
-        # openstack_matrix if: below accepts either spelling, and
-        # selecting this option runs the Debian 13 lane. Drop this
-        # option once shakenfist/kerbside-patches#1706 lands and that
-        # workflow asks for debian-13.
-        - '["kolla-ansible-master-debian-12"]'
+        # Both cloud lanes, as the nightly runs them: what to dispatch
+        # on a commit before tagging it, because neither lane gates a
+        # merge any more.
+        - '["ovirt-45-rocky-8", "kolla-ansible-master-debian-13"]'
         default: '["kolla-ansible-master-debian-13"]'
         required: true
       retention:
         description: 'How long to retain the environment after the workflow run in minutes'
         required: true
         default: '0'
+  # The nightly tier: both cloud lanes against develop, at 04:30 UTC,
+  # after the sf-e2e (02:30) and direct-qemu (03:30) nightlies. These
+  # lanes used to run in the merge queue, and kerbside-patches also
+  # dispatched the Kolla one on every push to its develop, so that lane
+  # ran some 200 times a month -- most of them for kerbside-patches,
+  # whose own merge queue had just deployed the same code with Kolla.
+  # Their failures are mostly upstream and under-cloud churn rather
+  # than Kerbside regressions, which made them expensive gates; once a
+  # day is enough to see either. A failure files a tracking issue
+  # (nightly_failure_issue below).
+  schedule:
+    - cron: '30 4 * * *'
   merge_group:
   pull_request:
     branches:
@@ -41,17 +48,18 @@ jobs:
   # required check that never reports blocks the merge forever. With a
   # filter job the workflow always reports, the heavy jobs skip on its
   # output, and a skipped required check counts as satisfied. On
-  # workflow_dispatch the filter step is skipped and the output
-  # defaults to code_changed=true so all selected tests run.
+  # workflow_dispatch and schedule the filter step is skipped and the
+  # output defaults to code_changed=true so all selected tests run: a
+  # scheduled run has no diff to filter, and the filter would compare
+  # develop with itself and skip everything.
   #
   # Unlike the sibling smoke workflows, the filter here deliberately also runs
-  # on merge_group: its output is consumed by the merge-tier jobs, so a
-  # review-marks-only or docs-only queue entry skips two hours of cloud
-  # deployment. dorny/paths-filter on a merge-group ref is production
-  # behaviour, confirmed on this repo: in run 31754489835 (2026-08-13, the
-  # queue entry for review-marks-only PR 304) "Check paths" succeeded on the
-  # merge_group event, both cloud matrices skipped, and "Can merge" passed on
-  # the skips.
+  # on merge_group: sanity_checks consumes its output there, so a
+  # review-marks-only or docs-only queue entry skips it. dorny/paths-filter
+  # on a merge-group ref is production behaviour, confirmed on this repo: in
+  # run 31754489835 (2026-08-13, the queue entry for review-marks-only PR
+  # 304) "Check paths" succeeded on the merge_group event, the jobs it gates
+  # skipped, and "Can merge" passed on the skips.
   #
   # Keep the filter list in sync with its other copies: the
   # check_paths jobs in direct-qemu-functional.yml and
@@ -65,10 +73,10 @@ jobs:
       code_changed: ${{ steps.filter.outputs.code || 'true' }}
     steps:
       - uses: actions/checkout@v7
-        if: github.event_name != 'workflow_dispatch'
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
       - uses: dorny/paths-filter@v4
         id: filter
-        if: github.event_name != 'workflow_dispatch'
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         with:
           # On merge_group, compare against the base_sha fixed in the
           # event payload, the develop commit the queue built this
@@ -427,6 +435,7 @@ jobs:
           zip -r cover.zip cover
 
       - uses: actions/upload-artifact@v7
+        continue-on-error: true  # a failed upload must not fail a lane that passed (#403)
         with:
           name: coverage
           retention-days: 90
@@ -434,8 +443,8 @@ jobs:
           path: cover.zip
 
   ovirt_matrix:
-    # Merge tier: runs in the merge queue and on
-    # workflow_dispatch, never on pull_request. On a workflow_dispatch
+    # Nightly tier: runs on the schedule and on workflow_dispatch, never
+    # on pull_request or in the merge queue. On a workflow_dispatch
     # run, skip this job cleanly (neutral) when its target was not
     # selected, rather than running a step that calls core.setFailed --
     # which reported an unselected target as red and then left the
@@ -444,7 +453,7 @@ jobs:
     # matrix context is not available in a job-level if:; it mirrors
     # the single matrix entry below ('ovirt-45-rocky-8').
     if: >-
-      (github.event_name == 'merge_group'
+      (github.event_name == 'schedule'
        || (github.event_name == 'workflow_dispatch'
            && contains(inputs.target, 'ovirt-45-rocky-8')))
       && needs.check_paths.outputs.code_changed != 'false'
@@ -492,17 +501,15 @@ jobs:
       # the deploy and drive steps. The artifact step references it
       # directly, so changing it here changes all of them together.
       OVIRT_LANE_WORKDIR: /tmp/kerbside-ovirt-ci
-    # See sanity_checks above for why merge_group is keyed on the base
-    # branch rather than github.ref. This job is the one that made it
-    # matter: it builds a full nested oVirt cloud, so a superseded run
-    # left alive here is two hours of sfcbr capacity spent on a merge
-    # group that can no longer merge.
+    # A dispatch for the same ref supersedes a run still building its
+    # nested oVirt cloud, rather than both spending sfcbr capacity. The
+    # event is in the key so that a dispatch never cancels the nightly,
+    # or the nightly a dispatch: dispatching both lanes on develop is
+    # the pre-tag check docs/development.md asks for, and a nightly it
+    # cancelled would file no issue, since nightly_failure_issue runs
+    # only on failure.
     concurrency:
-      group: >-
-        ${{ github.workflow }}-${{ matrix.test.name }}-${{
-        github.event_name == 'merge_group' && github.run_attempt == '1'
-        && format('merge_group-{0}', github.event.merge_group.base_ref)
-        || github.ref }}
+      group: ${{ github.workflow }}-${{ matrix.test.name }}-${{ github.event_name }}-${{ github.ref }}
       cancel-in-progress: true
 
     # NOTE(mikal): git repos are checked out to /srv/github/_work/{org}/{repo}
@@ -540,6 +547,25 @@ jobs:
           repository: shakenfist/shakenfist
           path: shakenfist
           fetch-depth: 1
+
+      # The under-cloud fetches the 1.9 GB rocky:8 image afresh for every
+      # run, and a fetch that started only with the instance raced the six
+      # minutes Shaken Fist gives a start to wait for its dependencies:
+      # three merge queue runs failed in "Build infrastructure" that way
+      # (#284). Fetching it first, with nothing waiting on it, means the
+      # instance finds the image already in the cluster. The script never
+      # fails the job; see its docstring. Its loop bounds only the polling,
+      # though, so an API call that hangs is ended by this step's timeout
+      # instead, and continue-on-error keeps that a warning too. The
+      # runner's system python3 has the client and the under-cloud
+      # credentials.
+      - name: Pre-cache the base image in the under-cloud
+        timeout-minutes: 30
+        continue-on-error: true
+        run: |
+          . $GITHUB_ENV
+          /usr/bin/python3 ${GITHUB_WORKSPACE}/kerbside/tools/ovirt-e2e/precache-image.py \
+              ${{ matrix.test.base }} "${SHAKENFIST_NAMESPACE}"
 
       - name: Build infrastructure
         shell: bash
@@ -902,6 +928,7 @@ jobs:
               /srv/github/artifacts
 
       - uses: actions/upload-artifact@v7
+        continue-on-error: true  # a failed upload must not fail a lane that passed (#403)
         if: always()
         with:
           name: bundle-${{ matrix.test.name }}
@@ -925,6 +952,7 @@ jobs:
       # gen-sources.py writes it 0600); do not add them here. The daemon
       # log already reports which source it loaded and why it errored.
       - uses: actions/upload-artifact@v7
+        continue-on-error: true  # a failed upload must not fail a lane that passed (#403)
         if: always()
         with:
           name: kerbside-ovirt-${{ github.run_id }}
@@ -952,25 +980,15 @@ jobs:
           MINUTES: ${{ inputs.retention }}
 
   openstack_matrix:
-    # Merge tier: runs in the merge queue and on
-    # workflow_dispatch, never on pull_request. On a workflow_dispatch
-    # run, skip this job cleanly (neutral) when its target was not
-    # selected, rather than running a step that calls core.setFailed --
-    # which reported an unselected target as red and then left the
-    # always() artifact steps to time out against a guest that was
-    # never provisioned. The target names are literals because the
-    # matrix context is not available in a job-level if:. The first
-    # mirrors the single matrix entry below; the second is the retired
-    # spelling kerbside-patches still dispatches, enumerated rather
-    # than matched by prefix so that a future lane for another release
-    # or topology has to opt in here deliberately. Drop the second
-    # clause together with the deprecated option above, once
-    # shakenfist/kerbside-patches#1706 lands.
+    # Nightly tier, like ovirt_matrix: runs on the schedule and on
+    # workflow_dispatch, never on pull_request or in the merge queue,
+    # and skips cleanly on a dispatch that did not select it. The target
+    # name is a literal because the matrix context is not available in
+    # a job-level if:; it mirrors the single matrix entry below.
     if: >-
-      (github.event_name == 'merge_group'
+      (github.event_name == 'schedule'
        || (github.event_name == 'workflow_dispatch'
-           && (contains(inputs.target, 'kolla-ansible-master-debian-13')
-               || contains(inputs.target, 'kolla-ansible-master-debian-12'))))
+           && contains(inputs.target, 'kolla-ansible-master-debian-13')))
       && needs.check_paths.outputs.code_changed != 'false'
     name: "${{ matrix.test.description }}"
     strategy:
@@ -997,14 +1015,9 @@ jobs:
     runs-on: [self-hosted, vm, debian-13, m]
     needs: [sanity_checks, check_paths]
     timeout-minutes: 120
-    # See sanity_checks above for why merge_group is keyed on the base
-    # branch rather than github.ref.
+    # Keyed on the event for the same reason as ovirt_matrix's.
     concurrency:
-      group: >-
-        ${{ github.workflow }}-${{ matrix.test.name }}-${{
-        github.event_name == 'merge_group' && github.run_attempt == '1'
-        && format('merge_group-{0}', github.event.merge_group.base_ref)
-        || github.ref }}
+      group: ${{ github.workflow }}-${{ matrix.test.name }}-${{ github.event_name }}-${{ github.ref }}
       cancel-in-progress: true
 
     # NOTE(mikal): git repos are checked out to /srv/github/_work/{org}/{repo}
@@ -1012,6 +1025,15 @@ jobs:
     # variables at https://docs.github.com/en/actions/learn-github-actions/environment-variables
 
     steps:
+      # First, so that the log collection script it carries exists even
+      # when "Setup test environment" fails. setup-kerbside-environment
+      # checks out into other paths and leaves this one alone.
+      - name: Checkout kerbside
+        uses: actions/checkout@v7
+        with:
+          path: kerbside
+          fetch-depth: 0
+
       - name: Setup test environment
         uses: shakenfist/actions/setup-kerbside-environment@main
         with:
@@ -1019,12 +1041,6 @@ jobs:
           base_user: ${{ matrix.test.baseuser }}
           openstack_release: ${{ matrix.test.openstack_release }}
           topology: all-in-one
-
-      - name: Checkout kerbside (for tempest plugin sources)
-        uses: actions/checkout@v7
-        with:
-          path: kerbside
-          fetch-depth: 0
 
       - name: Build patched repositories
         run: |
@@ -1172,29 +1188,25 @@ jobs:
               ${{ matrix.test.baseuser }}@10.0.2.2 \
               'cd /srv/shakenfist/kerbside-patches/src/kerbside; sudo bash ./tools/run-tempest-tests'
 
+      # gather-kolla-logs.sh always leaves a bundle and exits 0, so a
+      # guest that never existed costs a warning here rather than two
+      # more red steps, and if-no-files-found on the upload keeps its
+      # meaning: nothing there means the gather itself did not run.
       - name: Collect logs
         if: always()
         run: |
-          . $GITHUB_ENV
-          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null \
+          ${GITHUB_WORKSPACE}/kerbside/tools/gather-kolla-logs.sh \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/gather-logs'
-          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null \
-              ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'if [ -d /srv/kerbside-tempest ]; then sudo zip -r /tmp/bundle.zip /srv/kerbside-tempest/logs /srv/kerbside-tempest/tempest/etc/tempest.conf 2>/dev/null || true; fi'
-          scp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null \
-              ${{ matrix.test.baseuser }}@10.0.2.2:/tmp/bundle.zip /tmp/bundle.zip
+              /tmp/kolla-logs
 
       - uses: actions/upload-artifact@v7
+        continue-on-error: true  # a failed upload must not fail a lane that passed (#403)
         if: always()
         with:
           name: bundle-${{ matrix.test.name }}
           retention-days: 90
           if-no-files-found: error
-          path: /tmp/bundle.zip
+          path: /tmp/kolla-logs/bundle.zip
 
       - name: Retain the environment if requested
         # See the matching step in ovirt_matrix: without !cancelled() a
@@ -1205,19 +1217,51 @@ jobs:
         env:
           MINUTES: ${{ inputs.retention }}
 
+  # The cloud lanes gate nothing, so a red nightly in the Actions tab
+  # would alert nobody. File or update one tracking issue per lane
+  # instead, as the smoke nightlies do. A lane is reported unless it
+  # succeeded: one skipped because sanity_checks failed has not run
+  # either. A separate job so issues: write is never granted to the
+  # lane jobs.
+  nightly_failure_issue:
+    name: "File nightly failure issues"
+    needs: [ovirt_matrix, openstack_matrix]
+    if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
+    runs-on: [self-hosted, static]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: File or update the oVirt tracking issue
+        if: needs.ovirt_matrix.result != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tools/file-nightly-failure-issue.sh oVirt \
+              "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: File or update the OpenStack tracking issue
+        if: needs.openstack_matrix.result != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tools/file-nightly-failure-issue.sh OpenStack \
+              "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
   automated_reviewer:
     name: "Automated reviewer"
     # The needs: list is the "review only once CI has passed" gate: a job
     # skipped because a dependency failed never starts the reusable workflow.
-    # That means the smoke tier only -- the cloud matrices run in the merge
-    # queue, after review, so the review posts in minutes rather than after the
-    # slowest cloud lane. Everything else about the reviewer -- runner,
-    # timeout, fork restriction, bot-commit check -- lives in the shared
-    # workflow so it stays in step with the rest of the fleet. The event gate
-    # below is technically redundant with the shared workflow's internal
-    # pull_request guard, but keeping it local means this repo's tier
-    # membership does not depend on a guard in another repository, and
-    # merge-group and dispatch rollups stay free of a no-op reviewer job.
+    # That means the smoke tier only -- the cloud matrices run nightly, not on
+    # pull requests, so the review posts in minutes. Everything else about
+    # the reviewer -- runner, timeout, fork restriction, bot-commit check --
+    # lives in the shared workflow so it stays in step with the rest of the
+    # fleet. The event gate below is technically redundant with the shared
+    # workflow's internal pull_request guard, but keeping it local means
+    # this repo's tier membership does not depend on a guard in another
+    # repository, and merge-group and dispatch rollups stay free of a no-op
+    # reviewer job.
     if: github.event_name == 'pull_request'
     needs: [credential_scan, sanity_checks]
     # A cross-repository reusable workflow cannot grant itself more
@@ -1279,8 +1323,6 @@ jobs:
       - credential_scan
       - docs_checks
       - sanity_checks
-      - ovirt_matrix
-      - openstack_matrix
     if: always() && github.event_name == 'merge_group'
     permissions:
       actions: read

@@ -165,10 +165,22 @@ jobs:
     environment: dev-release
 
     permissions:
+      contents: read
       id-token: write
       attestations: write
 
     steps:
+      # This pool is persistent, so a job which skips checkout inherits
+      # whatever the last job in this workspace left in the gitignored
+      # dist/: a release's kerbside sdist and wheel, or the files of a
+      # release that failed part way. Everything there would be attested
+      # and published under dev-release, which has no human approval.
+      # Checkout cleans with "git clean -ffdx", which removes it (#577).
+      # release.yml's publish jobs explain why the download stays in the
+      # workspace rather than moving to runner.temp.
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
       - name: Download proxy wheel artifacts
         uses: actions/download-artifact@v8
         with:

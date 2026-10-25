@@ -22,7 +22,8 @@ on:
     - cron: '30 3 * * *'
 
 # A superseded push cancels the whole run -- gate included, so it
-# reports cancelled rather than red on the old SHA -- instead of
+# reports cancelled rather than red on the old SHA (the gate's
+# !cancelled() is what makes that true) -- instead of
 # stacking 60-minute jobs on the small l pool; the lane backs a
 # required check now, so a superseded run is pure waste. Merge-group
 # refs are unique per queue entry, so this never cancels across
@@ -217,6 +218,7 @@ jobs:
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v7
+        continue-on-error: true  # a failed upload must not fail a lane that passed (#403)
         with:
           name: direct-qemu-artifacts-${{ github.run_id }}
           retention-days: 90
@@ -253,6 +255,7 @@ jobs:
       - name: Upload host-subject-checks artifacts
         if: always()
         uses: actions/upload-artifact@v7
+        continue-on-error: true  # a failed upload must not fail a lane that passed (#403)
         with:
           name: direct-qemu-host-subject-artifacts-${{ github.run_id }}
           retention-days: 90
@@ -282,10 +285,18 @@ jobs:
   # gate turns that check_paths failure into a visible red instead.
   # The jq treats a skipped need as satisfied, which is what lets a
   # review-only PR (lane skipped by the filter) pass.
+  #
+  # !cancelled() rather than always(): when a newer push supersedes this
+  # run, the workflow-level concurrency group cancels it, and a gate
+  # running under always() then reported the cancelled lane as a red
+  # failure on the old SHA -- 20-odd times a month per workflow, every
+  # one noise. A gate whose if: is false in a cancelled run reports
+  # cancelled, not skipped, so a run cancelled by hand on a live head
+  # still cannot satisfy the required check.
   can_enqueue_direct_qemu:
     name: "Can enqueue: direct-qemu"
     needs: [check_paths, direct-qemu-lane]
-    if: always() && github.event_name != 'merge_group'
+    if: ${{ !cancelled() && github.event_name != 'merge_group' }}
     runs-on: [self-hosted, static]
     # A jq expression over the needs context.
     timeout-minutes: 5

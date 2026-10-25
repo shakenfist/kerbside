@@ -26,7 +26,8 @@ on:
     - cron: '30 2 * * *'
 
 # A superseded push cancels the whole run -- gate included, so it
-# reports cancelled rather than red on the old SHA -- instead of
+# reports cancelled rather than red on the old SHA (the gate's
+# !cancelled() is what makes that true) -- instead of
 # stacking 120-minute-timeout jobs on the small l pool. Merge-group
 # refs are unique per queue entry, so this never cancels across
 # entries.
@@ -180,6 +181,7 @@ jobs:
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v7
+        continue-on-error: true  # a failed upload must not fail a lane that passed (#403)
         with:
           name: sf-e2e-artifacts-${{ github.run_id }}
           retention-days: 90
@@ -205,10 +207,18 @@ jobs:
   # review-only PR (lane skipped by the filter) pass. The gate also
   # runs on schedule and dispatch, where its verdict gates nothing --
   # harmless, and simpler than another event condition.
+  #
+  # !cancelled() rather than always(): when a newer push supersedes this
+  # run, the workflow-level concurrency group cancels it, and a gate
+  # running under always() then reported the cancelled lane as a red
+  # failure on the old SHA -- 20-odd times a month per workflow, every
+  # one noise. A gate whose if: is false in a cancelled run reports
+  # cancelled, not skipped, so a run cancelled by hand on a live head
+  # still cannot satisfy the required check.
   can_enqueue_sf_e2e:
     name: "Can enqueue: sf-e2e"
     needs: [check_paths, sf-e2e]
-    if: always() && github.event_name != 'merge_group'
+    if: ${{ !cancelled() && github.event_name != 'merge_group' }}
     runs-on: [self-hosted, static]
     # A jq expression over the needs context.
     timeout-minutes: 5
