@@ -43,6 +43,15 @@ Both run as the `kerbside` user, restart five seconds after any exit
 that systemd did not ask for, and are wanted by `multi-user.target`.
 The comments in each file give the reasons behind its directives.
 
+Every file this page has you copy, the units included, lives in the
+repository rather than in the wheel. The links here go to `develop`,
+which is the code being worked on rather than the release you
+install. Take the files from that release's tag instead, at
+`https://github.com/shakenfist/kerbside/tree/vX.Y.Z` or in a checkout
+of it, so that they match the code they configure. Releases up to and
+including v0.8.0 predate the example units, so this page needs a later
+one.
+
 On disk, the result is:
 
 | Path | Owner | Mode | What it is |
@@ -298,11 +307,24 @@ Every command runs as root.
      read timeout at least as long as the unit's 300 seconds: the
      API can call Shaken Fist inside a request to refresh its signing
      keys, which is why gunicorn's timeout is that long.
-   - **gunicorn's own TLS.** In the API unit's `ExecStart`, change
-     `--bind 127.0.0.1:13002` to an address other hosts can reach,
-     and add `--certfile` and `--keyfile` naming the API's
-     certificate and key. gunicorn runs as `kerbside`, so that key
-     needs the same `root:kerbside` 0640 as the proxy's.
+   - **gunicorn's own TLS.** Replace the API unit's `ExecStart` in a
+     drop-in rather than in the copied file, so that an upgrade can
+     replace the file without losing the change. `systemctl edit
+     kerbside-api` opens one. Bind to an address other hosts can
+     reach, and add `--certfile` and `--keyfile` naming the API's
+     certificate and key:
+
+     ```ini
+     [Service]
+     ExecStart=
+     ExecStart=/srv/kerbside/venv/bin/gunicorn --bind ADDRESS:13002 \
+         --workers 2 --timeout 300 --name kerbside-api \
+         --certfile CERTIFICATE --keyfile KEY kerbside.api:app
+     ```
+
+     The empty `ExecStart=` clears the unit's own, which systemd
+     needs before it accepts another. gunicorn runs as `kerbside`, so
+     that key needs the same `root:kerbside` 0640 as the proxy's.
 
    Neither is tested in CI. Kerbside does not ship a reverse proxy
    configuration.
@@ -314,14 +336,32 @@ Every command runs as root.
 
 ### Upgrading
 
-An upgrade by hand is the same three things the role does, in the
-same order: install the new release, migrate the database, restart.
+An upgrade by hand does what the role does, in the same order:
+install the new release, migrate the database, bring the units up to
+date, restart.
 
 ```bash
 /srv/kerbside/venv/bin/pip install kerbside==X.Y.Z
 runuser -u kerbside -- /srv/kerbside/venv/bin/kerbside db upgrade
+diff /etc/systemd/system/kerbside-daemon.service kerbside-daemon.service
+diff /etc/systemd/system/kerbside-api.service kerbside-api.service
+```
+
+The role renders both units again on every deploy. By hand, that is
+the two `diff`s, against the unit files from the new release's tag.
+If either differs, install it as step 7 does and run `systemctl
+daemon-reload`. A drop-in from step 9 survives that, because it is a
+separate file. Then restart:
+
+```bash
 systemctl restart kerbside-daemon kerbside-api
 ```
+
+Upgrading `kerbside` does not upgrade the client libraries from step
+3. If the new release's
+[Client libraries for console sources](../installation.md#client-libraries-for-console-sources)
+table raises a version floor, install that library again with `pip
+install -U`.
 
 Read [Upgrading](../installation.md#upgrading) first. It records the
 releases which need something from you as well.

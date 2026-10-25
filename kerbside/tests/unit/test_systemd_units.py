@@ -4,21 +4,9 @@ import jinja2
 import testtools
 import yaml
 
-
-def _repo_root():
-    """Return the repository root, or None outside a checkout.
-
-    The role and etc/ are repository data, not package data, so no wheel
-    carries them. Walk up from __file__ as test_docs_links.py does.
-    """
-    path = os.path.dirname(os.path.abspath(__file__))
-    while path != '/':
-        # os.path.exists, not os.path.isdir: in a git worktree .git is
-        # a file holding a gitdir pointer.
-        if os.path.exists(os.path.join(path, '.git')):
-            return path
-        path = os.path.dirname(path)
-    return None
+# The role and etc/ are repository data, not package data, so no wheel
+# carries them.
+from kerbside.tests.unit.test_docs_links import _repo_root
 
 
 _ROOT = _repo_root()
@@ -72,7 +60,8 @@ def _first_difference(expected, actual):
         want = expected[i] if i < len(expected) else None
         got = actual[i] if i < len(actual) else None
         if want != got:
-            return 'directive %d: role template renders %r, example has %r' % (i, want, got)
+            return ('directive %d: role template renders %r, example has %r'
+                    % (i, want, got))
     return None
 
 
@@ -102,13 +91,15 @@ class SystemdUnitTestCase(testtools.TestCase):
                 '%s has drifted from the role template' % name)
 
     def test_api_binds_loopback(self):
-        self.assertIn(' --bind 127.0.0.1:13002 ', self._example('kerbside-api.service'))
+        self.assertIn(' --bind 127.0.0.1:13002 ',
+                      self._example('kerbside-api.service'))
 
     def test_comparison_detects_a_changed_directive(self):
         for name in UNITS:
             expected = _directives(_render(name, OVERRIDES))
             lines = self._example(name).splitlines()
-            index = [i for i, line in enumerate(lines) if line.startswith('RestartSec=')][0]
+            index = [i for i, line in enumerate(lines)
+                     if line.startswith('RestartSec=')][0]
             lines[index] = 'RestartSec=6'
             actual = _directives('\n'.join(lines))
             self.assertIsNotNone(_first_difference(expected, actual), name)
@@ -117,10 +108,13 @@ class SystemdUnitTestCase(testtools.TestCase):
         # The same line under a different section must not compare equal.
         name = 'kerbside-daemon.service'
         expected = _directives(_render(name, OVERRIDES))
-        text = self._example(name).replace('[Install]\nWantedBy=multi-user.target\n', '')
-        text = text.replace('[Service]\n', '[Service]\nWantedBy=multi-user.target\n', 1)
+        wanted = 'WantedBy=multi-user.target\n'
+        text = self._example(name).replace('[Install]\n' + wanted, '')
+        text = text.replace('[Service]\n', '[Service]\n' + wanted, 1)
         self.assertIsNotNone(_first_difference(expected, _directives(text)))
 
     def test_repeated_directive_is_kept(self):
         text = '[Service]\nEnvironment=A=1\nEnvironment=B=2\n'
-        self.assertEqual([('Service', 'Environment=A=1'), ('Service', 'Environment=B=2')], _directives(text))
+        self.assertEqual(
+            [('Service', 'Environment=A=1'), ('Service', 'Environment=B=2')],
+            _directives(text))
