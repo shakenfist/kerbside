@@ -15,8 +15,12 @@ and registered a ``type: ovirt`` source against a live oVirt 4.5 engine. It:
      appears to;
   3. mints an API JWT from the auth seed, fetches
      ``/console/proxy/<source>/<uuid>/console.vv`` and launches
-     ``ryll --headless`` against it IMMEDIATELY (oVirt graphics-console
-     tickets are minted per request and expire in ~120s);
+     ``ryll --headless`` against it promptly. The .vv carries a kerbside
+     token valid for ``CONSOLE_TOKEN_DURATION`` (a minute by default); the
+     oVirt graphics-console ticket is minted when the session's first
+     channel connects, for the token's remaining lifetime plus 30 s, and
+     kept on the session's token row. The driver waits for that mint and
+     reads the ticket once, before the daemon's maintenance loop clears it;
   4. reuses ``../direct-qemu/smoke-client.py`` (surfaces + PNG screenshot over
      the control socket) to assert real SPICE relayed through the proxy --
      guest-agnostic, which matters here because the guest is a Debian 12 GNOME
@@ -27,10 +31,20 @@ and registered a ``type: ovirt`` source against a live oVirt 4.5 engine. It:
      direction, so the escalation line's ``host_subject`` field is the only
      oracle that the values asserted in step 2 were actually used;
   6. asserts an audit row and an active session exist for the console;
-  7. terminates the console via kerbside's REST API while ryll is still
+  7. asserts how the ticket was handled: the console row holds none, the
+     token row recorded an expiry of about the token's expiry plus 30 s,
+     and the session minted exactly once (one ``Minted backend console
+     ticket`` audit event, and no failed mint) although it opened several
+     channels. It then holds the session until 30 s past the ticket's
+     expiry, re-runs the smoke client, asserts ryll and its channels are
+     still up, and waits for the maintenance loop to clear the expired
+     ticket from the token row;
+  8. terminates the console via kerbside's REST API while ryll is still
      connected, and asserts the proxy dropped the in-flight session (the
      relay.rs oracle, as tools/direct-qemu/verify-terminate-live.sh does),
-     the session is removed, and a termination audit event was appended.
+     the session is removed, and a termination audit event was appended;
+  9. asserts the ticket appears in none of the files the lane uploads as
+     artifacts, nor in the console's audit messages.
 
 Configuration comes from ``${WORKDIR}/kerbside.env``, written by
 ``deploy-kerbside.sh``. WORKDIR defaults to ``/tmp/kerbside-ovirt-ci`` and may
@@ -38,7 +52,9 @@ be overridden by the ``WORKDIR`` environment variable or ``--workdir``
 (the argument wins).
 
 SECURITY: the API JWT, the oVirt graphics-console ticket, the auth seed, and
-the ``.vv`` body are NEVER printed or logged. The on-timeout diagnostic dump
+the ``.vv`` body are NEVER printed or logged. The ticket is read from the
+database once, held in memory to search the collected logs for it, and only
+its length is reported. The on-timeout diagnostic dump
 deliberately omits the ``.vv`` contents, unlike the direct-qemu lane's
 lane-up.sh, because the proxied ``.vv`` carries a kerbside proxy token.
 Exits non-zero on any failure.
@@ -82,6 +98,35 @@ TLS_ESCALATION_ORACLE = ('hypervisor requires TLS; retrying backend '
                          'connection over the secure port')
 PINNED_SUBJECT_REJECTION = 'pinned host_subject'
 TERMINATE_ORACLE = 'session terminated by control plane'
+
+# Audit event oracles, which must stay in step with the messages
+# AuthorizeConnection writes in kerbside/rpc/servicer.py. A stale mint or
+# channel needle fails closed (the counts asserted below come out wrong);
+# a stale failure needle would hide a failed mint, but a failed mint also
+# denies its channel, so the session would not have got this far.
+MINT_AUDIT_PREFIX = 'Minted backend console ticket'
+MINT_FAILED_AUDIT_PREFIX = 'Backend console ticket mint failed'
+CHANNEL_CREATED_AUDIT = 'Channel created'
+
+# How far past the backend ticket's expiry the session is held, to show
+# that an established SPICE session outlives the ticket it linked with.
+HOLD_PAST_TICKET_EXPIRY = 30
+
+# The hold is computed from the ticket's expiry, which follows
+# CONSOLE_TOKEN_DURATION. deploy-kerbside.sh leaves that at its default of
+# a minute, making the hold about two minutes; refuse to sleep for much
+# longer than that, since it means the deployment is not the one this
+# driver expects and the drive step's timeout would cut the run short.
+MAX_HOLD = 300
+
+# How long to wait, once the hold is over, for the daemon's maintenance
+# loop to clear the expired ticket from the token row. The loop runs about
+# once every 60 s, and each pass also rescrapes the sources.
+TICKET_CLEAR_GRACE = 75
+
+# A ticket shorter than this would make the search for it in the logs
+# match by chance. oVirt's are far longer.
+MIN_SEARCHABLE_TICKET = 8
 
 # tracing renders a structured field as `<esc>[3mname<esc>[0m<esc>[2m=`,
 # so the literal `name=` a naive search looks for is not in the line at
@@ -328,6 +373,107 @@ def _session_present(db, source, console_uuid):
     return False
 
 
+def _session_audit_messages(db, source, console_uuid, session_id):
+    """The audit messages recorded for one session of the console."""
+    return [e.get('message') or ''
+            for e in db.get_audit_events(source, console_uuid, limit=500)
+            if e.get('session_id') == session_id]
+
+
+def _open_channel_count(db, session_id):
+    """How many proxy channels kerbside holds open for a session."""
+    return len(db.get_sessions().get(session_id, {}).get('channels', []))
+
+
+def _capture_backend_ticket(db, source, console_uuid, timeout=30):
+    """Wait for the session's backend ticket to be minted, and read it once.
+
+    Returns (token, ticket): the session's token row without its secret,
+    and the ticket itself, which the caller must never print. Only one .vv
+    has been fetched, so the console has exactly one token. The ticket is
+    read through the ORM because no db function hands it out except
+    session_ticket(), which would mint.
+    """
+    deadline = time.time() + timeout
+    token = None
+    while time.time() < deadline:
+        tokens = db.get_tokens_by_console(source, console_uuid)
+        if len(tokens) > 1:
+            raise SystemExit(
+                'expected one console token for %s/%s, as one .vv was '
+                'fetched, but found %d' % (source, console_uuid, len(tokens)))
+        if tokens and tokens[0].get('backend_ticket_expires'):
+            token = tokens[0]
+            break
+        time.sleep(1)
+
+    if token is None:
+        failures = [m for m in (e.get('message') or '' for e in
+                                db.get_audit_events(source, console_uuid,
+                                                    limit=500))
+                    if m.startswith(MINT_FAILED_AUDIT_PREFIX)]
+        raise SystemExit(
+            'the session\'s token row recorded no backend ticket expiry '
+            'within %ds of ryll starting; failed mints audited for the '
+            'console: %s' % (timeout, '; '.join(failures) or 'none'))
+
+    with db.Session(db.ENGINE) as session:
+        row = session.query(db.ConsoleToken).\
+            filter(db.ConsoleToken.session_id == token['session_id']).\
+            one_or_none()
+        ticket = row.backend_ticket if row is not None else None
+    if not ticket:
+        raise SystemExit(
+            'the token row for session %s records a backend ticket expiry '
+            'but no ticket' % token['session_id'])
+    if len(ticket) < MIN_SEARCHABLE_TICKET:
+        raise SystemExit(
+            'the backend ticket is only %d characters, too short to search '
+            'the logs for meaningfully' % len(ticket))
+    _log('session %s minted a backend ticket (%d characters) expiring %ds '
+         'after its token'
+         % (token['session_id'], len(ticket),
+            token['backend_ticket_expires'] - token['expires']))
+    return token, ticket
+
+
+def _hold_session(ryll, hold_until, run_dir, log_path):
+    """Sleep until hold_until, failing at once if ryll's session ends.
+
+    hold_until is an epoch second written by the daemon on this host, so
+    this host's clock is the one to compare it with.
+    """
+    while time.time() < hold_until:
+        if ryll.poll() is not None:
+            _dump_ryll_diagnostics(ryll, run_dir, log_path)
+            raise SystemExit(
+                'ryll exited (code %s) %ds before the hold ended; the '
+                'session did not survive its backend ticket'
+                % (ryll.returncode, hold_until - time.time()))
+        time.sleep(min(5, max(hold_until - time.time(), 0)))
+
+
+def _files_containing(paths, secret):
+    """(found, searched): which of paths contain secret, and how many were read.
+
+    found holds base names only. The text is searched both as written and
+    with ANSI escapes removed, so a colourised log line cannot split the
+    value. Missing files are skipped and not counted in searched.
+    """
+    found = []
+    searched = 0
+    for path in paths:
+        try:
+            with open(path, 'r', errors='replace') as f:
+                text = f.read()
+        except OSError:
+            continue
+        searched += 1
+        if secret in text or secret in _strip_ansi(text):
+            found.append(os.path.basename(path))
+    return found, searched
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Drive an oVirt console through kerbside\'s proxy.')
@@ -356,6 +502,8 @@ def main():
     # KERBSIDE_SQL_URL is already in the env file; kerbside.config reads it at
     # import, so it must be set before importing kerbside.db (it is).
     from kerbside import db
+    from kerbside.rpc.servicer import TICKET_SLACK
+    from kerbside.sources.minting import MINT_DEADLINE
 
     import requests
 
@@ -364,6 +512,7 @@ def main():
     vv_path = os.path.join(run_dir, 'console.vv')
     sock_path = os.path.join(run_dir, 'ryll-ovirt.sock')
     smoke_log = os.path.join(run_dir, 'smoke-client.log')
+    held_smoke_log = os.path.join(run_dir, 'smoke-client-held.log')
 
     # 1. Wait for the oVirt scrape to discover the test VM.
     console = _discover_console(db, source)
@@ -395,13 +544,16 @@ def main():
     headers = {'Authorization': 'Bearer %s' % jwt_token,
                'Accept': 'application/json'}
 
-    # 4. Fetch the .vv and connect IMMEDIATELY.
+    # 4. Fetch the .vv and connect promptly.
     #
-    # ConsolesProxyVirtViewer (kerbside/api.py:465-473) acquires a FRESH oVirt
-    # graphics-console ticket from the engine on every request and stores it
-    # on the console row. oVirt tickets expire in about 120 seconds by
-    # default, so any sleep, retry loop, or extra work between this fetch and
-    # the ryll launch below risks a flaky lane. Do not insert anything here.
+    # The .vv carries a kerbside token valid for CONSOLE_TOKEN_DURATION
+    # minutes from this fetch (one, as deploy-kerbside.sh leaves the
+    # default), and no channel is authorized once it has expired, so work
+    # inserted between the fetch and the ryll launch below eats into the
+    # window ryll has to connect. No oVirt ticket is minted here:
+    # AuthorizeConnection mints one when the session's first channel
+    # connects, for the token's remaining lifetime plus TICKET_SLACK, and
+    # the session's later channels reuse it.
     vv_url = 'http://127.0.0.1:%s/console/proxy/%s/%s/console.vv' % (
         api_port, source, console_uuid)
     _log('fetching the proxied .vv for %s/%s' % (source, console_uuid))
@@ -418,6 +570,18 @@ def main():
     ryll = _launch_ryll(ryll_bin, vv_path, sock_path, run_dir, log_path)
 
     try:
+        # 4b. Wait for the first channel to mint the session's backend
+        # ticket, and read it once. The daemon's maintenance loop clears
+        # the ticket and its expiry from the token row once the token has
+        # expired, so this is done before anything else can use up the
+        # token's minute. The ticket is a live hypervisor password: it is
+        # held in this variable only, used solely to check that no
+        # collected log carries it (step 10), and only its length is
+        # ever printed.
+        token, backend_ticket = _capture_backend_ticket(
+            db, source, console_uuid)
+        session_id = token['session_id']
+
         # 5. Assert real SPICE was relayed through the proxy.
         _run_smoke_client(smoke_client, sock_path, smoke_log)
 
@@ -485,6 +649,105 @@ def main():
                 'expected an active kerbside session for the console')
         _log('audit rows present (%d) and session is active' % audit_count)
 
+        # 6b. Assert the oVirt ticket belongs to the session. The console
+        # row keeps no ticket for a source which mints them; the only
+        # ticket is the session's, minted once for all of its channels.
+        console_row = db.get_console(
+            source, console_uuid, include_secrets=True) or {}
+        row_ticket = console_row.get('ticket') or ''
+        if row_ticket:
+            raise SystemExit(
+                'console %s holds a %d character ticket on its console row; '
+                'an oVirt console\'s ticket belongs to its session, so the '
+                'row should hold none' % (console_uuid, len(row_ticket)))
+
+        # The lifetime asked for is the token's remaining life plus
+        # TICKET_SLACK, measured just before the mint starts; the expiry
+        # is the mint's start plus what the engine granted, and the mint
+        # finishes within MINT_DEADLINE.
+        ticket_expires = token['backend_ticket_expires']
+        expected = token['expires'] + TICKET_SLACK
+        if not expected - 2 <= ticket_expires <= expected + MINT_DEADLINE:
+            raise SystemExit(
+                'the backend ticket expires %ds after the token; expected '
+                'about %ds' % (ticket_expires - token['expires'],
+                               TICKET_SLACK))
+
+        messages = _session_audit_messages(
+            db, source, console_uuid, session_id)
+        mints = [m for m in messages if m.startswith(MINT_AUDIT_PREFIX)]
+        failures = [m for m in messages
+                    if m.startswith(MINT_FAILED_AUDIT_PREFIX)]
+        channels_created = messages.count(CHANNEL_CREATED_AUDIT)
+        open_channels = _open_channel_count(db, session_id)
+        _log('session %s: %d channel(s) created, %d open, %d ticket '
+             'mint(s), %d failed mint(s)'
+             % (session_id, channels_created, open_channels, len(mints),
+                len(failures)))
+        if failures:
+            raise SystemExit(
+                'the session audited failed mints: %s' % '; '.join(failures))
+        if channels_created < 2:
+            raise SystemExit(
+                'the session created %d channel(s); a single mint only '
+                'shows the ticket is shared if there are several'
+                % channels_created)
+        if len(mints) != 1:
+            raise SystemExit(
+                'expected exactly one backend ticket mint for the session\'s '
+                '%d channels, found %d' % (channels_created, len(mints)))
+
+        # Hold the session past the ticket's expiry. An established SPICE
+        # session does not present its ticket again, so it must outlive
+        # it; the hold proves that against a real engine and qemu.
+        hold_until = ticket_expires + HOLD_PAST_TICKET_EXPIRY
+        hold = hold_until - time.time()
+        if hold > MAX_HOLD:
+            raise SystemExit(
+                'holding until %ds past the backend ticket\'s expiry would '
+                'take %ds, over the %ds this driver allows; is '
+                'CONSOLE_TOKEN_DURATION longer than deploy-kerbside.sh '
+                'leaves it?' % (HOLD_PAST_TICKET_EXPIRY, hold, MAX_HOLD))
+        _log('holding the session for %ds, until %ds past its backend '
+             'ticket\'s expiry' % (max(hold, 0), HOLD_PAST_TICKET_EXPIRY))
+        _hold_session(ryll, hold_until, run_dir, log_path)
+
+        _run_smoke_client(smoke_client, sock_path, held_smoke_log)
+        open_channels = _open_channel_count(db, session_id)
+        if open_channels < 1:
+            raise SystemExit(
+                'kerbside holds no open channels for session %s after the '
+                'hold' % session_id)
+        mints = [m for m in _session_audit_messages(
+                     db, source, console_uuid, session_id)
+                 if m.startswith(MINT_AUDIT_PREFIX)]
+        if len(mints) != 1:
+            raise SystemExit(
+                'the session minted %d backend tickets by the end of the '
+                'hold; expected still one' % len(mints))
+        _log('session outlived its backend ticket with %d channel(s) open'
+             % open_channels)
+
+        # The token expired at least a minute ago, so the maintenance loop
+        # has had its chance to clear the ticket from the token row; allow
+        # it one more pass.
+        deadline = time.time() + TICKET_CLEAR_GRACE
+        while True:
+            row = db.get_token_by_session_id(session_id)
+            if row is None:
+                raise SystemExit(
+                    'the token row for session %s vanished while the '
+                    'session was open' % session_id)
+            if row.get('backend_ticket_expires') is None:
+                break
+            if time.time() >= deadline:
+                raise SystemExit(
+                    'the maintenance loop had not cleared the expired '
+                    'backend ticket from the token row %ds after the hold'
+                    % TICKET_CLEAR_GRACE)
+            time.sleep(2)
+        _log('maintenance loop cleared the expired backend ticket')
+
         # 7. Terminate via the live REST API while ryll is still
         # connected, so this asserts an in-flight drop rather than the
         # bookkeeping of a session that had already ended.
@@ -545,6 +808,29 @@ def main():
                for e in events):
         raise SystemExit('no termination audit event found after terminate')
     _log('session removed and termination audit event recorded')
+
+    # 10. Assert the backend ticket leaked into nothing the lane uploads as
+    # an artifact (the list in functional-tests.yml), nor into the audit
+    # trail. Only file names and counts are reported.
+    collected = [
+        log_path,
+        '%s.gunicorn-access' % log_path,
+        '%s.gunicorn-error' % log_path,
+        os.path.join(workdir, 'kerbside.env'),
+        os.path.join(run_dir, 'ryll-ovirt.stdout'),
+        os.path.join(run_dir, 'ryll-ovirt.stderr'),
+        smoke_log,
+        held_smoke_log,
+    ]
+    leaked, searched = _files_containing(collected, backend_ticket)
+    if leaked:
+        raise SystemExit(
+            'the backend ticket appears in %s' % ', '.join(leaked))
+    if any(backend_ticket in (e.get('message') or '')
+           for e in db.get_audit_events(source, console_uuid, limit=500)):
+        raise SystemExit('the backend ticket appears in an audit message')
+    _log('backend ticket found in none of %d collected files nor the audit '
+         'trail' % searched)
 
     _log('oVirt proxied console path passed')
     return 0

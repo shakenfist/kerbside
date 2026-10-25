@@ -104,11 +104,20 @@ console checks, the workflow:
    pin on every escalation line (pinning fails silently in the passing
    direction, so the `host_subject=` field the escalation line logs at
    the point of use is the only positive oracle), asserts a session and
-   audit row exist, then
+   audit row exist, then checks the session's oVirt ticket: the console
+   row holds none, the token row records an expiry of about the token's
+   expiry plus 30 seconds, and exactly one `Minted backend console
+   ticket` audit event (and no failed mint) covers the session's several
+   channels. It holds the session until 30 seconds past that expiry
+   (about two minutes), re-runs the smoke client and asserts ryll and
+   its channels are still up, and waits for the maintenance loop to
+   clear the expired ticket from the token row. It then
    terminates the console via the REST API **while ryll is still
    connected** and asserts the proxy dropped the in-flight session (the
    same `relay.rs` oracle `tools/direct-qemu/verify-terminate-live.sh`
-   uses) and that a termination audit event was recorded.
+   uses) and that a termination audit event was recorded. Last, it
+   asserts the ticket appears in none of the files the lane uploads and
+   in no audit message.
 
 The scripts:
 
@@ -132,7 +141,9 @@ The scripts:
   auth seed, or key material.
 - `drive-console.py` -- drives the actual proxied SPICE session and the
   DB/API assertions described above. Never prints the API JWT, the
-  oVirt graphics-console ticket, the auth seed, or the `.vv` body.
+  oVirt graphics-console ticket, the auth seed, or the `.vv` body; it
+  reads the ticket once, keeps it in memory to search the collected logs
+  for it, and reports only its length.
 - `gather-diagnostics.sh` -- builds the target-side diagnostic bundle,
   or a fallback set over ssh when provisioning failed early; it always
   leaves a bundle and exits 0.
@@ -166,10 +177,16 @@ them, do not re-derive them:
    `deploy-kerbside.sh` installs it explicitly into the venv. It is a C
    extension, so the runner also needs `libxml2-dev`,
    `libcurl4-openssl-dev`, and `build-essential`.
-5. **oVirt graphics-console tickets live for about 120 seconds** and are
-   minted fresh on every `.vv` request. `drive-console.py` fetches the
-   `.vv` and launches `ryll --headless` immediately, with nothing in
-   between -- no sleep, no retry loop, no extra work.
+5. **The `.vv`'s kerbside token lives for `CONSOLE_TOKEN_DURATION`**
+   (a minute by default, which `deploy-kerbside.sh` keeps), and no
+   channel is authorized after it expires. The oVirt graphics-console
+   ticket is not minted for the `.vv`: kerbside mints it when the
+   session's first channel connects, for the token's remaining lifetime
+   plus 30 seconds, keeps it on the session's token row for the
+   session's other channels, and its maintenance loop clears it once the
+   token has expired. `drive-console.py` therefore launches
+   `ryll --headless` straight after fetching the `.vv`, and reads the
+   ticket as soon as it has been minted.
 
 ## Security
 
@@ -178,7 +195,7 @@ seed, the API JWT, the oVirt graphics-console ticket, or the `.vv` body.
 `sources.yaml` holds the engine password and is written 0600 by
 `gen-sources.py`; it is deliberately NOT uploaded as a CI artifact, along
 with `console.vv` and the auth seed file. The kerbside daemon log, the
-gunicorn logs, ryll's stdio, the smoke-client log, and `kerbside.env`
+gunicorn logs, ryll's stdio, the smoke-client logs, and `kerbside.env`
 (see the env-file contract below for the invariant it must keep to stay
 uploadable) are uploaded instead -- an errored source or a failed relay
 is fully diagnosable from those without ever needing the secret files.
