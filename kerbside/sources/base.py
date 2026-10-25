@@ -15,6 +15,10 @@ class BaseSource(ABC):
     # Set to True by sources which can mint a console ticket on demand.
     MINTS_TICKETS = False
 
+    # Set by a source which finds while being built that it cannot work, for
+    # example because its upstream is unreachable or misconfigured.
+    errored = False
+
     def __init__(self, **kwargs):
         ...
 

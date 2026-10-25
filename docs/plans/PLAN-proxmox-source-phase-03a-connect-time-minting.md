@@ -387,6 +387,11 @@ finding 8), and the untimed CA fetch (survey finding 6).
 
 - Move waiting channels off the gRPC worker pool if a slow
   source ever exhausts it (see *Risks*).
+- Remember a failed mint for a few seconds. Against a hung
+  engine each channel of a session takes its own
+  `MINT_DEADLINE` turn behind the row lock, and the later ones
+  exceed MariaDB's 50 s lock wait and fail as INTERNAL rather
+  than as a denial. The session fails either way.
 - Issue #319: the proxied `.vv` GET still mints a token.
 - `/console/direct` still hands a raw hypervisor ticket to
   its caller, though since #537 (issue #134) only to an
@@ -478,6 +483,22 @@ the exception's class name; and a CA fetch that raises marks
 the source errored rather than raising from `__init__`, so its
 temporary CA file is still removed. It also closes the SDK
 connection that `get_console_for_vm` used to leak.
+
+3a.5 put the deadline in `kerbside/sources/minting.py`
+(`mint_with_deadline`, `MINT_DEADLINE = 20`, a daemon worker
+that builds, uses and closes the driver), and on review the
+direct `.vv` path was moved onto it too, so a stalled login
+holds neither a gRPC worker nor a web worker. The mint now runs
+before the channel is recorded, so a denied channel writes no
+`Channel created` event, as an invalid-console denial already
+did not. `db.store_console_ticket` lost its last caller and was
+deleted. Review also found that the drivers read a source's
+name from `source`, as the scrape loop's `sources.yaml` entries
+carry it, while `db.get_source()` rows carry `name`, so a CA
+failure on any API path raised `KeyError` instead of marking
+the source errored. That predates this phase on the `.vv`
+paths; it is fixed where both minting paths now turn a row into
+driver arguments.
 
 ## Outcome
 

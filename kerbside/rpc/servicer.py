@@ -6,8 +6,11 @@ from shakenfist_utilities import logs
 
 from kerbside.config import config
 from kerbside import db
+from kerbside import sources
 from kerbside import util
 from kerbside.rpc import kerbside_pb2, kerbside_pb2_grpc
+from kerbside.sources import base as source_base
+from kerbside.sources import minting
 
 
 LOG, _ = logs.setup(__name__, **util.configure_logging())
@@ -19,6 +22,20 @@ PROXY_CONTROL_HEARTBEAT_SECONDS = 30
 # apply to this node. Short so API-driven termination reaches the proxy
 # promptly; the trade-off is termination latency vs DB load.
 PROXY_CONTROL_POLL_SECONDS = 2
+
+# How many seconds a minted backend ticket is asked to outlive the client's
+# token. No channel is authorized once the token has expired, so the ticket
+# is never handed out after that; but a channel authorized in the token's
+# last moment still has to complete its SPICE link to the hypervisor with
+# the ticket, and this covers that.
+TICKET_SLACK = 30
+
+# A stored backend ticket is handed to another channel only while at least
+# this many seconds of it remain. A channel given a ticket on the point of
+# expiring could reach the hypervisor after it has, so such a ticket is
+# replaced instead. Replacing it revokes the old ticket for new connections
+# only; channels already linked with it stay up.
+REUSE_MARGIN = 10
 
 # SPICE ChannelType name -> discriminant (matches ryll's ChannelType and the
 # FirewallPolicy.permitted_channels contract in kerbside.proto). Used to map the
@@ -81,6 +98,21 @@ def build_firewall_policy():
         mode=proto_mode, permitted_channels=permitted)
 
 
+def _mint_backend_ticket(driver, source_name, uuid, lifetime):
+    """Mint a backend ticket for a console with its source's driver.
+
+    The source's credentials are fetched here, so that only a channel which
+    actually mints holds them, and the driver gets at most
+    minting.MINT_DEADLINE seconds to build itself and mint.
+    """
+    authed = db.get_source(source_name, include_secrets=True)
+    if not authed:
+        raise source_base.ConsoleTicketUnavailable(
+            'source %s no longer exists' % source_name)
+    return minting.mint_with_deadline(
+        driver, authed, uuid, lifetime, minting.MINT_DEADLINE)
+
+
 class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
     """gRPC servicer implementing the unary control-plane RPCs.
 
@@ -91,6 +123,14 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
     """
 
     def AuthorizeConnection(self, request, context):
+        """Authorize a channel, and tell the proxy where it goes.
+
+        The Target carries the ticket the proxy presents to the hypervisor's
+        SPICE server. For a source which mints tickets, that is the session's
+        backend ticket, minted for its first channel and reused by the rest
+        (see db.session_ticket()); a channel is denied if no ticket can be
+        minted. Any other source's ticket is the one on the console row.
+        """
         try:
             token = db.get_token_by_token(request.token)
             if not token:
@@ -118,6 +158,81 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
                 return kerbside_pb2.AuthorizeConnectionReply(
                     denied=kerbside_pb2.Denied(reason='invalid console'))
 
+            try:
+                driver = sources.driver_class(source['type'])
+            except KeyError:
+                # openstack has no driver, and mints nothing.
+                driver = None
+
+            ticket = console['ticket'] or ''
+            if driver and driver.MINTS_TICKETS:
+                # The ticket has to last for as long as the client's token
+                # can still authorize a channel, plus TICKET_SLACK.
+                lifetime = (max(token['expires'] - int(time.time()), 0) +
+                            TICKET_SLACK)
+
+                # db.session_ticket() calls mint only if the session has no
+                # ticket worth reusing, so mint records what it did: whether
+                # a ticket was minted, and for how long, or why not.
+                minted_for = None
+                mint_error = None
+
+                def mint(lifetime):
+                    nonlocal minted_for, mint_error
+                    started = int(time.time())
+                    try:
+                        minted = _mint_backend_ticket(
+                            driver, token['source'], console['uuid'],
+                            lifetime)
+                    except Exception as e:
+                        mint_error = e
+                        raise
+                    minted_for = int(minted.expires) - started
+                    return minted
+
+                try:
+                    backend = db.session_ticket(
+                        token['session_id'], mint, lifetime, REUSE_MARGIN)
+                except db.UnknownSession:
+                    # The session was terminated or reaped after its token
+                    # was looked up above.
+                    LOG.warning('Client token is invalid, denying connection')
+                    return kerbside_pb2.AuthorizeConnectionReply(
+                        denied=kerbside_pb2.Denied(
+                            reason='client token invalid'))
+                except Exception:
+                    if mint_error is None:
+                        raise
+
+                    # The class name only, here and in the audit trail: an
+                    # API client's exception can quote the request it failed
+                    # on. Nothing was stored, so the next channel tries again.
+                    error = type(mint_error).__name__
+                    LOG.with_fields({
+                        'source': console['source'],
+                        'uuid': console['uuid'],
+                        'session_id': token['session_id'],
+                        'error': error
+                        }).warning('Backend console ticket mint failed, '
+                                   'denying connection')
+                    db.add_audit_event(
+                        console['source'], console['uuid'],
+                        token['session_id'], request.channel_type,
+                        config.NODE_NAME, request.connection_ref,
+                        'Backend console ticket mint failed: %s' % error)
+                    return kerbside_pb2.AuthorizeConnectionReply(
+                        denied=kerbside_pb2.Denied(
+                            reason='console ticket unavailable'))
+
+                if minted_for is not None:
+                    db.add_audit_event(
+                        console['source'], console['uuid'],
+                        token['session_id'], request.channel_type,
+                        config.NODE_NAME, request.connection_ref,
+                        'Minted backend console ticket for %d seconds'
+                        % minted_for)
+                ticket = backend.ticket
+
             db.record_channel_info_by_ref(
                 config.NODE_NAME, request.connection_ref,
                 session_id=token['session_id'])
@@ -132,7 +247,7 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
                     hypervisor_ip=console['hypervisor_ip'] or '',
                     insecure_port=console['insecure_port'] or 0,
                     secure_port=console['secure_port'] or 0,
-                    ticket=console['ticket'] or '',
+                    ticket=ticket,
                     ca_cert=source['ca_cert'] or '',
                     host_subject=console['host_subject'] or '',
                     source=console['source'],
@@ -141,7 +256,10 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
                 firewall_policy=build_firewall_policy())
 
         except Exception as e:
-            LOG.error('AuthorizeConnection failed: %s' % e)
+            # The class name only: a source driver's API client, or
+            # requests, can quote the request it failed on, and that
+            # request can carry a credential.
+            LOG.error('AuthorizeConnection failed: %s' % type(e).__name__)
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details('AuthorizeConnection failed (see server logs)')
             return kerbside_pb2.AuthorizeConnectionReply()

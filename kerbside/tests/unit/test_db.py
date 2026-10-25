@@ -435,16 +435,6 @@ class ConsoleKeyedOnSourceTestCase(testtools.TestCase):
         self.assertEqual(
             '10.0.0.1', db.get_console('cloud', 'shared')['hypervisor_ip'])
 
-    def test_store_ticket_touches_only_its_own_source(self):
-        db.store_console_ticket('lab', 'shared', 'per-request')
-
-        self.assertEqual(
-            'cloud-ticket',
-            db.get_console('cloud', 'shared', include_secrets=True)['ticket'])
-        self.assertEqual(
-            'per-request',
-            db.get_console('lab', 'shared', include_secrets=True)['ticket'])
-
     def test_remove_touches_only_its_own_source(self):
         db.remove_console(source='lab', uuid='shared')
 
@@ -544,8 +534,7 @@ class AddConsoleUpdateTestCase(testtools.TestCase):
     when the caller supplies one (issue #463), and reports the
     names of the fields that changed (issue #459). A caller which passes
     no ticket -- every driver but the static one -- must leave the
-    stored ticket alone, because oVirt writes a per-request ticket to
-    the same column and the next maintenance pass would erase it.
+    stored ticket alone, rather than erase a ticket it does not manage.
     """
 
     def setUp(self):
@@ -613,14 +602,13 @@ class AddConsoleUpdateTestCase(testtools.TestCase):
         self.assertEqual('first-password', self._console().ticket)
 
     def test_absent_ticket_leaves_the_stored_one_alone(self):
-        # The oVirt shape: enumeration yields no ticket, and the .vv
-        # handler stores a fresh one per request. Not supplying one is
-        # not a change to it either.
-        self.assertEqual((db.CONSOLE_ADDED, []), self._add(ticket=None))
-        db.store_console_ticket('lab', 'console-1', 'per-request')
+        # Every driver but the static one enumerates consoles without a
+        # ticket. Not supplying one is not a change to the stored one
+        # either.
+        self.assertEqual((db.CONSOLE_ADDED, []), self._add())
 
         self.assertEqual((db.CONSOLE_UPDATED, []), self._add(ticket=None))
-        self.assertEqual('per-request', self._console().ticket)
+        self.assertEqual('first-password', self._console().ticket)
 
 
 class SessionBackendTicketTestCase(testtools.TestCase):

@@ -28,7 +28,7 @@ from . import consoletoken
 from . import db
 from . import sf_token
 from .sources import driver_class
-from .sources import ovirt as ovirt_source
+from .sources import minting
 from . import util
 
 
@@ -539,26 +539,25 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
 
             # The ticket in a direct .vv has to last from download until
             # the client connects, which is the gap a proxied .vv's
-            # console token covers, so it is given the same lifetime.
+            # console token covers, so it is given the same lifetime. The
+            # mint is bounded as a whole, so a source which stalls cannot
+            # hold this web worker indefinitely.
             lifetime = config.CONSOLE_TOKEN_DURATION * 60
-            lookup = driver(**authed)
             try:
-                if lookup.errored:
-                    return sf_api.error(404, 'source error')
-                try:
-                    ticket = lookup.mint_console_ticket(
-                        c['uuid'], lifetime).ticket
-                except Exception as e:
-                    # The class name only: an API client's exception can
-                    # quote the request or response it failed on.
-                    LOG.with_fields({
-                        'source': c['source'],
-                        'uuid': c['uuid'],
-                        'error': type(e).__name__
-                        }).warning('Console ticket mint failed')
-                    return sf_api.error(502, 'console ticket unavailable')
-            finally:
-                lookup.close()
+                ticket = minting.mint_with_deadline(
+                    driver, authed, c['uuid'], lifetime,
+                    minting.MINT_DEADLINE).ticket
+            except minting.SourceErrored:
+                return sf_api.error(404, 'source error')
+            except Exception as e:
+                # The class name only: an API client's exception can
+                # quote the request or response it failed on.
+                LOG.with_fields({
+                    'source': c['source'],
+                    'uuid': c['uuid'],
+                    'error': type(e).__name__
+                    }).warning('Console ticket mint failed')
+                return sf_api.error(502, 'console ticket unavailable')
         else:
             ticket = ''
 
@@ -635,36 +634,14 @@ class ConsolesProxyVirtViewer(sf_api.Resource):
         else:
             host_subject = ''
 
-        # Acquire a ticket if required.  The static driver persists
-        # the ticket to the Console DB at enumeration time, so we
-        # must not overwrite it with an empty string here.  oVirt
-        # fetches a fresh ticket on every request.  All other source
-        # types (shakenfist, openstack) manage tickets separately
-        # and receive an empty string as a no-op.
-        if s['type'] == 'static':
-            # Ticket already stored by the maintenance pass via
-            # db.add_console(..., ticket=...), which also applies a
-            # ticket edited in sources.yaml.  Leave it intact.
-            pass
-        elif s['type'] == 'ovirt':
-            ticket = ''
-            # As in the direct handler above, only the oVirt ticket
-            # acquisition is entitled to the source secrets, so it is
-            # the only thing which asks for them.
-            authed = db.get_source(source, include_secrets=True)
-            if not authed:
-                return sf_api.error(404, 'source not found')
-            lookup = ovirt_source.oVirtSource(**authed)
-            if lookup.errored:
-                return sf_api.error(404, 'source error')
-            _, ticket, _ = lookup.get_console_for_vm(
-                c['uuid'], ticket_lifetime=config.CONSOLE_TOKEN_DURATION * 60)
-            lookup.close()
-            db.store_console_ticket(source, uuid, ticket)
-        else:
-            # shakenfist, openstack: store an empty string as before.
-            db.store_console_ticket(source, uuid, '')
-
+        # A proxied .vv carries a console token, never a hypervisor
+        # ticket, so this handler neither reads nor writes a ticket for
+        # any source type, and never needs the source's credentials. The
+        # proxy fetches the ticket when a channel connects: a static
+        # source's is the one the maintenance pass keeps on the console
+        # row, and a source which mints tickets is asked for one for the
+        # session's first channel (AuthorizeConnection in
+        # kerbside/rpc/servicer.py).
         token = consoletoken.create_token(source, uuid)
         vv = VIRTVIEWER_TEMPLATE % {
             'node': config.PUBLIC_FQDN,

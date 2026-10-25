@@ -322,12 +322,12 @@ def add_console(source=None, uuid=None, hypervisor=None, hypervisor_ip=None,
     """Insert a console, or refresh one which already exists.
 
     A ticket of None means the caller does not manage this console's
-    ticket, and the stored one is left alone: oVirt writes a fresh
-    ticket per .vv request with store_console_ticket(), and the
-    maintenance pass which re-enumerates the console must not erase it
-    before the proxy spends it. A caller which does supply a ticket --
-    the static source, whose ticket is the password in sources.yaml --
-    owns it, so a changed one replaces the stored value.
+    ticket, and the stored one is left alone, so re-enumerating a
+    console never erases a ticket its caller did not supply. A caller
+    which does supply a ticket -- the static source, whose ticket is
+    the password in sources.yaml -- owns it, so a changed one replaces
+    the stored value. Sources which mint tickets keep them on the
+    session's token row instead, not here; see session_ticket().
 
     Returns a tuple of CONSOLE_ADDED or CONSOLE_UPDATED and the sorted
     names of the fields an update changed, which is empty when the
@@ -466,16 +466,6 @@ def get_console(source, uuid, detailed=False, *,
 
         except exc.NoResultFound:
             return None
-
-
-def store_console_ticket(source, uuid, ticket):
-    with Session(ENGINE) as session:
-        c = session.query(Console).\
-            filter(Console.source == source).\
-            filter(Console.uuid == uuid).\
-            one()
-        c.ticket = ticket
-        session.commit()
 
 
 def remove_console(source=None, uuid=None, **kwargs):
