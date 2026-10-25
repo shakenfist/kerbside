@@ -345,19 +345,19 @@ One commit per step. Every commit passes `tox -eflake8`,
 
 ## Definition of done
 
-- [ ] `grep -rn "store_console_ticket\|acquire_ticket=True" kerbside`
+- [x] `grep -rn "store_console_ticket\|acquire_ticket=True" kerbside`
       finds no call that stores an oVirt ticket on a
       `Console` row.
-- [ ] `grep -rn "oVirtSource(\|ShakenFistSource(\|StaticSource(" kerbside --include=*.py | grep -v tests`
+- [x] `grep -rn "oVirtSource(\|ShakenFistSource(\|StaticSource(" kerbside --include=*.py | grep -v tests`
       finds only `kerbside/sources/`.
-- [ ] Every `console_service.ticket(` call in
+- [x] Every `console_service.ticket(` call in
       `kerbside/sources/ovirt.py` passes an explicit expiry.
-- [ ] The migration's offline MySQL SQL is asserted in both
+- [x] The migration's offline MySQL SQL is asserted in both
       directions by a unit test, and it runs up, down and up
       again against MariaDB, clearing `consoles.ticket` for
       oVirt consoles only while a static console's ticket
       survives.
-- [ ] `test_rpc.py` shows one mint for three channels of one
+- [x] `test_rpc.py` shows one mint for three channels of one
       session, reuse within the margin, a re-mint outside
       it, and a denial with an audit event and nothing
       stored when the mint fails.
@@ -367,10 +367,10 @@ One commit per step. Every commit passes `tox -eflake8`,
 - [ ] `verify-ticket-rotation.sh` runs in the direct-qemu
       lane and passes: the session survives `set_password`
       and `expire_password`, and the old password is refused.
-- [ ] An `ovirt_matrix` run on this phase's pull request is
+- [x] An `ovirt_matrix` run on this phase's pull request is
       green with 3a.7's assertions, and is linked in
       *Outcome*.
-- [ ] No page under `docs/`, nor `ARCHITECTURE.md`, nor
+- [x] No page under `docs/`, nor `ARCHITECTURE.md`, nor
       `tools/ovirt-e2e/`, states oVirt's ticket lifetime as
       anything but what kerbside now requests.
 - [ ] The master plan's Execution table records this phase's
@@ -378,10 +378,24 @@ One commit per step. Every commit passes `tox -eflake8`,
 
 ## Bugs fixed during this work
 
-None yet. Three are expected: the 7200 s oVirt ticket
-(the master plan's finding), the oVirt ticket shared between
-concurrent sessions through the `Console` row (survey
-finding 8), and the untimed CA fetch (survey finding 6).
+- oVirt console tickets lived for the engine's default
+  7200 s. Kerbside now asks for the session's remaining
+  token lifetime plus 30 s, and stores the expiry the engine
+  echoes back.
+- One oVirt ticket was shared by every session on a console
+  through the `Console` row, so a new `.vv` reset the
+  password under an earlier session's feet. Each session now
+  holds its own ticket on its `consoletokens` row.
+- The oVirt CA certificate fetch had no timeout. It is now
+  bounded, and a failure marks the source errored and still
+  removes its temporary file.
+- `get_console_for_vm` leaked an SDK connection on every API
+  `.vv`. It now closes any connection it opens.
+- The drivers read a source's name from `source`, but
+  database rows carry `name`, so a CA failure on an API path
+  raised `KeyError` instead of erroring the source.
+- The direct `.vv` for a VM with no SPICE console was handed
+  out with `password=None`. It now fails with 502.
 
 ## Future work
 
@@ -469,7 +483,7 @@ but the SSO login runs on its own curl handle with no timeout
 in on its first request. Decision 5's timeouts therefore cannot
 bound a whole mint. The operator chose, on 2026-10-25, a
 deadline in the authorize path: 3a.5 runs the mint in a worker
-thread and waits at most `MINT_TIMEOUT`, denying on expiry and
+thread and waits at most a fixed deadline, denying on expiry and
 releasing the row lock, and a stuck worker's late result is
 discarded. It wraps whichever driver mints, so phase 4 inherits
 it. 3a.4 keeps the SDK and `requests` timeouts as the inner
@@ -502,7 +516,27 @@ driver arguments.
 
 ## Outcome
 
-Not started.
+All eight steps landed on `proxmox-source-phase-03a-minting`
+on 2026-10-25 (AEDT), one commit each, after a re-survey
+commit. 536 unit tests pass.
+
+The oVirt lane was dispatched on `581f5de`, which carries every
+code and harness change in the phase (only 3a.8's docs follow
+it), and passed:
+[run 40148744908](https://github.com/shakenfist/kerbside/actions/runs/40148744908).
+In it one session minted one 8-character ticket for four
+channels, expiring 30 s after its token, with no failed mint.
+The session was held 30 s past that expiry, re-ran the smoke
+client with all four channels still open, and the maintenance
+loop cleared the expired ticket. The ticket appeared in none
+of the 8 collected files nor the audit trail. The migration
+cleared the stored ticket of 0 oVirt consoles on that fresh
+install.
+
+The direct-qemu workflow has no `workflow_dispatch` trigger, so
+the MariaDB lock test and `verify-ticket-rotation.sh` are proven
+locally (3a.2's note above, and 3a.6's commit message) and run
+in CI first on this phase's pull request.
 
 ## Back brief
 
