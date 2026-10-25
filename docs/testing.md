@@ -650,6 +650,13 @@ Run it manually on a deployed all-in-one node with
 `sudo bash tools/run-tempest-tests`; pass `--help` to see knobs
 (regex, workspace location, CA bundle path, etc.).
 
+The job's log bundle comes from `tools/gather-kolla-logs.sh`, which
+runs `kerbside-patches`' `tools/gather-logs` on the guest and adds the
+Tempest logs. Like the oVirt lane's `gather-diagnostics.sh`, it always
+leaves a bundle and exits 0: when the under-cloud never created the
+guest it says so in `gather.log` and raises a warning, rather than
+adding two red steps to a failure that happened earlier.
+
 ### Sextant scenario test (direct-qemu lane)
 
 The plugin also contains an end-to-end scenario test at

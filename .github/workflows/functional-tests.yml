@@ -997,6 +997,15 @@ jobs:
     # variables at https://docs.github.com/en/actions/learn-github-actions/environment-variables
 
     steps:
+      # First, so that the log collection script it carries exists even
+      # when "Setup test environment" fails. setup-kerbside-environment
+      # checks out into other paths and leaves this one alone.
+      - name: Checkout kerbside
+        uses: actions/checkout@v7
+        with:
+          path: kerbside
+          fetch-depth: 0
+
       - name: Setup test environment
         uses: shakenfist/actions/setup-kerbside-environment@main
         with:
@@ -1004,12 +1013,6 @@ jobs:
           base_user: ${{ matrix.test.baseuser }}
           openstack_release: ${{ matrix.test.openstack_release }}
           topology: all-in-one
-
-      - name: Checkout kerbside (for tempest plugin sources)
-        uses: actions/checkout@v7
-        with:
-          path: kerbside
-          fetch-depth: 0
 
       - name: Build patched repositories
         run: |
@@ -1157,21 +1160,16 @@ jobs:
               ${{ matrix.test.baseuser }}@10.0.2.2 \
               'cd /srv/shakenfist/kerbside-patches/src/kerbside; sudo bash ./tools/run-tempest-tests'
 
+      # gather-kolla-logs.sh always leaves a bundle and exits 0, so a
+      # guest that never existed costs a warning here rather than two
+      # more red steps, and if-no-files-found on the upload keeps its
+      # meaning: nothing there means the gather itself did not run.
       - name: Collect logs
         if: always()
         run: |
-          . $GITHUB_ENV
-          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null \
+          ${GITHUB_WORKSPACE}/kerbside/tools/gather-kolla-logs.sh \
               ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'cd /srv/shakenfist/kerbside-patches; sudo ./tools/gather-logs'
-          ssh -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null \
-              ${{ matrix.test.baseuser }}@10.0.2.2 \
-              'if [ -d /srv/kerbside-tempest ]; then sudo zip -r /tmp/bundle.zip /srv/kerbside-tempest/logs /srv/kerbside-tempest/tempest/etc/tempest.conf 2>/dev/null || true; fi'
-          scp -i /srv/github/id_ci -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null \
-              ${{ matrix.test.baseuser }}@10.0.2.2:/tmp/bundle.zip /tmp/bundle.zip
+              /tmp/kolla-logs
 
       - uses: actions/upload-artifact@v7
         if: always()
@@ -1179,7 +1177,7 @@ jobs:
           name: bundle-${{ matrix.test.name }}
           retention-days: 90
           if-no-files-found: error
-          path: /tmp/bundle.zip
+          path: /tmp/kolla-logs/bundle.zip
 
       - name: Retain the environment if requested
         # See the matching step in ovirt_matrix: without !cancelled() a
