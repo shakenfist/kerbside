@@ -266,19 +266,20 @@ Pluggable console discovery from different cloud platforms.
 | Source | File | Description |
 |--------|------|-------------|
 | Shaken Fist | `shakenfist.py` | Uses `shakenfist_client` library; a `system` credential scrapes the whole cluster, caches the cluster's VDI token signing keys, and pins each console's `host_subject` from the node's SPICE cert subject |
-| oVirt | `ovirt.py` | Uses `ovirtsdk4` library; scrapes the engine for console addresses and pins each VM's host certificate subject, and acquires a short-lived graphics-console ticket per `.vv` request. Kerbside dials the hypervisor directly and never reads an engine-generated `.vv`, so oVirt's own SPICE proxy is not in the path — see [docs/use-cases/ovirt.md](docs/use-cases/ovirt.md) |
+| oVirt | `ovirt.py` | Uses `ovirtsdk4` library; scrapes the engine for console addresses and pins each VM's host certificate subject, and mints a graphics-console ticket per session when its first channel connects. Kerbside dials the hypervisor directly and never reads an engine-generated `.vv`, so oVirt's own SPICE proxy is not in the path — see [docs/use-cases/ovirt.md](docs/use-cases/ovirt.md) |
 | OpenStack | `api.py` | On-demand via Nova token validation |
 | Static | `static.py` | Reads VM mapping from an inline `consoles:` list in sources.yaml; no external API calls; designed for CI and ad-hoc debugging |
 
 The static driver stores tickets in the Console DB at
-enumeration time via `db.add_console(..., ticket=...)`.  The
-API layer reads those persisted tickets back at `.vv`-
-generation time rather than making a per-request driver call.
-This keeps the API-side change to a single `elif` branch that
-skips the `db.store_console_ticket()` overwrite that would
-otherwise erase the persisted value.  An example sources.yaml
-for the static driver lives at
-`etc/example-static-sources.yaml`.
+enumeration time via `db.add_console(..., ticket=...)`, and
+`AuthorizeConnection` and the direct `.vv` handler read them back.
+Drivers that set `MINTS_TICKETS` (oVirt) instead mint a ticket when a
+session's first channel is authorized, bounded by a deadline, and
+share it between the session's channels through its `consoletokens`
+row; see [docs/console-sources.md](docs/console-sources.md#ovirt),
+[docs/proxy-architecture.md](docs/proxy-architecture.md) and
+[docs/schema.md](docs/schema.md). An example sources.yaml for the
+static driver lives at `etc/example-static-sources.yaml`.
 
 ## Data Flow
 
