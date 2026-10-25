@@ -364,10 +364,6 @@
       "author": "mikal"
     },
     {
-      "path": "tools/shellcheck-wrap.sh",
-      "author": "mikal"
-    },
-    {
       "path": ".claude",
       "author": "mikal"
     },
@@ -377,10 +373,6 @@
     },
     {
       "path": "README.md",
-      "author": "mikal"
-    },
-    {
-      "path": "renovate.json",
       "author": "mikal"
     },
     {
@@ -429,10 +421,6 @@
     },
     {
       "path": "demo/spice-target",
-      "author": "mikal"
-    },
-    {
-      "path": "demo/docker-compose.yml",
       "author": "mikal"
     },
     {
