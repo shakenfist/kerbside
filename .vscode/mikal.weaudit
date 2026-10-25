@@ -380,10 +380,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/codeql-analysis.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/actionlint.yaml",
       "author": "mikal"
     },
