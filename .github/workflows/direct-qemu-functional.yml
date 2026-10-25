@@ -177,6 +177,12 @@ jobs:
       - name: Initialize MariaDB
         run: tools/direct-qemu/setup-mariadb.sh
 
+      # SQLite ignores SELECT ... FOR UPDATE, so only a real engine can show
+      # that concurrent channels of one session mint its ticket once. Uses
+      # its own database, so the kerbside database above is left alone.
+      - name: Prove one session mints its ticket once on MariaDB
+        run: tools/direct-qemu/run-ticket-lock-test.sh
+
       # Prove API-driven session termination drops an in-flight connection,
       # end to end through the DB intent table + the daemon's ProxyControl
       # poll. Runs on its own isolated lane (separate WORKDIR, torn down

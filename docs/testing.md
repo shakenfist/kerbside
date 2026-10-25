@@ -495,6 +495,28 @@ wheel into the kerbside venv (`install-proxy-wheel.sh` →
 this lane its coverage value. `start-kerbside.sh` pre-checks the proxy
 binary through `find_proxy_bin()` for the same reason.
 
+### One ticket mint per session
+
+`db.session_ticket()` holds `SELECT ... FOR UPDATE` on the session's
+token row while it mints, so that the channels of one session mint a
+backend ticket once between them. SQLite ignores `FOR UPDATE`, so the
+unit tests cannot show it. Straight after the lane's MariaDB is set
+up, `run-ticket-lock-test.sh` runs
+`kerbside/tests/functional/test_session_ticket_lock.py` against it:
+eight threads, released together by a barrier, call
+`session_ticket()` for one session with a mint that takes a second,
+and exactly one mint must serve all eight, both for an empty row and
+for a stored ticket inside the reuse margin. The test drops and
+recreates its own database, `kerbside_locktest`, and builds the schema
+with the migrations, so the daemon's `kerbside` database is untouched.
+It is skipped unless `KERBSIDE_TEST_SQL_URL` is set, and runs locally
+against any MariaDB the URL's user may create that database on:
+
+```bash
+KERBSIDE_TEST_SQL_URL=mysql://kerbside:kerbside@127.0.0.1/kerbside_locktest \
+    python -m unittest -v kerbside.tests.functional.test_session_ticket_lock
+```
+
 ### Live termination
 
 `verify-terminate-live.sh` (Rust leg only) runs on an isolated lane:
