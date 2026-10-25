@@ -2,6 +2,7 @@
 
 import queue
 import threading
+import time
 
 from shakenfist_utilities import logs
 
@@ -21,6 +22,25 @@ LOG, _ = logs.setup(__name__, **util.configure_logging())
 # one request's timeout, so that a single stalled request fails with its own
 # error first.
 MINT_DEADLINE = 20
+
+# A worker still running this many seconds after it started no longer holds
+# up new mints for its console. It is stuck in a request with no timeout,
+# most likely on a connection that will never answer, and refusing every
+# mint until the process restarts would be worse than the small chance that
+# it finishes after all and replaces the console's password.
+MINT_STUCK_AFTER = 300
+
+# The mint worker running for each console, as (thread, monotonic start),
+# keyed by (source name, uuid). A hypervisor has one SPICE password per
+# console, so two mints for one console must not overlap: a worker abandoned
+# at the deadline which finishes later would replace the password a newer
+# mint had already set and stored, and every channel connecting afterwards
+# would be refused. A new mint therefore waits, within its own deadline, for
+# the console's running worker to finish before starting another, which
+# also leaves at most one stuck worker per console. This holds within one
+# process; daemons on other nodes keep their own.
+_workers = {}
+_workers_lock = threading.Lock()
 
 
 class MintDeadlineExceeded(base.ConsoleTicketUnavailable):
@@ -49,8 +69,14 @@ def mint_with_deadline(driver, source, uuid, lifetime, deadline):
     a worker thread which owns it from start to finish, and the caller
     waits for that thread's result for at most deadline seconds.
 
-    If the deadline passes first, MintDeadlineExceeded is raised and the
-    worker is abandoned. It is a daemon thread, so one stuck in a request
+    Mints for one console run one at a time in this process: if a worker
+    for the console is still running, perhaps one an earlier caller
+    abandoned, the caller waits for it first, and raises
+    MintDeadlineExceeded without asking the source for anything if it does
+    not finish within the deadline. See _workers.
+
+    If the deadline passes before the worker reports, MintDeadlineExceeded
+    is raised and the worker is abandoned. It is a daemon thread, so one stuck in a request
     nothing can interrupt does not hold up the process exiting, and it
     still closes its driver if it ever finishes. Whatever it returns then
     is discarded: a ticket minted after the caller gave up is handed to
@@ -60,8 +86,18 @@ def mint_with_deadline(driver, source, uuid, lifetime, deadline):
     # reads it once the caller has given up, so a late outcome is dropped
     # along with the queue.
     outcome = queue.Queue(maxsize=1)
+    key = (source['name'], uuid)
+    give_up_at = time.monotonic() + deadline
 
     def worker():
+        try:
+            mint()
+        finally:
+            with _workers_lock:
+                if _workers.get(key, (None,))[0] is thread:
+                    del _workers[key]
+
+    def mint():
         try:
             # A database row names its source 'name', where the drivers,
             # written for the sources.yaml entries the scrape loop builds
@@ -90,11 +126,43 @@ def mint_with_deadline(driver, source, uuid, lifetime, deadline):
                     }).warning('Closing a source driver after minting failed')
         outcome.put(result)
 
-    threading.Thread(
-        target=worker, name='mint-console-ticket', daemon=True).start()
+    thread = threading.Thread(
+        target=worker, name='mint-console-ticket', daemon=True)
+    while True:
+        now = time.monotonic()
+        with _workers_lock:
+            previous, started = _workers.get(key, (None, None))
+            if previous is None or now - started > MINT_STUCK_AFTER:
+                _workers[key] = (thread, now)
+                break
+        previous.join(max(give_up_at - now, 0))
+        if previous.is_alive():
+            LOG.with_fields({
+                'source': source['name'],
+                'uuid': uuid
+                }).warning('An earlier console ticket mint is still running')
+            raise MintDeadlineExceeded(
+                'an earlier console ticket mint for %s is still running'
+                % uuid)
+    if previous is not None:
+        LOG.with_fields({
+            'source': source['name'],
+            'uuid': uuid,
+            'running': int(now - started)
+            }).warning('No longer waiting for a stuck console ticket mint')
 
+    remaining = give_up_at - time.monotonic()
+    if remaining <= 0:
+        # The wait used the whole deadline. Starting a worker now would only
+        # abandon it at once, still minting.
+        with _workers_lock:
+            del _workers[key]
+        raise MintDeadlineExceeded(
+            'no console ticket for %s within %s seconds' % (uuid, deadline))
+
+    thread.start()
     try:
-        minted, error = outcome.get(timeout=deadline)
+        minted, error = outcome.get(timeout=remaining)
     except queue.Empty:
         raise MintDeadlineExceeded(
             'no console ticket for %s within %s seconds' % (uuid, deadline))

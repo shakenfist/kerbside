@@ -13,6 +13,10 @@ class MintWithDeadlineTestCase(testtools.TestCase):
 
     def setUp(self):
         super().setUp()
+        # Each test starts with no console's worker running.
+        patcher = mock.patch.object(minting, '_workers', {})
+        patcher.start()
+        self.addCleanup(patcher.stop)
         # Each event is (what, thread it happened on).
         self.events = []
         self.mint = lambda uuid, lifetime: base.MintedTicket(
@@ -38,10 +42,25 @@ class MintWithDeadlineTestCase(testtools.TestCase):
 
         self.driver = FakeDriver
 
-    def _mint(self, deadline=5):
+    def _mint(self, deadline=5, uuid='u'):
         return minting.mint_with_deadline(
-            self.driver, {'name': 'src', 'password': 'pw'}, 'u', 90,
+            self.driver, {'name': 'src', 'password': 'pw'}, uuid, 90,
             deadline)
+
+    def _stall_first_mint(self):
+        """Make the first mint wait for the returned event; others mint."""
+        release = threading.Event()
+        self.addCleanup(release.set)
+        mints = []
+
+        def stall_first(uuid, lifetime):
+            mints.append(uuid)
+            if len(mints) == 1:
+                release.wait(30)
+                return base.MintedTicket('late-ticket', 0)
+            return base.MintedTicket('new-ticket', 1000 + lifetime)
+        self.mint = stall_first
+        return release
 
     def test_returns_the_ticket_and_closes_on_the_worker(self):
         self.assertEqual(base.MintedTicket('a-ticket', 1090), self._mint())
@@ -122,3 +141,88 @@ class MintWithDeadlineTestCase(testtools.TestCase):
         self.assertFalse(worker.is_alive())
         self.assertTrue(worker.daemon)
         self.assertEqual(('close', worker), self.events[-1])
+
+    def test_a_finished_mint_leaves_no_worker_registered(self):
+        self._mint()
+        self.assertEqual({}, minting._workers)
+
+    def test_a_mint_waits_for_an_abandoned_worker_on_its_console(self):
+        # An abandoned worker which finishes later sets the console's
+        # password. A newer mint must set its own after that, or the
+        # password the newer caller stores is not the hypervisor's.
+        release = self._stall_first_mint()
+        self.assertRaises(
+            minting.MintDeadlineExceeded, self._mint, deadline=0.2)
+        abandoned = self.events[0][1]
+
+        threading.Timer(0.3, release.set).start()
+        self.assertEqual('new-ticket', self._mint().ticket)
+
+        self.assertFalse(abandoned.is_alive())
+        whats = [what for what, _ in self.events]
+        self.assertEqual(['init', 'mint', 'close', 'init', 'mint', 'close'],
+                         whats)
+        self.assertEqual({}, minting._workers)
+
+    def test_a_still_running_worker_refuses_a_new_mint(self):
+        self._stall_first_mint()
+        self.assertRaises(
+            minting.MintDeadlineExceeded, self._mint, deadline=0.2)
+
+        with mock.patch.object(minting, 'LOG') as mock_log:
+            started = time.monotonic()
+            self.assertRaises(
+                minting.MintDeadlineExceeded, self._mint, deadline=0.2)
+        self.assertLess(time.monotonic() - started, 5)
+
+        # The source was not asked again, so there is still one worker.
+        self.assertEqual(['init', 'mint'], [what for what, _ in self.events])
+        self.assertIn('still running', repr(mock_log.mock_calls))
+
+    def test_another_console_is_not_held_up(self):
+        self._stall_first_mint()
+        self.assertRaises(
+            minting.MintDeadlineExceeded, self._mint, deadline=0.2)
+
+        self.assertEqual('new-ticket', self._mint(uuid='other').ticket)
+
+    def test_a_worker_stuck_for_long_enough_stops_blocking(self):
+        self._stall_first_mint()
+        self.assertRaises(
+            minting.MintDeadlineExceeded, self._mint, deadline=0.2)
+        stuck = self.events[0][1]
+
+        with mock.patch.object(minting, 'MINT_STUCK_AFTER', 0), \
+                mock.patch.object(minting, 'LOG') as mock_log:
+            self.assertEqual('new-ticket', self._mint().ticket)
+
+        self.assertIn('stuck', repr(mock_log.mock_calls))
+        self.assertTrue(stuck.is_alive())
+        # The newer worker unregistered itself, and the stuck one is no
+        # longer registered to hold up anything else.
+        self.assertEqual({}, minting._workers)
+
+    def test_a_stuck_worker_finishing_keeps_a_newer_one_registered(self):
+        releases = []
+
+        def stall(uuid, lifetime):
+            release = threading.Event()
+            self.addCleanup(release.set)
+            releases.append(release)
+            release.wait(30)
+            return base.MintedTicket('late-ticket', 0)
+        self.mint = stall
+
+        self.assertRaises(
+            minting.MintDeadlineExceeded, self._mint, deadline=0.2)
+        with mock.patch.object(minting, 'MINT_STUCK_AFTER', 0):
+            self.assertRaises(
+                minting.MintDeadlineExceeded, self._mint, deadline=0.2)
+        stuck, newer = self.events[0][1], self.events[2][1]
+        self.assertIsNot(stuck, newer)
+
+        releases[0].set()
+        stuck.join(timeout=5)
+        self.assertFalse(stuck.is_alive())
+        # The newer worker is still running, so it still holds the console.
+        self.assertIs(newer, minting._workers[('src', 'u')][0])

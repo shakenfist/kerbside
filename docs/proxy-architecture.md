@@ -266,7 +266,14 @@ from the source, and the rest reuse it. The sequence is:
    covers building the driver, logging in and the ticket request, because
    `ovirtsdk4` does not bound its login; each engine request is separately
    bounded at 15 seconds. A late result from an abandoned worker is
-   discarded, never stored.
+   discarded, never stored. Mints for one console run one at a time in
+   each daemon: while a worker for the console is still running, even an
+   abandoned one, a new mint waits for it within its own deadline and is
+   refused if it does not finish. Otherwise the late worker could replace
+   the hypervisor's password after a newer mint had set and stored its
+   own, and every later channel would be refused. A worker still running
+   after five minutes (`MINT_STUCK_AFTER`) stops holding mints up. Daemons
+   on different nodes do not see each other's workers.
 4. A failed or timed-out mint stores nothing, denies the channel with
    `console ticket unavailable`, and is audited with the exception's class
    name (never its text, which an API client can fill with the request it

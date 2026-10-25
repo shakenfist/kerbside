@@ -17,8 +17,19 @@ When adding a new cloud source type to Kerbside:
 
 4. Implement `close()` for any cleanup (API connections, etc.).
 
-5. Register the new source type in `kerbside/main.py:_parse_sources()`
-   by adding an `elif` branch for the new type.
+5. Register the new source type in
+   `kerbside/sources/__init__.py:driver_class()`, importing the driver
+   inside the branch so that importing the package stays cheap. The
+   scrape loop and both console ticket minting paths look drivers up
+   there.
+
+   If the platform issues a SPICE ticket per console session (as oVirt
+   does) rather than a fixed password, set `MINTS_TICKETS = True` and
+   implement `mint_console_ticket(uuid, lifetime)`, returning a
+   `MintedTicket` or raising `ConsoleTicketUnavailable` (see
+   `sources/base.py`). Kerbside then mints one when a session's first
+   channel connects; `docs/proxy-architecture.md` describes the flow.
+   Bound every request the driver makes with a timeout.
 
 6. Add the new cloud client library to `pyproject.toml` as an optional
    dependency (commented out in main dependencies, listed in test

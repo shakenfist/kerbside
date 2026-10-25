@@ -39,6 +39,8 @@
 #
 # The new password is generated into an owner-only file and passed to
 # qmp-client.py by path, so it never appears in a command line or a log.
+# The collected artifacts are searched for it on exit, and the run fails if
+# any holds it, since the positive control's ryll runs verbosely with it.
 #
 # Self-contained, like verify-terminate-live.sh: its own WORKDIR, torn down on
 # exit, with logs stashed in ROTATION_ARTIFACTS for CI upload. Ports are the
@@ -75,6 +77,7 @@ REFUSAL_CAUSE='PermissionDenied'
 ROTATION_ARTIFACTS="${ROTATION_ARTIFACTS:-/tmp/rotation-artifacts}"
 CONTROL_PID=''
 cleanup() {
+    local rc=$?
     if [ -n "${CONTROL_PID}" ]; then
         kill "${CONTROL_PID}" 2>/dev/null || true
     fi
@@ -86,8 +89,20 @@ cleanup() {
                 cp "${f}" "${ROTATION_ARTIFACTS}/" 2>/dev/null || true
             fi
         done
+        if [ -s "${PASSWORD_FILE}" ]; then
+            local leaked
+            leaked=$(grep -rlF -f "${PASSWORD_FILE}" "${ROTATION_ARTIFACTS}" || true)
+            if [ -n "${leaked}" ]; then
+                while read -r f; do
+                    echo "ERROR: the new SPICE password appears in ${f}; removed it" >&2
+                    rm -f "${f}"
+                done <<< "${leaked}"
+                rc=1
+            fi
+        fi
     fi
     WORKDIR="${WORKDIR}" "${SCRIPT_DIR}/lane-down.sh" || true
+    exit "${rc}"
 }
 trap cleanup EXIT
 
@@ -255,7 +270,8 @@ DEADLINE=$(( $(date +%s) + 30 ))
 while [ ! -S "${CONTROL_SOCK}" ]; do
     if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
         echo "  control ryll stderr (last 20 lines):" >&2
-        tail -20 "${WORKDIR}/ryll-control.stderr" >&2 || true
+        tail -20 "${WORKDIR}/ryll-control.stderr" \
+            | grep -vF -f "${PASSWORD_FILE}" >&2 || true
         fail "ryll with the new password never opened its control socket"
     fi
     sleep 0.5

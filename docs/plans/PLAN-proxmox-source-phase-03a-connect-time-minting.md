@@ -406,6 +406,11 @@ One commit per step. Every commit passes `tox -eflake8`,
   `MINT_DEADLINE` turn behind the row lock, and the later ones
   exceed MariaDB's 50 s lock wait and fail as INTERNAL rather
   than as a denial. The session fails either way.
+- Serialise mints for one console across daemons. Within one
+  daemon a new mint waits for a still-running worker on the same
+  console, so an abandoned worker cannot replace a newer ticket;
+  a worker abandoned on another node still can. The row lock
+  covers the callers, not their abandoned workers.
 - Issue #319: the proxied `.vv` GET still mints a token.
 - `/console/direct` still hands a raw hypervisor ticket to
   its caller, though since #537 (issue #134) only to an
@@ -513,6 +518,16 @@ failure on any API path raised `KeyError` instead of marking
 the source errored. That predates this phase on the `.vv`
 paths; it is fixed where both minting paths now turn a row into
 driver arguments.
+
+The first automated review of #604 found that a worker abandoned
+at the deadline still finishes its ticket request if the engine is
+slow rather than hung, replacing the hypervisor's password after a
+newer mint has stored its own. `minting.py` now keeps the running
+worker per console and makes a new mint wait for it, which also
+caps stuck workers at one per console; a worker stuck for five
+minutes stops blocking, so a connection that never answers cannot
+disable a console until restart. The rotation script now fails if
+the new password reaches an uploaded artifact.
 
 ## Outcome
 
