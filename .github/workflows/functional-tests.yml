@@ -65,6 +65,16 @@ jobs:
   # check_paths jobs in direct-qemu-functional.yml and
   # sf-e2e-functional.yml, the trigger-level paths-ignore in
   # codeql-analysis.yml, and the .vscode whitelist in .gitignore.
+  # One difference is deliberate: only codeql-analysis.yml skips
+  # .vscode/review-scope.toml. The scope config decides which files
+  # are reviewed at all, so a pull request narrowing it needs the
+  # same lint and automated review as a code change, and both sit
+  # behind the check_paths filter in functional-tests.yml
+  # (sanity_checks, and the automated_reviewer job that needs it).
+  # The other check_paths copies match that one rather than skip
+  # the file, so the three lists stay identical; a scope-only change
+  # pays for a full run, which happens a few times a year. CodeQL
+  # does not read the file, so it alone may skip it.
   check_paths:
     name: "Check paths"
     runs-on: [self-hosted, static]
@@ -104,7 +114,6 @@ jobs:
               - '!REVIEWS.md'
               - '!.vscode/*.weaudit'
               - '!.vscode/*.weaudit-shas.json'
-              - '!.vscode/review-scope.toml'
               - '!docs/**'
       # Make the verdict visible in the log rather than inferred from
       # which downstream jobs skipped.

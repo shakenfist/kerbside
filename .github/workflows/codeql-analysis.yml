@@ -10,6 +10,12 @@ permissions: {}
 # copies: the check_paths jobs in functional-tests.yml,
 # direct-qemu-functional.yml, and sf-e2e-functional.yml, and the
 # .vscode whitelist in .gitignore.
+#
+# One difference is deliberate: only this copy skips
+# .vscode/review-scope.toml. CodeQL does not read it, but the scope
+# config decides which files are reviewed at all, so the check_paths
+# copies let a change to it through to lint and the automated
+# reviewer. Do not add it back to them; see functional-tests.yml.
 on:
   push:
     branches: [develop]
