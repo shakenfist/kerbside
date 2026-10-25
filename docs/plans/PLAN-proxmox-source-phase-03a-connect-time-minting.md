@@ -361,10 +361,10 @@ One commit per step. Every commit passes `tox -eflake8`,
       session, reuse within the margin, a re-mint outside
       it, and a denial with an audit event and nothing
       stored when the mint fails.
-- [ ] The MariaDB lock test runs in the direct-qemu lane and
+- [x] The MariaDB lock test runs in the direct-qemu lane and
       passes, and the commit message records that it failed
       with `with_for_update()` removed.
-- [ ] `verify-ticket-rotation.sh` runs in the direct-qemu
+- [x] `verify-ticket-rotation.sh` runs in the direct-qemu
       lane and passes: the session survives `set_password`
       and `expire_password`, and the old password is refused.
 - [x] A `workflow_dispatch` run of the oVirt lane on the phase
@@ -549,9 +549,15 @@ cleared the stored ticket of 0 oVirt consoles on that fresh
 install.
 
 The direct-qemu workflow has no `workflow_dispatch` trigger, so
-the MariaDB lock test and `verify-ticket-rotation.sh` are proven
-locally (3a.2's note above, and 3a.6's commit message) and run
-in CI first on this phase's pull request.
+the MariaDB lock test and `verify-ticket-rotation.sh` first ran in
+CI on #604, at `ed59e13`, and passed:
+[run 40158168216](https://github.com/shakenfist/kerbside/actions/runs/40158168216).
+Both lock tests passed (one mint for eight concurrent channels,
+with an empty row and inside the reuse margin). The rotation lane
+kept the same five channels up through `set_password` and
+`expire_password`, refused a fresh session presenting the old
+password after each, and accepted the new password in the positive
+control, with the new password in no uploaded artifact.
 
 ## Back brief
 
