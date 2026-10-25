@@ -18,9 +18,7 @@ from . import db as kerbside_db
 from . import proxy_supervisor
 from .rpc import server as rpc_server
 from .rpc import servicer as rpc_servicer
-from .sources import ovirt as ovirt_source
-from .sources import shakenfist as shakenfist_source
-from .sources import static as static_source
+from .sources import driver_class as source_driver_class
 from . import util
 
 
@@ -252,20 +250,18 @@ def _parse_sources():
 
         # Now lookup consoles.
         try:
-            if source['type'] == 'shakenfist':
-                lookup = shakenfist_source.ShakenFistSource(**source)
-            elif source['type'] == 'ovirt':
-                lookup = ovirt_source.oVirtSource(**source)
-            elif source['type'] == 'static':
-                lookup = static_source.StaticSource(**source)
-            elif source['type'] == 'openstack':
+            if source['type'] == 'openstack':
                 # OpenStack now uses auth tokens instead of console scraping
                 skipped_sources.add(source['source'])
                 continue
-            else:
+
+            try:
+                driver = source_driver_class(source['type'])
+            except KeyError:
                 LOG.error('Unknown source type %s' % source['type'])
                 kerbside_db.set_source_error_state(source['source'], True)
                 continue
+            lookup = driver(**source)
 
             if lookup.errored:
                 LOG.error('Source initialization failed for source %s' % source['source'])
@@ -390,6 +386,13 @@ def _reap_expired_console_tokens():
             None, None, None, 'Reaped expired and unused token')
 
 
+def _clear_expired_backend_tickets():
+    # The ticket values are not logged, just a count.
+    count = kerbside_db.clear_expired_backend_tickets()
+    if count:
+        LOG.info('Cleared %d expired backend console tickets' % count)
+
+
 def _reap_expired_sf_token_jtis():
     # A jti has no session or live channel to protect -- it is a random,
     # purely time-bounded single-use marker -- so there is no audit event to
@@ -452,6 +455,7 @@ def _run_rust_proxy(last_maintenance):
         if time.time() - last_maintenance > 60:
             _parse_sources()
             _reap_expired_console_tokens()
+            _clear_expired_backend_tickets()
             _reap_expired_sf_token_jtis()
             _reap_session_terminations()
             last_maintenance = time.time()
@@ -462,6 +466,7 @@ def _run_rust_proxy(last_maintenance):
 def daemon_run(ctx):
     _parse_sources()
     _reap_expired_console_tokens()
+    _clear_expired_backend_tickets()
     _reap_expired_sf_token_jtis()
     last_maintenance = time.time()
 

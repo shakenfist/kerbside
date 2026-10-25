@@ -1,9 +1,28 @@
 # A base class for VDI console source drivers
+#
+# kerbside.db imports MintedTicket from here, and the drivers import db, so
+# this module, like the package's __init__, must not import db or a driver
+# at module level.
 
 from abc import ABC
+from collections import namedtuple
+
+# A console ticket minted by a source, valid until expires (epoch seconds).
+MintedTicket = namedtuple('MintedTicket', ['ticket', 'expires'])
+
+
+class ConsoleTicketUnavailable(Exception):
+    """A source could not mint a console ticket. The message carries no secret."""
 
 
 class BaseSource(ABC):
+    # Set to True by sources which can mint a console ticket on demand.
+    MINTS_TICKETS = False
+
+    # Set by a source which finds while being built that it cannot work, for
+    # example because its upstream is unreachable or misconfigured.
+    errored = False
+
     def __init__(self, **kwargs):
         ...
 
@@ -12,3 +31,16 @@ class BaseSource(ABC):
 
     def close(self):
         ...
+
+    def mint_console_ticket(self, uuid, lifetime):
+        """Mint a ticket for connecting to a console.
+
+        Returns a MintedTicket whose ticket is valid until expires (epoch
+        seconds). lifetime is the requested validity in seconds. Sources
+        honour it where their API allows, and otherwise report the shorter
+        expiry the upstream actually granted. Only sources with MINTS_TICKETS
+        set implement this. Failure raises, never returns None: the source
+        raises ConsoleTicketUnavailable for what it can diagnose itself, and
+        lets its API client's exceptions through otherwise.
+        """
+        raise NotImplementedError()

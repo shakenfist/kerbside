@@ -124,7 +124,7 @@ Kerbside authenticates to Keystone as the service account you
 configured for the cloud and asks Nova to validate the token it
 was handed; which endpoints that needs is under **Network**
 below. That is a live call per exchange, so it sits
-between oVirt's per-request ticket and Shaken Fist's entirely
+between oVirt's per-session ticket and Shaken Fist's entirely
 offline signature check: a Nova that is down means no *new*
 consoles, while sessions already running are untouched. Where
 several OpenStack clouds are configured, each is tried in turn,

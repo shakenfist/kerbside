@@ -1,9 +1,13 @@
 from unittest import mock
 import shutil
 import tempfile
+import threading
+import time
 
 import grpc
 from sqlalchemy import create_engine
+from sqlalchemy import exc as sqlalchemy_exc
+from sqlalchemy.orm import Session
 import testtools
 
 from kerbside import db
@@ -11,6 +15,8 @@ from kerbside.rpc import kerbside_pb2
 from kerbside.rpc import kerbside_pb2_grpc
 from kerbside.rpc import server as rpc_server
 from kerbside.rpc import servicer as servicer_module
+from kerbside.sources import base as source_base
+from kerbside.sources import minting
 
 
 class KerbsideProxyRpcTestCase(testtools.TestCase):
@@ -58,7 +64,7 @@ class KerbsideProxyRpcTestCase(testtools.TestCase):
         mock_get_token.return_value = {
             'session_id': 's', 'source': 'src', 'uuid': 'u',
             'created': 0, 'expires': 9999999999}
-        mock_get_source.return_value = {'ca_cert': 'CA'}
+        mock_get_source.return_value = {'ca_cert': 'CA', 'type': 'static'}
         mock_get_console.return_value = {
             'hypervisor': 'hv', 'hypervisor_ip': '10.0.0.1',
             'insecure_port': 5901, 'secure_port': 5900, 'ticket': 'tkt',
@@ -140,7 +146,7 @@ class KerbsideProxyRpcTestCase(testtools.TestCase):
         mock_get_token.return_value = {
             'session_id': 's', 'source': 'src', 'uuid': 'u',
             'created': 0, 'expires': 9999999999}
-        mock_get_source.return_value = {'ca_cert': 'CA'}
+        mock_get_source.return_value = {'ca_cert': 'CA', 'type': 'static'}
         mock_get_console.return_value = None
 
         reply = self.stub.AuthorizeConnection(
@@ -168,6 +174,53 @@ class KerbsideProxyRpcTestCase(testtools.TestCase):
             self.fail('expected grpc.RpcError')
         except grpc.RpcError as e:
             self.assertEqual(grpc.StatusCode.INTERNAL, e.code())
+
+    @mock.patch('kerbside.db.get_token_by_token')
+    def test_authorize_internal_error_logs_only_the_class_name(
+            self, mock_get_token):
+        # An API client's exception can quote the request it failed on,
+        # and that request can carry a ticket, so the catch-all logs the
+        # exception's class and not its text.
+        mock_get_token.side_effect = RuntimeError(
+            'request carried ticket=sekrit-backend-ticket')
+
+        with mock.patch.object(servicer_module, 'LOG') as mock_log:
+            try:
+                self.stub.AuthorizeConnection(
+                    kerbside_pb2.AuthorizeConnectionRequest(
+                        token='T', connection_ref='cr', channel_type='main'),
+                    timeout=5)
+                self.fail('expected grpc.RpcError')
+            except grpc.RpcError as e:
+                self.assertEqual(grpc.StatusCode.INTERNAL, e.code())
+                self.assertNotIn('sekrit-backend-ticket', e.details())
+
+        logged = repr(mock_log.mock_calls)
+        self.assertNotIn('sekrit-backend-ticket', logged)
+        self.assertIn('RuntimeError', logged)
+
+    @mock.patch('kerbside.db.get_token_by_token')
+    def test_authorize_database_error_logs_its_code(self, mock_get_token):
+        # A lock wait timeout is an expected failure, so its driver error
+        # code is logged; its message, which can quote the statement, is
+        # not.
+        mock_get_token.side_effect = sqlalchemy_exc.OperationalError(
+            'SELECT ... sekrit-backend-ticket', {},
+            Exception(1205, 'Lock wait timeout; sekrit-backend-ticket'))
+
+        with mock.patch.object(servicer_module, 'LOG') as mock_log:
+            try:
+                self.stub.AuthorizeConnection(
+                    kerbside_pb2.AuthorizeConnectionRequest(
+                        token='T', connection_ref='cr', channel_type='main'),
+                    timeout=5)
+                self.fail('expected grpc.RpcError')
+            except grpc.RpcError as e:
+                self.assertEqual(grpc.StatusCode.INTERNAL, e.code())
+
+        logged = repr(mock_log.mock_calls)
+        self.assertNotIn('sekrit-backend-ticket', logged)
+        self.assertIn('OperationalError (database error 1205)', logged)
 
     @mock.patch('kerbside.db.record_channel_info_by_ref')
     def test_register_channel(self, mock_record):
@@ -321,6 +374,10 @@ class AuthorizeConnectionRealDbTestCase(testtools.TestCase):
     console ticket. Narrow either and every proxy connection breaks,
     with no gRPC test to say so. This one says so.
 
+    The source is a static one, which keeps its ticket on the console
+    row. A source which mints tickets is covered by
+    AuthorizeConnectionMintingTestCase.
+
     A file backed sqlite database rather than :memory: because the
     servicer answers on a gRPC worker thread, and an in-memory sqlite
     engine hands each thread its own empty database.
@@ -341,8 +398,7 @@ class AuthorizeConnectionRealDbTestCase(testtools.TestCase):
         self.addCleanup(engine_patch.stop)
 
         db.add_source(
-            'src', 'ovirt', 'https://ovirt.example.com/ovirt-engine/api',
-            'admin@internal', 'sekrit-source-password',
+            'src', 'static', None, 'admin', 'sekrit-source-password',
             ca_cert='CA-CERT-MARKER')
         db.add_console(
             source='src', uuid='u', hypervisor='hv', hypervisor_ip='10.0.0.1',
@@ -401,7 +457,8 @@ class AuthorizeConnectionRealDbTestCase(testtools.TestCase):
         from the bug this change exists to close. The proxy
         authenticates to the SPICE server with the console ticket and
         never with the source password, so the opt-in count here is
-        exactly one.
+        exactly one. Only minting a ticket needs the source's
+        credentials, and a static source never mints.
         """
         mock_get_token.return_value = {
             'session_id': 's', 'source': 'src', 'uuid': 'u',
@@ -423,6 +480,337 @@ class AuthorizeConnectionRealDbTestCase(testtools.TestCase):
 
         spy_console.assert_called_once()
         self.assertTrue(spy_console.call_args.kwargs['include_secrets'])
+
+
+class AuthorizeConnectionMintingTestCase(testtools.TestCase):
+    """AuthorizeConnection for a source which mints backend tickets.
+
+    The database is real, and file backed for the reason given above, so
+    db.session_ticket() really stores, reuses and replaces the session's
+    ticket on its token row. The oVirt driver is replaced by a fake which
+    records its mints, and is reached through the real driver registry.
+    SQLite ignores FOR UPDATE, so these tests show what a channel mints and
+    stores, not that concurrent channels wait for each other.
+    """
+
+    def setUp(self):
+        super().setUp()
+
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+
+        self.engine = create_engine('sqlite:///%s/test.db' % self.tmpdir)
+        db.Base.metadata.create_all(
+            self.engine,
+            tables=[db.Source.__table__, db.Console.__table__,
+                    db.ConsoleToken.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+        db.add_source(
+            'src', 'ovirt', 'https://ovirt.example.com/ovirt-engine/api',
+            'admin@internal', 'sekrit-source-password', ca_cert='CA')
+        # A ticket left on the row, which a minting source must never
+        # hand out.
+        db.add_console(
+            source='src', uuid='u', hypervisor='hv', hypervisor_ip='10.0.0.1',
+            insecure_port=5901, secure_port=5900, name='n',
+            host_subject='HS', ticket='stale-row-ticket')
+        self.token_remaining = 60
+        db.add_token('T', 's', 'src', 'u', int(time.time()),
+                     int(time.time()) + self.token_remaining)
+
+        self.sock = self.tmpdir + '/api.sock'
+        self.server = rpc_server.serve(socket_path=self.sock, workers=2)
+        self.addCleanup(rpc_server.stop, self.server, socket_path=self.sock)
+
+        self.channel = grpc.insecure_channel('unix:%s' % self.sock)
+        self.addCleanup(self.channel.close)
+        grpc.channel_ready_future(self.channel).result(timeout=5)
+        self.stub = kerbside_pb2_grpc.KerbsideProxyStub(self.channel)
+
+        node_patch = mock.patch.object(
+            servicer_module.config, 'NODE_NAME', 'test-node')
+        node_patch.start()
+        self.addCleanup(node_patch.stop)
+
+        # The audit table's server default is MariaDB only, so audit
+        # events are captured rather than stored.
+        self.audit = mock.MagicMock()
+        audit_patch = mock.patch.object(db, 'add_audit_event', self.audit)
+        audit_patch.start()
+        self.addCleanup(audit_patch.stop)
+
+        self.record = mock.MagicMock()
+        record_patch = mock.patch.object(
+            db, 'record_channel_info_by_ref', self.record)
+        record_patch.start()
+        self.addCleanup(record_patch.stop)
+
+        # Each mint is recorded as (driver kwargs, uuid, lifetime, thread),
+        # and each close as the thread which closed the driver.
+        self.mints = []
+        self.closes = []
+        self.mint = self._mint_ok
+        test = self
+
+        class FakeMintingSource(source_base.BaseSource):
+            MINTS_TICKETS = True
+
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+            def mint_console_ticket(self, uuid, lifetime):
+                test.mints.append(
+                    (self.kwargs, uuid, lifetime, threading.current_thread()))
+                return test.mint(uuid, lifetime)
+
+            def close(self):
+                test.closes.append(threading.current_thread())
+
+        driver_patch = mock.patch(
+            'kerbside.sources.ovirt.oVirtSource', FakeMintingSource)
+        driver_patch.start()
+        self.addCleanup(driver_patch.stop)
+
+    def _mint_ok(self, uuid, lifetime):
+        return source_base.MintedTicket(
+            'minted-%d' % len(self.mints), int(time.time()) + lifetime)
+
+    def _authorize(self, connection_ref='cr', channel_type='main',
+                   token='T'):
+        return self.stub.AuthorizeConnection(
+            kerbside_pb2.AuthorizeConnectionRequest(
+                token=token, connection_ref=connection_ref,
+                channel_type=channel_type),
+            timeout=10)
+
+    def _messages(self):
+        return [c.args[6] for c in self.audit.call_args_list]
+
+    def _minted_messages(self):
+        return [m for m in self._messages()
+                if m.startswith('Minted backend console ticket')]
+
+    def _stored(self):
+        with Session(self.engine) as session:
+            token = session.query(db.ConsoleToken).filter(
+                db.ConsoleToken.session_id == 's').one()
+            return token.backend_ticket, token.backend_ticket_expires
+
+    def _store(self, ticket, expires):
+        with Session(self.engine) as session:
+            token = session.query(db.ConsoleToken).filter(
+                db.ConsoleToken.session_id == 's').one()
+            token.backend_ticket = ticket
+            token.backend_ticket_expires = expires
+            session.commit()
+
+    def test_mints_once_for_every_channel_of_a_session(self):
+        replies = [
+            self._authorize(connection_ref='cr-%s' % channel,
+                            channel_type=channel)
+            for channel in ('main', 'display', 'inputs')]
+
+        for reply in replies:
+            self.assertEqual('target', reply.WhichOneof('result'))
+            self.assertEqual('minted-1', reply.target.ticket)
+
+        self.assertEqual(1, len(self.mints))
+        kwargs, uuid, _, _ = self.mints[0]
+        self.assertEqual('u', uuid)
+        # The driver is built from the secret-bearing source.
+        self.assertEqual('sekrit-source-password', kwargs['password'])
+        self.assertEqual(1, len(self.closes))
+
+        self.assertEqual('minted-1', self._stored()[0])
+        self.assertEqual(1, len(self._minted_messages()))
+        self.assertEqual(3, self._messages().count('Channel created'))
+        # The ticket is audited as minted, but never quoted.
+        for message in self._messages():
+            self.assertNotIn('minted-1', message)
+
+    def test_lifetime_is_the_token_remaining_plus_slack(self):
+        reply = self._authorize()
+
+        self.assertEqual('target', reply.WhichOneof('result'))
+        expected = self.token_remaining + servicer_module.TICKET_SLACK
+        # A second may tick over between creating the token and the
+        # authorize computing what is left of it.
+        lifetime = self.mints[0][2]
+        self.assertIn(lifetime, (expected - 1, expected))
+        # The audit event gives the lifetime the ticket was minted with,
+        # timed from the start of the mint, so it too may be a second out.
+        self.assertIn(
+            self._minted_messages(),
+            [['Minted backend console ticket for %d seconds' % seconds]
+             for seconds in (lifetime, lifetime + 1)])
+
+    def test_reuses_a_stored_ticket_within_the_margin(self):
+        expires = int(time.time()) + servicer_module.REUSE_MARGIN + 20
+        self._store('stored-ticket', expires)
+
+        with mock.patch('kerbside.db.get_source',
+                        wraps=db.get_source) as spy_source:
+            reply = self._authorize()
+
+        self.assertEqual('target', reply.WhichOneof('result'))
+        self.assertEqual('stored-ticket', reply.target.ticket)
+        self.assertEqual([], self.mints)
+        self.assertEqual([], self._minted_messages())
+        self.assertEqual(('stored-ticket', expires), self._stored())
+        # A channel which reuses a ticket never holds the source's
+        # credentials.
+        for call in spy_source.call_args_list:
+            self.assertNotIn('include_secrets', call.kwargs)
+
+    def test_replaces_a_stored_ticket_past_the_margin(self):
+        self._store('old-ticket',
+                    int(time.time()) + servicer_module.REUSE_MARGIN - 5)
+
+        reply = self._authorize()
+
+        self.assertEqual('target', reply.WhichOneof('result'))
+        self.assertEqual('minted-1', reply.target.ticket)
+        self.assertEqual(1, len(self.mints))
+        self.assertEqual('minted-1', self._stored()[0])
+        self.assertEqual(1, len(self._minted_messages()))
+
+    def test_mint_failure_denies_audits_and_stores_nothing(self):
+        def fail(uuid, lifetime):
+            raise RuntimeError('engine refused ticket=sekrit-backend-ticket')
+        self.mint = fail
+
+        with mock.patch.object(servicer_module, 'LOG') as mock_log:
+            reply = self._authorize()
+
+        self.assertEqual('denied', reply.WhichOneof('result'))
+        self.assertEqual('console ticket unavailable', reply.denied.reason)
+        self.assertFalse(reply.HasField('firewall_policy'))
+        # Only the class name is audited, and a channel which was denied
+        # was never created.
+        self.assertEqual(
+            ['Backend console ticket mint failed: RuntimeError'],
+            self._messages())
+        self.record.assert_not_called()
+        self.assertEqual((None, None), self._stored())
+        self.assertEqual(1, len(self.closes))
+        self.assertNotIn('sekrit-backend-ticket', repr(mock_log.mock_calls))
+
+        # Nothing was stored, so the next channel tries again.
+        self.mint = self._mint_ok
+        reply = self._authorize(connection_ref='cr-2')
+
+        self.assertEqual('target', reply.WhichOneof('result'))
+        self.assertEqual('minted-2', reply.target.ticket)
+        self.assertEqual('minted-2', self._stored()[0])
+
+    def test_ticket_unavailable_denies(self):
+        def unavailable(uuid, lifetime):
+            raise source_base.ConsoleTicketUnavailable('VM u has no console')
+        self.mint = unavailable
+
+        reply = self._authorize()
+
+        self.assertEqual('denied', reply.WhichOneof('result'))
+        self.assertEqual('console ticket unavailable', reply.denied.reason)
+        self.assertEqual(
+            ['Backend console ticket mint failed: ConsoleTicketUnavailable'],
+            self._messages())
+        self.assertEqual((None, None), self._stored())
+
+    def test_mint_past_the_deadline_denies_promptly(self):
+        release = threading.Event()
+        self.addCleanup(release.set)
+
+        def stall(uuid, lifetime):
+            release.wait(30)
+            return source_base.MintedTicket(
+                'late-ticket', int(time.time()) + lifetime)
+        self.mint = stall
+
+        with mock.patch.object(minting, 'MINT_DEADLINE', 0.2):
+            started = time.monotonic()
+            reply = self._authorize()
+            elapsed = time.monotonic() - started
+
+        self.assertEqual('denied', reply.WhichOneof('result'))
+        self.assertEqual('console ticket unavailable', reply.denied.reason)
+        self.assertLess(elapsed, 5)
+        self.assertEqual(
+            ['Backend console ticket mint failed: MintDeadlineExceeded'],
+            self._messages())
+        self.assertEqual((None, None), self._stored())
+        # The worker still owns the driver, so nothing else closed it.
+        self.assertEqual([], self.closes)
+
+        # Let the abandoned worker finish. It closes its own driver, and
+        # its ticket is discarded rather than stored.
+        release.set()
+        worker = self.mints[0][3]
+        worker.join(timeout=5)
+        self.assertFalse(worker.is_alive())
+        self.assertTrue(worker.daemon)
+        self.assertEqual([worker], self.closes)
+        self.assertEqual((None, None), self._stored())
+        for message in self._messages():
+            self.assertNotIn('late-ticket', message)
+
+    def test_vanished_session_is_denied_without_minting(self):
+        # The session's token row went between the token lookup and the
+        # ticket, as when it is terminated mid-authorize.
+        with mock.patch('kerbside.db.get_token_by_token',
+                        return_value={
+                            'session_id': 'gone', 'source': 'src',
+                            'uuid': 'u', 'created': 0,
+                            'expires': int(time.time()) + 60}):
+            reply = self._authorize()
+
+        self.assertEqual('denied', reply.WhichOneof('result'))
+        self.assertEqual('client token invalid', reply.denied.reason)
+        self.assertEqual([], self.mints)
+        self.record.assert_not_called()
+
+    def test_database_error_is_not_a_mint_failure(self):
+        # Only the mint's own failures deny with an audit event. The
+        # database failing around it is an internal error, as anywhere
+        # else in the authorize path.
+        with mock.patch('kerbside.db.session_ticket',
+                        side_effect=RuntimeError('lock wait timeout')):
+            try:
+                self._authorize()
+                self.fail('expected grpc.RpcError')
+            except grpc.RpcError as e:
+                self.assertEqual(grpc.StatusCode.INTERNAL, e.code())
+
+        self.assertEqual([], self.mints)
+        self.assertEqual([], self._messages())
+
+    def test_non_minting_sources_keep_their_row_ticket(self):
+        db.add_source('static1', 'static', None, None, None, ca_cert=None)
+        db.add_source(
+            'os1', 'openstack', 'https://keystone.example.com/v3', 'kerbside',
+            'sekrit-openstack-password', ca_cert=None)
+        for source, ticket in (('static1', 'static-ticket'), ('os1', None)):
+            db.add_console(
+                source=source, uuid='v', hypervisor='hv',
+                hypervisor_ip='10.0.0.2', insecure_port=5901,
+                secure_port=5900, name='n', host_subject='HS',
+                ticket=ticket)
+            db.add_token('T-' + source, 's-' + source, source, 'v',
+                         int(time.time()), int(time.time()) + 60)
+
+        static_reply = self._authorize(token='T-static1')
+        openstack_reply = self._authorize(token='T-os1')
+
+        self.assertEqual('target', static_reply.WhichOneof('result'))
+        self.assertEqual('static-ticket', static_reply.target.ticket)
+        # openstack has no driver at all, and its console no ticket.
+        self.assertEqual('target', openstack_reply.WhichOneof('result'))
+        self.assertEqual('', openstack_reply.target.ticket)
+        self.assertEqual([], self.mints)
+        self.assertEqual([], self._minted_messages())
 
 
 class BuildFirewallPolicyTestCase(testtools.TestCase):

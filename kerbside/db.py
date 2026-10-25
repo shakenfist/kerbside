@@ -4,7 +4,7 @@ import time
 
 from sqlalchemy import create_engine, text
 from sqlalchemy import Boolean, Column, DateTime, Double, Integer, String, Text
-from sqlalchemy import desc
+from sqlalchemy import desc, or_
 from sqlalchemy import ForeignKeyConstraint
 from sqlalchemy.dialects.mysql import DATETIME
 from sqlalchemy.exc import IntegrityError
@@ -14,6 +14,7 @@ from sqlalchemy.orm import exc, Session
 from shakenfist_utilities import logs
 
 from .config import config
+from .sources.base import MintedTicket
 from . import util
 
 
@@ -47,6 +48,10 @@ class UnknownChannel(Exception):
 
 
 class ReusedJti(Exception):
+    ...
+
+
+class UnknownSession(Exception):
     ...
 
 
@@ -238,9 +243,10 @@ CONSOLE_PUBLIC_FIELDS = [
 ]
 
 # The console fields which are credentials. The ticket is the password
-# the SPICE server on the hypervisor will accept for this console:
-# static sources persist theirs at enumeration time and oVirt mints a
-# fresh one per request. As with SOURCE_SECRET_FIELDS, this list does
+# the SPICE server on the hypervisor will accept for this console, which
+# only static sources persist here, at enumeration time; a source which
+# mints tickets keeps each session's on its token row instead (see
+# CONSOLE_TOKEN_SECRET_FIELDS). As with SOURCE_SECRET_FIELDS, this list does
 # not decide what export_public() returns -- CONSOLE_PUBLIC_FIELDS
 # does -- it names the values which must not be written to a log line
 # even when the surrounding code legitimately holds them.
@@ -316,12 +322,12 @@ def add_console(source=None, uuid=None, hypervisor=None, hypervisor_ip=None,
     """Insert a console, or refresh one which already exists.
 
     A ticket of None means the caller does not manage this console's
-    ticket, and the stored one is left alone: oVirt writes a fresh
-    ticket per .vv request with store_console_ticket(), and the
-    maintenance pass which re-enumerates the console must not erase it
-    before the proxy spends it. A caller which does supply a ticket --
-    the static source, whose ticket is the password in sources.yaml --
-    owns it, so a changed one replaces the stored value.
+    ticket, and the stored one is left alone, so re-enumerating a
+    console never erases a ticket its caller did not supply. A caller
+    which does supply a ticket -- the static source, whose ticket is
+    the password in sources.yaml -- owns it, so a changed one replaces
+    the stored value. Sources which mint tickets keep them on the
+    session's token row instead, not here; see session_ticket().
 
     Returns a tuple of CONSOLE_ADDED or CONSOLE_UPDATED and the sorted
     names of the fields an update changed, which is empty when the
@@ -462,16 +468,6 @@ def get_console(source, uuid, detailed=False, *,
             return None
 
 
-def store_console_ticket(source, uuid, ticket):
-    with Session(ENGINE) as session:
-        c = session.query(Console).\
-            filter(Console.source == source).\
-            filter(Console.uuid == uuid).\
-            one()
-        c.ticket = ticket
-        session.commit()
-
-
 def remove_console(source=None, uuid=None, **kwargs):
     with Session(ENGINE) as session:
         session.query(Console).\
@@ -479,6 +475,13 @@ def remove_console(source=None, uuid=None, **kwargs):
             filter(Console.uuid == uuid).\
             delete()
         session.commit()
+
+
+# The console token fields which are credentials, and which export() leaves
+# out unless include_secrets is set. backend_ticket is the hypervisor's
+# password for the console, which the client never sees; the client token
+# is not listed because it is the value the API issued to that client.
+CONSOLE_TOKEN_SECRET_FIELDS = ['backend_ticket']
 
 
 class ConsoleToken(Base):
@@ -501,6 +504,13 @@ class ConsoleToken(Base):
     source = Column(String)
     created = Column(Integer)
     expires = Column(Integer)
+    # The ticket a source which mints them issued for this session, shared
+    # by every channel of the session on every proxy node, and the epoch
+    # second it stops being valid. Both are NULL until the first channel
+    # connects, and again once clear_expired_backend_tickets() has run
+    # after either the ticket or the token expired. See session_ticket().
+    backend_ticket = Column(String, nullable=True)
+    backend_ticket_expires = Column(Integer, nullable=True)
 
     def __init__(self, token, session_id, source, uuid, created, expires):
         self.token = token
@@ -510,15 +520,27 @@ class ConsoleToken(Base):
         self.created = created
         self.expires = expires
 
-    def export(self):
-        return {
+    def export(self, include_secrets: bool = False):
+        """Export the token row.
+
+        backend_ticket is a live hypervisor password, so it is left out
+        unless include_secrets is set. Its expiry is not a credential and
+        is always included.
+        """
+        out = {
             'token': self.token,
             'session_id': self.session_id,
             'uuid': self.uuid,
             'source': self.source,
             'created': self.created,
-            'expires': self.expires
+            'expires': self.expires,
+            'backend_ticket': self.backend_ticket,
+            'backend_ticket_expires': self.backend_ticket_expires
         }
+        if not include_secrets:
+            for field in CONSOLE_TOKEN_SECRET_FIELDS:
+                del out[field]
+        return out
 
 
 def add_token(token, session_id, source, uuid, created, expires):
@@ -610,6 +632,78 @@ def reap_expired_tokens():
             session.commit()
 
         return reaped
+
+
+def session_ticket(session_id, mint, lifetime, reuse_margin):
+    """Return the backend console ticket for a session, minting it if need be.
+
+    Every channel of a session presents the same ticket to the hypervisor,
+    and a source which mints tickets revokes the previous one for new
+    connections when it mints another, so a session must mint once and
+    share the result across every proxy node its channels land on. The
+    token row is selected FOR UPDATE: the first channel holds the lock
+    while it mints, and the others wait for it and then reuse what it
+    stored. The lock is per session, so nothing but that session's own
+    channels contends for it.
+
+    A stored ticket is reused while at least reuse_margin seconds of it
+    remain. Otherwise mint(lifetime) is called with the lock held and must
+    return a MintedTicket; its ticket and expiry are stored and returned.
+    If mint raises, nothing is stored and the exception propagates, so the
+    next channel tries again.
+
+    Raises UnknownSession if the session has no token row. The caller has
+    already authorized the channel against that row, so this means the
+    session was terminated or reaped in between, and the channel should be
+    refused.
+    """
+    with Session(ENGINE) as session:
+        try:
+            token = session.query(ConsoleToken).\
+                filter(ConsoleToken.session_id == session_id).\
+                with_for_update().\
+                one()
+        except exc.NoResultFound:
+            raise UnknownSession('No token for session %s' % session_id)
+
+        if (token.backend_ticket is not None and
+                token.backend_ticket_expires is not None and
+                token.backend_ticket_expires - time.time() >= reuse_margin):
+            return MintedTicket(token.backend_ticket,
+                                token.backend_ticket_expires)
+
+        try:
+            minted = mint(lifetime)
+        except Exception:
+            session.rollback()
+            raise
+
+        token.backend_ticket = minted.ticket
+        token.backend_ticket_expires = int(minted.expires)
+        session.commit()
+        return MintedTicket(minted.ticket, int(minted.expires))
+
+
+def clear_expired_backend_tickets():
+    """Forget backend tickets nothing can use any more, returning the count.
+
+    A ticket is useless once it has expired, and also once its token has:
+    no channel can be authorized against an expired token, so nothing will
+    present the ticket again. The token row itself outlives both while the
+    session has channels open (see reap_expired_tokens()), so the ticket is
+    cleared here rather than left for the row's deletion.
+    """
+    now = int(time.time())
+    with Session(ENGINE) as session:
+        count = session.query(ConsoleToken).\
+            filter(ConsoleToken.backend_ticket.isnot(None)).\
+            filter(or_(ConsoleToken.backend_ticket_expires < now,
+                       ConsoleToken.expires < now)).\
+            update({ConsoleToken.backend_ticket: None,
+                    ConsoleToken.backend_ticket_expires: None},
+                   synchronize_session=False)
+        session.commit()
+        return count
 
 
 class ProxyChannel(Base):

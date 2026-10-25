@@ -907,8 +907,10 @@ jobs:
       - name: Drive a proxied SPICE console
         # This is the actual gate -- it relays a real SPICE session from
         # the oVirt hypervisor through kerbside's Rust proxy over TLS,
-        # with the host certificate subject pinned.
-        timeout-minutes: 10
+        # with the host certificate subject pinned. It also holds the
+        # session past its backend ticket's expiry, about two minutes with
+        # the default CONSOLE_TOKEN_DURATION, hence the longer timeout.
+        timeout-minutes: 15
         env:
           WORKDIR: ${{ env.OVIRT_LANE_WORKDIR }}
         run: |
@@ -947,7 +949,7 @@ jobs:
 
       # The kerbside-side artifacts, distinct from the target-side bundle
       # above: the daemon and gunicorn logs, ryll's stdio, the
-      # smoke-client log, and kerbside.env. kerbside.env contains no
+      # smoke-client logs, and kerbside.env. kerbside.env contains no
       # secrets beyond the well-known loopback MariaDB credential
       # hardcoded in deploy-kerbside.sh and
       # tools/direct-qemu/start-kerbside.sh; the engine password is
@@ -975,6 +977,7 @@ jobs:
             ${{ env.OVIRT_LANE_WORKDIR }}/ryll-ovirt.stdout
             ${{ env.OVIRT_LANE_WORKDIR }}/ryll-ovirt.stderr
             ${{ env.OVIRT_LANE_WORKDIR }}/smoke-client.log
+            ${{ env.OVIRT_LANE_WORKDIR }}/smoke-client-held.log
 
       - name: Retain the environment if requested
         # !cancelled(), not the bare event check: without it a failing step

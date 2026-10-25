@@ -186,6 +186,12 @@ jobs:
       - name: Initialize MariaDB
         run: tools/direct-qemu/setup-mariadb.sh
 
+      # SQLite ignores SELECT ... FOR UPDATE, so only a real engine can show
+      # that concurrent channels of one session mint its ticket once. Uses
+      # its own database, so the kerbside database above is left alone.
+      - name: Prove one session mints its ticket once on MariaDB
+        run: tools/direct-qemu/run-ticket-lock-test.sh
+
       # Prove API-driven session termination drops an in-flight connection,
       # end to end through the DB intent table + the daemon's ProxyControl
       # poll. Runs on its own isolated lane (separate WORKDIR, torn down
@@ -193,6 +199,13 @@ jobs:
       # disturbed by it.
       - name: Verify API-terminate drops the in-flight connection
         run: tools/direct-qemu/verify-terminate-live.sh
+
+      # Prove that replacing and expiring the guest's SPICE password over QMP
+      # leaves a connected session up, while a new connection presenting the
+      # old password is refused. Its own isolated lane, torn down inside the
+      # script, like the terminate test above.
+      - name: Verify a new SPICE password keeps connected clients
+        run: tools/direct-qemu/verify-ticket-rotation.sh
 
       # Non-gating: measure keypress-to-screen latency through the proxy and
       # record p50/p95 as an artifact. The orchestrator injects real keypresses
@@ -246,6 +259,7 @@ jobs:
             /tmp/kerbside-ci/scenario/
             /tmp/kerbside-ci/tempest.log
             /tmp/terminate-artifacts/
+            /tmp/rotation-artifacts/
             /tmp/loadtest-artifacts/
 
       - name: Tear down the lane

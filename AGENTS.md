@@ -60,9 +60,12 @@ accumulated diff, not over the last phase alone;
 1. Create a new file in `kerbside/sources/`
 2. Inherit from `BaseSource` (see `sources/base.py`)
 3. Implement `__call__()` to yield console entries
-4. Register the type in `kerbside/main.py:_parse_sources()` — it
-   dispatches on `source['type']` through a hardcoded chain, so a
-   source class that is not added there is never instantiated
+4. Register the type in `kerbside/sources/__init__.py:driver_class()`
+   — the scrape loop and both minting paths look drivers up there, so
+   a class that is not added is never instantiated
+5. If the platform issues per-session SPICE tickets, set
+   `MINTS_TICKETS = True` and implement `mint_console_ticket()` (see
+   `sources/base.py` and `docs/proxy-architecture.md`)
 
 The `add-source-type` Claude skill walks the full workflow.
 
