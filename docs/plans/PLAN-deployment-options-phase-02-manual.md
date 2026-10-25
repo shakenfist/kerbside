@@ -260,44 +260,44 @@ in front of it needs no header plumbing.
 
 ## Definition of done
 
-- [ ] `etc/systemd/kerbside-api.service` and
+- [x] `etc/systemd/kerbside-api.service` and
       `etc/systemd/kerbside-daemon.service` exist, and
       `tox -epy3 -- kerbside.tests.unit.test_systemd_units` passes.
-- [ ] Changing any one directive in either `etc/systemd/` file
+- [x] Changing any one directive in either `etc/systemd/` file
       makes that test fail. Checked by hand in the management
       session, and the file is restored afterwards.
-- [ ] `grep -n 'bind 127.0.0.1' etc/systemd/kerbside-api.service`
+- [x] `grep -n 'bind 127.0.0.1' etc/systemd/kerbside-api.service`
       matches, and the drift test's override dict has exactly one
       key.
-- [ ] `head -12 etc/kerbside.conf.example` no longer says 0600 or
+- [x] `head -12 etc/kerbside.conf.example` no longer says 0600 or
       "owned by the user Kerbside runs as".
-- [ ] `docs/installation.md` names all five client libraries:
+- [x] `docs/installation.md` names all five client libraries:
       `for p in shakenfist-client ovirt-engine-sdk-python openstacksdk
       keystoneauth1 python-keystoneclient; do grep -q "$p"
       docs/installation.md || echo "missing $p"; done` prints
       nothing.
-- [ ] `docs/deployment/manual.md` exists with exactly the four `##`
+- [x] `docs/deployment/manual.md` exists with exactly the four `##`
       headings of phase 1 decision 7, in order:
       `grep '^## ' docs/deployment/manual.md`.
-- [ ] `manual.md` does not list the eight minimum settings, and
+- [x] `manual.md` does not list the eight minimum settings, and
       does not include the `gunicorn --bind` or `kerbside daemon
       run` command lines from `installation.md`. It links "What a
       running Kerbside needs" instead:
       `grep -c 'what-a-running-kerbside-needs' docs/deployment/manual.md`
       is at least 1.
-- [ ] Every mode and owner `manual.md` states matches the role's
+- [x] Every mode and owner `manual.md` states matches the role's
       tasks, or the page says why it does not.
-- [ ] `docs/deployment/order.yml` lists `manual.md` and nothing
+- [x] `docs/deployment/order.yml` lists `manual.md` and nothing
       else.
-- [ ] The By hand row of the `docs/index.md` Deployment Options
+- [x] The By hand row of the `docs/index.md` Deployment Options
       table links `deployment/manual.md`, and the Ansible row's
       sources cell names the client-library issue.
-- [ ] The client-library issue from step 2d exists, and its number
+- [x] The client-library issue from step 2d exists, and its number
       is in the master plan's phase 5 paragraph.
-- [ ] `tools/check-backend-tls-claims.py` exits 0, and
+- [x] `tools/check-backend-tls-claims.py` exits 0, and
       `tools/mutate-backend-tls-claims.py` still reports every
       mutation caught.
-- [ ] `tox -epy3`, `tox -eflake8` and `pre-commit run --all-files`
+- [x] `tox -epy3`, `tox -eflake8` and `pre-commit run --all-files`
       pass.
 
 ## Execution notes
