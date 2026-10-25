@@ -82,6 +82,26 @@ class PrecacheImageTestCase(testtools.TestCase):
         self.assertIn('::warning::', out)
         self.assertIn('state error', out)
 
+    def test_a_deleted_artifact_warns_and_does_not_fail_the_job(self):
+        client = mock.Mock()
+        client.cache_artifact.return_value = {'uuid': 'a1', 'state': 'initial'}
+        client.get_artifact.return_value = {'state': 'deleted'}
+        rc, out = self.run_tool(client)
+
+        self.assertEqual(0, rc)
+        self.assertIn('::warning::', out)
+        self.assertIn('state deleted', out)
+
+    def test_a_failed_read_mid_wait_warns_and_does_not_fail_the_job(self):
+        client = mock.Mock()
+        client.cache_artifact.return_value = {'uuid': 'a1', 'state': 'initial'}
+        client.get_artifact.side_effect = Exception('502 bad gateway')
+        rc, out = self.run_tool(client)
+
+        self.assertEqual(0, rc)
+        self.assertIn('::warning::', out)
+        self.assertIn('could not read artifact a1 (502 bad gateway)', out)
+
     def test_a_failed_request_warns_and_does_not_fail_the_job(self):
         client = mock.Mock()
         client.cache_artifact.side_effect = Exception('403 forbidden')

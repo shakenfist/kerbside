@@ -22,6 +22,12 @@
 # Mode 2 also tags HEAD with a local, never-pushed v9.9.8 and deletes it at
 # the end; it is skipped on a tree with any uncommitted change, because
 # setuptools_scm then gives a dev version whatever the tag.
+#
+# When HEAD already carries a release tag -- rust.yml running on the commit
+# a release was cut from -- an unstamped build is a release build, so Mode
+# 1 expects that release's wheel rather than a dev one, which is Mode 2's
+# property tested on the real tag. Mode 2 is then skipped: a second tag on
+# the same commit would leave setuptools_scm choosing between the two.
 
 set -euo pipefail
 
@@ -59,15 +65,29 @@ restore() {
 }
 trap restore EXIT
 
+# A release tag on HEAD counts only on a clean tree, as it does for
+# setuptools_scm.
+head_tag=""
+if git diff --quiet HEAD; then
+    head_tag="$(git describe --exact-match --tags --match 'v[0-9]*' HEAD 2>/dev/null || true)"
+fi
+
 out_dev="$(mktemp -d)"
 out_tag="$(mktemp -d)"
 out_rel="$(mktemp -d)"
 
 # ── Mode 1: unstamped tree → dev-versioned wheel ─────────────────────────────
-echo "=== Mode 1: unstamped tree (dev auto-stamp) ==="
-WHEEL_OUT="${out_dev}" tools/build-proxy-wheel.sh --native
-ls "${out_dev}"/kerbside_proxy-*.dev*-*.whl >/dev/null 2>&1 \
-    || fail "unstamped build did not produce a dev-versioned wheel: $(ls "${out_dev}")"
+if [ -n "${head_tag}" ]; then
+    echo "=== Mode 1: unstamped tree at its own release tag ${head_tag} ==="
+    WHEEL_OUT="${out_dev}" tools/build-proxy-wheel.sh --native
+    ls "${out_dev}"/kerbside_proxy-"${head_tag#v}"-*.whl >/dev/null 2>&1 \
+        || fail "unstamped build at ${head_tag} did not produce a ${head_tag#v} wheel: $(ls "${out_dev}")"
+else
+    echo "=== Mode 1: unstamped tree (dev auto-stamp) ==="
+    WHEEL_OUT="${out_dev}" tools/build-proxy-wheel.sh --native
+    ls "${out_dev}"/kerbside_proxy-*.dev*-*.whl >/dev/null 2>&1 \
+        || fail "unstamped build did not produce a dev-versioned wheel: $(ls "${out_dev}")"
+fi
 ls "${out_dev}"/kerbside_proxy-0.1.0-*.whl >/dev/null 2>&1 \
     && fail "unstamped build produced the 0.1.0 placeholder wheel"
 git diff --quiet -- rust/kerbside-proxy/pyproject.toml \
@@ -75,7 +95,9 @@ git diff --quiet -- rust/kerbside-proxy/pyproject.toml \
 
 # ── Mode 2: unstamped tree at a v* tag → release-versioned wheel ─────────────
 echo "=== Mode 2: unstamped tree at tag ${tagged_tag} ==="
-if git diff --quiet HEAD; then
+if [ -n "${head_tag}" ]; then
+    echo "SKIP: HEAD already carries ${head_tag}, which Mode 1 built from"
+elif git diff --quiet HEAD; then
     git tag "${tagged_tag}" HEAD
     tag_created=1
     WHEEL_OUT="${out_tag}" tools/build-proxy-wheel.sh --native
@@ -106,4 +128,4 @@ tools/stamp-proxy-version.sh 9.9.9
 count="$(grep -c '"kerbside-proxy' pyproject.toml || true)"
 [ "${count}" = "1" ] || fail "re-stamping duplicated the kerbside-proxy line (${count} found)"
 
-echo "OK: dev wheel $(basename "$(ls "${out_dev}"/kerbside_proxy-*.whl)"), release wheel $(basename "$(ls "${out_rel}"/kerbside_proxy-*.whl)")"
+echo "OK: unstamped wheel $(basename "$(ls "${out_dev}"/kerbside_proxy-*.whl)"), release-stamped wheel $(basename "$(ls "${out_rel}"/kerbside_proxy-*.whl)")"

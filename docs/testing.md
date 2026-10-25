@@ -263,7 +263,10 @@ keep building whole clouds against sfcbr, starving the one group that
 can still merge.
 
 So on `merge_group` the group is keyed on the base branch instead, and
-on every other event on `github.ref` as usual. That is only safe
+on every other event on `github.ref` as usual. The two cloud lanes, which
+no longer run in the queue, key on the event as well as the ref, so a
+dispatch on develop -- the pre-tag check -- and the nightly never cancel
+one another; a nightly cancelled that way would file no tracking issue. That is only safe
 because the develop ruleset sets `max_entries_to_build: 1`: the queue
 builds one entry at a time, so any other in-flight `merge_group` run is
 by definition superseded and GitHub has already abandoned its queue

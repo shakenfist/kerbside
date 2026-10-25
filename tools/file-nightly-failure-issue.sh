@@ -33,9 +33,8 @@ else
     gh issue create --title "${title}" --body "The nightly ${lane} run \
 failed: ${run_url}
 
-No pull request or merge queue entry runs this lane against the
-merged tree -- the cloud lanes do not gate merges at all -- so a red
-nightly means that coverage of develop has stopped. Close this issue
-when the nightly is green again."
+Nothing but this nightly runs this lane against develop itself, so a
+red nightly means that coverage of develop has stopped. Close this
+issue when the nightly is green again."
     echo 'Filed a new tracking issue.'
 fi

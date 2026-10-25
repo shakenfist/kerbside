@@ -502,9 +502,14 @@ jobs:
       # directly, so changing it here changes all of them together.
       OVIRT_LANE_WORKDIR: /tmp/kerbside-ovirt-ci
     # A dispatch for the same ref supersedes a run still building its
-    # nested oVirt cloud, rather than both spending sfcbr capacity.
+    # nested oVirt cloud, rather than both spending sfcbr capacity. The
+    # event is in the key so that a dispatch never cancels the nightly,
+    # or the nightly a dispatch: dispatching both lanes on develop is
+    # the pre-tag check docs/development.md asks for, and a nightly it
+    # cancelled would file no issue, since nightly_failure_issue runs
+    # only on failure.
     concurrency:
-      group: ${{ github.workflow }}-${{ matrix.test.name }}-${{ github.ref }}
+      group: ${{ github.workflow }}-${{ matrix.test.name }}-${{ github.event_name }}-${{ github.ref }}
       cancel-in-progress: true
 
     # NOTE(mikal): git repos are checked out to /srv/github/_work/{org}/{repo}
@@ -549,10 +554,14 @@ jobs:
       # three merge queue runs failed in "Build infrastructure" that way
       # (#284). Fetching it first, with nothing waiting on it, means the
       # instance finds the image already in the cluster. The script never
-      # fails the job; see its docstring. The runner's system python3 has
-      # the client and the under-cloud credentials.
+      # fails the job; see its docstring. Its loop bounds only the polling,
+      # though, so an API call that hangs is ended by this step's timeout
+      # instead, and continue-on-error keeps that a warning too. The
+      # runner's system python3 has the client and the under-cloud
+      # credentials.
       - name: Pre-cache the base image in the under-cloud
         timeout-minutes: 30
+        continue-on-error: true
         run: |
           . $GITHUB_ENV
           /usr/bin/python3 ${GITHUB_WORKSPACE}/kerbside/tools/ovirt-e2e/precache-image.py \
@@ -1006,8 +1015,9 @@ jobs:
     runs-on: [self-hosted, vm, debian-13, m]
     needs: [sanity_checks, check_paths]
     timeout-minutes: 120
+    # Keyed on the event for the same reason as ovirt_matrix's.
     concurrency:
-      group: ${{ github.workflow }}-${{ matrix.test.name }}-${{ github.ref }}
+      group: ${{ github.workflow }}-${{ matrix.test.name }}-${{ github.event_name }}-${{ github.ref }}
       cancel-in-progress: true
 
     # NOTE(mikal): git repos are checked out to /srv/github/_work/{org}/{repo}
@@ -1244,13 +1254,14 @@ jobs:
     # The needs: list is the "review only once CI has passed" gate: a job
     # skipped because a dependency failed never starts the reusable workflow.
     # That means the smoke tier only -- the cloud matrices run nightly, not on
-    # pull requests, so the review posts in minutes. Everything else about the reviewer -- runner,
-    # timeout, fork restriction, bot-commit check -- lives in the shared
-    # workflow so it stays in step with the rest of the fleet. The event gate
-    # below is technically redundant with the shared workflow's internal
-    # pull_request guard, but keeping it local means this repo's tier
-    # membership does not depend on a guard in another repository, and
-    # merge-group and dispatch rollups stay free of a no-op reviewer job.
+    # pull requests, so the review posts in minutes. Everything else about
+    # the reviewer -- runner, timeout, fork restriction, bot-commit check --
+    # lives in the shared workflow so it stays in step with the rest of the
+    # fleet. The event gate below is technically redundant with the shared
+    # workflow's internal pull_request guard, but keeping it local means
+    # this repo's tier membership does not depend on a guard in another
+    # repository, and merge-group and dispatch rollups stay free of a no-op
+    # reviewer job.
     if: github.event_name == 'pull_request'
     needs: [credential_scan, sanity_checks]
     # A cross-repository reusable workflow cannot grant itself more
