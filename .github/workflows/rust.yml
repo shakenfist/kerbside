@@ -33,10 +33,13 @@ on:
 jobs:
   rust:
     name: fmt / clippy / test / build
-    # xl: a cold `cargo build --release` of the ring/rustls/aws-lc-rs/ryll
-    # chain is CPU-bound and parallelises well. Be explicit -- an unsized
-    # vm label defaults to xs (1 core / 2 GB) in private-ci.
-    runs-on: [self-hosted, vm, debian-13, xl]
+    # m (4 cores, 8 GB). This was xl on the theory that a cold release
+    # build of the ring/rustls/aws-lc-rs/ryll chain parallelises well, but
+    # the conductor measured 21 runs at xl averaging 0.8 busy cores with a
+    # 5.9 GB peak working set, page cache included (#586), and a smaller
+    # runner is admitted sooner when sfcbr is busy. Be explicit -- an
+    # unsized vm label defaults to xs (1 core / 2 GB) in private-ci.
+    runs-on: [self-hosted, vm, debian-13, m]
     defaults:
       run:
         # build.rs and the shakenfist-spice-protocol git dependency reference
