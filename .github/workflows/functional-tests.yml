@@ -543,6 +543,21 @@ jobs:
           path: shakenfist
           fetch-depth: 1
 
+      # The under-cloud fetches the 1.9 GB rocky:8 image afresh for every
+      # run, and a fetch that started only with the instance raced the six
+      # minutes Shaken Fist gives a start to wait for its dependencies:
+      # three merge queue runs failed in "Build infrastructure" that way
+      # (#284). Fetching it first, with nothing waiting on it, means the
+      # instance finds the image already in the cluster. The script never
+      # fails the job; see its docstring. The runner's system python3 has
+      # the client and the under-cloud credentials.
+      - name: Pre-cache the base image in the under-cloud
+        timeout-minutes: 30
+        run: |
+          . $GITHUB_ENV
+          /usr/bin/python3 ${GITHUB_WORKSPACE}/kerbside/tools/ovirt-e2e/precache-image.py \
+              ${{ matrix.test.base }} "${SHAKENFIST_NAMESPACE}"
+
       - name: Build infrastructure
         shell: bash
         run: |

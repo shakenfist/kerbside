@@ -587,6 +587,14 @@ one first, and this code runs in the nightly tier only — so a smoke-green
 PR proves nothing about it. Dispatch the oVirt lane on a pull request
 that touches it.
 
+Before it builds the environment, the lane asks the under-cloud to
+cache the guest's `rocky:8` base image (`tools/ovirt-e2e/precache-image.py`).
+Each run's throwaway namespace fetches the 1.9 GB image afresh, and when
+that fetch started only with the instance it raced the six minutes
+Shaken Fist gives an instance start to wait for its dependencies: the
+instance never left `initial`, which read as an under-cloud capacity
+problem (#284) but was a slow download.
+
 The runner-side scripts live in `tools/ovirt-e2e/` and are
 documented in `tools/ovirt-e2e/README.md`.
 The lane is a worked example of the deployment described in

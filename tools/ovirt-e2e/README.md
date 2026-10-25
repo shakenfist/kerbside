@@ -110,8 +110,15 @@ console checks, the workflow:
    same `relay.rs` oracle `tools/direct-qemu/verify-terminate-live.sh`
    uses) and that a termination audit event was recorded.
 
-The three scripts:
+The scripts:
 
+- `precache-image.py` -- runs before "Build infrastructure" and asks the
+  under-cloud to cache the guest's base image (`rocky:8`) in the run's
+  namespace, waiting until it is fetched. The image is fetched afresh
+  for every run, and a fetch that started only with the instance raced
+  the six minutes Shaken Fist gives an instance start to wait for its
+  dependencies (#284). It only ever warns: when it cannot cache the
+  image, "Build infrastructure" fetches it as before.
 - `gen-sources.py` -- writes a single-element `sources.yaml` with one
   `type: ovirt` source. Fetches the engine's CA certificate from
   `<engine-url>/services/pki-resource?resource=ca-certificate&
@@ -126,6 +133,9 @@ The three scripts:
 - `drive-console.py` -- drives the actual proxied SPICE session and the
   DB/API assertions described above. Never prints the API JWT, the
   oVirt graphics-console ticket, the auth seed, or the `.vv` body.
+- `gather-diagnostics.sh` -- builds the target-side diagnostic bundle,
+  or a fallback set over ssh when provisioning failed early; it always
+  leaves a bundle and exits 0.
 
 ## Configuration details that bite
 
