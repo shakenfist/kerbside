@@ -38,16 +38,28 @@ into two tiers.
   Between them these deploy the PR's own code and relay real SPICE
   traffic through the real proxy, so a PR still gets end-to-end
   signal in tens of minutes rather than hours.
-- **The merge tier** runs only in the merge queue: the oVirt and
-  OpenStack cloud matrices, each of which builds an entire cloud
-  from scratch. These are the expensive lanes, and their failure
-  modes are dominated by upstream environment churn rather than by
-  Kerbside regressions, so running them per PR bought little for
-  what it cost.
+- **The nightly tier** runs once a day against `develop`, and on
+  `workflow_dispatch`: the oVirt and OpenStack cloud matrices, each
+  of which builds an entire cloud from scratch. These are the
+  expensive lanes, and their failure modes are dominated by
+  upstream environment churn rather than by Kerbside regressions,
+  so running them per PR bought little for what it cost.
 
-The trade is deliberate: a cloud-specific breakage now surfaces in
-the merge queue rather than on the PR, blocking the queue and
-costing a rerun.
+The trade is deliberate, and it has been made twice. The cloud lanes
+first moved from pull requests to the merge queue. They then moved
+out of the queue as well: in the month before, they ejected about one queue
+entry in ten, never once for a Kerbside regression, and
+`kerbside-patches` also dispatched the OpenStack lane on every push
+to its develop, re-testing code its own merge queue had just
+deployed with Kolla. That came to some 200 OpenStack runs a month
+and about 80 oVirt runs, each holding a runner and a nested cloud on
+sfcbr for most of an hour. A cloud-specific breakage now surfaces
+the morning after it merges, as a `Nightly oVirt lane failing` or
+`Nightly OpenStack lane failing` issue filed by the run, rather than
+on the PR or in the queue. Nothing else exercises the oVirt and
+OpenStack sources end to end, so treat those issues as release
+blockers (see "Releasing" in [development.md](development.md)), and
+dispatch the lane on a pull request that changes a source driver.
 
 Both tiers also skip entirely when a change touches only files no
 lane exercises: the review-tracking state (`REVIEWS.md`, the
@@ -61,8 +73,8 @@ in the three `check_paths` jobs and in `codeql-analysis.yml`'s
 trigger-level `paths-ignore` (safe there because CodeQL is not a
 required check); keep the copies in sync. In the merge queue only
 `functional-tests.yml` runs its filter, so a review-marks-only or
-docs-only queue entry skips the cloud matrices too — confirmed
-live on the queue entry for PR 304. The one job exempt from all of
+docs-only queue entry skips `sanity_checks` too — confirmed live
+on the queue entry for PR 304. The one job exempt from all of
 this is the [credential scan](#the-credential-scan): a credential
 pasted into a code sample is still a credential, so it runs on every
 change.
@@ -72,7 +84,7 @@ change.
 | `functional-tests.yml` (`sanity_checks`) | pull_request, merge_group | smoke |
 | `functional-tests.yml` (`credential_scan`) | pull_request, merge_group, never path-filtered | smoke |
 | `functional-tests.yml` (`docs_checks`) | pull_request, merge_group, never path-filtered | smoke |
-| `functional-tests.yml` (`ovirt_matrix`, `openstack_matrix`) | merge_group, workflow_dispatch | merge |
+| `functional-tests.yml` (`ovirt_matrix`, `openstack_matrix`) | nightly (04:30 UTC), workflow_dispatch | nightly |
 | `direct-qemu-functional.yml` | pull_request, merge_group, nightly | smoke |
 | `sf-e2e-functional.yml` | pull_request, merge_group, nightly | smoke |
 | `rust.yml` | push and pull_request, path-filtered to `rust/**` and the proto | neither (advisory) |
@@ -86,9 +98,8 @@ change.
 
 `rust.yml` is advisory rather than gating. Rust breakage still
 blocks merges, because the proxy wheel is built by the direct-qemu
-lane in the smoke tier and by both cloud matrices in the merge
-tier; what never runs against the merged tree is `clippy` and
-`cargo test`, which is an accepted gap.
+and sf-e2e lanes in the smoke tier; what never runs against the
+merged tree is `clippy` and `cargo test`, which is an accepted gap.
 
 The direct-qemu lane also runs nightly, because the merge queue
 does not re-run it against the merged tree.
@@ -156,7 +167,7 @@ assert that everything it depends on succeeded or skipped:
 | `Can enqueue` | the smoke-tier jobs in `functional-tests.yml`, including the credential scan, on non-merge_group events |
 | `Can enqueue: direct-qemu` | the direct-qemu lane |
 | `Can enqueue: sf-e2e` | the Shaken Fist end-to-end lane |
-| `Can merge` | the cloud matrices and the credential scan, on merge_group events only |
+| `Can merge` | `sanity_checks`, the docs checks and the credential scan, on merge_group events only |
 
 Those five names are the entire required-check list on the develop
 ruleset. Because a skipped required check satisfies the rule, one
@@ -566,8 +577,9 @@ actually enforces; `_resolve_vnic_profile` is covered by
 That generalises: **anything that looks up an oVirt object by name must
 scope the lookup to the `test` cluster or its datacenter** (issue #283).
 A bare name match fails only when the engine happens to list the wrong
-one first, and this code runs in the merge tier only — so a smoke-green
-PR proves nothing about it.
+one first, and this code runs in the nightly tier only — so a smoke-green
+PR proves nothing about it. Dispatch the oVirt lane on a pull request
+that touches it.
 
 The runner-side scripts live in `tools/ovirt-e2e/` and are
 documented in `tools/ovirt-e2e/README.md`.
@@ -602,21 +614,6 @@ master topology on `debian:13`, so this matches upstream rather than
 diverging from it. The containers Kolla builds are Debian trixie
 regardless of the guest, and are unaffected.
 
-The `workflow_dispatch` menu still offers a
-`kolla-ansible-master-debian-12` target alongside
-`kolla-ansible-master-debian-13`. Both select the same job and both
-provision a Debian 13 guest — there is no Debian 12 lane any more.
-The old spelling is kept only because `kerbside-patches`'
-`trigger-downstream.yml` dispatches it by name on every develop push,
-and a `workflow_dispatch` `choice` input rejects a value absent from
-its option list, so removing it would break that trigger outright.
-GitHub offers no way to label a choice option as deprecated, but the
-job reports itself by `matrix.test.description`, so a run started
-from the old name still announces the Debian 13 guest. Prefer the
-`debian-13` spelling; the other disappears once
-[shakenfist/kerbside-patches#1706](https://github.com/shakenfist/kerbside-patches/issues/1706)
-lands.
-
 The `tempest-plugin/` directory is a separate releasable that
 contributes Kerbside-specific Tempest tests; see
 `tempest-plugin/README.md` for what it covers.
@@ -626,8 +623,8 @@ against a running Kolla-Ansible deployment. It is invoked
 automatically by the `openstack_matrix` job in
 `.github/workflows/functional-tests.yml` after the `test-console`
 smoke check, so the GitHub Actions CI iterates on the plugin's tests
-on every merge-queue entry (the cloud matrices run in the merge tier,
-not per-PR) rather than relying on upstream Zuul as the first signal.
+every night (the cloud matrices run in the nightly tier, not per-PR)
+rather than relying on upstream Zuul as the first signal.
 The script:
 
 1. Creates a Python venv at `/srv/kerbside-tempest/venv`.

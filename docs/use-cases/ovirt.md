@@ -234,8 +234,8 @@ CA, are in [configuration.md](../configuration.md).
 
 The `ovirt_matrix` job in
 `.github/workflows/functional-tests.yml` builds a single-node
-oVirt 4.5 environment and deploys kerbside against it on every
-merge-queue entry. The runner-side scripts are in
+oVirt 4.5 environment and deploys kerbside against it every night,
+and on demand through `workflow_dispatch`. The runner-side scripts are in
 `tools/ovirt-e2e/` (see `tools/ovirt-e2e/README.md`):
 `gen-sources.py` writes the `sources.yaml` above — including
 fetching the engine CA so the equality check passes by
