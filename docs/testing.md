@@ -564,6 +564,37 @@ because spice-server drops its current client when a new one links.
 The new password lives only in an owner-only file in the lane's
 working directory; it is never on a command line or in a log.
 
+### Tunnelled backend connections
+
+`run-tunnel-checks.sh` runs on the Rust leg after the host-subject
+checks. A `Target` with a `tunnel` makes the proxy reach qemu's TLS port
+only through an HTTP CONNECT proxy, so the lane runs
+`connect-proxy.py`, which stands in for Proxmox's `spiceproxy`: it
+accepts a CONNECT only when the request line and the `Host:` header both
+name the expected connect host and port, relays it to qemu's TLS
+listener, answers anything else `401`, and writes counts of tunnels
+opened and requests refused to a status file. The mock hands out a
+`hypervisor_ip` of `192.0.2.1` (TEST-NET-1, which nothing answers), so a
+session that comes up can only have come through the tunnel. Three
+modes each run in their own working directory:
+
+- `match`: the correct `host_subject`. The client gets a session, and the
+  CONNECT proxy opened at least one tunnel per relayed channel and
+  refused none.
+- `no-subject`: no `host_subject`. The session fails, the mock's audit
+  log holds a `Hypervisor connection failed` event naming
+  `host_subject`, and the CONNECT proxy was never asked for anything.
+  This proves a tunnel without a pin is refused and that the refusal is
+  audited.
+- `mismatch`: a wrong `host_subject`. The session fails at the TLS
+  handshake through the tunnel.
+
+The connect host is a random sentinel per mode, kept in an owner-only
+file so it is never on a command line. Afterwards every collected
+artifact is searched for each mode's sentinel; a file holding one is
+removed and the run fails, because the connect host is a credential that
+must not reach a log.
+
 ### The latency loadtest
 
 Both legs run `run-loadtest.sh` (non-gating, `continue-on-error`). It

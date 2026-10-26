@@ -500,6 +500,9 @@ Three things about it only matter while developing:
   property. `find_proxy_bin()` still prefers `KERBSIDE_PROXY_BIN` and
   the cargo build tree for local work, and the daemon compares the
   binary's gRPC contract hash against its own at launch either way.
+  A change to `kerbside/rpc/kerbside.proto` therefore means the daemon
+  and the proxy binary are upgraded together: a binary built from a
+  different proto is refused at launch.
 - **`rust.yml` verifies wheel stamping on pull requests as a packaging
   guard** (`tools/verify-wheel-stamping.sh`: an unstamped tree must
   produce a dev-versioned wheel, or the release's own version when it

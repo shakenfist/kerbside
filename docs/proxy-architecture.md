@@ -60,6 +60,18 @@ hostname verification, so a mis-issued or substituted backend certificate is
 rejected. When the console has no `host_subject`, the CA chain is the only
 identity check. The rustls `ring` crypto provider is installed at startup.
 
+A console whose `Target` carries a `tunnel` takes a different route. The
+proxy reaches qemu's TLS port only through the HTTP CONNECT proxy named by
+`tunnel.proxy_uri`, asking it for `tunnel.connect_host`, and dials nothing
+else: neither `hypervisor_ip` nor `insecure_port` is touched. There is one
+TLS attempt and no plaintext attempt or `need_secured` retry. A tunnel
+needs a `host_subject`; the ryll client refuses one without it, and the
+refusal is recorded as a failed connect. An empty connect host, an unusable
+`secure_port` or a proxy URI ryll cannot parse is refused before any dial.
+The connect host is a credential, so the proxy never logs it and its
+errors name the field, not the value; its log lines say only whether the
+target was tunnelled.
+
 The console's `ca_cert` is the *only* trust anchor for the backend leg when
 it is set: the public web roots are not consulted, so a hypervisor
 certificate must chain to that CA and nothing else will do. Without a
@@ -125,7 +137,9 @@ Each accepted connection runs this sequence (`session.rs`, `backend.rs`,
 4. **Backend connect.** The proxy opens the backend leg to the hypervisor's
    SPICE port (honouring a `need_secured` retry to the TLS port) and completes
    the server-side handshake with the backend ticket, advertising the
-   client's capabilities rather than the proxy's own.
+   client's capabilities rather than the proxy's own. For a tunnelled
+   target it instead makes a single TLS connection through the target's
+   HTTP CONNECT proxy (see "TLS Configuration").
 5. **Relay.** Traffic is relayed in both directions until either side closes,
    the idle-read timeout fires, the firewall issues a terminating verdict, or
    the control plane terminates the session.
