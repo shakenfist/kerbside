@@ -585,6 +585,10 @@ mod handshake_tests {
         tokio::task::JoinHandle<()>,
         tempfile::TempDir,
     ) {
+        // A TLS backend connect needs the process-default crypto provider,
+        // which main.rs installs at startup. Install it here too, or a test
+        // that dials over TLS passes only when another test ran first.
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let audit = Arc::clone(&mock.audit_messages);
         let (rpc, dir) = spawn_mock_with(mock).await;
         let state = Arc::new(SharedState {
