@@ -14,7 +14,7 @@ from sqlalchemy.orm import exc, Session
 from shakenfist_utilities import logs
 
 from .config import config
-from .sources.base import MintedTicket
+from .sources.base import MintedTicket, Tunnel
 from . import util
 
 
@@ -479,9 +479,12 @@ def remove_console(source=None, uuid=None, **kwargs):
 
 # The console token fields which are credentials, and which export() leaves
 # out unless include_secrets is set. backend_ticket is the hypervisor's
-# password for the console, which the client never sees; the client token
-# is not listed because it is the value the API issued to that client.
-CONSOLE_TOKEN_SECRET_FIELDS = ['backend_ticket']
+# password for the console, which the client never sees, and
+# backend_connect_host is the signed host a CONNECT proxy is asked for,
+# which is as good as a password to anyone who can reach that proxy. The
+# client token is not listed because it is the value the API issued to that
+# client.
+CONSOLE_TOKEN_SECRET_FIELDS = ['backend_ticket', 'backend_connect_host']
 
 
 class ConsoleToken(Base):
@@ -511,6 +514,13 @@ class ConsoleToken(Base):
     # after either the ticket or the token expired. See session_ticket().
     backend_ticket = Column(String, nullable=True)
     backend_ticket_expires = Column(Integer, nullable=True)
+    # The tunnel minted with that ticket, for a console which is only
+    # reachable through an HTTP CONNECT proxy: the proxy, the host to ask it
+    # for, and the TLS port behind it. Written and cleared with the ticket,
+    # and all NULL when the console is dialled directly.
+    backend_proxy_uri = Column(String, nullable=True)
+    backend_connect_host = Column(String, nullable=True)
+    backend_port = Column(Integer, nullable=True)
 
     def __init__(self, token, session_id, source, uuid, created, expires):
         self.token = token
@@ -523,9 +533,10 @@ class ConsoleToken(Base):
     def export(self, include_secrets: bool = False):
         """Export the token row.
 
-        backend_ticket is a live hypervisor password, so it is left out
-        unless include_secrets is set. Its expiry is not a credential and
-        is always included.
+        backend_ticket is a live hypervisor password and backend_connect_host
+        a signed tunnel credential, so both are left out unless
+        include_secrets is set. The ticket's expiry and the tunnel's proxy
+        and port are not credentials and are always included.
         """
         out = {
             'token': self.token,
@@ -535,7 +546,10 @@ class ConsoleToken(Base):
             'created': self.created,
             'expires': self.expires,
             'backend_ticket': self.backend_ticket,
-            'backend_ticket_expires': self.backend_ticket_expires
+            'backend_ticket_expires': self.backend_ticket_expires,
+            'backend_proxy_uri': self.backend_proxy_uri,
+            'backend_connect_host': self.backend_connect_host,
+            'backend_port': self.backend_port
         }
         if not include_secrets:
             for field in CONSOLE_TOKEN_SECRET_FIELDS:
@@ -648,9 +662,10 @@ def session_ticket(session_id, mint, lifetime, reuse_margin):
 
     A stored ticket is reused while at least reuse_margin seconds of it
     remain. Otherwise mint(lifetime) is called with the lock held and must
-    return a MintedTicket; its ticket and expiry are stored and returned.
-    If mint raises, nothing is stored and the exception propagates, so the
-    next channel tries again.
+    return a MintedTicket; its ticket, expiry and tunnel are stored and
+    returned. A ticket minted without a tunnel clears any tunnel stored
+    with the previous one. If mint raises, nothing is stored and the
+    exception propagates, so the next channel tries again.
 
     Raises UnknownSession if the session has no token row. The caller has
     already authorized the channel against that row, so this means the
@@ -669,8 +684,13 @@ def session_ticket(session_id, mint, lifetime, reuse_margin):
         if (token.backend_ticket is not None and
                 token.backend_ticket_expires is not None and
                 token.backend_ticket_expires - time.time() >= reuse_margin):
+            tunnel = None
+            if token.backend_connect_host is not None:
+                tunnel = Tunnel(token.backend_proxy_uri,
+                                token.backend_connect_host,
+                                token.backend_port)
             return MintedTicket(token.backend_ticket,
-                                token.backend_ticket_expires)
+                                token.backend_ticket_expires, tunnel)
 
         try:
             minted = mint(lifetime)
@@ -678,10 +698,14 @@ def session_ticket(session_id, mint, lifetime, reuse_margin):
             session.rollback()
             raise
 
+        tunnel = minted.tunnel
         token.backend_ticket = minted.ticket
         token.backend_ticket_expires = int(minted.expires)
+        token.backend_proxy_uri = tunnel.proxy_uri if tunnel else None
+        token.backend_connect_host = tunnel.connect_host if tunnel else None
+        token.backend_port = tunnel.port if tunnel else None
         session.commit()
-        return MintedTicket(minted.ticket, int(minted.expires))
+        return MintedTicket(minted.ticket, int(minted.expires), tunnel)
 
 
 def clear_expired_backend_tickets():
@@ -691,7 +715,8 @@ def clear_expired_backend_tickets():
     no channel can be authorized against an expired token, so nothing will
     present the ticket again. The token row itself outlives both while the
     session has channels open (see reap_expired_tokens()), so the ticket is
-    cleared here rather than left for the row's deletion.
+    cleared here rather than left for the row's deletion. The tunnel minted
+    with the ticket is cleared with it.
     """
     now = int(time.time())
     with Session(ENGINE) as session:
@@ -700,7 +725,10 @@ def clear_expired_backend_tickets():
             filter(or_(ConsoleToken.backend_ticket_expires < now,
                        ConsoleToken.expires < now)).\
             update({ConsoleToken.backend_ticket: None,
-                    ConsoleToken.backend_ticket_expires: None},
+                    ConsoleToken.backend_ticket_expires: None,
+                    ConsoleToken.backend_proxy_uri: None,
+                    ConsoleToken.backend_connect_host: None,
+                    ConsoleToken.backend_port: None},
                    synchronize_session=False)
         session.commit()
         return count

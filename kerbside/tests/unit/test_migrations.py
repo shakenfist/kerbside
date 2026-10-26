@@ -273,3 +273,41 @@ class SessionBackendTicketMigrationTestCase(testtools.TestCase):
     def test_downgrade_leaves_console_tickets_alone(self):
         sql = offline_sql('downgrade', 'd019b0e3c87a:3b8d5f1a6c92')
         self.assertNotIn('consoles', sql.replace('consoletokens', ''))
+
+
+class SessionBackendTunnelMigrationTestCase(testtools.TestCase):
+    """The token row gains the three columns of a tunnel, and nothing else.
+
+    Rendered offline as MySQL, since the initial schema cannot be created
+    on SQLite. The migration has also been run up, down and up again
+    against MariaDB.
+    """
+
+    def test_upgrade_adds_the_tunnel_columns(self):
+        sql = offline_sql('upgrade', 'd019b0e3c87a:cfdafafd3044')
+        self.assertIn(
+            'ALTER TABLE consoletokens ADD COLUMN backend_proxy_uri '
+            'VARCHAR(255);', sql)
+        self.assertIn(
+            'ALTER TABLE consoletokens ADD COLUMN backend_connect_host '
+            'VARCHAR(255);', sql)
+        self.assertIn(
+            'ALTER TABLE consoletokens ADD COLUMN backend_port INTEGER;', sql)
+
+    def test_upgrade_changes_no_data(self):
+        sql = offline_sql('upgrade', 'd019b0e3c87a:cfdafafd3044')
+        writes = [line for line in sql.splitlines()
+                  if line.startswith(('UPDATE ', 'INSERT ', 'DELETE '))
+                  and 'alembic_version' not in line]
+        self.assertEqual([], writes)
+
+    def test_downgrade_drops_the_tunnel_columns(self):
+        sql = offline_sql('downgrade', 'cfdafafd3044:d019b0e3c87a')
+        for column in ('backend_proxy_uri', 'backend_connect_host',
+                       'backend_port'):
+            self.assertIn(
+                'ALTER TABLE consoletokens DROP COLUMN %s;' % column, sql)
+
+    def test_downgrade_keeps_the_ticket_columns(self):
+        sql = offline_sql('downgrade', 'cfdafafd3044:d019b0e3c87a')
+        self.assertNotIn('backend_ticket', sql)
