@@ -807,4 +807,172 @@ mod handshake_tests {
         .await
         .expect("backend refusal test timed out");
     }
+
+    /// A stand-in for a signed CONNECT host. It must reach the proxy's
+    /// CONNECT request and nothing else.
+    const SENTINEL_CONNECT_HOST: &str = "pvespiceproxy:sentinel-5eed1e55:100:pve1:61000::cafe";
+
+    /// A fake HTTP CONNECT proxy: record each request's header block and
+    /// answer it with `status_line`, then close. Returns the port and the
+    /// recorded requests, one per connection.
+    async fn spawn_fake_connect_proxy(status_line: &'static str) -> (u16, Arc<Mutex<Vec<String>>>) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind connect proxy");
+        let port = listener.local_addr().expect("connect proxy addr").port();
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let seen = Arc::clone(&requests);
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut head = Vec::new();
+                let mut byte = [0u8; 1];
+                while !head.ends_with(b"\r\n\r\n") {
+                    match stream.read(&mut byte).await {
+                        Ok(1) => head.push(byte[0]),
+                        _ => break,
+                    }
+                }
+                seen.lock()
+                    .expect("requests mutex")
+                    .push(String::from_utf8_lossy(&head).into_owned());
+                let _ = stream
+                    .write_all(format!("{status_line}\r\n\r\n").as_bytes())
+                    .await;
+            }
+        });
+        (port, requests)
+    }
+
+    /// A control plane that authorizes "good-token" to a target tunnelled
+    /// through the proxy on `proxy_port`, whose own address and insecure
+    /// port lead straight to the fake hypervisor on `backend_port`.
+    fn mock_for_tunnel(backend_port: u16, proxy_port: u16, secure_port: u32) -> MockService {
+        let mut mock = mock_for_backend(backend_port);
+        let target = mock
+            .target
+            .as_mut()
+            .expect("mock_for_backend sets a target");
+        target.secure_port = secure_port;
+        target.host_subject = "CN=hv1".to_string();
+        target.tunnel = Some(pb::Tunnel {
+            proxy_uri: format!("http://127.0.0.1:{proxy_port}"),
+            connect_host: SENTINEL_CONNECT_HOST.to_string(),
+        });
+        mock
+    }
+
+    /// Link and authenticate a main-channel client through the proxy, then
+    /// wait for Kerbside to close it and for the connection task to end.
+    async fn drive_client_to_close(
+        proxy_addr: SocketAddr,
+        proxy_task: tokio::task::JoinHandle<()>,
+    ) {
+        let mut client = TcpStream::connect(proxy_addr)
+            .await
+            .expect("client connect");
+        let reply = perform_link_with_caps(
+            &mut client,
+            0,
+            ChannelType::Main,
+            0,
+            &caps::REPLY_COMMON_CAPS,
+            &[capabilities::DEFAULT_MAIN],
+        )
+        .await
+        .expect("client link");
+        assert_eq!(reply.error, SpiceError::Ok);
+        perform_auth(&mut client, &reply.pub_key, Some("good-token"))
+            .await
+            .expect("client auth through the proxy");
+        let mut sink = Vec::new();
+        let _ = client.read_to_end(&mut sink).await;
+        proxy_task.await.expect("proxy connection task");
+    }
+
+    /// Assert the backend connect failed, with an audit message containing
+    /// `cause` and never the connect host.
+    fn assert_tunnel_failure_audited(audit: &Arc<Mutex<Vec<String>>>, cause: &str) {
+        let audit = audit.lock().expect("audit mutex").clone();
+        assert!(
+            !audit.iter().any(|m| m.contains(SENTINEL_CONNECT_HOST)),
+            "an audit event quotes the connect host"
+        );
+        assert!(
+            audit
+                .iter()
+                .any(|m| m.starts_with("Hypervisor connection failed") && m.contains(cause)),
+            "audit events: {audit:?}"
+        );
+        assert!(
+            !audit
+                .iter()
+                .any(|m| m == "Hypervisor connection successful"),
+            "audit events: {audit:?}"
+        );
+    }
+
+    /// A tunnelled target dials only its proxy, asks it for the connect
+    /// host on the secure port, and makes exactly one attempt. The proxy's
+    /// refusal reads like the crate's "requires TLS" error, which would
+    /// trigger the insecure-first retry of a direct target; a tunnel must
+    /// not retry, and must never reach the hypervisor address directly.
+    #[tokio::test]
+    async fn tunnelled_target_dials_only_its_proxy_once() {
+        tokio::time::timeout(TEST_TIMEOUT, async {
+            let (backend_port, mut backend_saw) = spawn_fake_backend(
+                caps::REPLY_COMMON_CAPS.to_vec(),
+                caps::reply_channel_caps(ChannelType::Main).to_vec(),
+            )
+            .await;
+            let (proxy_port, requests) =
+                spawn_fake_connect_proxy("HTTP/1.0 403 Server requires TLS").await;
+            let (proxy_addr, audit, proxy_task, _dir) =
+                spawn_proxy(mock_for_tunnel(backend_port, proxy_port, 61000)).await;
+
+            drive_client_to_close(proxy_addr, proxy_task).await;
+
+            let requests = requests.lock().expect("requests mutex").clone();
+            assert_eq!(requests.len(), 1, "CONNECT attempts");
+            let expected = format!("CONNECT {SENTINEL_CONNECT_HOST}:61000 HTTP/1.0\r\n");
+            assert!(
+                requests[0].starts_with(&expected),
+                "the CONNECT does not name the connect host and secure port"
+            );
+            assert!(
+                backend_saw.try_recv().is_err(),
+                "the hypervisor address was dialled directly"
+            );
+            assert_tunnel_failure_audited(&audit, "requires TLS");
+        })
+        .await
+        .expect("tunnel test timed out");
+    }
+
+    /// A tunnel that cannot be dialled is refused before anything is
+    /// dialled, and is audited as a failed connect.
+    #[tokio::test]
+    async fn unusable_tunnel_is_audited_and_dials_nothing() {
+        tokio::time::timeout(TEST_TIMEOUT, async {
+            let (backend_port, mut backend_saw) = spawn_fake_backend(
+                caps::REPLY_COMMON_CAPS.to_vec(),
+                caps::reply_channel_caps(ChannelType::Main).to_vec(),
+            )
+            .await;
+            let (proxy_port, requests) =
+                spawn_fake_connect_proxy("HTTP/1.0 200 Connection established").await;
+            let (proxy_addr, audit, proxy_task, _dir) =
+                spawn_proxy(mock_for_tunnel(backend_port, proxy_port, 0)).await;
+
+            drive_client_to_close(proxy_addr, proxy_task).await;
+
+            assert!(requests.lock().expect("requests mutex").is_empty());
+            assert!(
+                backend_saw.try_recv().is_err(),
+                "the hypervisor address was dialled directly"
+            );
+            assert_tunnel_failure_audited(&audit, "secure_port");
+        })
+        .await
+        .expect("tunnel refusal test timed out");
+    }
 }

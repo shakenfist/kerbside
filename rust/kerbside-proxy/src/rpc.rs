@@ -353,6 +353,7 @@ pub(crate) mod tests {
                             source: "src".to_string(),
                             uuid: "uuid".to_string(),
                             session_id: "session".to_string(),
+                            tunnel: None,
                         }),
                     ),
                     Some(pb::FirewallPolicy {

@@ -90,6 +90,14 @@ message AuthorizeConnectionRequest {
 // to open the upstream connection to the hypervisor. The first eight fields
 // (hypervisor .. uuid) are exactly what the proxy reads from get_console;
 // ca_cert comes from get_source; session_id comes from the resolved token.
+//
+// When tunnel is set, the backend connection is TLS only and runs through an
+// HTTP CONNECT proxy: the proxy dials tunnel.proxy_uri and asks it to CONNECT
+// to tunnel.connect_host on secure_port, so secure_port is the port the
+// CONNECT names. hypervisor_ip and insecure_port are not dialled, and there is
+// no plaintext attempt. hypervisor still names the node, for logs.
+// tunnel.connect_host is a credential (it can carry a signed ticket), so like
+// ticket it must never be logged.
 message Target {
   string hypervisor = 1;
   string hypervisor_ip = 2;
@@ -101,6 +109,18 @@ message Target {
   string source = 8;
   string uuid = 9;
   string session_id = 10;
+  Tunnel tunnel = 11;
+}
+
+// Tunnel is how to reach a backend that is only reachable through an HTTP
+// CONNECT proxy. The two values mean nothing apart.
+message Tunnel {
+  // proxy_uri is the HTTP proxy to dial, as http://host[:port]; the port
+  // defaults to 3128. HTTPS proxies and proxy credentials are not supported.
+  string proxy_uri = 1;
+  // connect_host is the host the CONNECT request names. It is opaque and is
+  // never resolved by the proxy. It is a credential and must never be logged.
+  string connect_host = 2;
 }
 
 // Denied is the unsuccessful authorization result, carrying a human-readable

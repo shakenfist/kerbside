@@ -99,6 +99,14 @@ class Target(_message.Message):
     to open the upstream connection to the hypervisor. The first eight fields
     (hypervisor .. uuid) are exactly what the proxy reads from get_console;
     ca_cert comes from get_source; session_id comes from the resolved token.
+
+    When tunnel is set, the backend connection is TLS only and runs through an
+    HTTP CONNECT proxy: the proxy dials tunnel.proxy_uri and asks it to CONNECT
+    to tunnel.connect_host on secure_port, so secure_port is the port the
+    CONNECT names. hypervisor_ip and insecure_port are not dialled, and there is
+    no plaintext attempt. hypervisor still names the node, for logs.
+    tunnel.connect_host is a credential (it can carry a signed ticket), so like
+    ticket it must never be logged.
     """
 
     DESCRIPTOR: _descriptor.Descriptor
@@ -113,6 +121,7 @@ class Target(_message.Message):
     SOURCE_FIELD_NUMBER: _builtins.int
     UUID_FIELD_NUMBER: _builtins.int
     SESSION_ID_FIELD_NUMBER: _builtins.int
+    TUNNEL_FIELD_NUMBER: _builtins.int
     hypervisor: _builtins.str
     hypervisor_ip: _builtins.str
     insecure_port: _builtins.int
@@ -123,6 +132,8 @@ class Target(_message.Message):
     source: _builtins.str
     uuid: _builtins.str
     session_id: _builtins.str
+    @_builtins.property
+    def tunnel(self) -> Global___Tunnel: ...
     def __init__(
         self,
         *,
@@ -136,14 +147,47 @@ class Target(_message.Message):
         source: _builtins.str = ...,
         uuid: _builtins.str = ...,
         session_id: _builtins.str = ...,
+        tunnel: Global___Tunnel | None = ...,
     ) -> None: ...
-    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["tunnel", b"tunnel"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["ca_cert", b"ca_cert", "host_subject", b"host_subject", "hypervisor", b"hypervisor", "hypervisor_ip", b"hypervisor_ip", "insecure_port", b"insecure_port", "secure_port", b"secure_port", "session_id", b"session_id", "source", b"source", "ticket", b"ticket", "uuid", b"uuid"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["ca_cert", b"ca_cert", "host_subject", b"host_subject", "hypervisor", b"hypervisor", "hypervisor_ip", b"hypervisor_ip", "insecure_port", b"insecure_port", "secure_port", b"secure_port", "session_id", b"session_id", "source", b"source", "ticket", b"ticket", "tunnel", b"tunnel", "uuid", b"uuid"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___Target: _TypeAlias = Target  # noqa: Y015
+
+@_typing.final
+class Tunnel(_message.Message):
+    """Tunnel is how to reach a backend that is only reachable through an HTTP
+    CONNECT proxy. The two values mean nothing apart.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    PROXY_URI_FIELD_NUMBER: _builtins.int
+    CONNECT_HOST_FIELD_NUMBER: _builtins.int
+    proxy_uri: _builtins.str
+    """proxy_uri is the HTTP proxy to dial, as http://host[:port]; the port
+    defaults to 3128. HTTPS proxies and proxy credentials are not supported.
+    """
+    connect_host: _builtins.str
+    """connect_host is the host the CONNECT request names. It is opaque and is
+    never resolved by the proxy. It is a credential and must never be logged.
+    """
+    def __init__(
+        self,
+        *,
+        proxy_uri: _builtins.str = ...,
+        connect_host: _builtins.str = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["connect_host", b"connect_host", "proxy_uri", b"proxy_uri"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___Tunnel: _TypeAlias = Tunnel  # noqa: Y015
 
 @_typing.final
 class Denied(_message.Message):

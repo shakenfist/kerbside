@@ -327,7 +327,8 @@ three.
       tests include a tunnelled `build_config` refusing an
       empty connect host and a zero port without quoting
       the host.
-- [ ] Removing the tunnel branch from `backend::run` makes the
+- [ ] Removing the tunnel mapping from `build_config` (so a
+      tunnelled target is dialled as a direct one) makes the
       lane's `match` mode fail. Record the result in the
       3b.4 commit message.
 - [ ] The migration's offline MySQL SQL is asserted in both
@@ -361,6 +362,32 @@ None yet.
   fields do.
 
 ## Execution notes
+
+Implementation began 2026-10-26 (AEDT). At the back brief the
+operator confirmed decisions 4 and 6, and gave this session
+permission to push the branch and open the pull request once
+the definition of done is met locally, since the direct-qemu
+lane runs only on a pull request.
+
+The steps run in sequence, in table order: 3b.3 builds on
+3b.1's regenerated stubs and 3b.2's columns, and 3b.4 drives
+all three.
+
+3b.1 corrected one definition-of-done item at source. It said
+removing the tunnel branch from `backend::run` would fail the
+lane, but `build_config` already makes a tunnelled config TLS
+only, so without that branch the direct path's first attempt is
+the same TLS dial through the proxy and the session still comes
+up. The branch only prevents a second attempt, which the Rust
+test `tunnelled_target_dials_only_its_proxy_once` catches and
+the lane cannot see. The item now mutates `build_config`'s
+tunnel mapping instead.
+
+Regenerating the stubs in 3b.1 also moved
+`GRPC_GENERATED_VERSION` from 1.83.0 to 1.84.0. The committed
+stubs had been generated before `pyproject.toml`'s
+`grpcio==1.84.0` pin, so this matches the runtime rather than
+changing it.
 
 ## Outcome
 
