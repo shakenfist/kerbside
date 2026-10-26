@@ -1,0 +1,44 @@
+# Kerbside's daemon, which scrapes its sources and supervises the SPICE proxy
+# (kerbside-proxy) as a child. Copy this file to /etc/systemd/system/ as it
+# is; docs/deployment/manual.md says how, and what to create first (the
+# kerbside user and the virtualenv in /srv/kerbside).
+#
+# Wanted by multi-user.target, and by nothing more specific. A Shaken Fist
+# node isolates its own target, which stops every unit that multi-user.target
+# does not want, so a Kerbside sharing a host with one has to hang off
+# multi-user.target to survive that.
+[Unit]
+Description=Kerbside VDI console proxy daemon
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=kerbside
+Group=kerbside
+WorkingDirectory=/srv/kerbside
+
+# The daemon creates its API socket under /run/kerbside, which only root may
+# create; systemd creates it for the service user.
+RuntimeDirectory=kerbside
+
+# Authoritative: Kerbside fails rather than falling back to another binary if
+# this is not executable.
+Environment=KERBSIDE_PROXY_BIN=/srv/kerbside/venv/bin/kerbside-proxy
+
+ExecStart=/srv/kerbside/venv/bin/kerbside daemon run
+
+# On SIGTERM the daemon stops the proxy itself, allowing it 15 seconds to drain
+# before killing it. mixed sends SIGTERM to the daemon alone, so the proxy is
+# not also signalled directly, which the daemon would log as its child dying.
+# Anything left at TimeoutStopSec is killed.
+KillMode=mixed
+TimeoutStopSec=30
+
+# always rather than on-failure: Kerbside never exits on purpose, so any exit,
+# clean or not, is one to restart from.
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
