@@ -147,6 +147,11 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
         backend ticket, minted for its first channel and reused by the rest
         (see db.session_ticket()); a channel is denied if no ticket can be
         minted. Any other source's ticket is the one on the console row.
+
+        A minted ticket can come with a tunnel, for a console which is only
+        reachable through an HTTP CONNECT proxy. The Target then carries the
+        tunnel, and the TLS port the tunnel was minted for, and no plaintext
+        port.
         """
         try:
             token = db.get_token_by_token(request.token)
@@ -182,6 +187,9 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
                 driver = None
 
             ticket = console['ticket'] or ''
+            insecure_port = console['insecure_port'] or 0
+            secure_port = console['secure_port'] or 0
+            tunnel = None
             if driver and driver.MINTS_TICKETS:
                 # The ticket has to last for as long as the client's token
                 # can still authorize a channel, plus TICKET_SLACK.
@@ -250,6 +258,15 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
                         % minted_for)
                 ticket = backend.ticket
 
+                # The tunnel's connect host is a credential like the ticket:
+                # it goes to the proxy in the Target, and nowhere else.
+                if backend.tunnel:
+                    tunnel = kerbside_pb2.Tunnel(
+                        proxy_uri=backend.tunnel.proxy_uri,
+                        connect_host=backend.tunnel.connect_host)
+                    secure_port = backend.tunnel.port
+                    insecure_port = 0
+
             db.record_channel_info_by_ref(
                 config.NODE_NAME, request.connection_ref,
                 session_id=token['session_id'])
@@ -262,14 +279,15 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
                 target=kerbside_pb2.Target(
                     hypervisor=console['hypervisor'],
                     hypervisor_ip=console['hypervisor_ip'] or '',
-                    insecure_port=console['insecure_port'] or 0,
-                    secure_port=console['secure_port'] or 0,
+                    insecure_port=insecure_port,
+                    secure_port=secure_port,
                     ticket=ticket,
                     ca_cert=source['ca_cert'] or '',
                     host_subject=console['host_subject'] or '',
                     source=console['source'],
                     uuid=console['uuid'],
-                    session_id=token['session_id']),
+                    session_id=token['session_id'],
+                    tunnel=tunnel),
                 firewall_policy=build_firewall_policy())
 
         except Exception as e:
