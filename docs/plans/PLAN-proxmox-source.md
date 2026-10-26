@@ -453,7 +453,7 @@ and cited from phase 2's *Outcome*.
 | 1. Ticket semantics | | Complete | |
 | 1b. CI substrate | [PLAN-proxmox-source-phase-01b-ci-substrate.md](PLAN-proxmox-source-phase-01b-ci-substrate.md) | Complete | actions 5399c4f (#96) |
 | 2. Tunnelled transport in ryll | [PLAN-proxmox-source-phase-02-ryll-connect.md](PLAN-proxmox-source-phase-02-ryll-connect.md) | Complete | ryll ea4bf67 (#402) |
-| 3a. Minting at connect time | [PLAN-proxmox-source-phase-03a-connect-time-minting.md](PLAN-proxmox-source-phase-03a-connect-time-minting.md) | In progress | |
+| 3a. Minting at connect time | [PLAN-proxmox-source-phase-03a-connect-time-minting.md](PLAN-proxmox-source-phase-03a-connect-time-minting.md) | Complete | 696f5aa |
 | 3b. Tunnel transport | | Not started | |
 | 4. The source driver | | Not started | |
 | 5. CI lane | | Not started | |
@@ -476,8 +476,9 @@ and cited from phase 2's *Outcome*.
 
 ## Status
 
-In progress. Phases 1, 1b and 2 are complete: CI can build a
-Proxmox VE node on demand, and ryll tunnels through
+In progress. Phases 1, 1b, 2 and 3a are complete: CI can
+build a Proxmox VE node on demand, ryll tunnels through
 `spiceproxy`, proven against a real node on every ryll pull
-request that touches the tunnel. Phase 3a is being
-implemented.
+request that touches the tunnel, and kerbside mints console
+tickets when a channel connects, one per session, which the
+oVirt source now uses.
