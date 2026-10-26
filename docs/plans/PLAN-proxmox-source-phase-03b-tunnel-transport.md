@@ -320,23 +320,23 @@ three.
 
 ## Definition of done
 
-- [ ] `grep -n "Tunnel tunnel = 11" kerbside/rpc/kerbside.proto`
+- [x] `grep -n "Tunnel tunnel = 11" kerbside/rpc/kerbside.proto`
       matches. `tox -egenprotos` leaves the tree unchanged,
       so the stubs and `CONTRACT_HASH` are current.
-- [ ] `make -C rust/kerbside-proxy test lint` passes, and the
+- [x] `make -C rust/kerbside-proxy test lint` passes, and the
       tests include a tunnelled `build_config` refusing an
       empty connect host and a zero port without quoting
       the host.
-- [ ] Removing the tunnel mapping from `build_config` (so a
+- [x] Removing the tunnel mapping from `build_config` (so a
       tunnelled target is dialled as a direct one) makes the
       lane's `match` mode fail. Record the result in the
       3b.4 commit message.
-- [ ] The migration's offline MySQL SQL is asserted in both
+- [x] The migration's offline MySQL SQL is asserted in both
       directions by a unit test, and it runs up, down and up
       against MariaDB.
-- [ ] `ConsoleToken.export()` without `include_secrets` has no
+- [x] `ConsoleToken.export()` without `include_secrets` has no
       `backend_connect_host` key, by unit test.
-- [ ] `test_rpc.py` shows a minted tunnel reaching `Target`
+- [x] `test_rpc.py` shows a minted tunnel reaching `Target`
       and being reused by a second channel, and no
       `tunnel` field for a source that does not mint one.
 - [ ] The direct-qemu run on the pull request passes all three
@@ -344,7 +344,7 @@ three.
       states, and its link is in *Outcome*.
 - [ ] The connect-host sentinel appears in none of that run's
       uploaded artifacts.
-- [ ] `tools/check-backend-tls-claims.py` passes, and no page
+- [x] `tools/check-backend-tls-claims.py` passes, and no page
       under `docs/` says the backend leg always dials the
       hypervisor directly or always tries plaintext first.
 - [ ] The master plan's Execution table records this phase's
@@ -388,6 +388,21 @@ Regenerating the stubs in 3b.1 also moved
 stubs had been generated before `pyproject.toml`'s
 `grpcio==1.84.0` pin, so this matches the runtime rather than
 changing it.
+
+All five steps ran as planned, one commit each, with no change of
+order or model. 3b.2 sized the two string columns at 255, like
+`backend_ticket`: PVE's `assemble_spice_ticket` (pve-common
+`Ticket.pm`) builds the connect host from a timestamp, the vmid,
+the node and the port plus a 40-character SHA-1 signature, so it
+fits. 3b.4's lane ran locally on alternate proxy ports, because
+this host already listens on 5900: four of five full runs passed
+every mode, and the fifth failed `match` on the cursor channel
+with `BadConnectionId`, which `run-host-subject-checks.sh` also hits
+on this host's qemu over the direct path. The `build_config`
+mutation failed `match` as the definition of done requires. 3b.5
+found that `ARCHITECTURE.md` and `docs/network-ports.md` each
+said the backend leg always dials the plaintext port first, and
+named the tunnelled exception in both.
 
 ## Outcome
 
