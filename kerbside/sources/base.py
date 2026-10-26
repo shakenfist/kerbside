@@ -12,6 +12,15 @@ from collections import namedtuple
 # through the tunnel. connect_host is a credential, like a ticket.
 Tunnel = namedtuple('Tunnel', ['proxy_uri', 'connect_host', 'port'])
 
+
+def tunnel_complete(tunnel):
+    """Whether a Tunnel names a proxy, a connect host and a usable port."""
+    return (isinstance(tunnel.proxy_uri, str) and bool(tunnel.proxy_uri) and
+            isinstance(tunnel.connect_host, str) and bool(tunnel.connect_host) and
+            isinstance(tunnel.port, int) and not isinstance(tunnel.port, bool) and
+            0 < tunnel.port < 65536)
+
+
 # A console ticket minted by a source, valid until expires (epoch seconds),
 # and the Tunnel to reach the console through, or None to dial it directly.
 MintedTicket = namedtuple('MintedTicket', ['ticket', 'expires', 'tunnel'], defaults=[None])

@@ -591,9 +591,10 @@ modes each run in their own working directory:
 
 The connect host is a random sentinel per mode, kept in an owner-only
 file so it is never on a command line. Afterwards every collected
-artifact is searched for each mode's sentinel; a file holding one is
-removed and the run fails, because the connect host is a credential that
-must not reach a log.
+artifact is searched for each mode's sentinel, along with a copy of the
+script's own output, which is what the public step log shows. A file
+holding one is removed and the run fails, because the connect host is a
+credential that must not reach a log.
 
 ### The latency loadtest
 

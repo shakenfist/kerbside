@@ -120,14 +120,21 @@ def _mint_backend_ticket(driver, source_name, uuid, lifetime):
 
     The source's credentials are fetched here, so that only a channel which
     actually mints holds them, and the driver gets at most
-    minting.MINT_DEADLINE seconds to build itself and mint.
+    minting.MINT_DEADLINE seconds to build itself and mint. A minted tunnel
+    missing its proxy, connect host or port raises ConsoleTicketUnavailable.
     """
     authed = db.get_source(source_name, include_secrets=True)
     if not authed:
         raise source_base.ConsoleTicketUnavailable(
             'source %s no longer exists' % source_name)
-    return minting.mint_with_deadline(
+    minted = minting.mint_with_deadline(
         driver, authed, uuid, lifetime, minting.MINT_DEADLINE)
+    # Refused here, before it is stored: the proxy could not dial it, and
+    # would only find out on every channel of the session.
+    if minted.tunnel is not None and not source_base.tunnel_complete(minted.tunnel):
+        raise source_base.ConsoleTicketUnavailable(
+            'source %s minted an incomplete tunnel' % source_name)
+    return minted
 
 
 class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):

@@ -917,6 +917,49 @@ class AuthorizeConnectionMintingTestCase(testtools.TestCase):
         self.assertEqual(61001, reply.target.secure_port)
         self.assertEqual(0, reply.target.insecure_port)
 
+    def test_an_incomplete_minted_tunnel_is_denied_and_not_stored(self):
+        for tunnel in (
+                source_base.Tunnel('http://pve1.example:3128', 'host', None),
+                source_base.Tunnel('http://pve1.example:3128', 'host', 0),
+                source_base.Tunnel('http://pve1.example:3128', 'host', 65536),
+                source_base.Tunnel('http://pve1.example:3128', '', 61000),
+                source_base.Tunnel(None, 'host', 61000)):
+            def mint(uuid, lifetime, tunnel=tunnel):
+                return source_base.MintedTicket(
+                    'minted', int(time.time()) + lifetime, tunnel)
+            self.mint = mint
+            self.audit.reset_mock()
+
+            reply = self._authorize()
+
+            self.assertEqual('denied', reply.WhichOneof('result'), tunnel)
+            self.assertEqual('console ticket unavailable',
+                             reply.denied.reason)
+            self.assertEqual((None, None), self._stored())
+            self.assertEqual((None, None, None), self._stored_tunnel())
+            self.assertIn(
+                'Backend console ticket mint failed: '
+                'ConsoleTicketUnavailable', repr(self.audit.call_args_list))
+
+    def test_a_partly_stored_tunnel_is_reminted(self):
+        expires = int(time.time()) + servicer_module.REUSE_MARGIN + 20
+        self._store('stored-ticket', expires,
+                    tunnel=source_base.Tunnel(
+                        'http://pve2.example:8080', 'stored-connect-host',
+                        None))
+        self.mint = self._mint_tunnelled('fresh-connect-host')
+
+        reply = self._authorize()
+
+        self.assertEqual('target', reply.WhichOneof('result'))
+        self.assertEqual(1, len(self.mints))
+        self.assertEqual('fresh-connect-host',
+                         reply.target.tunnel.connect_host)
+        self.assertEqual(61000, reply.target.secure_port)
+        self.assertEqual(
+            ('http://pve1.example:3128', 'fresh-connect-host', 61000),
+            self._stored_tunnel())
+
     def test_a_minted_ticket_without_a_tunnel_is_dialled_directly(self):
         reply = self._authorize()
 

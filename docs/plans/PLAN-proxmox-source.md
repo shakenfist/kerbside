@@ -488,4 +488,4 @@ build a Proxmox VE node on demand, ryll tunnels through
 `spiceproxy`, proven against a real node on every ryll pull
 request that touches the tunnel, and kerbside mints console
 tickets when a channel connects, one per session, which the
-oVirt source now uses. Phase 3b is planned.
+oVirt source now uses. Phase 3b is in progress.

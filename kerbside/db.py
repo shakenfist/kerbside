@@ -14,7 +14,7 @@ from sqlalchemy.orm import exc, Session
 from shakenfist_utilities import logs
 
 from .config import config
-from .sources.base import MintedTicket, Tunnel
+from .sources.base import MintedTicket, Tunnel, tunnel_complete
 from . import util
 
 
@@ -661,7 +661,7 @@ def session_ticket(session_id, mint, lifetime, reuse_margin):
     channels contends for it.
 
     A stored ticket is reused while at least reuse_margin seconds of it
-    remain. Otherwise mint(lifetime) is called with the lock held and must
+    remain, unless its tunnel is only partly stored. Otherwise mint(lifetime) is called with the lock held and must
     return a MintedTicket; its ticket, expiry and tunnel are stored and
     returned. A ticket minted without a tunnel clears any tunnel stored
     with the previous one. If mint raises, nothing is stored and the
@@ -681,16 +681,19 @@ def session_ticket(session_id, mint, lifetime, reuse_margin):
         except exc.NoResultFound:
             raise UnknownSession('No token for session %s' % session_id)
 
+        stored_tunnel = None
+        if (token.backend_proxy_uri is not None or
+                token.backend_connect_host is not None or
+                token.backend_port is not None):
+            stored_tunnel = Tunnel(token.backend_proxy_uri,
+                                   token.backend_connect_host,
+                                   token.backend_port)
         if (token.backend_ticket is not None and
                 token.backend_ticket_expires is not None and
-                token.backend_ticket_expires - time.time() >= reuse_margin):
-            tunnel = None
-            if token.backend_connect_host is not None:
-                tunnel = Tunnel(token.backend_proxy_uri,
-                                token.backend_connect_host,
-                                token.backend_port)
+                token.backend_ticket_expires - time.time() >= reuse_margin and
+                (stored_tunnel is None or tunnel_complete(stored_tunnel))):
             return MintedTicket(token.backend_ticket,
-                                token.backend_ticket_expires, tunnel)
+                                token.backend_ticket_expires, stored_tunnel)
 
         try:
             minted = mint(lifetime)

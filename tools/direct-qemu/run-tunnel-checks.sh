@@ -32,9 +32,11 @@
 #                 mismatch), so the CONNECT proxy must have opened at least
 #                 one tunnel and refused nothing.
 #
-# Each mode's logs are copied to TUNNEL_ARTIFACTS/<mode> for CI upload. On
-# exit every collected artifact is searched for each mode's connect host;
-# any file holding one is removed with an ERROR, and the run fails.
+# Each mode's logs are copied to TUNNEL_ARTIFACTS/<mode> for CI upload, and
+# this script's own output, which is what the step log shows, is kept in
+# TUNNEL_ARTIFACTS/console.log. On exit every collected artifact is searched
+# for each mode's connect host; any file holding one is removed with an
+# ERROR, and the run fails.
 #
 # Ports are verify-rust-proxy.sh's defaults (proxy 5900/5901, qemu SPICE
 # 5910 and TLS 5911) plus CONNECT_PROXY_PORT, so this must not run alongside
@@ -79,6 +81,7 @@ CONSOLE_VV=''
 CONNECT_PID_FILE=''
 CONNECT_STATUS=''
 CONNECT_LOG=''
+CONSOLE_TEE_PID=''
 
 # ── Teardown ───────────────────────────────────────────────────────────────
 
@@ -125,6 +128,10 @@ _mode_down() {
 cleanup() {
     local rc=$?
     _mode_down
+    if [ -n "${CONSOLE_TEE_PID}" ]; then
+        exec 1>&3 2>&4
+        wait "${CONSOLE_TEE_PID}" 2>/dev/null || true
+    fi
     if [ -s "${SENTINELS_FILE}" ] && [ -d "${TUNNEL_ARTIFACTS}" ]; then
         local leaked
         leaked=$(grep -rlF -f "${SENTINELS_FILE}" "${TUNNEL_ARTIFACTS}" || true)
@@ -192,8 +199,16 @@ _start_connect_proxy() {
     echo "[tunnel-checks] connect-proxy.py listening on 127.0.0.1:${CONNECT_PROXY_PORT} (pid ${pid})"
 }
 
+# A missing or non-numeric count fails the run: compared with -ne or -lt, an
+# empty value is an error that `if` would read as a passing check.
 _proxy_count() {
-    awk -F= -v name="$1" '$1 == name {print $2}' "${CONNECT_STATUS}"
+    local value
+    value="$(awk -F= -v name="$1" '$1 == name {print $2}' "${CONNECT_STATUS}")"
+    if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: ${CONNECT_STATUS} has no count for $1" >&2
+        exit 1
+    fi
+    printf '%s' "${value}"
 }
 
 # ── Client driver ──────────────────────────────────────────────────────────
@@ -308,6 +323,15 @@ _run_mode() {
     _assert_counts
     _mode_down
 }
+
+# Keep a copy of everything this run prints, which is what the public step
+# log shows, so the leak check on exit covers the log as well as the files.
+# cleanup() puts the original stdout and stderr back and waits for tee, so
+# the copy is complete before it is searched.
+mkdir -p "${TUNNEL_ARTIFACTS}"
+exec 3>&1 4>&2
+exec > >(tee -a "${TUNNEL_ARTIFACTS}/console.log") 2>&1
+CONSOLE_TEE_PID=$!
 
 ( umask 077; : > "${SENTINELS_FILE}" )
 chmod 600 "${SENTINELS_FILE}"

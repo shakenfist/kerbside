@@ -714,6 +714,23 @@ class SessionBackendTicketTestCase(testtools.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(tuple(tunnel), self._stored_tunnel())
 
+    def test_a_partly_stored_tunnel_is_not_reused(self):
+        for tunnel in (
+                source_base.Tunnel(None, 'stale-connect-host', 61000),
+                source_base.Tunnel('http://node1.example:3128', None, 61000),
+                source_base.Tunnel('http://node1.example:3128',
+                                   'stale-connect-host', None),
+                source_base.Tunnel('http://node1.example:3128', None, None)):
+            self._store('stored', int(time.time()) + 60, tunnel=tunnel)
+            self.minted = []
+
+            ticket = db.session_ticket('sess', self._mint, 90, 10)
+
+            self.assertEqual([90], self.minted, tunnel)
+            self.assertEqual('minted-1', ticket.ticket)
+            self.assertIsNone(ticket.tunnel)
+            self.assertEqual((None, None, None), self._stored_tunnel())
+
     def test_a_ticket_without_a_tunnel_stores_nulls(self):
         ticket = db.session_ticket('sess', self._mint, 90, 10)
 
