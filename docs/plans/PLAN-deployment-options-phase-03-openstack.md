@@ -358,7 +358,9 @@ links the page 3a writes.
   `kerbside/api.py` rather than configurable. A user in the access
   group with no role on that project cannot log in. No page said so.
   `openstack.md` now does, under Account and as a limitation. Whether
-  to file it as an issue is put to Mikal at the end of the phase.
+  to file it as an issue was put to Mikal at the end of the phase;
+  he approved, and it is #612, filed on 2026-10-28 and linked from
+  the limitation.
 - The definition of done's item on Kolla-Ansible mentions in "How to
   set it up" is read as covering the setup instructions. "A worked
   example" stays as it was, by decision 7, apart from an opening link
