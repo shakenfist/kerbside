@@ -277,7 +277,7 @@ first phase.
 |-------|------|--------|--------|
 | 1. Proxy backpressure and a WAN baseline | [PLAN-spice-performance-phase-01-proxy-backpressure.md](PLAN-spice-performance-phase-01-proxy-backpressure.md) | Complete | 52046167f8 (#478) |
 | 2. qemu damage path: prototype and measure; carry qemu, submit the kernel fix | | In progress | kerbside-patches b53aa39c7e (#1748) |
-| 3. Display transcoding in Kerbside: feasibility spike | [PLAN-spice-performance-phase-03-transcoding.md](PLAN-spice-performance-phase-03-transcoding.md) | In progress | 2e19d737aa (#489), ryll fdb5ead5b4 (#406), eab2c572cf (#494) |
+| 3. Display transcoding in Kerbside: feasibility spike | [PLAN-spice-performance-phase-03-transcoding.md](PLAN-spice-performance-phase-03-transcoding.md) | In progress | 2e19d737aa (#489), ryll fdb5ead5b4 (#406), eab2c572cf (#494), 9d1b64d6 (#505), 13e9e2eb (#581) |
 | 4. Son of SPICE: D-Bus display feasibility spike | | Not started | |
 | 5. Small spice-server patches (item 9, and item 4 if still wanted) | | Not started | |
 | 6. Push audit of phases 1-5 (kerbside and kerbside-patches) | | Not started | |
@@ -609,6 +609,22 @@ four places:
   sits behind a build feature that the release wheels do not
   enable.
 
+**Re-surveyed on 2026-10-28**, when ryll's RDP phase 1
+unblocked step 3b (the phase plan's *Re-survey* section has
+the detail). Two claims above no longer hold:
+- "The new code beyond that is the half that emits a SPICE
+  display channel to the client" is mostly built. shakenfist/andris,
+  a Rust SPICE server exporting an X11 desktop, has a
+  damage-driven, paced display output with JPEG and a lossless
+  refresh. Step 3b adapts it rather than writing one.
+- Step 3a is complete without a pull request of its own.
+  Andris's phases 2 and 3 put server-role wire types and the
+  LZ4 and JPEG encoders into ryll, and ryll's RDP phase 1
+  added the slim renderer and its damage accumulator.
+
+The spike's remaining steps are 2 (observe the ACK window), 3b,
+4, 5 and 6.
+
 **Phase 4** is a time-boxed spike, with three steps:
 1. confirm that D-Bus `Update` rectangles for virtio-gpu
    arrive promptly and precisely, which is not yet traced
@@ -618,7 +634,13 @@ four places:
 3. compare it against in-qemu SPICE on the phase 2 workload.
 
 If phase 3 says go, the helper reuses phase 3's output half
-rather than growing its own encoder. Its output is a go or
+rather than growing its own encoder. Step 2 is largely done
+already, outside this plan: andris (2026-10-28) is a Rust
+SPICE server on Ryll's protocol crate with main, display,
+inputs, cursor, LZ4, JPEG, H.264 streams, an agent and audio.
+Its input is an X11 display rather than D-Bus, so phase 4's
+planning should start by asking whether the helper is andris
+with a D-Bus input. Its output is a go or
 no-go recommendation, with a proposal for a separate master
 plan if the answer is go.
 
