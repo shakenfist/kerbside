@@ -338,7 +338,21 @@ links the page 3a writes.
 
 ## Execution notes
 
-None yet.
+- Back brief answered on 2026-10-28 (AEDT). Mikal kept decision 1,
+  declined a separate high-effort review of this plan, approved
+  step 3c's comment as drafted, and gave this session permission to
+  push and open the pull request once the definition of done is
+  checked.
+- Steps 3a and 3b run in sequence, one sub-agent each, because both
+  edit `openstack.md` and 3b links the page 3a writes.
+- Step 3a found two things the survey did not. Kolla merged 986283,
+  which builds `nova-libvirt-spice` on Rocky from a third-party
+  rebuild of `qemu-kvm`. kerbside-patches' CI also has weekly Ubuntu
+  and Rocky 10 lanes and a two-node lane, so its README's "Debian
+  only" is stale too. The page says what Kerbside's own lane runs.
+- Step 3a re-queried Gerrit on 2026-10-28: no status had changed
+  since the survey, and 967801's parent is still 976889's current
+  revision.
 
 ## Back brief
 

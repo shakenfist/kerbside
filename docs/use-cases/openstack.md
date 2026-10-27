@@ -234,43 +234,13 @@ dedicated `kerbside` user (`kerbside_keystone_user`) in the
 least-privilege role has been built or tested; treat one as
 untried.
 
-**Deployment.** Kerbside's OpenStack support has always been a
-set of upstream contributions as much as code in this
-repository, and
-[kerbside-patches](https://github.com/shakenfist/kerbside-patches)
-is where they are tracked. It carries the Nova changes behind
-`spice-direct` itself, which have landed; the openstacksdk and
-python-openstackclient support that exposes the console type to
-users; follow-on Nova work, such as extra specs for the sound
-model and USB redirection; and the Kolla and Kolla-Ansible
-changes that deploy Kerbside as a component of the cloud, next
-to the other control plane services. Those deployment changes
-are being upstreamed under the `spice-direct-consoles` topic.
-Checked on **2026-09-27**:
-
-| Change | What it does | Status |
-|--------|--------------|--------|
-| [kolla 975495](https://review.opendev.org/c/openstack/kolla/+/975495) | Builds the Kerbside container image | Merged |
-| [kolla-ansible 976889](https://review.opendev.org/c/openstack/kolla-ansible/+/976889) | Deploys Kerbside with Kolla-Ansible | Open |
-| [kolla-ansible 988189](https://review.opendev.org/c/openstack/kolla-ansible/+/988189) | Adds the Kerbside CI scenario jobs | Open |
-| [kolla-ansible 988913](https://review.opendev.org/c/openstack/kolla-ansible/+/988913) | Runs Nova's upstream `spice-direct` Tempest test in those jobs | Open |
-| [kolla-ansible 989614](https://review.opendev.org/c/openstack/kolla-ansible/+/989614) | Runs Kerbside's own Tempest test in those jobs | Open |
-| [kolla-ansible 967801](https://review.opendev.org/c/openstack/kolla-ansible/+/967801) | Always configures a routable console address, which `spice-direct` needs and only the HTML5 path used to get | Open |
-
-The SPICE settings those depend on are already upstream:
-kolla-ansible
-[967800](https://review.opendev.org/c/openstack/kolla-ansible/+/967800)
-added the SPICE configuration options and
-[967802](https://review.opendev.org/c/openstack/kolla-ansible/+/967802),
-which is where `nova_spice_require_secure` comes from, allows
-requiring secure channels.
-
-So the image build is upstream and the deployment code is not.
-Until 976889 merges, take the deployment from
-`kerbside-patches`, which carries these as patches against
-Kolla-Ansible master and is what Kerbside's own CI deploys. The
-[topic on the OpenStack Gerrit](https://review.opendev.org/q/topic:spice-direct-consoles)
-is the live answer if this snapshot has aged.
+**Deployment.** Kerbside can be deployed by any mechanism in
+front of the cloud. Kolla-Ansible can also deploy it as one of the
+cloud's own control-plane services:
+[Deploying Kerbside with Kolla-Ansible](../deployment/kolla-ansible.md)
+covers that route and where it stands upstream, and how to point a
+stock Kolla-Ansible cloud's Nova at a Kerbside deployed some other
+way.
 
 ### Network
 
@@ -376,8 +346,9 @@ requests — see the limitations table.
 
 **The Kolla-Ansible scenario jobs.** The `kerbside-patches`
 series proposes a `kerbside` scenario for Kolla-Ansible's own
-Zuul CI, in three stacked changes listed under **Deployment**
-above:
+Zuul CI, in three stacked changes whose review status is under
+[Upstream status](../deployment/kolla-ansible.md#upstream-status)
+on the Kolla-Ansible page:
 
 - [988189](https://review.opendev.org/c/openstack/kolla-ansible/+/988189)
   adds non-voting, check-pipeline jobs on Debian trixie, Ubuntu
@@ -479,7 +450,6 @@ Not covered, and worth knowing before you deploy:
 | Console rows are never reconciled | Nothing scrapes this cloud, so nothing ever removes a console it can no longer see. A row for a deleted instance stays listed until the cloud is removed from `sources.yaml`. Nova will not mint a token for it, so it is unreachable through the `spice-direct` path — but Kerbside's own administrative `.vv` download mints a token from the stored row without calling Nova, and will still open it. Since libvirt reuses console ports, the recorded address and ports may by then belong to a different instance, possibly another tenant's. Remove a decommissioned cloud from `sources.yaml` rather than leaving it configured. |
 | Configured clouds share one token exchange | Every configured cloud is asked to validate tokens minted by the others, so each cloud's operators can observe tokens destined for their neighbours, and a cloud which fails for any reason other than cleanly disowning a token — bad credentials, an unreachable Keystone, a certificate error — denies console access to the clouds after it rather than being skipped. Order therefore matters (the token is offered to each configured cloud in file order until one validates it), and a cloud being taken out of service should be removed from the file rather than left to fail. How the exchange reaches that behaviour, and when several clouds behind one Kerbside is the right shape, are in [multi-cloud.md](multi-cloud.md). |
 | Single-node deployments only, in testing | The lane is all-in-one, so one compute node. Multiple compute nodes should work — the address and ports come from the token validation on every exchange rather than from a cached inventory — but no lane covers them. |
-| Deployment support is not upstream yet | As of 2026-09-27 the Kolla image build has merged and kolla-ansible change 976889 is still open, so a stock Kolla-Ansible cannot deploy Kerbside. `kerbside-patches` is the supported route until it lands. |
 | Certificate verification for the cloud | The Kolla-Ansible role in `kerbside-patches` sets `verify` to Kolla's `openstack_cacert` where one is configured, and leaves it on otherwise. A hand-written `sources.yaml` can still turn it off, and that costs more than it appears to: one session carries both the Keystone authentication and the Nova validation call, so the answer that decides a caller may reach a hypervisor console is then accepted over an unverified connection. A deployment with an internal CA wants `verify` pointed at that CA bundle rather than off. See [console-sources.md](../console-sources.md#openstack). |
 | The exchange endpoint is unauthenticated and uncached | `/nova-console.vv` carries a Nova token instead of Kerbside credentials, so it has to be reachable by users without authenticating first. Every request re-reads `sources.yaml` and performs a fresh Keystone password authentication and Nova validation call for each configured cloud in turn, with no session reuse, caching or rate limiting. An unauthenticated caller can therefore drive repeated Keystone authentications, and exchange latency grows with the number of configured clouds. Rate limiting in front of Kerbside is a deployment concern. |
 | Live migration during a session | Not characterised. The compute node's address and the console ports are captured at exchange time; an instance that migrates mid-session has not been tested. |
@@ -509,6 +479,10 @@ Not covered, and worth knowing before you deploy:
 - [Nova specification](https://specs.openstack.org/openstack/nova-specs/specs/2025.1/implemented/libvirt-spice-direct-consoles.html)
   — the specification, proposed from the Kerbside work, that
   added the `spice-direct` console type to Nova in 2025.1
+- [Deploying Kerbside with Kolla-Ansible](../deployment/kolla-ansible.md)
+  — Kerbside as a Kolla control-plane service, its upstream
+  status, and a stock Kolla-Ansible cloud's Nova pointed at a
+  Kerbside deployed some other way
 - [kerbside-patches](https://github.com/shakenfist/kerbside-patches)
   — the record of Kerbside's contributions to OpenStack: the
   Nova, client, Kolla and Kolla-Ansible changes, landed and
