@@ -116,7 +116,7 @@ column names the CI lane that exercises the scenario end to end; see
 |----------|-------------|-----------------------|
 | [Standalone / static source](use-cases/standalone.md) | The static driver (`kerbside/sources/static.py`) for labs, demos, and direct-qemu style fleets. The [compose demo](installation.md#try-it-the-demo-stack) is the worked example | `direct-qemu`, smoke tier and nightly |
 | [Shaken Fist](use-cases/shakenfist.md) | Broker embedded in Shaken Fist itself; Ed25519 VDI console tokens exchanged offline at `/sf-console.vv` | `sf-e2e`, smoke tier and nightly |
-| [OpenStack](use-cases/openstack.md) | Nova 2025.1 spice-direct consoles, deployed alongside the cluster with Kolla-Ansible via kerbside-patches | `openstack_matrix`, nightly tier |
+| [OpenStack](use-cases/openstack.md) | Nova 2025.1 spice-direct consoles, with Kerbside as the endpoint Nova's console URL names | `openstack_matrix`, nightly tier |
 | [oVirt](use-cases/ovirt.md) | Replaces oVirt's SPICE proxy (squid) with a protocol-aware front door: discovery via the engine API, TLS to the hypervisor with the engine-supplied subject pinned where the engine supplies one, and the engine, network, and account prerequisites | `ovirt_matrix`, nightly tier |
 | Proxmox | Deferred until a Proxmox source driver exists | No source yet |
 | [Multi-cloud aggregation](use-cases/multi-cloud.md) | One Kerbside brokering several sources at once, so users keep a single console entry point as workloads move between providers | Not covered |
@@ -143,7 +143,7 @@ deployed in front of the clouds rather than by one of them, because
 |-----------|-------------|-----------------------|-----------------------|
 | [By hand: pip, venv and systemd](deployment/manual.md) | The package installed into a venv, with the REST API (gunicorn) and the daemon run as services; the pieces are listed in [installation.md](installation.md) | Any | Every lane except `sf-e2e`, by CI scripts rather than as a documented procedure |
 | Ansible role | The `kerbside` role in Kerbside's own `shakenfist.kerbside` ansible collection (`ansible/`, published to Ansible Galaxy with each release), on co-located or dedicated hosts, for any source type, with a bring-your-own-Kerbside path for a Kerbside it does not deploy | Shaken Fist and static, until [#602](https://github.com/shakenfist/kerbside/issues/602) | A rootless test of the role's entry points (`tools/ci-test-ansible-role.sh`) and a lint, release-build and `galaxy-importer` check in the sanity job. `sf-e2e`, smoke tier and nightly, deploys a pull request's Kerbside through its own role, co-located on a Shaken Fist node, and checks a second deploy restarts nothing |
-| Kolla-Ansible (kerbside-patches) | Kerbside as a Kolla control-plane service, from patches carried in kerbside-patches while upstream review is open and maintained by rebase | OpenStack | `openstack_matrix`, nightly tier |
+| [Kolla-Ansible (kerbside-patches)](deployment/kolla-ansible.md) | Kerbside as a Kolla control-plane service, from patches carried in kerbside-patches while upstream review is open and maintained by rebase | OpenStack | `openstack_matrix`, nightly tier |
 | Containers | The `demo/` compose stack today, with no first-party image yet, so no production compose or Kubernetes support | Static (the compose demo) | `demo-compose`, advisory, path-filtered |
 
 Mechanisms whose name is not a link are planned rather than written; see
