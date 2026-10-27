@@ -295,45 +295,45 @@ links the page 3a writes.
 
 ## Definition of done
 
-- [ ] `docs/deployment/kolla-ansible.md` exists with exactly the
+- [x] `docs/deployment/kolla-ansible.md` exists with exactly the
       four `##` headings, in order:
       `grep '^## ' docs/deployment/kolla-ansible.md`.
-- [ ] `docs/deployment/order.yml` lists `manual.md`, then
+- [x] `docs/deployment/order.yml` lists `manual.md`, then
       `kolla-ansible.md`, and nothing else.
-- [ ] The upstream status table appears on the Kolla page and not
+- [x] The upstream status table appears on the Kolla page and not
       in `openstack.md`:
       `grep -l '| Change | What it does | Status |' docs -r`
       prints only `docs/deployment/kolla-ansible.md`.
-- [ ] Every status in that table matches a Gerrit query run on the
+- [x] Every status in that table matches a Gerrit query run on the
       day the step ran, and the table carries that date.
-- [ ] The page states that 967801 is stacked on 976889, re-checked
+- [x] The page states that 967801 is stacked on 976889, re-checked
       on the day.
-- [ ] Neither page cites `patch014`:
+- [x] Neither page cites `patch014`:
       `grep -rn patch014 docs/deployment docs/use-cases` prints
       nothing.
-- [ ] `openstack.md` no longer says the OpenStack lane runs in the
+- [x] `openstack.md` no longer says the OpenStack lane runs in the
       merge queue. `grep -n -i 'merge.queue' docs/use-cases/openstack.md`
       matches only the sentence that says it never runs there.
-- [ ] In `openstack.md`'s "How to set it up", every mention of
+- [x] In `openstack.md`'s "How to set it up", every mention of
       Kolla-Ansible is in a sentence that links
       `deployment/kolla-ansible.md`. Checked by reading.
-- [ ] The hand-made account on `openstack.md` names the `service`
+- [x] The hand-made account on `openstack.md` names the `service`
       project, the `admin` role and the `kerbside` group, as
       `patch147` does, and says that `KEYSTONE_SERVICE_AUTH_PROJECT`
       has to be set.
-- [ ] The Nova base URL the pages give ends in a path that
+- [x] The Nova base URL the pages give ends in a path that
       `kerbside/api.py` routes to the token exchange.
-- [ ] The Deployment Options row links `deployment/kolla-ansible.md`,
+- [x] The Deployment Options row links `deployment/kolla-ansible.md`,
       and the Use Cases OpenStack row does not mention Kolla-Ansible:
       `grep -n '^| \[OpenStack\]' docs/index.md`.
-- [ ] Every anchor in both pages resolves. Checked by hand, because
+- [x] Every anchor in both pages resolves. Checked by hand, because
       the link test strips anchors (#490).
-- [ ] `tools/check-backend-tls-claims.py` exits 0, and
+- [x] `tools/check-backend-tls-claims.py` exits 0, and
       `tools/mutate-backend-tls-claims.py` still reports every
       mutation caught.
-- [ ] `tox -epy3`, `tox -eflake8` and `pre-commit run --all-files`
+- [x] `tox -epy3`, `tox -eflake8` and `pre-commit run --all-files`
       pass.
-- [ ] The kerbside-patches#1859 comment from step 3c exists, and
+- [x] The kerbside-patches#1859 comment from step 3c exists, and
       its URL is in the execution notes.
 
 ## Execution notes
@@ -364,6 +364,15 @@ links the page 3a writes.
   example" stays as it was, by decision 7, apart from an opening link
   to the Kolla-Ansible page. Its other Kolla-Ansible mentions describe
   CI and are not linked.
+- Step 3c posted the approved comment on kerbside-patches#1859 on
+  2026-10-28:
+  https://github.com/shakenfist/kerbside-patches/issues/1859#issuecomment-6452874522
+- Definition of done checked on 2026-10-28. `tox -epy3` passed 556
+  tests, and flake8, pre-commit and the TLS claim guard passed. The
+  mutation tool caught all 12 mutations, and all 32 local anchors in
+  the three changed pages resolve. The table-header grep also matches
+  this plan, which quotes the header. Among the pages it matches only
+  `kolla-ansible.md`.
 
 ## Back brief
 
