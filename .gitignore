@@ -159,3 +159,6 @@ tempest-plugin/kerbside_tempest_plugin/_version.py
 
 # Written by demo/get-console.sh
 demo/demo-console.vv
+
+# Written by tools/demo/pair-proxy.sh, inside the demo build context.
+demo/.proxy-wheel/

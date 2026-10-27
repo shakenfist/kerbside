@@ -94,7 +94,7 @@ change.
 | `direct-qemu-functional.yml` | pull_request, merge_group, nightly | smoke |
 | `sf-e2e-functional.yml` | pull_request, merge_group, nightly | smoke |
 | `rust.yml` | push and pull_request, path-filtered to `rust/**` and the proto | neither (advisory) |
-| `demo-compose.yml` | push and pull_request, path-filtered to `demo/**`, `tools/demo/**`, the migrations, `pyproject.toml` and `docs/installation.md` | neither (advisory) |
+| `demo-compose.yml` | push and pull_request, path-filtered to `demo/**`, `tools/demo/**`, the migrations, the proto, `pyproject.toml` and `docs/installation.md` | neither (advisory) |
 | `mermaid-lint.yml` | pull_request, path-filtered to `**.md` excluding `REVIEWS.md`; workflow_dispatch | neither (advisory) |
 | `dev-proxy-wheel.yml` | push to develop, path-filtered to the proxy binary's inputs; workflow_dispatch (dry-run by default) | neither |
 | `codeql-analysis.yml` | push, pull_request, weekly | neither |
@@ -152,6 +152,15 @@ The script is idempotent, so adding docker to the runner image — or
 installing the distribution's packages into it — would make it a
 no-op rather than a conflict. It also configures the daemon and
 builds for the runner's proxy, which neither inherits on its own.
+
+The demo lane installs the newest dev `kerbside-proxy` wheel
+published from develop rather than building the proxy, except when
+that wheel speaks a different gRPC contract from the checkout, as it
+does for any change to `kerbside/rpc/kerbside.proto` until the change
+merges and a new dev wheel is published. `tools/demo/pair-proxy.sh`
+compares the published binary's `--contract-hash` with the checkout's
+proto and, when they differ, builds the proxy from the checkout and
+passes it to the image build as `KERBSIDE_PROXY`.
 
 Two behaviours only matter when driving CI by hand: on a
 `workflow_dispatch` run of `functional-tests.yml` an unselected target

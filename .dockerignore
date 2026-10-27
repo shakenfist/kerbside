@@ -9,6 +9,10 @@
 #
 # .git is deliberately NOT excluded: a KERBSIDE_SOURCE=/src build fails
 # without it, because setuptools_scm derives the version from it.
+#
+# demo/.proxy-wheel/ is deliberately NOT excluded either: it holds the
+# proxy wheel tools/demo/pair-proxy.sh builds when the checkout's proto
+# has moved, and the image's pip step reads it through the /src mount.
 
 .tox/
 .venv/
