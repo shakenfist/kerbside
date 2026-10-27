@@ -438,8 +438,9 @@ touches the guest's key box instead. That needs a `rect` field on
 `surface_drawn` which the control socket protocol does not have yet;
 `build-ryll.sh` patches it in. What the rig has measured, and how to
 rerun it, is in
-[performance/proxy-backpressure.md](performance/proxy-backpressure.md)
-and [performance/streaming-rebaseline.md](performance/streaming-rebaseline.md).
+[performance/proxy-backpressure.md](performance/proxy-backpressure.md),
+[performance/streaming-rebaseline.md](performance/streaming-rebaseline.md)
+and [performance/ack-window.md](performance/ack-window.md).
 
 ## Testing the SPICE console of an oVirt VM
 

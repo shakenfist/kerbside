@@ -200,6 +200,11 @@ Guides for working on Kerbside itself:
   damage patches: most of the slow-link latency was qemu's default
   `streaming-video=off`
 
+- [spice-server's ACK window, observed from the proxy](performance/ack-window.md) -
+  The relay's observation of the display ACK window on the same rig:
+  it bounds the slow-link backlog at 2W+1 messages, but does not cap
+  throughput on a long, fast link
+
 ### Architecture Documentation
 
 Internal design of the Kerbside proxy:

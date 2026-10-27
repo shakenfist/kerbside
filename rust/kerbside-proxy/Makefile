@@ -30,7 +30,7 @@ DOCKER_RUN = docker run --rm \
 	-e HOME=/tmp \
 	$(IMAGE)
 
-.PHONY: all image cache build test lint clean help
+.PHONY: all image cache build release test lint clean help
 
 all: build
 
@@ -38,6 +38,7 @@ help:
 	@echo "kerbside-proxy build targets:"
 	@echo "  make image  - Build the kerbside-proxy-dev Docker image"
 	@echo "  make build  - Build the crate (debug) in the container"
+	@echo "  make release - Build the crate (release) in the container"
 	@echo "  make test   - Run the test suite in the container"
 	@echo "  make lint   - Run rustfmt --check and clippy -D warnings"
 	@echo "  make clean  - Remove target/ and the cargo cache"
@@ -52,6 +53,9 @@ cache: $(CARGO_CACHE)/registry $(CARGO_CACHE)/git
 
 build: image cache
 	$(DOCKER_RUN) cargo build
+
+release: image cache
+	$(DOCKER_RUN) cargo build --release
 
 test: image cache
 	$(DOCKER_RUN) cargo test

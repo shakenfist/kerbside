@@ -128,6 +128,20 @@ Values tracked include:
 - Bytes relayed per direction
   (`kerbside_proxy_bytes_relayed_total{direction}`)
 - Firewall verdicts (`kerbside_proxy_firewall_verdicts_total{...}`)
+- spice-server's ACK window on display and cursor channels, followed from
+  the relayed `SET_ACK`, `ACK_SYNC` and `ACK` messages without changing them:
+  `SET_ACK`s seen by window size
+  (`kerbside_proxy_ack_window_set_total{channel,window}`, where `window` is
+  `20`, `40` or `other`; 40 means spice-server's start-up bandwidth test
+  judged the client's link slow), server messages counted against the window
+  (`kerbside_proxy_ack_window_messages_total{channel}`), client ACKs credited
+  (`kerbside_proxy_ack_window_acks_total{channel}`), and how often and for how
+  long a channel sat at the threshold where spice-server stops sending until
+  an ACK arrives (`kerbside_proxy_ack_window_stalls_total{channel}`,
+  `kerbside_proxy_ack_window_stalled_seconds_total{channel}`). The proxy
+  counts a message once it has read it, so the stall figures are a lower
+  bound when spice-server's own buffers hold a backlog. See
+  [the ACK window measurement](performance/ack-window.md).
 
 | Configuration Option | Type | Description |
 |---------------------|------|-------------|

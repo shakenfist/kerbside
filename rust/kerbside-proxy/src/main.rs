@@ -59,6 +59,9 @@ mod allowlist;
 /// The inspection-first, per-message-framed SPICE relay.
 mod relay;
 
+/// Observation of spice-server's per-channel ACK window from the relay.
+mod ackwindow;
+
 /// The global Prometheus registry, metric helpers, and the `/metrics` hyper
 /// server.
 mod metrics;

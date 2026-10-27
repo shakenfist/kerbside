@@ -9,6 +9,10 @@
 //!
 //! One accepted client connection = one backend channel connection = one
 //! relayed SPICE channel (SPICE opens a TCP connection per channel).
+//!
+//! On display and cursor channels the pumps also feed an [`AckObserver`],
+//! which follows spice-server's ACK window from the messages it relays. It
+//! only reads the framed bytes; what is forwarded is unchanged.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -21,6 +25,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
+use crate::ackwindow::AckObserver;
 use crate::pb;
 use crate::policy::{Direction, EnforcingPolicy, FirewallPolicy, Policy, Verdict, VerdictTally};
 use crate::session::SharedState;
@@ -100,6 +105,9 @@ pub async fn run(
     // Arc<FirewallPolicy> config and ONE Arc<VerdictTally>, so verdict counts
     // from both directions survive the dropped losing pump for the audit flush.
     let tally = Arc::new(VerdictTally::new());
+    // spice-server's ACK window on display and cursor channels, observed
+    // from both directions. Borrowed by both pumps, which run in this task.
+    let ack_observer = AckObserver::for_channel(channel_type);
     let client_to_server = pump(
         client_reader,
         backend_writer,
@@ -111,6 +119,7 @@ pub async fn run(
         Direction::ClientToServer,
         channel_type,
         connection_ref,
+        ack_observer.as_ref(),
     );
     let server_to_client = pump(
         backend_reader,
@@ -123,6 +132,7 @@ pub async fn run(
         Direction::ServerToClient,
         channel_type,
         connection_ref,
+        ack_observer.as_ref(),
     );
 
     let result = tokio::select! {
@@ -144,6 +154,10 @@ pub async fn run(
             Ok(())
         }
     };
+
+    if let Some(observer) = &ack_observer {
+        observer.finish(connection_ref);
+    }
 
     match &result {
         Ok(()) => info!(
@@ -202,6 +216,13 @@ pub async fn run(
 /// - [`Verdict::Drop`]: advance past the message without forwarding it.
 /// - [`Verdict::Terminate`]: flush and end the pump (which ends the relay).
 ///
+/// If `ack_observer` is set, every complete server-to-client message, and
+/// every client-to-server message that is forwarded, is shown to it (as a
+/// borrowed slice, after the verdict, so it cannot alter what is written).
+/// Server messages are shown whatever their verdict, because spice-server
+/// counted them when it sent them; client messages only when forwarded,
+/// because spice-server never sees a dropped one.
+///
 /// Each blocking `read` is bounded by [`IDLE_READ_TIMEOUT`]: on elapse the
 /// pump ends cleanly (a resource guard, not a firewall verdict), so a silent
 /// peer cannot pin a concurrency permit forever.
@@ -215,6 +236,7 @@ async fn pump<R, W, P>(
     dir: Direction,
     channel: ChannelType,
     connection_ref: &str,
+    ack_observer: Option<&AckObserver>,
 ) -> Result<()>
 where
     R: AsyncRead + Unpin,
@@ -311,11 +333,26 @@ where
             let frame_end = frame_start + frame_len;
             let verdict = policy.inspect(dir, channel, &header, &buf[payload_start..frame_end]);
 
+            if let (Some(observer), Direction::ServerToClient) = (ack_observer, dir) {
+                observer.server_message(
+                    header.message_type,
+                    &buf[payload_start..frame_end],
+                    connection_ref,
+                );
+            }
+
             match verdict {
                 Verdict::Forward => {
                     // Forward the exact framed bytes, never re-encoded.
                     writer.write_all(&buf[frame_start..frame_end]).await?;
                     crate::metrics::add_relayed_bytes(dir, frame_len as u64);
+                    if let (Some(observer), Direction::ClientToServer) = (ack_observer, dir) {
+                        observer.client_message(
+                            header.message_type,
+                            &buf[payload_start..frame_end],
+                            connection_ref,
+                        );
+                    }
                 }
                 Verdict::Drop => {
                     debug!(
@@ -497,6 +534,7 @@ mod tests {
                 Direction::ClientToServer,
                 ChannelType::Main,
                 "test",
+                None,
             )
             .await
         });
@@ -644,6 +682,87 @@ mod tests {
         );
     }
 
+    /// Run `pump` in `dir` on a display channel with `observer`, from a
+    /// `ChunkedReader` over `chunks`, returning what it wrote.
+    async fn run_observed_pump(
+        chunks: Vec<Vec<u8>>,
+        dir: Direction,
+        observer: &AckObserver,
+    ) -> Vec<u8> {
+        // Larger than any test input, so the pump never waits on the reader.
+        let (out_writer, mut out_reader) = tokio::io::duplex(1024 * 1024);
+        pump(
+            ChunkedReader::new(chunks),
+            out_writer,
+            PermissivePolicy,
+            dir,
+            ChannelType::Display,
+            "test",
+            Some(observer),
+        )
+        .await
+        .expect("pump returned an error");
+        let mut collected = Vec::new();
+        out_reader
+            .read_to_end(&mut collected)
+            .await
+            .expect("reading pump output failed");
+        collected
+    }
+
+    #[tokio::test]
+    async fn ack_observation_leaves_forwarded_bytes_unchanged() {
+        use shakenfist_spice_protocol::constants::{display_client, display_server};
+        use shakenfist_spice_protocol::messages::{AckSync, SetAck, WireType};
+
+        let observer = AckObserver::for_channel(ChannelType::Display).expect("display is tracked");
+
+        // Server to client: SET_ACK (generation 5, window 20), then 41 draws
+        // of varying size, split across reads at awkward offsets.
+        let mut set_ack = Vec::new();
+        SetAck {
+            generation: 5,
+            window: 20,
+        }
+        .write(&mut set_ack);
+        let mut downstream = make_message(display_server::SET_ACK, &set_ack);
+        for i in 0..41u8 {
+            downstream.extend_from_slice(&make_message(304, &vec![i; usize::from(i) * 7]));
+        }
+        let chunks: Vec<Vec<u8>> = downstream.chunks(997).map(<[u8]>::to_vec).collect();
+        let out = run_observed_pump(chunks, Direction::ServerToClient, &observer).await;
+        assert_eq!(
+            out, downstream,
+            "observed server bytes must pass through unchanged"
+        );
+        assert_eq!(
+            observer.snapshot(),
+            (Some(5), Some(20), Some(42), 42, 0),
+            "SET_ACK plus 41 messages are in flight"
+        );
+
+        // Client to server: ACK_SYNC for generation 5, an unrelated message,
+        // then two ACKs.
+        let mut sync = Vec::new();
+        AckSync { generation: 5 }.write(&mut sync);
+        let mut upstream = make_message(display_client::ACK_SYNC, &sync);
+        upstream.extend_from_slice(&make_message(101, b"display init"));
+        upstream.extend_from_slice(&make_message(display_client::ACK, b""));
+        upstream.extend_from_slice(&make_message(display_client::ACK, b""));
+        let chunks = vec![upstream[..5].to_vec(), upstream[5..].to_vec()];
+        let out = run_observed_pump(chunks, Direction::ClientToServer, &observer).await;
+        assert_eq!(
+            out, upstream,
+            "observed client bytes must pass through unchanged"
+        );
+        assert_eq!(
+            observer.snapshot(),
+            (Some(5), Some(20), Some(2), 42, 2),
+            "two ACKs credit two windows"
+        );
+        observer.finish("test");
+    }
+
     #[tokio::test(start_paused = true)]
     async fn idle_read_timeout_ends_pump_cleanly() {
         // With the clock paused, tokio auto-advances to the idle-timeout
@@ -657,6 +776,7 @@ mod tests {
             Direction::ClientToServer,
             ChannelType::Main,
             "test",
+            None,
         )
         .await;
         result.expect("idle-read timeout must end the pump cleanly with Ok");

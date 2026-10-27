@@ -457,7 +457,7 @@ ryll's through its own Makefile, never with a host toolchain.
 |------|--------|-------|-----------|---------------------|
 | 1a | high | opus | none | Complete (ryll #406). ryll: per-connection link caps in `shakenfist-spice-protocol`. See brief notes. |
 | 1b | high | opus | none | Complete (#494, #505). kerbside: bump the ryll pin, forward client caps, per-channel-type reply caps, handshake tests. Fixes #477. See brief notes. |
-| 2 | high | opus | none | kerbside: observe the ACK window from the relay, then measure it on the shaped-link rig. Commit: "Observe the display ACK window in the relay." See brief notes. |
+| 2 | high | opus | none | Complete (see Execution notes). kerbside: observe the ACK window from the relay, then measure it on the shaped-link rig. Commit: "Observe the display ACK window in the relay." See brief notes. |
 | 3a | high | opus | none | Complete, delivered by andris phases 2-3 and ryll's RDP phase 1 (Re-survey, finding 1). No work remains. |
 | 3b | high | opus | worktree | kerbside: the transcoding display channel behind a feature and a flag, on andris's update pipeline. Commit: "Add a transcoding display channel." See brief notes. |
 | 4 | high | opus | none | Measure transcoding against the re-baseline, including sub-10 Mbit links, CPU and image quality. See brief notes. |
@@ -763,6 +763,31 @@ Brief notes for 6:
 - `tools/build-proxy-wheel.sh` builds without the `transcode`
   feature, and the built wheel's binary contains no openh264
   symbols (`nm -D` or `strings` finds no `WelsCreate`).
+
+## Execution notes
+
+- **2026-10-28 (AEDT), back brief.** Mikal chose to run steps 2
+  and 3b in this pull request and stop before step 4; the
+  management session signs off 3b's andris gate; the session
+  may push and open the pull request. Steps 2 and 3b ran in
+  sequence rather than in parallel, because 3b's Docker builds
+  would load the host while step 2's rig was timing keypresses.
+- **Step 2.** The relay follows the window, exported as
+  `kerbside_proxy_ack_window_*` Prometheus metrics labelled by
+  channel (and by window, limited to 20, 40 or other), with a
+  per-channel summary logged at the end of each relay. Metrics
+  rather than per-message debug logging, because the rig already
+  scrapes `/metrics` and a log line per message would perturb the
+  timing. Result: the backlog bound is confirmed (in-flight
+  peaked at exactly 81 in 14 of 16 runs at 80 ms), and phase 1's
+  throughput-cap reading is refuted. The master plan's *What the
+  first measurements changed* and
+  `docs/performance/proxy-backpressure.md` carry the correction.
+  Two rig notes: `ryll-surface-drawn-rect.patch` no longer
+  applies to ryll develop, so the rig built ryll at 0d140b3 with
+  its own `RYLL_REF` option; and the side finding that every
+  80 ms link gets W=40 and JPEG draws means step 4's
+  image-quality baseline for relay is already lossy.
 
 ## Risks added by the re-survey
 

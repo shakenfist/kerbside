@@ -22,6 +22,29 @@ separately, the maximum kernel memory charged to that receive queue
 (`skmem` `r`, which adds per-skb overhead to the payload) against the
 receive buffer size. Last is spice-server's own Send-Q on that
 connection.
+
+A second table reports spice-server's ACK window on the display channel,
+from the proxy's `kerbside_proxy_ack_window_*` counters, which run-matrix.sh
+samples into ackwin.txt alongside ss. Its deltas are taken over the key-press
+window alone (the last `elapsed_s` seconds before t1), not the warm-up. It
+gives the window spice-server set (20, or 40 if its start-up bandwidth test
+judged the link slow), the display messages relayed per second, their mean
+size, the client leg's median sRTT, the messages delivered per sRTT against
+the 2W+1 that the window allows in flight, the message rate the window would
+allow if it were the only limit, how often per second the channel
+reached the block threshold, and the share of the window it spent there. The
+proxy counts a message when it has read it, after spice-server sent it, so
+that share is a lower bound whenever the backend leg holds a backlog. The
+last column is the median in-flight count, first as the proxy sees it and
+then with that backlog added: the proxy's backend Recv-Q plus
+spice-server's Send-Q from the nearest ss snapshot, in mean-sized messages,
+which spice-server has counted against the window and the proxy has not yet
+read. The second figure is an estimate of spice-server's own count.
+
+The window's ceiling follows from the client acknowledging every W messages:
+two batches of W circulate, and each takes a round trip plus the time to
+serialise W messages on the link, so at most 2W / (sRTT + W * size / rate)
+messages a second get through.
 """
 
 # audit-allow-print: this is a reporting CLI -- its markdown tables on
@@ -101,6 +124,133 @@ def metric(path, direction):
     except OSError:
         pass
     return 0 if scraped else None
+
+
+def parse_ackwin(path):
+    """Return [(ts, {series: value})] from an ackwin.txt sampling file."""
+    samples = []
+    try:
+        with open(path) as f:
+            for line in f:
+                if line.startswith('@ '):
+                    samples.append((float(line.split()[1]), {}))
+                elif samples and line.startswith('kerbside_proxy_ack_window_'):
+                    series, value = line.rsplit(None, 1)
+                    samples[-1][1][series] = float(value)
+    except OSError:
+        pass
+    return samples
+
+
+def ack_series(sample, name, channel='display'):
+    """Sum the series of counter `name` on `channel` in one sample."""
+    total = 0.0
+    for series, value in sample.items():
+        if (series.startswith('kerbside_proxy_ack_window_%s{' % name)
+                and 'channel="%s"' % channel in series):
+            total += value
+    return total
+
+
+def ack_windows(sample, channel='display'):
+    """Return the window label values SET_ACK has used on `channel`."""
+    found = set()
+    for series in sample:
+        if (series.startswith('kerbside_proxy_ack_window_set_total{')
+                and 'channel="%s"' % channel in series):
+            m = re.search(r'window="([^"]+)"', series)
+            if m:
+                found.add(m.group(1))
+    return found
+
+
+def nearest(series, ts):
+    """Return the value in [(ts, value)] sampled nearest to `ts`, or 0."""
+    if not series:
+        return 0
+    return min(series, key=lambda x: abs(x[0] - ts))[1]
+
+
+def ack_stats(rep_dirs, rate_mbit):
+    """ACK-window figures for one case, averaged over its good repeats.
+
+    Each run-matrix.sh case starts its own proxy with one display channel,
+    so the display counters belong to that one channel, and its in-flight
+    count at each sample is messages less window times credited ACKs.
+    """
+    rows = []
+    windows = set()
+    for d in rep_dirs:
+        if (os.path.exists(os.path.join(d, 'setup-failed'))
+                or os.path.exists(os.path.join(d, 'qemu-died'))):
+            continue
+        try:
+            t1 = float(open(os.path.join(d, 't1')).read())
+            with open(os.path.join(d, 'keydraw.json')) as f:
+                ta = t1 - json.load(f)['elapsed_s']
+        except (OSError, ValueError, KeyError):
+            continue
+        samples = [x for x in parse_ackwin(os.path.join(d, 'ackwin.txt'))
+                   if ta <= x[0] <= t1]
+        if len(samples) < 2:
+            continue
+        (s0, a), (s1, b) = samples[0], samples[-1]
+        dt = s1 - s0
+        rep_windows = ack_windows(b)
+        windows |= rep_windows
+        window = int(next(iter(rep_windows))) if (
+            len(rep_windows) == 1 and next(iter(rep_windows)).isdigit()) else None
+        msgs = ack_series(b, 'messages_total') - ack_series(a, 'messages_total')
+        stalls = ack_series(b, 'stalls_total') - ack_series(a, 'stalls_total')
+        stalled = (ack_series(b, 'stalled_seconds_total')
+                   - ack_series(a, 'stalled_seconds_total'))
+        socks = parse_ss(os.path.join(d, 'ss.txt'), s0, s1)
+        client = {k: v for k, v in socks.items() if k[0].endswith(':5900')}
+        size = rtt = float('nan')
+        if client:
+            disp = max(client.values(), key=lambda x: x[-1]['bytes_acked'])
+            if len(disp) > 1 and msgs:
+                size = (disp[-1]['bytes_acked'] - disp[0]['bytes_acked']) / msgs
+            rtt = pct([x['rtt'] for x in disp], 50)
+        # Bytes spice-server has sent that the proxy has not yet read: the
+        # proxy's backend Recv-Q plus spice-server's own Send-Q.
+        backend = {k: v for k, v in socks.items() if k[1].endswith(':5910')}
+        qemu = {k: v for k, v in socks.items() if k[0].endswith(':5910')}
+        brecv = qsend = []
+        if backend:
+            bdisp = max(backend.values(), key=lambda x: x[-1]['bytes_received'])
+            brecv = [(x['ts'], x['recvq']) for x in bdisp]
+        if qemu:
+            qdisp = max(qemu.values(), key=lambda x: x[-1]['bytes_acked'])
+            qsend = [(x['ts'], x['sendq']) for x in qdisp]
+        relay, total = [], []
+        if window and size > 0:
+            for ts, sample in samples:
+                seen = (ack_series(sample, 'messages_total')
+                        - window * ack_series(sample, 'acks_total'))
+                unseen = (nearest(brecv, ts) + nearest(qsend, ts)) / size
+                relay.append(seen)
+                total.append(seen + unseen)
+        rows.append({'rate': msgs / dt, 'stalls': stalls / dt,
+                     'stalled': stalled / dt, 'size': size, 'rtt': rtt,
+                     'relay50': pct(relay, 50), 'total50': pct(total, 50)})
+    if not rows:
+        return None
+
+    def mean(key):
+        return statistics.mean(r[key] for r in rows)
+
+    out = {k: mean(k) for k in rows[0]}
+    out['good'] = len(rows)
+    out['windows'] = ','.join(sorted(windows)) or '-'
+    numeric = [int(w) for w in windows if w.isdigit()]
+    out['limit'] = 2 * numeric[0] + 1 if len(numeric) == 1 else float('nan')
+    out['per_rtt'] = out['rate'] * out['rtt'] / 1000
+    out['ceiling'] = float('nan')
+    if len(numeric) == 1:
+        serialise = numeric[0] * out['size'] * 8 / (rate_mbit * 1e6) if rate_mbit else 0
+        out['ceiling'] = 2 * numeric[0] / (out['rtt'] / 1000 + serialise)
+    return out
 
 
 def case_stats(rep_dirs):
@@ -204,6 +354,36 @@ def main():
                       f'{stats["recvq50"]:.0f}/{stats["recvqmax"]:.0f} | '
                       f'{stats["rmemmax"]:.0f} ({stats["rcvbuf"]:.0f}) | '
                       f'{stats["qsendq50"]:.0f}/{stats["qsendq95"]:.0f} |')
+    ack_rows = []
+    for profile in sorted(os.listdir(root)):
+        pdir = os.path.join(root, profile)
+        if not os.path.isdir(pdir) or profile == 'tls':
+            continue
+        for activity in sorted(os.listdir(pdir)):
+            adir = os.path.join(pdir, activity)
+            configs = collections.defaultdict(list)
+            for rep in os.listdir(adir):
+                configs[rep.rsplit('-r', 1)[0]].append(rep)
+            for config in sorted(configs):
+                m = re.search(r'-(\d+)mbit$', profile)
+                stats = ack_stats(
+                    [os.path.join(adir, r) for r in sorted(configs[config])],
+                    int(m.group(1)) if m else 0)
+                if stats:
+                    ack_rows.append((profile, activity, config, stats))
+    if ack_rows:
+        print()
+        print('| Link | Activity | Proxy | Repeats | Window | Display msgs/s | '
+              'Mean msg KiB | Client sRTT ms | Msgs per sRTT | 2W+1 | Window ceiling msgs/s | '
+              'Stalls/s | Time at threshold | In flight p50: proxy / with backlog |')
+        print('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|')
+        for profile, activity, config, a in ack_rows:
+            print(f'| {profile} | {activity} | {config} | {a["good"]} | '
+                  f'{a["windows"]} | {a["rate"]:.0f} | '
+                  f'{a["size"] / 1024:.1f} | {a["rtt"]:.0f} | '
+                  f'{a["per_rtt"]:.0f} | {a["limit"]:.0f} | {a["ceiling"]:.0f} | '
+                  f'{a["stalls"]:.1f} | {a["stalled"] * 100:.0f}% | '
+                  f'{a["relay50"]:.0f} / {a["total50"]:.0f} |')
     if lost:
         print(f'WARNING: {lost} repeat(s) were lost to a qemu exit or a '
               f'setup failure and are excluded; see the Repeats column',

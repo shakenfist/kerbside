@@ -129,6 +129,16 @@ visible.
   byte- or RTT-aware ACK pacing, either in Kerbside (which
   relays the client's ACKs) or upstream. See
   `docs/performance/proxy-backpressure.md`.
+  - *Observed 2026-10-28* (phase 3 step 2,
+    `docs/performance/ack-window.md`): the relay now follows the
+    window. The backlog bound holds exactly, with the relay's
+    in-flight count peaking at 81 (2W+1, W=40) and never higher.
+    The throughput cap does not: at 80 ms / 50 Mbit the busy
+    activity delivers about 93% of the messages the guest offers,
+    and is at the window's limit only about a third of the time.
+    What keeps the bitrate low is small JPEG draws, because
+    spice-server judges any 80 ms link slow, which also sets W to
+    40.
 - **Finding 2 was right about fragmentation and wrong about
   its shape.**
   - `RED_STREAM_MIN_SIZE` is an *area* (96x96 pixels), not a
