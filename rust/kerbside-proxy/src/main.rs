@@ -66,6 +66,11 @@ mod ackwindow;
 /// server.
 mod metrics;
 
+/// The transcoding display channel (`--transcode-display`), built only with
+/// the `transcode` cargo feature.
+#[cfg(feature = "transcode")]
+mod transcode;
+
 /// A coarse cap on concurrently-handled secure connections, enforced by a
 /// `tokio::sync::Semaphore` in `main`'s secure-connection handler. This is a
 /// blunt process-wide limit to bound resource use under load; it could later
@@ -144,6 +149,12 @@ struct Args {
     #[arg(long, default_value_t = 0)]
     backend_rcvbuf_bytes: u32,
 
+    /// The transcoding display channel's flags, in builds with the
+    /// `transcode` feature.
+    #[cfg(feature = "transcode")]
+    #[command(flatten)]
+    transcode: transcode::TranscodeArgs,
+
     /// Enable debug-level logging.
     #[arg(long)]
     verbose: bool,
@@ -201,6 +212,13 @@ async fn main() -> Result<()> {
         backend_rcvbuf_bytes = args.backend_rcvbuf_bytes,
         "kerbside-proxy starting"
     );
+    #[cfg(feature = "transcode")]
+    if args.transcode.transcode_display {
+        warn!(
+            options = ?transcode::Options::from_args(&args.transcode),
+            "transcoding display channels (--transcode-display): an experiment, not for production"
+        );
+    }
 
     // Shared, cheaply-cloneable state cloned into each connection task.
     let state = Arc::new(shared_state(&args));
@@ -399,6 +417,8 @@ fn shared_state(args: &Args) -> session::SharedState {
         node_name: args.node_name.clone(),
         sessions: Arc::new(session::SessionRegistry::default()),
         backend_rcvbuf_bytes: args.backend_rcvbuf_bytes,
+        #[cfg(feature = "transcode")]
+        transcode: transcode::Options::from_args(&args.transcode).map(Arc::new),
     }
 }
 
@@ -444,6 +464,59 @@ mod tests {
                 "{flag} accepted u32::MAX + 1"
             );
         }
+    }
+
+    /// The transcoder is off unless asked for, its defaults are andris's,
+    /// and the ACK-window pacing flag selects that mode.
+    #[cfg(feature = "transcode")]
+    #[tokio::test]
+    async fn transcode_flags_reach_shared_state() {
+        use crate::transcode::PacingMode;
+        use std::time::Duration;
+
+        let args = Args::try_parse_from(["kerbside-proxy"]).expect("defaults parse");
+        assert!(shared_state(&args).transcode.is_none());
+
+        let args = Args::try_parse_from(["kerbside-proxy", "--transcode-display"])
+            .expect("the transcode flag parses");
+        let options = shared_state(&args).transcode.expect("transcoding is on");
+        assert_eq!(options.jpeg_quality.map(|q| q.get()), Some(85));
+        assert_eq!(options.lossless_delay, Duration::from_millis(500));
+        assert_eq!(options.pacing, PacingMode::Socket);
+
+        let args = Args::try_parse_from([
+            "kerbside-proxy",
+            "--transcode-display",
+            "--transcode-jpeg-quality",
+            "0",
+            "--transcode-ack-window",
+            "20",
+        ])
+        .expect("the transcode tuning flags parse");
+        let options = shared_state(&args).transcode.expect("transcoding is on");
+        assert_eq!(
+            options.jpeg_quality, None,
+            "a quality of 0 is lossless only"
+        );
+        assert_eq!(options.pacing, PacingMode::AckWindow(20));
+
+        assert!(
+            Args::try_parse_from(["kerbside-proxy", "--transcode-jpeg-quality", "101"]).is_err()
+        );
+        assert!(
+            Args::try_parse_from(["kerbside-proxy", "--transcode-notsent-lowat-bytes", "0"])
+                .is_err()
+        );
+    }
+
+    /// The ACK-window flag is a measurement option, kept out of `--help`.
+    #[cfg(feature = "transcode")]
+    #[test]
+    fn the_ack_window_flag_is_hidden() {
+        use clap::CommandFactory;
+        let help = Args::command().render_long_help().to_string();
+        assert!(help.contains("--transcode-display"));
+        assert!(!help.contains("--transcode-ack-window"));
     }
 
     /// The contract hash build.rs embeds must be a bare lowercase-hex sha256:

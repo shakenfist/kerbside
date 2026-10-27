@@ -37,7 +37,7 @@ use crate::session::SharedState;
 /// for a body that will never arrive. 16 MiB is generous for any legitimate
 /// SPICE message (the largest are image/surface payloads); `EnforcingPolicy`
 /// caps most channel/direction pairs well below it.
-const MAX_MESSAGE_SIZE: u32 = 16 * 1024 * 1024;
+pub(crate) const MAX_MESSAGE_SIZE: u32 = 16 * 1024 * 1024;
 
 /// How much we read from the socket per `read` call. The reassembly buffer
 /// grows as needed for a single large message; this only bounds one read.
@@ -173,9 +173,25 @@ pub async fn run(
         ),
     }
 
-    // Flush a single coalesced firewall-verdict audit event for the whole
-    // connection, if anything was recorded. Best-effort: an audit RPC failure
-    // is logged, not propagated (the connection is already tearing down).
+    record_verdict_summary(state, &tally, channel_type, connection_ref, target).await;
+
+    // Normal teardown is uniform from the caller's perspective; do not
+    // propagate the error (see the doc comment above).
+    Ok(())
+}
+
+/// Flush a single coalesced firewall-verdict audit event for the whole
+/// connection, if `tally` recorded anything. Best-effort: an audit RPC
+/// failure is logged, not propagated (the connection is already tearing
+/// down). Shared with the transcoding display channel, which audits the
+/// same way.
+pub(crate) async fn record_verdict_summary(
+    state: &SharedState,
+    tally: &VerdictTally,
+    channel_type: ChannelType,
+    connection_ref: &str,
+    target: &pb::Target,
+) {
     if let Some(summary) = tally.summary() {
         if let Err(e) = state
             .rpc
@@ -193,10 +209,6 @@ pub async fn run(
             warn!(%connection_ref, error = %e, "recording firewall-verdict-summary audit event failed");
         }
     }
-
-    // Normal teardown is uniform from the caller's perspective; do not
-    // propagate the error (see the doc comment above).
-    Ok(())
 }
 
 /// The framing pump for one direction.

@@ -138,6 +138,10 @@ pub struct SharedState {
     /// `SO_RCVBUF` cap applied to each backend-leg socket once connected
     /// (`--backend-rcvbuf-bytes`); 0 leaves the kernel's autotuning alone.
     pub backend_rcvbuf_bytes: u32,
+    /// How to transcode display channels, or `None` to relay them
+    /// (`--transcode-display` and the flags with it).
+    #[cfg(feature = "transcode")]
+    pub transcode: Option<Arc<crate::transcode::Options>>,
 }
 
 /// Overall time budget for the client-facing handshake reads/writes (link
@@ -588,6 +592,8 @@ mod handshake_tests {
             node_name: "test-node".to_string(),
             sessions: Arc::new(SessionRegistry::default()),
             backend_rcvbuf_bytes: 0,
+            #[cfg(feature = "transcode")]
+            transcode: None,
         });
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind proxy");
         let addr = listener.local_addr().expect("proxy addr");

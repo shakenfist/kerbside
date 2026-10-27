@@ -459,7 +459,7 @@ ryll's through its own Makefile, never with a host toolchain.
 | 1b | high | opus | none | Complete (#494, #505). kerbside: bump the ryll pin, forward client caps, per-channel-type reply caps, handshake tests. Fixes #477. See brief notes. |
 | 2 | high | opus | none | Complete (see Execution notes). kerbside: observe the ACK window from the relay, then measure it on the shaped-link rig. Commit: "Observe the display ACK window in the relay." See brief notes. |
 | 3a | high | opus | none | Complete, delivered by andris phases 2-3 and ryll's RDP phase 1 (Re-survey, finding 1). No work remains. |
-| 3b | high | opus | worktree | kerbside: the transcoding display channel behind a feature and a flag, on andris's update pipeline. Commit: "Add a transcoding display channel." See brief notes. |
+| 3b | high | opus | worktree | Complete (see Execution notes). kerbside: the transcoding display channel behind a feature and a flag, on andris's update pipeline. Commit: "Add a transcoding display channel." See brief notes. |
 | 4 | high | opus | none | Measure transcoding against the re-baseline, including sub-10 Mbit links, CPU and image quality. See brief notes. |
 | 5 | high | opus | worktree | Test moving a live session between relay and transcoding. See brief notes. |
 | 6 | high | opus | none | Write up the spike with a go or no-go recommendation. See brief notes. |
@@ -788,6 +788,54 @@ Brief notes for 6:
   its own `RYLL_REF` option; and the side finding that every
   80 ms link gets W=40 and JPEG draws means step 4's
   image-quality baseline for relay is already lossy.
+- **Step 3b ran in the phase worktree, not an isolated one.** The
+  sub-agent worktree option branches from the default branch,
+  not from this phase branch, so the step worked in place; its
+  output was reviewed uncommitted, as for every step.
+- **Step 3b's gate.** The management session approved the cut
+  on 2026-10-28: andris's `updates/` (shadow, tile diff, lossy
+  tracking, encode classifier) and its geometry types, copied
+  at e29929f; streams, heat, the scrub and the platform traits
+  dropped; an adapter that reads the mirror's damaged
+  rectangles as a capture, converting RGBA to BGRX.
+- **Step 3b departed from its brief in these places,** each
+  argued at the gate:
+  - The backend display channel is dialled with a fixed set of
+    caps that describes ryll's renderer (LZ4,
+    PREF_COMPRESSION, MULTI_CODEC with no CODEC_* bits,
+    PREF_VIDEO_CODEC_TYPE, MONITORS_CONFIG), not the client's.
+    The backend's reader is the renderer, and a client without
+    LZ4 would otherwise push the backend to QUIC, then JPEG.
+  - MONITORS_CONFIG goes to the client only if the client
+    advertised it. The brief keyed it on the reply, which
+    always advertises it.
+  - Relay fallback happens only at connect: a display channel
+    other than id 0 is relayed. Draws and images the renderer
+    cannot handle arrive after the client holds the
+    transcoder's surface, so they are logged once, counted in
+    `kerbside_proxy_transcode_unsupported_total{kind}`, and
+    leave a stale region.
+  - The ACK-window pacing option is a hidden run-time flag
+    (`--transcode-ack-window`), not a debug build, because
+    step 4 measures release builds.
+  - The client leg has no idle-read timeout: a socket-paced
+    client is silent after DISPLAY_INIT. TCP keepalive on the
+    client socket remains the dead-peer detector.
+  - The ryll pin is b33dea4, 117 commits past 4c91b13. The
+    protocol crate's source is unchanged across them.
+- **Step 3b verification.** 92 tests without the feature, 173
+  with it, and lint clean in both, reproduced by the management
+  session. A default release build has no openh264 symbols. End
+  to end in the direct-qemu harness, headless ryll matched a
+  direct-to-qemu screenshot pixel for pixel (apart from the
+  guest's changing QR code), and remote-viewer (spice-gtk
+  0.42) drew correctly. Not tested: a guest resize end to end.
+  Ryll releases up to 0.1.5 cannot decode the LZ4 draws the
+  transcoder sends, and the harness doc says so.
+- **Not done here: CI does not build the `transcode` feature,**
+  so it can rot unnoticed until step 4 builds it. A lane would
+  build openh264 on every run. Left for the productising
+  decision rather than added to a spike.
 
 ## Risks added by the re-survey
 

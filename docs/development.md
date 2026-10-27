@@ -446,6 +446,12 @@ make -C rust/kerbside-proxy test    # cargo test
 make -C rust/kerbside-proxy lint    # cargo fmt --check + clippy -D warnings
 ```
 
+Add `FEATURES=transcode` to any of them to include the experimental
+transcoding display channel, which is off by default and never in release
+wheels; see
+[Transcoding the display channel](proxy-architecture.md#transcoding-the-display-channel-experimental).
+Its first build compiles openh264 from source.
+
 The Docker base sets the floor the *built binary* needs, not just the
 build: the Makefile writes `target/` back to the host, and
 `proxy_supervisor.find_proxy_bin()` then execs it on your own machine.

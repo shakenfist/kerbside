@@ -142,6 +142,15 @@ Values tracked include:
   counts a message once it has read it, so the stall figures are a lower
   bound when spice-server's own buffers hold a backlog. See
   [the ACK window measurement](performance/ack-window.md).
+- Backend display messages an experimental transcoded display channel could
+  not draw (`kerbside_proxy_transcode_unsupported_total{kind}`, where `kind`
+  is `draw_rop3`, `draw_stroke`, `draw_text`, `draw_composite`,
+  `offscreen_surface`, `image_type` or `stream`). Each leaves a stale region
+  on that session's client, because a transcoded channel cannot fall back to
+  relaying once it has started. The series exists only in a `kerbside-proxy`
+  built with the `transcode` feature and run with `--transcode-display`,
+  which release wheels are not; see
+  [Transcoding the display channel](proxy-architecture.md#transcoding-the-display-channel-experimental).
 
 | Configuration Option | Type | Description |
 |---------------------|------|-------------|

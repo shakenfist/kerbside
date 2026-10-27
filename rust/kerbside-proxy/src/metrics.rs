@@ -198,6 +198,19 @@ static ACK_WINDOW_STALLED_SECONDS_TOTAL: LazyLock<CounterVec> = LazyLock::new(||
     vec
 });
 
+/// Things the transcoding display channel met that ryll's renderer does
+/// not draw, by `kind` (`draw_rop3`, `draw_stroke`, `draw_text`,
+/// `draw_composite`, `offscreen_surface`, `image_type` or `stream`). Each
+/// leaves a stale region on the client.
+#[cfg(feature = "transcode")]
+static TRANSCODE_UNSUPPORTED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    int_counter_vec(
+        "kerbside_proxy_transcode_unsupported_total",
+        "Backend display messages the transcoder could not draw, by kind",
+        &["kind"],
+    )
+});
+
 /// Map a relay [`Direction`] to its Prometheus label value.
 fn direction_label(dir: Direction) -> &'static str {
     match dir {
@@ -273,6 +286,19 @@ pub fn add_ack_window_stalled(channel: &str, d: Duration) {
     ACK_WINDOW_STALLED_SECONDS_TOTAL
         .with_label_values(&[channel])
         .inc_by(d.as_secs_f64());
+}
+
+/// Count one backend display message of `kind` the transcoder could not
+/// draw.
+#[cfg(feature = "transcode")]
+pub fn inc_transcode_unsupported(kind: &str) {
+    TRANSCODE_UNSUPPORTED_TOTAL.with_label_values(&[kind]).inc();
+}
+
+/// The count of `kind` so far, for tests.
+#[cfg(all(feature = "transcode", test))]
+pub fn transcode_unsupported(kind: &str) -> u64 {
+    TRANSCODE_UNSUPPORTED_TOTAL.with_label_values(&[kind]).get()
 }
 
 /// An RAII guard that increments `active_connections` on creation and
