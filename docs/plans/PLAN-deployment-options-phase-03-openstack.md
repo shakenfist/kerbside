@@ -353,6 +353,17 @@ links the page 3a writes.
 - Step 3a re-queried Gerrit on 2026-10-28: no status had changed
   since the survey, and 967801's parent is still 976889's current
   revision.
+- Step 3b found that Kerbside's Keystone login scopes every user's
+  token to the `admin` project in the `default` domain, fixed in
+  `kerbside/api.py` rather than configurable. A user in the access
+  group with no role on that project cannot log in. No page said so.
+  `openstack.md` now does, under Account and as a limitation. Whether
+  to file it as an issue is put to Mikal at the end of the phase.
+- The definition of done's item on Kolla-Ansible mentions in "How to
+  set it up" is read as covering the setup instructions. "A worked
+  example" stays as it was, by decision 7, apart from an opening link
+  to the Kolla-Ansible page. Its other Kolla-Ansible mentions describe
+  CI and are not linked.
 
 ## Back brief
 
