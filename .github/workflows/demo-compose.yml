@@ -16,24 +16,23 @@
 # release instead of the pull request. This is the only place that
 # overrides it.
 #
-# There is no cargo step, and that is deliberate rather than an
-# oversight. pyproject.toml carries a dev-inclusive floor
-# (kerbside-proxy>=X.dev0), so a checkout install resolves the newest dev
-# wheel published from develop by dev-proxy-wheel.yml -- verified: a /src
-# build pairs a checkout kerbside with kerbside-proxy 0.5.1.dev1 from
-# PyPI. Building the Rust proxy here would add a cold release build to
-# every run for no signal that rust.yml does not already give.
+# The proxy is usually not built here, and that is deliberate.
+# pyproject.toml carries a dev-inclusive floor (kerbside-proxy>=X.dev0),
+# so a checkout install resolves the newest dev wheel published from
+# develop by dev-proxy-wheel.yml -- verified: a /src build pairs a
+# checkout kerbside with kerbside-proxy 0.5.1.dev1 from PyPI. Building
+# the Rust proxy on every run would add a cold release build for no
+# signal that rust.yml does not already give.
 #
-# The residual case is a pull request that changes
-# kerbside/rpc/kerbside.proto *and* one of the paths below, before a dev
-# wheel exists for the new proto. Then the checkout daemon and the PyPI
-# wheel disagree and proxy_supervisor.check_contract() refuses to launch
-# the binary, so this lane goes red for a reason that is not the demo's
-# fault. That failure is loud and correctly diagnosed by the daemon's own
-# message; the fix is to let the dev wheel publish, not to work around it
-# here. If it ever becomes a nuisance, the fallback is one step calling
-# tools/direct-qemu/install-proxy-wheel.sh --venv, as
-# direct-qemu-functional.yml does.
+# The exception is a checkout whose kerbside/rpc/kerbside.proto that
+# wheel was not built from: a pull request changing the proto, or
+# develop between such a merge and the dev wheel it triggers. There the
+# daemon's contract check would refuse the published binary, so
+# tools/demo/pair-proxy.sh asks that wheel for its contract hash and,
+# when it disagrees with the checkout, builds the proxy from the
+# checkout for the image to install instead. The proto is in the path
+# filter for the same reason: such a change now gets an end-to-end run
+# rather than a guaranteed red one.
 
 name: Demo compose lane
 
@@ -47,6 +46,7 @@ on:
       - 'demo/**'
       - 'tools/demo/**'
       - 'kerbside/migrations/**'
+      - 'kerbside/rpc/kerbside.proto'
       - 'pyproject.toml'
       - 'docs/installation.md'
       - '.github/workflows/demo-compose.yml'
@@ -56,6 +56,7 @@ on:
       - 'demo/**'
       - 'tools/demo/**'
       - 'kerbside/migrations/**'
+      - 'kerbside/rpc/kerbside.proto'
       - 'pyproject.toml'
       - 'docs/installation.md'
       - '.github/workflows/demo-compose.yml'
@@ -78,10 +79,11 @@ jobs:
     # l: a qemu TCG guest, a MariaDB, a container build and a cargo
     # release build of ryll, on one runner. Never an unsized vm label --
     # rust.yml:36-38 records that one defaults to xs (1 core / 2 GB) in
-    # private-ci. Sized below rust.yml's xl because the *proxy* is not
-    # built here -- the daemon is paired with the newest dev proxy wheel
-    # instead, as tools/demo/lane-up.sh explains; ryll still is, so this
-    # is not a cargo-free lane.
+    # private-ci. Sized below rust.yml's xl because the *proxy* is
+    # usually not built here -- the daemon is paired with the newest dev
+    # proxy wheel instead, as tools/demo/lane-up.sh explains -- and when
+    # it is, it is one release build, which direct-qemu-functional.yml
+    # also does at l; ryll always is, so this is not a cargo-free lane.
     #
     # Measured on the first green run, at l: 4.5 minutes end to end --
     # ryll 1.7, stack up 1.6, docker install 0.2, assertions 0.3. So `l`
@@ -159,6 +161,12 @@ jobs:
           cargo build --release --no-default-features -p ryll
           sudo install -m 755 target/release/ryll /usr/local/bin/ryll
           ryll --version
+
+      # After the Rust toolchain, which a proto change needs to build the
+      # proxy, and before lane-up.sh, which reads the KERBSIDE_PROXY this
+      # exports when it does.
+      - name: Pair the proxy with this proto
+        run: tools/demo/pair-proxy.sh
 
       - name: Bring up the demo stack
         run: tools/demo/lane-up.sh

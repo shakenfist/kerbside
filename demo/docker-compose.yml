@@ -59,6 +59,10 @@ services:
         # KERBSIDE_SOURCE unset is the tracked fix; see
         # docs/plans/PLAN-demo-install-phase-04-ci-lane.md's Future work.
         KERBSIDE_SOURCE: ${KERBSIDE_SOURCE:-kerbside}
+        # What pip installs as the proxy. Leave it alone unless you are
+        # building against a checkout that changes kerbside.proto; then
+        # see demo/Dockerfile and tools/demo/pair-proxy.sh.
+        KERBSIDE_PROXY: ${KERBSIDE_PROXY:-kerbside-proxy}
     depends_on:
       db:
         # "healthy" rather than "started": the entrypoint runs

@@ -11,11 +11,14 @@
 # of the pull request. So the lane sets KERBSIDE_SOURCE=/src and is the
 # only place that does.
 #
-# There is no cargo step anywhere in this lane, and that is deliberate.
-# pyproject.toml carries a dev-inclusive floor (kerbside-proxy>=X.dev0),
-# so a checkout install resolves the newest dev wheel published from
-# develop by dev-proxy-wheel.yml and the daemon is paired with a binary
-# that tracks develop. See demo/Dockerfile.
+# The proxy is usually not built here. pyproject.toml carries a
+# dev-inclusive floor (kerbside-proxy>=X.dev0), so a checkout install
+# resolves the newest dev wheel published from develop by
+# dev-proxy-wheel.yml and the daemon is paired with a binary that tracks
+# develop. The exception is a checkout whose kerbside.proto that wheel
+# was not built from: tools/demo/pair-proxy.sh, run before this, builds
+# the proxy from the checkout and exports KERBSIDE_PROXY, which
+# docker-compose.yml passes to the image build. See demo/Dockerfile.
 
 set -euo pipefail
 
@@ -74,7 +77,8 @@ docker compose config > /dev/null \
 # context, because setuptools_scm derives the version from it. The
 # workflow therefore checks out with fetch-depth: 0, and .dockerignore
 # deliberately does not exclude .git.
-echo "[lane-up] Building the demo image from the checkout"
+echo "[lane-up] Building the demo image from the checkout" \
+    "(proxy: ${KERBSIDE_PROXY:-kerbside-proxy})"
 KERBSIDE_SOURCE=/src docker compose build \
     || dump_and_die "the demo image failed to build"
 

@@ -85,6 +85,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #
 #   git diff v<latest>..develop -- kerbside/rpc/kerbside.proto
 #
+# KERBSIDE_PROXY is the way out of that window: it names what pip
+# installs as the proxy, and defaults to the plain `kerbside-proxy`
+# requirement described above. Point it at a wheel built from the
+# checkout, as a path under /src, to pair the daemon with a proxy
+# speaking the same proto. The CI lane does that only when it has to:
+# tools/demo/pair-proxy.sh asks the published wheel for its contract
+# hash and builds one from the checkout when the two disagree.
+#
 # The bind mount is read-write so pip can build in-tree without the
 # checkout needing to be writable on the host; the overlay is discarded
 # when the step finishes, so nothing is written back and no copy of the
@@ -106,8 +114,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Both apply to KERBSIDE_SOURCE=/src only; the default build never
 # looks at the checkout and is happy in a worktree.
 ARG KERBSIDE_SOURCE=kerbside
+ARG KERBSIDE_PROXY=kerbside-proxy
 RUN --mount=type=bind,source=.,target=/src,rw \
-    pip install --no-cache-dir kerbside-proxy "${KERBSIDE_SOURCE}"
+    pip install --no-cache-dir "${KERBSIDE_PROXY}" "${KERBSIDE_SOURCE}"
 
 # One TLS bootstrap in the tree, and it is the CI-proven one. Copied
 # rather than reimplemented so the demo and the direct-qemu lane cannot
