@@ -51,21 +51,32 @@ PIP="${WORK}/venv/bin/pip"
 expected="$(sha256sum "${REPO_ROOT}/kerbside/rpc/kerbside.proto" | cut -d' ' -f1)"
 echo "[pair-proxy] This checkout's contract hash: ${expected}"
 
+# Print the published wheel's contract hash, or fail. Every step returns
+# explicitly rather than relying on set -e, which bash ignores inside a
+# function called as `probe_published || true` -- and that call is what
+# turns any failure here into "cannot tell", and so into a build.
+#
 # --pre because the image's resolver allows pre-releases too: the floor in
 # pyproject.toml names a .dev0 version, which makes every dev wheel
 # eligible, so the newest version overall is what the image would get.
-published=''
-if "${PIP}" download --quiet --pre --no-deps --only-binary :all: \
-        --dest "${WORK}/published" kerbside-proxy; then
+#
+# The probe is limited to 10s, the daemon's CONTRACT_HASH_PROBE_TIMEOUT,
+# so a binary which hangs on the flag costs a build rather than the job.
+probe_published() {
+    local wheel bin
+    "${PIP}" download --quiet --pre --no-deps --only-binary :all: \
+        --dest "${WORK}/published" kerbside-proxy || return 1
     wheel="$(find "${WORK}/published" -name 'kerbside_proxy-*.whl' | head -1)"
-    echo "[pair-proxy] Published wheel: $(basename "${wheel}")"
-    "${WORK}/venv/bin/python" -m zipfile -e "${wheel}" "${WORK}/unpacked"
+    [ -n "${wheel}" ] || return 1
+    echo "[pair-proxy] Published wheel: $(basename "${wheel}")" >&2
+    "${WORK}/venv/bin/python" -m zipfile -e "${wheel}" "${WORK}/unpacked" || return 1
     bin="$(find "${WORK}/unpacked" -path '*.data/scripts/kerbside-proxy' | head -1)"
-    if [ -n "${bin}" ]; then
-        chmod +x "${bin}"
-        published="$("${bin}" --contract-hash 2>/dev/null || true)"
-    fi
-fi
+    [ -n "${bin}" ] || return 1
+    chmod +x "${bin}" || return 1
+    timeout 10 "${bin}" --contract-hash 2>/dev/null
+}
+
+published="$(probe_published || true)"
 echo "[pair-proxy] Published wheel's contract hash: ${published:-unknown}"
 
 if [ "${published}" = "${expected}" ]; then
@@ -86,5 +97,9 @@ echo "[pair-proxy] The image installs ${KERBSIDE_PROXY}"
 if [ -n "${GITHUB_ENV:-}" ]; then
     echo "KERBSIDE_PROXY=${KERBSIDE_PROXY}" >> "${GITHUB_ENV}"
 else
+    # The wheel only pairs with a checkout daemon: with the default
+    # KERBSIDE_SOURCE the image gets the released kerbside, which this
+    # proxy's proto is guaranteed not to match.
     echo "export KERBSIDE_PROXY=${KERBSIDE_PROXY}"
+    echo "# then: KERBSIDE_SOURCE=/src docker compose -f demo/docker-compose.yml build kerbside"
 fi

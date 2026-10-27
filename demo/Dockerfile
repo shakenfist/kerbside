@@ -91,7 +91,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # checkout, as a path under /src, to pair the daemon with a proxy
 # speaking the same proto. The CI lane does that only when it has to:
 # tools/demo/pair-proxy.sh asks the published wheel for its contract
-# hash and builds one from the checkout when the two disagree.
+# hash and builds one from the checkout when the two disagree. It is
+# only meaningful with KERBSIDE_SOURCE=/src: a proxy built for the
+# checkout's proto beside a released daemon is refused just the same.
 #
 # The bind mount is read-write so pip can build in-tree without the
 # checkout needing to be writable on the host; the overlay is discarded
