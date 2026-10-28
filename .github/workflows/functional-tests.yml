@@ -395,8 +395,9 @@ jobs:
               ansible-core ansible-lint galaxy-importer
 
       # Rootless test of the kerbside role's validate, bootstrap (against
-      # a stub virtualenv) and config entry points. register needs
-      # systemd, MariaDB and a console source, so it is not run here.
+      # a stub virtualenv), config and register entry points. register
+      # runs without its migration and its units, which need MariaDB and
+      # systemd.
       - name: Test the ansible role
         timeout-minutes: 10
         run: |
