@@ -421,7 +421,31 @@ None yet.
 
 ## Execution notes
 
-None yet.
+- 2026-10-29 AEDT, back brief. Mikal confirmed decision 1's tier
+  (nightly, on dispatch, and advisory on Proxmox-path pull
+  requests), decision 2's run of the documentation block behind
+  the allowlist, and that this session may push the branch and
+  open the pull request after step 5.3 so the lane can iterate.
+- Steps run in sequence, 5.1 to 5.3, because each runs `tox` and
+  `pre-commit` in the shared worktree.
+- Step 5.1 added a check the plan did not ask for.
+  `prepare-node.sh` reads each token's effective privileges with
+  `pveum user token permissions` and requires exactly the expected
+  set. Without it, a token whose ACL never applied would be
+  refused everything and pass the 403 checks while proving
+  nothing. The script also waits for `/cluster/resources` to
+  report each fixture guest in its intended state before kerbside
+  scrapes. Its SSH user and key, `debian` and `/srv/github/id_ci`,
+  come from the action's playbook, since the action exposes
+  neither as an output. Twenty-five mutants were killed
+  (`step-5.1/mutants.yaml` in the session scratchpad). Four PVE
+  behaviours are written from source or memory and are first
+  checked by the lane: the JSON shape of
+  `pveum user token permissions`, whether `qm template` accepts a
+  diskless guest, that `qm start` leaves a deleted `smbios1`
+  deleted, and the 403 for each refused call. A template can never
+  be running, so guest 104 is skipped as a stopped guest too, and
+  does not isolate the template rule.
 
 ## Outcome
 
