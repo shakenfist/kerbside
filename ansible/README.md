@@ -7,9 +7,10 @@ hosts you choose. It carries one role, `shakenfist.kerbside.kerbside`, which
 installs Kerbside into a virtualenv, writes its configuration and systemd
 units, runs its database migrations and waits for it to be ready.
 
-The role validates and renders all four console source types, but installs only
-the Shaken Fist client library, so `ovirt` and `openstack` sources do not work
-until their client libraries are installed as well
+The role validates and renders all five console source types, but installs
+only the Shaken Fist client library. `proxmox` and `static` sources need no
+client library, but `ovirt` and `openstack` sources do not work until theirs
+are installed as well
 ([kerbside#602](https://github.com/shakenfist/kerbside/issues/602)). It knows
 nothing about your inventory: you map your hosts onto `kerbside_hosts` and your
 consoles onto `kerbside_sources`. A collection release deploys the Kerbside

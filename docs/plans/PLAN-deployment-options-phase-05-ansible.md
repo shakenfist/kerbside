@@ -294,6 +294,15 @@ phase's planning commit: the inventory row for the role, and the phase
   changed pages resolve, and the README's and Shaken Fist's guide's
   anchors match their headings on the day. One line of the page names
   a `kerbside_` variable. #602 and #629 are both open.
+- The first automated review (2026-10-29) found that #618, the Proxmox
+  VE source, had landed on `develop` after this branch was cut. The
+  role now validates five source types, and a `proxmox` source needs
+  no client library. The branch was rebased onto it, and the page, the
+  README and the index's sources cell now name Proxmox. That cell
+  changed after all, against the definition of done's "other cells
+  unchanged", because the role's sources changed under it. The page
+  also gained a row saying no lane starts a Proxmox source through the
+  role.
 
 ## Back brief
 

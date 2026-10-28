@@ -46,12 +46,12 @@ Each row is what the role's tasks do, in
 | OS packages | Installs Kerbside's build dependencies with apt, so the hosts must be Debian family. |
 | User | A `kerbside` system user and group, with no login shell. Its home, `/srv/kerbside`, is owned by root. |
 | Virtual environment | `/srv/kerbside/venv`, holding Kerbside, `kerbside-proxy`, gunicorn and, only when a source is of type `shakenfist`, `shakenfist-client`. It installs with `uv pip install --reinstall`, so a rebuilt wheel with an unchanged version is picked up. |
-| `kerbside.ini` | Rendered from the role's template, with exactly the settings listed under [Settings the role does not write](#settings-the-role-does-not-write), and checked before it replaces the running file. `root:kerbside`, 0640. |
+| `kerbside.ini` | Rendered from the role's template, with the fifteen settings listed in [Settings the role does not write](#settings-the-role-does-not-write) and no others, and checked before it replaces the running file. `root:kerbside`, 0640. |
 | `sources.yaml` | Your sources, written as given, and checked by Kerbside's rules for each type before it replaces the running file. `root:kerbside`, 0640. |
 | Certificates | Nothing is issued. The role reads the proxy's certificate, key and CA from `/etc/kerbside/pki`, or from paths you name, and fails if any of the three is missing. It computes the proxy's certificate subject from the certificate itself. |
 | systemd units | `kerbside-api.service`, gunicorn on `0.0.0.0:13002` in plain HTTP, and `kerbside-daemon.service`, the daemon with the SPICE proxy as its child. Both run as `kerbside` and are wanted by `multi-user.target`. |
 | Database schema | `kerbside db upgrade`, once, on the first host, as the `kerbside` user. It checks that the migration read `kerbside.ini` and reached the database. |
-| Restarts | Only when the installed code, the configuration it writes, the units or the certificate changed since the last deploy that reached readiness. |
+| Restarts | Only when the installed code, the configuration it writes, the units, or the proxy's certificate, its key or the CA changed since the last deploy that reached readiness. |
 | Readiness | Waits for the API to answer `GET /`, and for every `shakenfist` source, for Kerbside to fetch that cluster's console token signing keys during this deploy. |
 
 The [By hand](manual.md#what-it-deploys) page gives the same layout
@@ -100,7 +100,7 @@ is refused before any host changes. Your sources go in as a list, in
 the form [console-sources.md](../console-sources.md) describes, and
 the README's
 [Console sources](https://github.com/shakenfist/kerbside/blob/develop/ansible/README.md#console-sources)
-has a `shakenfist` and a `static` example.
+has a `shakenfist`, a `proxmox` and a `static` example.
 
 **A Shaken Fist cluster joining a Kerbside you deploy.** Deploy
 Kerbside by the second route, with a `shakenfist` source for the
@@ -157,6 +157,8 @@ KERBSIDE_KEYSTONE_SERVICE_AUTH_USER_DOMAIN_ID=default
 KERBSIDE_KEYSTONE_SERVICE_AUTH_PROJECT_DOMAIN_ID=default
 KERBSIDE_KEYSTONE_ACCESS_GROUP=kerbside
 KERBSIDE_KEYSTONE_ADMIN_GROUP=kerbside-admins
+# For a Keystone whose certificate a private CA issued:
+# KERBSIDE_KEYSTONE_AUTH_VERIFY=/etc/kerbside/keystone-ca.pem
 ```
 
 Then give both units a drop-in that reads it, as
@@ -195,7 +197,13 @@ Three more things to know:
   `python-keystoneclient` in the virtual environment
   ([Client libraries for console sources](../installation.md#client-libraries-for-console-sources)),
   which the role does not install
-  ([#602](https://github.com/shakenfist/kerbside/issues/602)).
+  ([#602](https://github.com/shakenfist/kerbside/issues/602)). Install
+  them into it yourself, as root:
+  `VIRTUAL_ENV=/srv/kerbside/venv /srv/kerbside/venv/bin/uv pip install keystoneauth1 python-keystoneclient`.
+  The role's install names its own packages and removes nothing else,
+  so a redeploy keeps them. Its restart decision hashes the
+  virtual environment's package list, so the next deploy restarts
+  Kerbside once.
 - Nothing tests any of this. No CI lane deploys a drop-in, and the
   steps above are read from Kerbside's configuration loader and the
   role's tasks, not run.
@@ -205,7 +213,8 @@ Three more things to know:
 Kerbside is [experimental](../index.md#kerbside-is-experimental)
 overall. The sanity job runs the role's `validate`, `bootstrap`,
 `config` and `register` entry points without root
-(`tools/ci-test-ansible-role.sh`), with sources of every type, a stub
+(`tools/ci-test-ansible-role.sh`), with `shakenfist`, `ovirt`,
+`openstack` and `static` sources, a stub
 virtual environment, and no migration or units. It also lints, builds
 and import-checks the collection. [`sf-e2e`](../testing.md#the-shaken-fist-end-to-end-lane-sf-e2e)
 deploys each pull request's Kerbside through the role, on a Shaken
@@ -213,7 +222,8 @@ Fist node, and checks that a second deploy restarts nothing.
 
 | Not covered | Why |
 |-------------|-----|
-| oVirt and OpenStack sources do not work | The role validates and renders all four source types, but installs no client library but `shakenfist-client` ([#602](https://github.com/shakenfist/kerbside/issues/602)). An `ovirt` source is marked errored and ignored, and an `openstack` source's token exchange answers 500. Today the role deploys a Kerbside for Shaken Fist and static sources. |
+| oVirt and OpenStack sources do not work | The role validates and renders all five source types, but installs no client library but `shakenfist-client` ([#602](https://github.com/shakenfist/kerbside/issues/602)). An `ovirt` source is marked errored and ignored, and an `openstack` source's token exchange answers 500. Today the role deploys a Kerbside for Shaken Fist, Proxmox and static sources, which need no other client library. |
+| Proxmox through the role is untested | The role validates a `proxmox` source, and a unit test checks its required fields, but the rootless test renders none and no lane starts one. No CI lane yet proves a proxied session against a real Proxmox VE cluster, by any deployment mechanism. |
 | No setting beyond the fifteen | `kerbside.ini` is rendered from a fixed set, with no way to add to it, so there is no Keystone login, firewall mode or verbose logging through the role ([#629](https://github.com/shakenfist/kerbside/issues/629)). The drop-in in [Settings the role does not write](#settings-the-role-does-not-write) works around it, and is untested. |
 | Kerbside is started only with a Shaken Fist source, co-located | `sf-e2e` is the only lane that runs `register` against a real database and systemd, and it deploys one `shakenfist` source on a Shaken Fist node. The rootless test renders every source type, but skips the migration and the units. No lane starts a role-deployed Kerbside with a `static` source, or on a host of its own. |
 | Only through Shaken Fist's `site.yml` | `sf-e2e` calls the role from Shaken Fist's playbook. No lane calls it from a playbook of its own, as the second route above does. |
