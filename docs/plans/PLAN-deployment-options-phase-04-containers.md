@@ -221,7 +221,18 @@ each finding. A step does not need to redo them.
 
 ## Execution notes
 
-None yet.
+- Back brief answered on 2026-10-28 (AEDT). Mikal kept decision 2,
+  approved step 4b's comment as drafted, and gave this session
+  permission to push and open the pull request once the definition
+  of done is checked.
+- Step 4a re-queried quay.io on 2026-10-28. The x86-64 tags were
+  pushed that day, and the `-aarch64` tags a week or so earlier. Kolla's
+  `stable/2026.2` also builds `kerbside-base` from `develop`.
+- The review checked the claims step 4a flagged as inferred.
+  Kolla-Ansible sets `KOLLA_CONFIG_STRATEGY` for every container
+  (`ansible/group_vars/all/common.yml`). kerbside-patches documents
+  the `nova-libvirt-spice` build in `docs/building.md` rather than
+  holding a script for it, so the page links that.
 
 ## Back brief
 
