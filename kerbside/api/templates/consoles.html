@@ -139,12 +139,15 @@
                    file, so middle click, "copy link address" and a
                    page with no JavaScript all keep working. Direct
                    bypasses the proxy and is refused to anyone but an
-                   administrator, so only they are offered it. #}
+                   administrator, so only they are offered it. A
+                   source whose consoles are reachable only through
+                   the proxy refuses it too, so its consoles are not
+                   offered it either. #}
                 <td>
                     <div class="sf-btn-group">
                         <a class="sf-btn sf-btn--sm"
                            href="/console/proxy/{{ console.source }}/{{ console.uuid }}/console.vv">Proxy</a>
-                        {% if is_admin %}
+                        {% if is_admin and console.source not in proxied_only_sources %}
                         <a class="sf-btn sf-btn--sm"
                            href="/console/direct/{{ console.source }}/{{ console.uuid }}/console.vv">Direct</a>
                         {% endif %}

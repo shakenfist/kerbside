@@ -201,6 +201,18 @@ class CheckSourcesScriptTestCase(testtools.TestCase):
             '  - {uuid: 1, name: n, hypervisor: h, hypervisor_ip: i,\n'
             '     insecure_port: "5910", secure_port: 5911, ticket: 0x1F}\n'))
 
+    def test_a_complete_proxmox_source_passes(self):
+        self.assertEqual([], self._check(
+            '- {source: a, type: proxmox, url: u, username: "k@pve!t",\n'
+            '   password: s3cret, ca_cert: c}\n'))
+
+    def test_a_proxmox_source_needs_a_ca_cert(self):
+        errors = self._check(
+            '- {source: a, type: proxmox, url: u, username: "k@pve!t",\n'
+            '   password: s3cret}\n')
+        self.assertEqual(['source 0 (proxmox): ca_cert is missing'], errors)
+        self.assertNotIn('s3cret', ' '.join(errors))
+
     def test_a_boolean_is_not_text(self):
         self.assertEqual(
             ['source 0: password is not text'],

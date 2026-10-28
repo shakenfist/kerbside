@@ -627,7 +627,7 @@ case_7_sources() {
 
     CURRENT_CASE='case 7c: validate refuses a type Kerbside does not know'
     sources_refused unknown-type '[{"source": "a", "type": "vmware", "url": "u"}]' \
-        'source 0: type is not one of openstack, ovirt, shakenfist, static'
+        'source 0: type is not one of openstack, ovirt, proxmox, shakenfist, static'
 
     CURRENT_CASE='case 7d: validate refuses a duplicate source name'
     sources_refused duplicate '[

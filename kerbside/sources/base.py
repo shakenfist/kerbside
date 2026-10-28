@@ -34,6 +34,9 @@ class BaseSource(ABC):
     # Set to True by sources which can mint a console ticket on demand.
     MINTS_TICKETS = False
 
+    # Set to False by sources whose consoles can only be reached through kerbside.
+    DIRECT_CONSOLES = True
+
     # Set by a source which finds while being built that it cannot work, for
     # example because its upstream is unreachable or misconfigured.
     errored = False

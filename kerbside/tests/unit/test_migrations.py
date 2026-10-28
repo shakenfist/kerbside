@@ -311,3 +311,60 @@ class SessionBackendTunnelMigrationTestCase(testtools.TestCase):
     def test_downgrade_keeps_the_ticket_columns(self):
         sql = offline_sql('downgrade', 'cfdafafd3044:d019b0e3c87a')
         self.assertNotIn('backend_ticket', sql)
+
+
+class WidenedIdentifierMigrationTestCase(testtools.TestCase):
+    """Console uuids and source usernames widen to 255, and narrow back.
+
+    Rendered offline as MySQL, since the initial schema cannot be created
+    on SQLite. The migration has also been run up, down and up again
+    against MariaDB with consoles, tokens, audit events and sources too
+    long for the earlier schema present.
+    """
+
+    _FK = ('fk_consoletokens_console FOREIGN KEY(source, uuid) REFERENCES '
+           'consoles (source, uuid) ON DELETE CASCADE ON UPDATE CASCADE;')
+
+    def _statements(self, sql):
+        return [line for line in sql.splitlines()
+                if line and not line.startswith('--')
+                and 'alembic_version' not in line]
+
+    def test_upgrade_widens_every_console_uuid_and_the_username(self):
+        sql = offline_sql('upgrade', 'cfdafafd3044:dabe2f66e369')
+        self.assertEqual(
+            ['ALTER TABLE consoletokens DROP FOREIGN KEY '
+             'fk_consoletokens_console;',
+             'ALTER TABLE consoles MODIFY uuid VARCHAR(255) NOT NULL;',
+             'ALTER TABLE consoletokens MODIFY uuid VARCHAR(255) NULL;',
+             'ALTER TABLE auditevents MODIFY uuid VARCHAR(255) NOT NULL;',
+             'ALTER TABLE consoletokens ADD CONSTRAINT ' + self._FK,
+             'ALTER TABLE sources MODIFY username VARCHAR(255) NULL;'],
+            self._statements(sql))
+
+    def test_downgrade_deletes_what_will_not_fit_before_narrowing(self):
+        sql = offline_sql('downgrade', 'dabe2f66e369:cfdafafd3044')
+        long_usernames = ('SELECT name FROM sources WHERE '
+                          'CHAR_LENGTH(username) > 50')
+        self.assertEqual(
+            ['DELETE FROM consoletokens WHERE CHAR_LENGTH(uuid) > 36 OR '
+             'source IN (%s);' % long_usernames,
+             'DELETE FROM consoles WHERE CHAR_LENGTH(uuid) > 36 OR '
+             'source IN (%s);' % long_usernames,
+             'DELETE FROM auditevents WHERE CHAR_LENGTH(uuid) > 36;',
+             'DELETE FROM sources WHERE CHAR_LENGTH(username) > 50;',
+             'ALTER TABLE consoletokens DROP FOREIGN KEY '
+             'fk_consoletokens_console;',
+             'ALTER TABLE consoles MODIFY uuid VARCHAR(36) NOT NULL;',
+             'ALTER TABLE consoletokens MODIFY uuid VARCHAR(36) NULL;',
+             'ALTER TABLE auditevents MODIFY uuid VARCHAR(36) NOT NULL;',
+             'ALTER TABLE consoletokens ADD CONSTRAINT ' + self._FK,
+             'ALTER TABLE sources MODIFY username VARCHAR(50) NULL;'],
+            self._statements(sql))
+
+    def test_downgrade_counts_nothing_offline(self):
+        # There is no database to count from, and the deletes are in the
+        # rendered script for whoever runs it to read.
+        with mock.patch('builtins.print') as printed:
+            offline_sql('downgrade', 'dabe2f66e369:cfdafafd3044')
+        printed.assert_not_called()

@@ -131,6 +131,13 @@ class HtmlPagesTestCase(testtools.TestCase):
             'kerbside.api.verify_jwt_in_request', return_value=(None, {}))
         jwt_patch.start()
         self.addCleanup(jwt_patch.stop)
+        # The consoles page asks which sources refuse direct consoles.
+        # Tests of the sources page patch this again for themselves.
+        sources_patch = mock.patch(
+            'kerbside.api.db.get_sources',
+            return_value=[copy.deepcopy(SOURCE)])
+        sources_patch.start()
+        self.addCleanup(sources_patch.stop)
 
     def test_authenticated_root_redirects_to_source(self):
         resp = self.client.get('/', headers={'Accept': 'text/html'})
@@ -336,6 +343,13 @@ class StaticAssetReferenceTestCase(testtools.TestCase):
         super().setUp()
         api.app.config['TESTING'] = True
         self.client = api.app.test_client()
+        # The consoles page asks which sources refuse direct consoles.
+        # Tests of the sources page patch this again for themselves.
+        sources_patch = mock.patch(
+            'kerbside.api.db.get_sources',
+            return_value=[copy.deepcopy(SOURCE)])
+        sources_patch.start()
+        self.addCleanup(sources_patch.stop)
 
     def _authenticate(self):
         jwt_patch = mock.patch(

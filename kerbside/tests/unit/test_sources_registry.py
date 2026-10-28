@@ -3,6 +3,7 @@ import testtools
 from kerbside import sources
 from kerbside.sources import base
 from kerbside.sources import ovirt
+from kerbside.sources import proxmox
 from kerbside.sources import shakenfist
 from kerbside.sources import static
 
@@ -13,6 +14,9 @@ class DriverClassTestCase(testtools.TestCase):
 
     def test_ovirt(self):
         self.assertIs(ovirt.oVirtSource, sources.driver_class('ovirt'))
+
+    def test_proxmox(self):
+        self.assertIs(proxmox.ProxmoxSource, sources.driver_class('proxmox'))
 
     def test_static(self):
         self.assertIs(static.StaticSource, sources.driver_class('static'))
@@ -27,6 +31,9 @@ class DriverClassTestCase(testtools.TestCase):
 class BaseSourceHooksTestCase(testtools.TestCase):
     def test_does_not_mint_by_default(self):
         self.assertFalse(base.BaseSource.MINTS_TICKETS)
+
+    def test_offers_direct_consoles_by_default(self):
+        self.assertTrue(base.BaseSource.DIRECT_CONSOLES)
 
     def test_mint_console_ticket_not_implemented(self):
         self.assertRaises(

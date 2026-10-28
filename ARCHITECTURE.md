@@ -273,16 +273,19 @@ Pluggable console discovery from different cloud platforms.
 |--------|------|-------------|
 | Shaken Fist | `shakenfist.py` | Uses `shakenfist_client` library; a `system` credential scrapes the whole cluster, caches the cluster's VDI token signing keys, and pins each console's `host_subject` from the node's SPICE cert subject |
 | oVirt | `ovirt.py` | Uses `ovirtsdk4` library; scrapes the engine for console addresses and pins each VM's host certificate subject, and mints a graphics-console ticket per session when its first channel connects. Kerbside dials the hypervisor directly and never reads an engine-generated `.vv`, so oVirt's own SPICE proxy is not in the path — see [docs/use-cases/ovirt.md](docs/use-cases/ovirt.md) |
+| Proxmox VE | `proxmox.py` | Uses `requests` against the PVE API with a privilege-separated API token; lists running qemu VMs with a SPICE display and an SMBIOS UUID, pins each node's SPICE certificate subject, and mints a 30-second ticket per session when its first channel connects. The ticket arrives with a tunnel, because Kerbside reaches the VM only through an HTTP CONNECT proxy on the API host. Proxied only: it sets `DIRECT_CONSOLES = False`, so the direct `.vv` handler refuses it with a 409 — see [docs/console-sources.md](docs/console-sources.md#proxmox-ve) |
 | OpenStack | `api.py` | On-demand via Nova token validation |
 | Static | `static.py` | Reads VM mapping from an inline `consoles:` list in sources.yaml; no external API calls; designed for CI and ad-hoc debugging |
 
-The static driver stores tickets in the Console DB at
-enumeration time via `db.add_console(..., ticket=...)`, and
-`AuthorizeConnection` and the direct `.vv` handler read them back.
-Drivers that set `MINTS_TICKETS` (oVirt) instead mint a ticket when a
+The static driver stores tickets in the Console DB at enumeration time
+via `db.add_console(..., ticket=...)`, and `AuthorizeConnection` and
+the direct `.vv` handler read them back. Drivers that set
+`MINTS_TICKETS` (oVirt and Proxmox VE) instead mint a ticket when a
 session's first channel is authorized, bounded by a deadline, and
 share it between the session's channels through its `consoletokens`
-row; see [docs/console-sources.md](docs/console-sources.md#ovirt),
+row (a Proxmox ticket arrives with a tunnel, and a driver which sets
+`DIRECT_CONSOLES` false is refused by the direct `.vv` handler); see
+[docs/console-sources.md](docs/console-sources.md#ovirt),
 [docs/proxy-architecture.md](docs/proxy-architecture.md) and
 [docs/schema.md](docs/schema.md). An example sources.yaml for the
 static driver lives at `etc/example-static-sources.yaml`.

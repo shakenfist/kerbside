@@ -12,6 +12,9 @@ def driver_class(source_type):
     if source_type == 'ovirt':
         from . import ovirt
         return ovirt.oVirtSource
+    if source_type == 'proxmox':
+        from . import proxmox
+        return proxmox.ProxmoxSource
     if source_type == 'static':
         from . import static
         return static.StaticSource
