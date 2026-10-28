@@ -256,7 +256,7 @@ would creep back in. **Recommendation: yes.** Extend
 |-------|------|--------|--------|
 | 1. Survey, matrix and scaffolding | [PLAN-deployment-options-phase-01-survey-and-scaffolding.md](PLAN-deployment-options-phase-01-survey-and-scaffolding.md) | Complete | 200d6b3 |
 | 2. By hand: pip, venv and systemd | [PLAN-deployment-options-phase-02-manual.md](PLAN-deployment-options-phase-02-manual.md) | Complete | b10f2ac |
-| 3. OpenStack: Kolla-Ansible, and Kerbside in front of OpenStack | [PLAN-deployment-options-phase-03-openstack.md](PLAN-deployment-options-phase-03-openstack.md) | In progress | |
+| 3. OpenStack: Kolla-Ansible, and Kerbside in front of OpenStack | [PLAN-deployment-options-phase-03-openstack.md](PLAN-deployment-options-phase-03-openstack.md) | Complete | d159d17 |
 | 4. Containers: compose beyond the demo, and Kubernetes | | Not started | |
 | 5. Ansible: the `kerbside` role | | Not started | |
 | 6. Installation hand-off and closeout | | Not started | |
