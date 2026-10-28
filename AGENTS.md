@@ -7,8 +7,9 @@ points you there rather than restating it.
 ## What Kerbside is
 
 Kerbside is a SPICE VDI protocol proxy that enables remote console access to
-VMs across multiple cloud platforms (Shaken Fist, OpenStack, oVirt). It handles
-SPICE protocol negotiation, authentication, and bidirectional traffic relay.
+VMs across multiple cloud platforms (Shaken Fist, OpenStack, oVirt, Proxmox
+VE). It handles SPICE protocol negotiation, authentication, and bidirectional
+traffic relay.
 
 ## Where the documentation lives
 

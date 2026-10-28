@@ -10,9 +10,10 @@ terminates TLS, drives the SPICE link handshake, and is an enforcing SPICE
 application firewall, on by default.
 
 Kerbside currently knows how to proxy console sessions for Shaken Fist,
-OpenStack, and oVirt. It will mostly be of interest to operators of those
-clouds who want to offer users rich native SPICE desktops (high resolution,
-multi-monitor, USB passthrough, audio) instead of HTML5-transcoded consoles.
+OpenStack, oVirt, and Proxmox VE. It will mostly be of interest to
+operators of those clouds who want to offer users rich native SPICE
+desktops (high resolution, multi-monitor, USB passthrough, audio) instead
+of HTML5-transcoded consoles.
 OpenStack is probably the best documented integration at the moment because
 there are patches to add deployment support for Kerbside to Kolla-Ansible in
 the [kerbside-patches](https://github.com/shakenfist/kerbside-patches)
@@ -43,7 +44,7 @@ directory:
 - [Use Cases](https://github.com/shakenfist/kerbside/blob/develop/docs/index.md#use-cases) - One page per deployment permutation — oVirt, Shaken Fist, OpenStack, standalone, plus the multi-cloud and placement topologies — each covering the value proposition, how it works, and how to set it up
 - [Installation](https://github.com/shakenfist/kerbside/blob/develop/docs/installation.md) - From `pip install` to a proxied console: what a running Kerbside needs, the compose demo, and where to go for your cloud
 - [Configuration](https://github.com/shakenfist/kerbside/blob/develop/docs/configuration.md) - Configuration reference, including the SPICE firewall knobs
-- [Console Sources](https://github.com/shakenfist/kerbside/blob/develop/docs/console-sources.md) - Configuring sources.yaml for Shaken Fist, OpenStack, and oVirt
+- [Console Sources](https://github.com/shakenfist/kerbside/blob/develop/docs/console-sources.md) - Configuring sources.yaml for Shaken Fist, OpenStack, oVirt, and Proxmox VE
 - [Proxy Architecture](https://github.com/shakenfist/kerbside/blob/develop/docs/proxy-architecture.md) - Internal proxy design, state machine, and firewall
 - [Database Schema](https://github.com/shakenfist/kerbside/blob/develop/docs/schema.md) - Tables, columns, and relationships
 - [SPICE Protocol Documentation](https://github.com/shakenfist/kerbside/blob/develop/docs/index.md#spice-protocol-documentation) - Protocol fundamentals, link handshake, per-channel message formats, compression, capabilities, USB redirection, and the VD agent protocol (under `docs/spice/`)

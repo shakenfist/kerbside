@@ -99,7 +99,7 @@ Console sources (cloud platforms) that provide virtual machines.
 | Column | Type | Description |
 |--------|------|-------------|
 | name | string | Primary key, source identifier |
-| type | string | Source type: `shakenfist`, `ovirt`, or `openstack` |
+| type | string | Source type: `shakenfist`, `ovirt`, `openstack`, `proxmox` or `static` |
 | last_seen | datetime | Last successful poll time |
 | seen_by | string | Node that last polled this source |
 | errored | boolean | Whether the source is in error state |
@@ -167,12 +167,12 @@ for this console, and it gets the same treatment as a source's
 fields in `db.CONSOLE_PUBLIC_FIELDS` unless a caller opts in with
 `include_secrets=True`, so it reaches neither the REST API nor the web
 UI. Only static sources keep a ticket here: it is the console password
-from the source's configuration, persisted at enumeration time and
-valid indefinitely. oVirt consoles have an empty `ticket`. An oVirt
-ticket is minted when the first channel of a session connects, and held
-on that session's `consoletokens` row until it expires (see below), so
-it is never shared between sessions and never outlives its session's
-token by long.
+from the source's configuration, persisted at enumeration time and valid
+indefinitely. oVirt and Proxmox consoles have an empty `ticket`. A
+minted ticket is requested when the first channel of a session connects,
+and held on that session's `consoletokens` row until it expires (see
+below), so it is never shared between sessions and never outlives its
+session's token by long.
 
 There are exactly two callers entitled to read a console's ticket back
 out of the database, and `git grep include_secrets` finds them
@@ -230,8 +230,8 @@ what maps a session back to its console.
 session's last channel has closed.
 
 `backend_ticket` holds the SPICE password for a source that mints
-tickets, which oVirt does. Each mint revokes the previous ticket for
-new connections, so channels of one session minting independently
+tickets, which oVirt and Proxmox VE do. Each mint revokes the previous
+ticket for new connections, so channels of one session minting independently
 would lock each other out. Instead a session mints once and shares the
 result with every channel, on every proxy node.
 `db.session_ticket()` selects the row `FOR UPDATE`: the first channel

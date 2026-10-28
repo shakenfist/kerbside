@@ -406,6 +406,15 @@ None yet.
   parameter, the `t0` ordering, template listing, the SPICE
   check at mint, and logging a failure's text. All nine were
   killed, and the review reproduced that.
+- Step 4.4's review corrected the token setup in the docs. A
+  privilege-separated token holds the intersection of its own
+  privileges and its user's (pve-access-control
+  `RPCEnvironment.pm`, the permission calculation for tokens), so
+  the user needs the role on `/vms` too, not just the token. The
+  step also updated source-type lists the row did not name:
+  `docs/schema.md`, `docs/installation.md`, `docs/network-ports.md`,
+  `docs/configuration.md`, `docs/index.md`, `docs/proxy-architecture.md`,
+  the README's two mentions and AGENTS.md's one-line summary.
 
 ## Outcome
 

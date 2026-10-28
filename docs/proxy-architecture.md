@@ -95,6 +95,10 @@ always a free choice:
   trust changes nothing for them. A hypervisor whose SPICE certificate
   was replaced with one from another CA will now fail the backend
   connect.
+- **Proxmox VE.** `ca_cert` is required and is the cluster CA, which
+  verifies the API and is also the trust anchor for the backend leg, since
+  that CA signs each node's SPICE certificate. It is not compared with
+  anything the API reports, and the `ca` in a minted ticket is ignored.
 - **Static and OpenStack.** `ca_cert` is only the VDI trust anchor
   (see [Console Sources](console-sources.md)). A deployment whose
   hypervisors present publicly issued certificates must leave it empty
@@ -129,11 +133,11 @@ Each accepted connection runs this sequence (`session.rs`, `backend.rs`,
 3. **Ticket decryption / authorization.** The client's RSA-encrypted ticket is
    decrypted and sent to the control plane via the `AuthorizeConnection` RPC,
    which resolves it to a hypervisor `Target` (host, port, backend ticket,
-   `host_subject`, `session_id`, and the firewall policy) or returns `Denied`.
-   A denial closes the connection. For a source whose driver mints tickets
-   (oVirt), the control plane may call that source's API while authorizing
-   (see "Minting a backend ticket during authorization" below), and denies
-   the channel if it cannot.
+   `host_subject`, `session_id`, and the firewall policy) or returns
+   `Denied`. A denial closes the connection. For a source whose driver
+   mints tickets (oVirt and Proxmox VE), the control plane may call that
+   source's API while authorizing (see "Minting a backend ticket during
+   authorization" below), and denies the channel if it cannot.
 4. **Backend connect.** The proxy opens the backend leg to the hypervisor's
    SPICE port (honouring a `need_secured` retry to the TLS port) and completes
    the server-side handshake with the backend ticket, advertising the
@@ -362,9 +366,10 @@ different surfaces:
 ### Minting a backend ticket during authorization
 
 For a static source, `AuthorizeConnection` returns the ticket stored on the
-console. For a source whose driver sets `MINTS_TICKETS` (oVirt) there is no
-stored ticket: the first channel of a session to be authorized mints one
-from the source, and the rest reuse it. The sequence is:
+console. For a source whose driver sets `MINTS_TICKETS` (oVirt and Proxmox
+VE) there is no stored ticket: the first channel of a session to be
+authorized mints one from the source, and the rest reuse it. The sequence
+is:
 
 1. The lifetime asked for is the token's remaining life plus 30 seconds
    (`TICKET_SLACK` in `kerbside/rpc/servicer.py`), since no channel is
