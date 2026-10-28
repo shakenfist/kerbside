@@ -205,6 +205,10 @@ Guides for working on Kerbside itself:
   it bounds the slow-link backlog at 2W+1 messages, but does not cap
   throughput on a long, fast link
 
+- [The transcoding display channel on a shaped link](performance/transcoding-measurements.md) -
+  The experimental transcoder against relaying, with and without streaming,
+  on links down to 2 Mbit: latency, proxy CPU and memory, and image quality
+
 ### Architecture Documentation
 
 Internal design of the Kerbside proxy:

@@ -568,8 +568,8 @@ ryll's through its own Makefile, never with a host toolchain.
 | 2 | high | opus | none | Complete (see Execution notes). kerbside: observe the ACK window from the relay, then measure it on the shaped-link rig. Commit: "Observe the display ACK window in the relay." See brief notes. |
 | 3a | high | opus | none | Complete, delivered by andris phases 2-3 and ryll's RDP phase 1 (Re-survey, finding 1). No work remains. |
 | 3b | high | opus | worktree | Complete (see Execution notes). kerbside: the transcoding display channel behind a feature and a flag, on andris's update pipeline. Commit: "Add a transcoding display channel." See brief notes. |
-| 4a | high | opus | none | The rig: per-config proxy flags, CPU and RSS sampling, the `kd.frames` freeze, screenshots and a quality script, `RYLL_REF` pinned. Commit: "Teach the shaped-link rig to measure transcoding." See brief notes for 4. |
-| 4b | high | opus | none | Run the matrix and write the results page. Commit: "Measure the transcoder on the shaped-link rig." See brief notes for 4. |
+| 4a | high | opus | none | Complete (d2f3d01). The rig: per-config proxy flags, CPU and RSS sampling, the `kd.frames` freeze, screenshots and a quality script, `RYLL_REF` pinned. Commit: "Teach the shaped-link rig to measure transcoding." See brief notes for 4. |
+| 4b | high | opus | none | Complete (see Execution notes). Run the matrix and write the results page. Commit: "Measure the transcoder on the shaped-link rig." See brief notes for 4. |
 | 5 | high | opus | none | Test moving a live session between relay and transcoding. Commit: "Test switching a display channel mid-session." See brief notes. |
 | 6 | high | opus | none | Write up the spike with a go or no-go recommendation. Commit: "Write up the transcoding spike." See brief notes. |
 
@@ -1045,6 +1045,30 @@ Brief notes for 6:
   so it can rot unnoticed until step 4 builds it. A lane would
   build openh264 on every run. Left for the productising
   decision rather than added to a spike.
+- **Step 4b ran on a loaded host and ran the slow links
+  twice.** Other sessions held the load average above the
+  host's 16 threads for a third of the run, and the first pass
+  lost every 150 ms / 2 Mbit repeat. The agent reran the
+  unshaped, 20 ms / 50 Mbit, 80 ms / 50 Mbit and
+  150 ms / 2 Mbit links in full (72 cases), the last with
+  `ACTIVITY_DELAY=12 WARMUP=14`, and pooled both runs; about
+  4 h 20 min of measuring in all. No cut of the matrix was
+  needed, and the rig needed no fixes.
+- **Step 4b excluded 18 of 184 repeats in which Ryll stopped
+  reading its display socket** (the proxy's client socket
+  `rwnd_limited` over 50%). It hit relay and transcode alike,
+  so it is a client problem, not the proxy's; its cause is not
+  established. The results page says so.
+- **Step 4b review.** The management session re-ran `cmp` on
+  the three pairs of reference captures (identical), recomputed
+  four cells' p50 from the per-press CSVs (80 ms / 10 Mbit heavy
+  relay 2047 and socket-paced 335, 150 ms / 2 Mbit heavy
+  socket-paced 1459, 80 ms / 10 Mbit busy ACK 40 531; all
+  match), confirmed the pixmap-cache peak of 0 bytes in all 83
+  transcoded channel-end log lines, and checked the qemu CPU
+  figures against the raw summary. It reworded the qemu CPU
+  sentence, which read backwards, and attributed the
+  connect-time crash to spice-server rather than qemu.
 
 ## Risks added by the re-survey
 
