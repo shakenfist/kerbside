@@ -1,6 +1,17 @@
 {
   "version": 1,
   "files": {
+    ".github/workflows/mermaid-lint.yml": {
+      "sha": "29408a6b2da8760271d2614561adff59683f53f7",
+      "date": "2026-10-28",
+      "imported": {
+        "repo": "shakenfist/development",
+        "reviewer": "mikal",
+        "path": ".github/workflows/mermaid-lint.yml",
+        "commit": "6f5c8a1384447a7c768a75cb9541e9be2b575739",
+        "verified": true
+      }
+    },
     ".github/workflows/prune-reviews.yml": {
       "sha": "91ff1783e6589e198ce5d14aab473112761b7ce2",
       "date": "2026-10-16",
@@ -9,6 +20,17 @@
         "reviewer": "mikal",
         "path": ".github/workflows/prune-reviews.yml",
         "commit": "09606ce904a274432468968e51bfa89d3bfe0cf4",
+        "verified": true
+      }
+    },
+    ".github/workflows/renovate.yml": {
+      "sha": "100616f204cceb7495f6dbb1223e5bfc5e920a0c",
+      "date": "2026-10-28",
+      "imported": {
+        "repo": "shakenfist/development",
+        "reviewer": "mikal",
+        "path": ".github/workflows/renovate.yml",
+        "commit": "9d45695726a9a2a16871644c8d629ec5ae20c7e2",
         "verified": true
       }
     },
@@ -42,6 +64,17 @@
         "reviewer": "mikal",
         "path": "templates/pin-indirect-dependencies/pin-indirect-dependencies-apt.sh",
         "commit": "f82b09c1c23b8a189add8f61b3e0ddcf6203ecaa",
+        "verified": true
+      }
+    },
+    "tools/review-tracking.sh": {
+      "sha": "fcadd30b9cea7aec8c747c7f43ef1864bc01bbef",
+      "date": "2026-10-28",
+      "imported": {
+        "repo": "shakenfist/development",
+        "reviewer": "mikal",
+        "path": "templates/review-tracking/review-tracking.sh",
+        "commit": "94b8a1385ce1562efc7deb40a2b8710270a9985b",
         "verified": true
       }
     }
