@@ -446,6 +446,29 @@ None yet.
   deleted, and the 403 for each refused call. A template can never
   be running, so guest 104 is skipped as a stopped guest too, and
   does not isolate the template rule.
+- Step 5.2 found that `pve-http-server`'s `log_request`
+  (`src/PVE/APIServer/AnyEvent.pm`) writes
+  `$realip - $userid [$timestr] "$requestline" $code $length`, and
+  that `$userid` is the whole token ID for a token request. Mints
+  are therefore counted for the documented token alone. The log is
+  filtered on the node before it is read, because spiceproxy's
+  CONNECT lines in the same file carry connect hosts. The proxy
+  logs neither TLS nor the pin for a tunnelled leg at info, so
+  rather than change Rust the lane sets
+  `RUST_LOG=info,shakenfist_spice_protocol::client=debug`. Of the
+  ryll crate's lines that this enables, the dial line prints its
+  target redacted, and the pin line prints only the subject.
+  Decision 5's "within `REUSE_MARGIN`" is implemented as the code's
+  rule: a channel is late at 15 seconds after its session's first,
+  which is the 30-second ticket less `REUSE_MARGIN` less five
+  seconds of slack. The step added checkpoints after the hold and
+  at the end. It cross-checks kerbside's mint audit events against
+  PVE's count, and scans for the action's token, the auth seed and
+  each session's backend ticket as well. It terminates the first
+  session and asserts that the second survives. Comment-only
+  changes to `backend.rs` and `relay.rs` name the new consumer of
+  their log lines. Thirty-five mutants were killed
+  (`step-5.2/mutants.yaml`).
 
 ## Outcome
 

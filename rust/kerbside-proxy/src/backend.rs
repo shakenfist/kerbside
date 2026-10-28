@@ -259,6 +259,11 @@ async fn dial(
         warn!(%connection_ref, error = %e, "recording hypervisor-connect-success audit event failed");
     }
 
+    // CI-ORACLE: the message text and the connection_ref, session_id and
+    // tunnelled fields are load-bearing for tools/proxmox-e2e/drive-console.py,
+    // which asserts every backend leg of a Proxmox session was tunnelled, and
+    // times each session's channels by this line. Update the consumer if any
+    // of them changes.
     info!(
         %connection_ref,
         hypervisor = %target.hypervisor,
@@ -294,8 +299,10 @@ async fn connect_direct(
     // load-bearing for tools/ovirt-e2e/drive-console.py, which asserts both
     // that the escalation happened and that it carried a non-empty
     // certificate-subject pin (an empty subject maps to None in
-    // build_config, silently disabling verification). Update the consumer
-    // if either changes.
+    // build_config, silently disabling verification). The message text is
+    // also load-bearing for tools/proxmox-e2e/drive-console.py, which asserts
+    // it is absent: a tunnelled leg is TLS from the start. Update the
+    // consumers if either changes.
     info!(
         %connection_ref,
         hypervisor = %target.hypervisor,
