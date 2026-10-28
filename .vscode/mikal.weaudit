@@ -116,10 +116,6 @@
       "author": "mikal"
     },
     {
-      "path": "tools/direct-qemu/mock-grpc-server.py",
-      "author": "mikal"
-    },
-    {
       "path": "tools/direct-qemu/probe-runner.sh",
       "author": "mikal"
     },

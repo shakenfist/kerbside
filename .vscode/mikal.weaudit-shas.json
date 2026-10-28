@@ -269,10 +269,6 @@
       "sha": "d800366551ac787c228b18f6b20da5e2708f7361",
       "date": "2026-08-15"
     },
-    "tools/direct-qemu/mock-grpc-server.py": {
-      "sha": "a967113f7730de7d5a1f869f0b27264f9a27175a",
-      "date": "2026-08-15"
-    },
     "tools/direct-qemu/probe-runner.sh": {
       "sha": "67882b8dba7a1e0229bb9b4ffe042fc4a6717f64",
       "date": "2026-08-15"
