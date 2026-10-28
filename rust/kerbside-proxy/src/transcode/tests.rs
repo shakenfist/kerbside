@@ -66,6 +66,8 @@ fn options(pacing: PacingMode) -> Options {
         lossless_delay: Duration::from_millis(500),
         notsent_lowat: 65536,
         pacing,
+        start_transcoded: true,
+        switch_after: None,
     }
 }
 
@@ -878,4 +880,288 @@ async fn a_slow_client_that_keeps_reading_is_not_a_stall() {
     .expect("the slow writer finishes");
     result.expect("the writer ends with Ok once the display stops");
     assert_eq!(trickle.written, mark);
+}
+
+/// What a fake spice-server does with one dial of a switching channel.
+enum Dialled {
+    /// Close at once, as spice-server does to a display channel it refuses
+    /// because the session's previous one is still closing.
+    Refuse,
+    /// Send the primary surface with all of the desktop drawn on it in LZ4,
+    /// then report every message received until the proxy closes the
+    /// channel.
+    Serve(Desktop),
+}
+
+/// The messages one served dial received, as (type, body).
+type Received = Vec<(u16, Vec<u8>)>;
+
+/// The primary surface of `desktop`, all of it drawn in LZ4, and `MARK`: what
+/// spice-server sends a display channel when it starts.
+fn picture(desktop: &Desktop) -> Vec<u8> {
+    let mut out = surface_create(desktop.size);
+    let mut encoder = UpdateEncoder::new();
+    for draw in encoder.update(&desktop.capture_all(), LZ4).unwrap().draws {
+        out.extend(make_message(display_server::DRAW_COPY, &draw.body));
+    }
+    out.extend(make_message(display_server::MARK, &[]));
+    out
+}
+
+/// A fake spice-server that answers each dial with the next step of
+/// `script`, and reports what each served dial received on `received`, in
+/// the order the dials were served.
+async fn fake_server(
+    listener: TcpListener,
+    script: Vec<Dialled>,
+    received: mpsc::UnboundedSender<(usize, Received)>,
+) {
+    for (dial, step) in script.into_iter().enumerate() {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let Dialled::Serve(desktop) = step else {
+            drop(stream);
+            continue;
+        };
+        let received = received.clone();
+        tokio::spawn(async move {
+            stream.write_all(&picture(&desktop)).await.unwrap();
+            let mut buffer = ReceiveBuffer::new();
+            let mut messages = Vec::new();
+            while let Some(message) = next_message(&mut stream, &mut buffer).await {
+                messages.push((message.header.message_type, message.payload().to_vec()));
+            }
+            let _ = received.send((dial, messages));
+        });
+    }
+}
+
+/// Read display messages from `stream`, applying draws to `client`, until
+/// `client` shows `want` at a `MARK`. Returns the types of the messages
+/// read, after checking each body that has a reader.
+async fn read_types_until_shows(
+    stream: &mut TcpStream,
+    buffer: &mut ReceiveBuffer,
+    client: &mut Client,
+    want: &Desktop,
+) -> Vec<u16> {
+    let mut types = Vec::new();
+    loop {
+        let message = next_message(stream, buffer)
+            .await
+            .expect("the proxy closed the client leg early");
+        let msg_type = message.header.message_type;
+        types.push(msg_type);
+        match msg_type {
+            display_server::SURFACE_CREATE => {
+                SurfaceCreate::decode(message.payload()).unwrap();
+            }
+            display_server::DRAW_COPY => client.apply(&draw_of(message.payload())),
+            display_server::MONITORS_CONFIG => {
+                DisplayMonitorsConfig::decode(message.payload()).unwrap();
+            }
+            // An INVAL_ALL_PIXMAPS waiting for no other channel.
+            display_server::INVAL_ALL_PIXMAPS => assert_eq!(message.payload(), [0]),
+            display_server::STREAM_DESTROY_ALL | display_server::INVAL_ALL_PALETTES => {
+                assert!(message.payload().is_empty());
+            }
+            display_server::MARK => {
+                if client.worst_difference(want) == 0 {
+                    return types;
+                }
+            }
+            other => panic!("unexpected display message {other}"),
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_switching_channel_moves_between_relaying_and_transcoding() {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        let first = Desktop::pattern(SIZE);
+        let mut second = first.clone();
+        second.flip(70, 70);
+        let mut third = second.clone();
+        third.flip(150, 10);
+
+        // Each switch's first dial is refused, as spice-server refuses a
+        // display channel while the previous one is still closing.
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (received_tx, mut received_rx) = mpsc::unbounded_channel();
+        let server = tokio::spawn(fake_server(
+            listener,
+            vec![
+                Dialled::Serve(first.clone()),
+                Dialled::Refuse,
+                Dialled::Serve(second.clone()),
+                Dialled::Refuse,
+                Dialled::Serve(third.clone()),
+            ],
+            received_tx,
+        ));
+
+        let (client_far, mut client_near) = pair().await;
+        let state = state(None);
+        let mut options = options(PacingMode::Socket);
+        options.start_transcoded = false;
+        let caps = client_caps();
+        let switching = async {
+            switch::run(
+                &state,
+                Arc::new(FirewallPolicy::default()),
+                SpiceStream::Plain(client_far),
+                &caps,
+                "test-switch",
+                &pb::Target::default(),
+                CancellationToken::new(),
+                &options,
+                Duration::from_millis(500),
+                || async move {
+                    Ok::<_, anyhow::Error>(SpiceStream::Plain(TcpStream::connect(addr).await?))
+                },
+            )
+            .await
+        };
+
+        let mut init = Vec::new();
+        DisplayInit {
+            cache_id: 1,
+            cache_size: 20 * 1024 * 1024,
+            glz_dict_id: 1,
+            glz_dict_window: 3 * 1024 * 1024,
+        }
+        .write(&mut init);
+        let preferred = [image_compression::AUTO_GLZ];
+        let client = async {
+            // The client initialises once, as it would with spice-server.
+            let mut hello = make_message(display_client::INIT, &init);
+            hello.extend(make_message(
+                display_client::PREFERRED_COMPRESSION,
+                &preferred,
+            ));
+            client_near.write_all(&hello).await.unwrap();
+            let mut buffer = ReceiveBuffer::new();
+            let mut client = Client::new(SIZE);
+
+            // Relayed: spice-server's own messages, unchanged.
+            let relayed =
+                read_types_until_shows(&mut client_near, &mut buffer, &mut client, &first).await;
+            assert_eq!(relayed[0], display_server::SURFACE_CREATE);
+
+            // Transcoded: what spice-server left is cleared first, then the
+            // whole picture is drawn over the client's surface, which is
+            // already the right size, with no new DISPLAY_INIT asked for.
+            let transcoded =
+                read_types_until_shows(&mut client_near, &mut buffer, &mut client, &second).await;
+            assert_eq!(
+                transcoded[..4],
+                [
+                    display_server::STREAM_DESTROY_ALL,
+                    display_server::INVAL_ALL_PIXMAPS,
+                    display_server::INVAL_ALL_PALETTES,
+                    display_server::DRAW_COPY,
+                ]
+            );
+            // The client keeps spice-server's surface and MONITORS_CONFIG.
+            assert!(!transcoded.contains(&display_server::SURFACE_CREATE));
+            assert!(!transcoded.contains(&display_server::MONITORS_CONFIG));
+
+            // Relayed again: the new channel's start sequence.
+            let resumed =
+                read_types_until_shows(&mut client_near, &mut buffer, &mut client, &third).await;
+            assert_eq!(resumed[0], display_server::SURFACE_CREATE);
+            // Closing the client ends the channel.
+            drop(client_near);
+        };
+
+        let (result, ()) = tokio::join!(switching, client);
+        result.expect("the switching channel ends cleanly when the client closes");
+
+        let mut reports = Vec::new();
+        for _ in 0..3 {
+            reports.push(received_rx.recv().await.expect("each served dial reports"));
+        }
+        reports.sort_by_key(|(dial, _)| *dial);
+        let types = |messages: &Received| messages.iter().map(|m| m.0).collect::<Vec<_>>();
+
+        // The first relay asked for compression without GLZ, then forwarded
+        // the client's own messages, with GLZ taken out of its preference.
+        let no_glz = (
+            display_client::PREFERRED_COMPRESSION,
+            vec![image_compression::AUTO_LZ],
+        );
+        assert_eq!(reports[0].0, 0);
+        assert_eq!(
+            reports[0].1[..3],
+            [
+                no_glz.clone(),
+                (display_client::INIT, init.clone()),
+                no_glz.clone()
+            ]
+        );
+        // The transcoder's renderer initialised its own channel, asking for
+        // LZ4.
+        assert_eq!(reports[1].0, 2);
+        assert_eq!(
+            types(&reports[1].1)[..2],
+            [display_client::INIT, display_client::PREFERRED_COMPRESSION]
+        );
+        assert_eq!(reports[1].1[1].1, [image_compression::LZ4]);
+        // The resumed relay was given the client's DISPLAY_INIT byte for
+        // byte, and its preference without GLZ.
+        assert_eq!(reports[2].0, 4);
+        assert_eq!(
+            reports[2].1[..2],
+            [(display_client::INIT, init.clone()), no_glz]
+        );
+        server.abort();
+    })
+    .await
+    .expect("the test timed out");
+}
+
+#[tokio::test]
+async fn a_relay_stopped_for_a_switch_leaves_the_client_only_whole_messages() {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        let (mut backend_far, backend_near) = tokio::io::duplex(64 * 1024);
+        let (mut client_near, client_far) = tokio::io::duplex(64 * 1024);
+        let whole = surface_create(SIZE);
+        let partial = make_message(display_server::MARK, &[]);
+
+        let stop = CancellationToken::new();
+        let state = state(None);
+        let mut leg = switch::ClientLeg::new(client_far);
+        let target = pb::Target::default();
+        let relay = crate::relay::run(
+            &state,
+            Arc::new(FirewallPolicy::default()),
+            &mut leg,
+            switch::BackendLeg::new(backend_near, Vec::new(), &stop),
+            ChannelType::Display,
+            "test-relay-stop",
+            &target,
+            CancellationToken::new(),
+        );
+        let backend_and_client = async {
+            // One whole message, and the start of the next.
+            backend_far.write_all(&whole).await.unwrap();
+            backend_far.write_all(&partial[..3]).await.unwrap();
+            let mut got = vec![0; whole.len()];
+            client_near.read_exact(&mut got).await.unwrap();
+            assert_eq!(got, whole);
+            stop.cancel();
+        };
+        let (result, ()) = tokio::join!(relay, backend_and_client);
+        result.expect("the relay returns Ok");
+
+        // The relay has ended, the client leg is still open, and it was never
+        // sent the part of the message that had arrived.
+        assert!(!leg.closed_for_test());
+        let mut more = [0; 16];
+        let late = tokio::time::timeout(Duration::from_millis(100), client_near.read(&mut more));
+        assert!(late.await.is_err(), "nothing more reaches the client");
+        drop(backend_far);
+    })
+    .await
+    .expect("the test timed out");
 }

@@ -55,6 +55,10 @@ client ends up holding. Measured on 2026-10-28.
   transcode alike. Those repeats measure ryll, not the proxy, and are
   excluded. See [Caveats](#caveats).
 
+Whether a session can move between relaying and transcoding while it
+runs, and what that costs, is on its own page:
+[switching a display channel](transcoding-switching.md).
+
 ## Configurations
 
 | Name | Display channel | qemu `streaming-video` | Pacing |

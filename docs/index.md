@@ -209,6 +209,10 @@ Guides for working on Kerbside itself:
   The experimental transcoder against relaying, with and without streaming,
   on links down to 2 Mbit: latency, proxy CPU and memory, and image quality
 
+- [Switching a display channel between relaying and transcoding](performance/transcoding-switching.md) -
+  Moving a live session's display channel between the two modes: what a
+  switch costs, and what breaks in remote-viewer and Ryll
+
 ### Architecture Documentation
 
 Internal design of the Kerbside proxy:

@@ -570,7 +570,7 @@ ryll's through its own Makefile, never with a host toolchain.
 | 3b | high | opus | worktree | Complete (see Execution notes). kerbside: the transcoding display channel behind a feature and a flag, on andris's update pipeline. Commit: "Add a transcoding display channel." See brief notes. |
 | 4a | high | opus | none | Complete (d2f3d01). The rig: per-config proxy flags, CPU and RSS sampling, the `kd.frames` freeze, screenshots and a quality script, `RYLL_REF` pinned. Commit: "Teach the shaped-link rig to measure transcoding." See brief notes for 4. |
 | 4b | high | opus | none | Complete (see Execution notes). Run the matrix and write the results page. Commit: "Measure the transcoder on the shaped-link rig." See brief notes for 4. |
-| 5 | high | opus | none | Test moving a live session between relay and transcoding. Commit: "Test switching a display channel mid-session." See brief notes. |
+| 5 | high | opus | none | Complete (see Execution notes). Test moving a live session between relay and transcoding. Commit: "Test switching a display channel mid-session." See brief notes. |
 | 6 | high | opus | none | Write up the spike with a go or no-go recommendation. Commit: "Write up the transcoding spike." See brief notes. |
 
 Steps 1a to 3b are complete. The remaining steps run strictly
@@ -1069,6 +1069,56 @@ Brief notes for 6:
   figures against the raw summary. It reworded the qemu CPU
   sentence, which read backwards, and attributed the
   connect-time crash to spice-server rather than qemu.
+
+- **Step 5 ran on its own copy of the rig's topology,** not on
+  `run-matrix.sh`: Ryll's control socket takes one client, so the rig's
+  key-press driver and a `surface_drawn` logger could not share it, and
+  remote-viewer needed a screen capture. The one-case script, the draw
+  logger and the analysis stayed in the step's scratch directory; the
+  results page describes them. The direct-qemu harness was not used.
+- **Step 5 departed from its brief in these places:**
+  - The flag switches repeatedly, every N seconds, not once, so that one
+    session exercises both directions and a relay after a transcode
+    after a relay.
+  - The relay is kept off GLZ by rewriting the client's
+    `PREFERRED_COMPRESSION` (GLZ to LZ) and by asking for `auto-lz` at
+    the start of each relay spell. The brief assumed the transcoder's
+    backend capabilities made the relay non-GLZ; they do not, because
+    spice-server picks GLZ from the compression preference. The
+    measurement that forced it: with GLZ, remote-viewer died of a
+    division by zero in its GLZ window about 4 s after every transcode
+    to relay switch.
+  - After a relay, the transcoder draws over the client's existing
+    surface when it is the right size, with no `SURFACE_CREATE` or
+    `MONITORS_CONFIG`. The client leg follows the surface size in what is
+    written to the client. This was meant to stop remote-viewer showing a
+    black display on relay to transcode; it did not, and the cause of
+    that black display is not established.
+  - Ryll 0d140b3 freezes after every transcode to relay switch, because
+    it does not restart its ACK count on `SET_ACK` and spice-server's
+    unsigned window then wraps. The proxy does not work around it. A
+    one-line Ryll change, in scratch, confirmed the cause; the ryll fix
+    is not filed here and belongs in a ryll pull request.
+- **What step 5 changed outside the `transcode` feature:**
+  - `relay::run` is generic over its client and backend stream types,
+    so the switch can relay through wrappers and keep the client leg.
+    Without the feature it is used only with `SpiceStream`, as before.
+  - `backend::run`'s connect, `need_secured` retry, receive-buffer cap,
+    capability logging and audit events moved, unchanged, into a private
+    `backend::dial`, which the switch calls once per spell. The
+    feature-gated early return for a switching channel sits at the top
+    of `backend::run`.
+  - Nothing else: the flag, `Options` and `main.rs`'s changes are all
+    behind the feature, and a default release build neither recognises
+    `--transcode-switch-after-secs` nor contains `WelsCreate`.
+- **Step 5 result.** 164 switches, 56 in the final runs; spice-server
+  refused none, so the "duplicate channel" race was never seen. On a LAN
+  the proxy has the new mode running 22 to 37 ms after a switch, and the
+  client misses a frame or two. At 80 ms / 10 Mbit the screen is stale
+  for 1.3 s (to transcode) or 0.97 s (to relay): one full-screen redraw.
+  The mode could follow the link only between transcoding and a relay
+  without GLZ or streams, with clients fixed; choosing at connect is the
+  recommendation the page makes.
 
 ## Risks added by the re-survey
 

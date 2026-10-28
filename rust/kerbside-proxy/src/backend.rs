@@ -22,7 +22,10 @@
 //! `transcode` feature, run with `--transcode-display`, a session's first
 //! display channel goes to the transcoding display channel
 //! (`crate::transcode::run`) instead, dialled with the capabilities that
-//! describe ryll's renderer rather than the client's.
+//! describe ryll's renderer rather than the client's. Run with the hidden
+//! `--transcode-switch-after-secs`, that display channel moves between the
+//! two while it runs (`crate::transcode::switch`), dialling the backend
+//! afresh for each.
 //!
 //! A direct target is dialled insecure first, with a `need_secured` retry over
 //! TLS (which the crate does not perform itself). A tunnelled target
@@ -94,6 +97,34 @@ pub async fn run(
     target: &pb::Target,
     cancel: CancellationToken,
 ) -> Result<()> {
+    // A display channel that moves between relaying and transcoding while it
+    // runs dials the backend once for each mode, so it takes over here.
+    #[cfg(feature = "transcode")]
+    if let Some((options, every)) =
+        crate::transcode::switching(state, channel_type, channel_id, connection_ref)
+    {
+        let link = BackendLink {
+            connection_id,
+            channel_type,
+            channel_id,
+            common_caps: caps::backend_common_caps(&client_caps.common),
+            channel_caps: crate::transcode::BACKEND_DISPLAY_CAPS.to_vec(),
+        };
+        return crate::transcode::switch::run(
+            state,
+            policy,
+            client_stream,
+            client_caps,
+            connection_ref,
+            target,
+            cancel,
+            &options,
+            every,
+            || dial(state, connection_ref, target, &link, false),
+        )
+        .await;
+    }
+
     // A transcoded display channel is read by ryll's renderer, not the
     // client, so it is dialled with the renderer's capabilities instead of
     // the client's (see `crate::transcode::BACKEND_DISPLAY_CAPS`).
@@ -120,13 +151,70 @@ pub async fn run(
         channel_caps,
     };
 
+    // The caps Kerbside offered the client say nothing about a transcoded
+    // backend leg, so the mismatch warning is for relayed channels only.
+    #[cfg(feature = "transcode")]
+    let relayed = transcode.is_none();
+    #[cfg(not(feature = "transcode"))]
+    let relayed = true;
+    let backend_stream = dial(state, connection_ref, target, &link, relayed).await?;
+
+    #[cfg(feature = "transcode")]
+    if let Some(options) = transcode {
+        return crate::transcode::run(
+            state,
+            policy,
+            client_stream,
+            backend_stream,
+            client_caps,
+            connection_ref,
+            target,
+            cancel,
+            &options,
+        )
+        .await;
+    }
+
+    // Hand both owned streams to the relay seam, along with the connection's
+    // firewall policy and the state/target the relay needs to flush a single
+    // coalesced firewall-verdict audit event on teardown.
+    crate::relay::run(
+        state,
+        policy,
+        client_stream,
+        backend_stream,
+        channel_type,
+        connection_ref,
+        target,
+        cancel,
+    )
+    .await
+}
+
+/// Open the backend channel `link` describes on the hypervisor `target`
+/// names: a direct target insecure first, then over TLS if the hypervisor
+/// asks for it; a tunnelled one once, over TLS, through its proxy. Caps
+/// the socket's receive buffer, logs the capabilities the backend granted
+/// (warning, if `relayed`, about any the client was offered and the backend
+/// lacks), and records the connect's success or failure as an audit event.
+///
+/// Returns `Err` if the backend connection cannot be established (after any
+/// retry).
+async fn dial(
+    state: &SharedState,
+    connection_ref: &str,
+    target: &pb::Target,
+    link: &BackendLink,
+    relayed: bool,
+) -> Result<SpiceStream> {
+    let channel_type = link.channel_type;
     // An unusable target is a failed connect like any other, so it reaches
     // the audit trail rather than only the proxy's log.
     let connected = match build_config(target) {
         // A tunnel is TLS only: build_config has already set tls_port, and
         // there is no insecure attempt to escalate from.
-        Ok(config) if target.tunnel.is_some() => connect_once(&config, &link).await,
-        Ok(config) => connect_direct(config, &link, connection_ref, target).await,
+        Ok(config) if target.tunnel.is_some() => connect_once(&config, link).await,
+        Ok(config) => connect_direct(config, link, connection_ref, target).await,
         Err(e) => Err(e),
     };
     let (backend_stream, backend_reply) = match connected {
@@ -141,14 +229,8 @@ pub async fn run(
     // relayed, so the backlog we hold on spice-server's behalf stays small.
     set_backend_rcvbuf(&backend_stream, state.backend_rcvbuf_bytes, connection_ref);
 
-    // The caps Kerbside offered the client say nothing about a transcoded
-    // backend leg, so the mismatch warning is for relayed channels only.
-    #[cfg(feature = "transcode")]
-    let relayed = transcode.is_none();
-    #[cfg(not(feature = "transcode"))]
-    let relayed = true;
     if relayed {
-        log_backend_caps(connection_ref, channel_type, &link, &backend_reply);
+        log_backend_caps(connection_ref, channel_type, link, &backend_reply);
     } else {
         debug!(
             %connection_ref,
@@ -184,41 +266,11 @@ pub async fn run(
         tunnelled = target.tunnel.is_some(),
         session_id = %target.session_id,
         channel_type = channel_type.name(),
-        channel_id,
-        connection_id,
+        channel_id = link.channel_id,
+        connection_id = link.connection_id,
         "hypervisor connection successful; handing off to relay"
     );
-
-    #[cfg(feature = "transcode")]
-    if let Some(options) = transcode {
-        return crate::transcode::run(
-            state,
-            policy,
-            client_stream,
-            backend_stream,
-            client_caps,
-            connection_ref,
-            target,
-            cancel,
-            &options,
-        )
-        .await;
-    }
-
-    // Hand both owned streams to the relay seam, along with the connection's
-    // firewall policy and the state/target the relay needs to flush a single
-    // coalesced firewall-verdict audit event on teardown.
-    crate::relay::run(
-        state,
-        policy,
-        client_stream,
-        backend_stream,
-        channel_type,
-        connection_ref,
-        target,
-        cancel,
-    )
-    .await
+    Ok(backend_stream)
 }
 
 /// Connect to a direct (untunnelled) target insecure first, retrying over TLS

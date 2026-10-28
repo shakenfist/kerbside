@@ -49,11 +49,20 @@
 //! # What it does not do
 //!
 //! Only the first display channel (channel id 0) is transcoded; a second is
-//! relayed, with a log line. The choice is made at connect and cannot change
-//! later: what the renderer cannot draw (see [`decode`]) is logged and
-//! counted, and the client shows a stale region there. The scope is a
-//! virtio-gpu or std-vga guest, whose display reaches spice-server as bitmap
-//! draws on the primary surface.
+//! relayed, with a log line. The choice is made at connect: what the renderer
+//! cannot draw (see [`decode`]) is logged and counted, and the client shows a
+//! stale region there. The scope is a virtio-gpu or std-vga guest, whose
+//! display reaches spice-server as bitmap draws on the primary surface.
+//!
+//! # Switching
+//!
+//! A hidden experiment flag, `--transcode-switch-after-secs`, moves the first
+//! display channel between relaying and transcoding while it runs, to find
+//! out what a switch costs. [`switch`] does it: it keeps the client leg,
+//! closes the backend display channel and dials it again for the other mode.
+//! A transcoder that takes over from a relay ([`Start::AfterRelay`]) has no
+//! `DISPLAY_INIT` to wait for, and first clears what the client may hold from
+//! spice-server: streams, cached images and palettes.
 //!
 //! # The copy of andris's pipeline
 //!
@@ -68,6 +77,7 @@ mod capture;
 mod decode;
 pub(crate) mod geometry;
 mod pacing;
+pub(crate) mod switch;
 pub(crate) mod updates;
 
 use std::sync::Arc;
@@ -169,6 +179,14 @@ pub struct TranscodeArgs {
     /// (the default) paces on the socket.
     #[arg(long, default_value_t = 0, hide = true)]
     pub transcode_ack_window: u32,
+
+    /// An experiment: move each session's first display channel between
+    /// relaying and transcoding this many seconds after it starts, and again
+    /// each time this many seconds pass in the new mode. It starts transcoded
+    /// with --transcode-display and relayed without. 0 (the default) never
+    /// switches.
+    #[arg(long, default_value_t = 0, hide = true)]
+    pub transcode_switch_after_secs: u64,
 }
 
 /// How a transcoding display channel runs, from [`TranscodeArgs`].
@@ -182,12 +200,24 @@ pub struct Options {
     /// The client socket's `TCP_NOTSENT_LOWAT`, under socket pacing.
     pub notsent_lowat: u32,
     pub pacing: PacingMode,
+    /// Whether the first display channel starts transcoded
+    /// (`--transcode-display`). Only a switching channel starts relayed.
+    pub start_transcoded: bool,
+    /// How long the first display channel stays in one mode before it
+    /// switches to the other (`--transcode-switch-after-secs`), or `None` if
+    /// it never switches.
+    pub switch_after: Option<Duration>,
 }
 
 impl Options {
-    /// The options `args` ask for, or `None` without `--transcode-display`.
+    /// The options `args` ask for, or `None` with neither
+    /// `--transcode-display` nor `--transcode-switch-after-secs`.
     pub fn from_args(args: &TranscodeArgs) -> Option<Self> {
-        if !args.transcode_display {
+        let switch_after = match args.transcode_switch_after_secs {
+            0 => None,
+            secs => Some(Duration::from_secs(secs)),
+        };
+        if !args.transcode_display && switch_after.is_none() {
             return None;
         }
         Some(Self {
@@ -198,18 +228,20 @@ impl Options {
                 0 => PacingMode::Socket,
                 window => PacingMode::AckWindow(window),
             },
+            start_transcoded: args.transcode_display,
+            switch_after,
         })
     }
 }
 
-/// The options to transcode this channel with, or `None` to relay it: only
-/// a display channel, only channel id 0, and only when transcoding is on.
-pub fn choose(
-    state: &SharedState,
+/// The options, if this is a channel the transcoder may take: a display
+/// channel, channel id 0, with transcoding or switching on.
+fn eligible<'a>(
+    state: &'a SharedState,
     channel_type: ChannelType,
     channel_id: u8,
     connection_ref: &str,
-) -> Option<Arc<Options>> {
+) -> Option<&'a Arc<Options>> {
     let options = state.transcode.as_ref()?;
     if channel_type != ChannelType::Display {
         return None;
@@ -222,7 +254,71 @@ pub fn choose(
         );
         return None;
     }
-    Some(Arc::clone(options))
+    Some(options)
+}
+
+/// The options to transcode this channel with, or `None` to relay it: only
+/// a display channel, only channel id 0, and only when transcoding is on and
+/// the channel does not switch (see [`switching`]).
+pub fn choose(
+    state: &SharedState,
+    channel_type: ChannelType,
+    channel_id: u8,
+    connection_ref: &str,
+) -> Option<Arc<Options>> {
+    let options = eligible(state, channel_type, channel_id, connection_ref)?;
+    (options.start_transcoded && options.switch_after.is_none()).then(|| Arc::clone(options))
+}
+
+/// The options, and how long each mode lasts, if this channel moves between
+/// relaying and transcoding while it runs: the channel [`choose`] would
+/// consider, with `--transcode-switch-after-secs` set.
+pub fn switching(
+    state: &SharedState,
+    channel_type: ChannelType,
+    channel_id: u8,
+    connection_ref: &str,
+) -> Option<(Arc<Options>, Duration)> {
+    let options = eligible(state, channel_type, channel_id, connection_ref)?;
+    let every = options.switch_after?;
+    Some((Arc::clone(options), every))
+}
+
+/// How a transcoder takes the client leg.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Start {
+    /// A client that has just linked: it sends `DISPLAY_INIT` before anything
+    /// is drawn.
+    Fresh,
+    /// A client a relay has been serving. It sent `DISPLAY_INIT` (and, if
+    /// it sent one, this `PREFERRED_COMPRESSION`) to spice-server long ago,
+    /// and holds spice-server's primary surface, of size `client_surface`,
+    /// and possibly its streams, cached images and palettes. The first frame
+    /// clears those, then draws the whole picture losslessly. If the
+    /// backend's surface is the size the client already has, it is drawn
+    /// over the client's, with no `SURFACE_CREATE` or `MONITORS_CONFIG`, as
+    /// spice-server itself never re-creates a surface the client holds; the
+    /// client keeps its old picture rather than an empty surface while the
+    /// redraw arrives, which takes over a second on a 10 Mbit link.
+    AfterRelay {
+        preferred_compression: Option<u8>,
+        client_surface: Option<geometry::Size>,
+    },
+}
+
+/// How a transcoding display channel ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ended {
+    /// The client, the backend or the control plane ended it, or it failed.
+    Closed,
+    /// The caller's `stop` fired, and it stopped between two frames, so the
+    /// client leg is whole and may be handed on.
+    Stopped,
+    /// The backend closed its display channel before the client was sent
+    /// anything. spice-server does that to a display channel it refuses,
+    /// such as one that arrives before the session's previous display
+    /// channel is gone; the caller may dial it again.
+    Refused,
 }
 
 /// One message from the client, after the firewall forwarded it.
@@ -253,16 +349,57 @@ pub async fn run(
     cancel: CancellationToken,
     options: &Options,
 ) -> Result<()> {
+    if options.pacing == PacingMode::Socket {
+        set_client_lowat(&client, options.notsent_lowat, connection_ref);
+    }
+    run_channel(
+        state,
+        policy,
+        client,
+        backend,
+        client_caps,
+        connection_ref,
+        target,
+        cancel,
+        options,
+        Start::Fresh,
+        None,
+    )
+    .await;
+    Ok(())
+}
+
+/// [`run`], on a client leg of any type, with the caller setting the client
+/// socket's `TCP_NOTSENT_LOWAT`. A client that a relay has been serving
+/// starts with `start` of [`Start::AfterRelay`]. Once `stop`, if given,
+/// fires, no new frame starts, and the channel ends with [`Ended::Stopped`]
+/// as soon as the client has been written the whole of the last; the
+/// backend leg is closed, and the client leg is left for the caller.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn run_channel<C>(
+    state: &SharedState,
+    policy: Arc<FirewallPolicy>,
+    client: C,
+    backend: SpiceStream,
+    client_caps: &ClientCaps,
+    connection_ref: &str,
+    target: &pb::Target,
+    cancel: CancellationToken,
+    options: &Options,
+    start: Start,
+    stop: Option<CancellationToken>,
+) -> Ended
+where
+    C: AsyncRead + AsyncWrite + Unpin,
+{
     info!(
         %connection_ref,
         pacing = ?options.pacing,
         jpeg_quality = options.jpeg_quality.map(JpegQuality::get),
         lossless_delay_ms = options.lossless_delay.as_millis() as u64,
+        ?start,
         "transcoding display channel starting"
     );
-    if options.pacing == PacingMode::Socket {
-        set_client_lowat(&client, options.notsent_lowat, connection_ref);
-    }
 
     let tally = Arc::new(VerdictTally::new());
     let pacer = Arc::new(Pacer::new(options.pacing));
@@ -287,20 +424,36 @@ pub async fn run(
         Arc::clone(&pacer),
         connection_ref,
     );
-    let mut display = Display::new(options, client_caps, pacer, frame_tx, connection_ref);
-    let core = display.run(&mut backend.events, &backend.cache, message_rx, done_rx);
+    let mut display = Display::new(options, client_caps, start, pacer, frame_tx, connection_ref);
+    let core = display.run(
+        &mut backend.events,
+        &backend.cache,
+        message_rx,
+        done_rx,
+        stop,
+    );
 
-    let result = tokio::select! {
-        r = reader => r.context("reading the client"),
-        r = writer => r.context("writing to the client"),
-        r = core => r,
+    let (result, ended) = tokio::select! {
+        r = reader => (r.context("reading the client"), Ended::Closed),
+        r = writer => (r.context("writing to the client"), Ended::Closed),
+        r = core => match r {
+            Ok(ended) => (Ok(()), ended),
+            Err(e) => (Err(e), Ended::Closed),
+        },
+        // Refused unless the client has been sent a surface; see below.
         r = &mut backend.task => match r {
             Ok(Ok(())) => {
                 info!(%connection_ref, "the backend display channel closed");
-                Ok(())
+                (Ok(()), Ended::Refused)
             }
-            Ok(Err(e)) => Err(e.context("decoding the backend display channel")),
-            Err(e) => Err(anyhow!("the backend display task failed: {e}")),
+            Ok(Err(e)) => (
+                Err(e.context("decoding the backend display channel")),
+                Ended::Refused,
+            ),
+            Err(e) => (
+                Err(anyhow!("the backend display task failed: {e}")),
+                Ended::Closed,
+            ),
         },
         () = cancel.cancelled() => {
             // CI-ORACLE: the same text as the relay's, which
@@ -311,17 +464,29 @@ pub async fn run(
                 channel_type = ChannelType::Display.name(),
                 "session terminated by control plane; ending relay"
             );
-            Ok(())
+            (Ok(()), Ended::Closed)
         }
+    };
+    // A backend that closes once the client holds the transcoder's surface
+    // has ended the channel, not refused it. Both the renderer's task and the
+    // end of its events report a closed backend as a refusal.
+    let ended = match ended {
+        Ended::Refused if display.client_surface.is_some() => Ended::Closed,
+        other => other,
     };
     // Close the backend leg with the client leg.
     backend.task.abort();
     backend.cache.log_end(connection_ref);
 
-    match &result {
-        Ok(()) => info!(%connection_ref, "transcoding display channel ended"),
-        Err(e) => warn!(
+    match (&result, ended) {
+        (Ok(()), Ended::Stopped) => info!(
             %connection_ref,
+            "transcoding display channel stopped between frames"
+        ),
+        (Ok(()), _) => info!(%connection_ref, ?ended, "transcoding display channel ended"),
+        (Err(e), _) => warn!(
+            %connection_ref,
+            ?ended,
             error = format!("{e:#}"),
             "transcoding display channel ended with error"
         ),
@@ -334,13 +499,14 @@ pub async fn run(
         target,
     )
     .await;
-    Ok(())
+    ended
 }
 
 /// Set `TCP_NOTSENT_LOWAT` on the client socket, so that the kernel takes
-/// no more from the writer while `bytes` are still unsent. Best-effort: a
-/// failure leaves the socket's buffer as the pace, and is logged.
-fn set_client_lowat(client: &SpiceStream, bytes: u32, connection_ref: &str) {
+/// no more from the writer while `bytes` are still unsent; 0 restores the
+/// kernel's default. Best-effort: a failure leaves the socket's buffer as the
+/// pace, and is logged.
+pub(crate) fn set_client_lowat(client: &SpiceStream, bytes: u32, connection_ref: &str) {
     if let Err(e) = SockRef::from(crate::backend::tcp_of(client)).set_tcp_notsent_lowat(bytes) {
         warn!(
             %connection_ref,
@@ -546,6 +712,12 @@ struct Display {
     lossy: LossyTiles,
     /// Whether the client has sent `DISPLAY_INIT`.
     initialised: bool,
+    /// Whether the client holds what spice-server sent it, which the first
+    /// frame must clear ([`Start::AfterRelay`]).
+    reset_client: bool,
+    /// The primary surface spice-server gave the client, if a relay had it
+    /// first.
+    relay_surface: Option<geometry::Size>,
     preferred_compression: Option<u8>,
     client_lz4: bool,
     client_monitors_config: bool,
@@ -557,10 +729,18 @@ impl Display {
     fn new(
         options: &Options,
         client_caps: &ClientCaps,
+        start: Start,
         pacer: Arc<Pacer>,
         frames: mpsc::Sender<Vec<Vec<u8>>>,
         connection_ref: &str,
     ) -> Self {
+        let (initialised, preferred_compression, relay_surface) = match start {
+            Start::Fresh => (false, None, None),
+            Start::AfterRelay {
+                preferred_compression,
+                client_surface,
+            } => (true, preferred_compression, client_surface),
+        };
         Self {
             connection_ref: connection_ref.to_string(),
             options: options.clone(),
@@ -572,8 +752,10 @@ impl Display {
             restart: false,
             encoder: UpdateEncoder::new(),
             lossy: LossyTiles::new(options.lossless_delay),
-            initialised: false,
-            preferred_compression: None,
+            initialised,
+            reset_client: start != Start::Fresh,
+            relay_surface,
+            preferred_compression,
             client_lz4: has_cap(&client_caps.channel, capabilities::DISPLAY_LZ4_COMPRESSION),
             client_monitors_config: has_cap(
                 &client_caps.channel,
@@ -584,16 +766,19 @@ impl Display {
     }
 
     /// Apply the backend's events and the client's messages, and send each
-    /// frame when the pacing allows, until the backend's events end or the
-    /// writer stops. `cache` samples the renderer's pixmap cache after each
-    /// batch of events.
+    /// frame when the pacing allows, until the backend's events end
+    /// ([`Ended::Refused`], which the caller turns into [`Ended::Closed`] if
+    /// the client was sent a surface), the writer stops, or `stop` fires and
+    /// the writer has finished the last frame. `cache` samples the renderer's
+    /// pixmap cache after each batch of events.
     async fn run(
         &mut self,
         events: &mut mpsc::Receiver<ChannelEvent>,
         cache: &decode::CacheWatch,
         mut messages: mpsc::Receiver<ClientMessage>,
         mut done: mpsc::Receiver<()>,
-    ) -> Result<()> {
+        stop: Option<CancellationToken>,
+    ) -> Result<Ended> {
         if let PacingMode::AckWindow(window) = self.options.pacing {
             let set_ack = SetAck {
                 generation: ACK_GENERATION,
@@ -602,8 +787,19 @@ impl Display {
             self.send(vec![message(display_server::SET_ACK, &set_ack)])
                 .await?;
         }
+        let stop_requested = async {
+            match &stop {
+                Some(stop) => stop.cancelled().await,
+                None => std::future::pending().await,
+            }
+        };
+        tokio::pin!(stop_requested);
         loop {
-            if self.initialised && self.pacer.may_start_frame(self.writer_idle) {
+            let stopping = stop.as_ref().is_some_and(CancellationToken::is_cancelled);
+            if stopping && self.writer_idle {
+                return Ok(Ended::Stopped);
+            }
+            if !stopping && self.initialised && self.pacer.may_start_frame(self.writer_idle) {
                 if let Some(frame) = self.next_frame().await? {
                     self.send(frame).await?;
                     continue;
@@ -622,16 +818,19 @@ impl Display {
                         }
                         cache.sample();
                     }
-                    None => return Ok(()),
+                    // The backend closed; `run_channel` decides whether
+                    // that was a refusal.
+                    None => return Ok(Ended::Refused),
                 },
                 message = messages.recv() => match message {
                     Some(message) => self.handle(&message)?,
-                    None => return Ok(()),
+                    None => return Ok(Ended::Closed),
                 },
                 finished = done.recv() => match finished {
                     Some(()) => self.writer_idle = true,
-                    None => return Ok(()),
+                    None => return Ok(Ended::Closed),
                 },
+                () = &mut stop_requested, if !stopping => {}
                 () = tokio::time::sleep_until(refresh_at.unwrap_or(now)),
                     if refresh_at.is_some_and(|at| at > now) => {}
             }
@@ -796,7 +995,30 @@ impl Display {
         capture: geometry::Capture,
     ) -> Result<Vec<Vec<u8>>> {
         let mut start = Vec::new();
-        if let Some(old) = self.client_surface {
+        // A client taking over from a relay keeps spice-server's surface,
+        // and its MONITORS_CONFIG, if they are already the right size (see
+        // `Start::AfterRelay`).
+        let keep = self.reset_client && self.relay_surface == Some(size);
+        let send_monitors_config = self.client_monitors_config && !keep;
+        if self.reset_client {
+            // What spice-server may have left with the client: its video
+            // streams, the images it asked the client to cache (an
+            // `INVAL_ALL_PIXMAPS` waits for no other channel), and palettes.
+            // The transcoder sends none of them, so none can be stale later.
+            start.push(make_message(display_server::STREAM_DESTROY_ALL, &[]));
+            start.push(make_message(display_server::INVAL_ALL_PIXMAPS, &[0]));
+            start.push(make_message(display_server::INVAL_ALL_PALETTES, &[]));
+            debug!(
+                connection_ref = %self.connection_ref,
+                "clearing the streams, images and palettes the relay left with the client"
+            );
+        }
+        let old = match self.client_surface {
+            Some(old) => Some(old),
+            None if self.reset_client => self.relay_surface,
+            None => None,
+        };
+        if let (Some(old), false) = (old, keep) {
             debug!(
                 connection_ref = %self.connection_ref,
                 from = %old,
@@ -810,18 +1032,21 @@ impl Display {
                 },
             ));
         }
-        start.push(message(
-            display_server::SURFACE_CREATE,
-            &SurfaceCreate {
-                surface_id: SURFACE_ID,
-                width: size.width,
-                height: size.height,
-                format: surface_fmt::FMT_32_XRGB,
-                flags: SURFACE_FLAGS_PRIMARY,
-            },
-        ));
-        // A new surface starts empty: the client holds nothing the old
-        // shadow describes, lossily or not.
+        if !keep {
+            start.push(message(
+                display_server::SURFACE_CREATE,
+                &SurfaceCreate {
+                    surface_id: SURFACE_ID,
+                    width: size.width,
+                    height: size.height,
+                    format: surface_fmt::FMT_32_XRGB,
+                    flags: SURFACE_FLAGS_PRIMARY,
+                },
+            ));
+        }
+        // A new surface starts empty, and a kept one holds spice-server's
+        // picture: either way the client holds nothing the shadow describes,
+        // lossily or not, so all of it is sent.
         self.encoder.reset();
         self.lossy.reset(size);
         // The start sequence is lossless, so the first picture is exact.
@@ -831,7 +1056,7 @@ impl Display {
             .await
             .context("encoding a new surface")?;
         let mut frame = self.frame_of(&update, start);
-        if self.client_monitors_config {
+        if send_monitors_config {
             let config = DisplayMonitorsConfig {
                 max_allowed: 1,
                 heads: vec![DisplayHead {
@@ -851,6 +1076,7 @@ impl Display {
         }
         self.client_surface = Some(size);
         self.restart = false;
+        self.reset_client = false;
         info!(
             connection_ref = %self.connection_ref,
             %size,
