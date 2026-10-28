@@ -144,6 +144,22 @@ def session_username():
     return flask.g.get('jwt_claims', {}).get('sub')
 
 
+def proxied_only_sources():
+    """The names of the sources which refuse direct consoles.
+
+    A source type with no driver (openstack) is direct-capable as far as
+    this is concerned: the direct handler does not refuse it either.
+    """
+    names = set()
+    for s in db.get_sources():
+        try:
+            if not driver_class(s['type']).DIRECT_CONSOLES:
+                names.add(s['name'])
+        except KeyError:
+            pass
+    return names
+
+
 class DateTimeEncoder(json.JSONEncoder):
     def default(self, value):
         if isinstance(value, datetime.datetime):
@@ -383,7 +399,8 @@ class Consoles(sf_api.Resource):
                     'consoles.html', consoles=db.get_consoles(),
                     navitems=get_nav_items('Consoles'),
                     refresh=True, when=datetime.datetime.now(),
-                    is_admin=session_is_admin()),
+                    is_admin=session_is_admin(),
+                    proxied_only_sources=proxied_only_sources()),
                 mimetype='text/html')
         else:
             # No ticket to strip here: db.get_consoles() returns only
@@ -512,6 +529,19 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
         except KeyError:
             # openstack has no driver, and mints nothing.
             driver = None
+
+        # A source whose consoles are reachable only through the proxy
+        # would get a .vv naming nothing dialable, and minting for it
+        # would replace the password a proxied session's next channel
+        # still expects. Refuse before the secrets are read or a ticket
+        # is minted.
+        if driver and not driver.DIRECT_CONSOLES:
+            db.add_audit_event(
+                source, uuid, None, None, None, None,
+                'Refused direct console for a proxied-only source to %s'
+                % session_username())
+            return sf_api.error(
+                409, 'this source offers proxied consoles only')
 
         if s['type'] == 'static':
             # The persisted ticket is this console's SPICE password, so

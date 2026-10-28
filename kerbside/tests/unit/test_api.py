@@ -1235,6 +1235,25 @@ class DirectVirtViewerAdminTestCase(testtools.TestCase):
         ovirt_patch.start()
         self.addCleanup(ovirt_patch.stop)
 
+        db.add_source(
+            'pve1', 'proxmox', 'https://pve.example.com:8006',
+            'kerbside@pve!broker', 'sekrit-pve-secret', ca_cert=None)
+        db.add_console(
+            source='pve1', uuid='100-console-3', hypervisor='pve-node1',
+            hypervisor_ip='10.0.0.3', insecure_port=3128, secure_port=None,
+            name='a proxmox console', host_subject=None)
+
+        self.proxmox = mock.MagicMock()
+        self.proxmox.MINTS_TICKETS = True
+        self.proxmox.DIRECT_CONSOLES = False
+        self.proxmox.return_value.errored = False
+        self.proxmox.return_value.mint_console_ticket.return_value = (
+            source_base.MintedTicket('a-proxmox-ticket', 0))
+        proxmox_patch = mock.patch(
+            'kerbside.sources.proxmox.ProxmoxSource', self.proxmox)
+        proxmox_patch.start()
+        self.addCleanup(proxmox_patch.stop)
+
     def _session(self, claims):
         patch = mock.patch(
             'kerbside.api.verify_jwt_in_request', return_value=(None, claims))
@@ -1336,6 +1355,45 @@ class DirectVirtViewerAdminTestCase(testtools.TestCase):
         self.assertEqual(403, resp.status_code)
         self.audit.assert_not_called()
 
+    def test_proxied_only_source_is_refused_before_a_ticket_is_minted(self):
+        # Minting replaces the VM's password, so a refusal after the mint
+        # would already have broken any session relying on the old one.
+        self._session({'sub': 'alice', 'kerbside_admin': True})
+
+        with mock.patch.object(
+                db, 'get_source', wraps=db.get_source) as spy_source, \
+                mock.patch.object(
+                    db, 'get_console', wraps=db.get_console) as spy_console:
+            resp = self.client.get(
+                '/console/direct/pve1/100-console-3/console.vv')
+
+        self.assertEqual(409, resp.status_code)
+        self.assertIn(
+            'this source offers proxied consoles only',
+            resp.get_data(as_text=True))
+        self.assertNotIn('a-proxmox-ticket', resp.get_data(as_text=True))
+        self.proxmox.assert_not_called()
+        self.proxmox.return_value.mint_console_ticket.assert_not_called()
+        for call in spy_source.call_args_list + spy_console.call_args_list:
+            self.assertNotIn('include_secrets', call.kwargs)
+        self.assertEqual(
+            ['Refused direct console for a proxied-only source to alice'],
+            self._messages())
+        self.assertEqual(
+            ('pve1', '100-console-3'), self.audit.call_args.args[:2])
+
+    def test_non_admin_is_refused_as_a_non_admin_for_a_proxied_only_source(
+            self):
+        self._session({'sub': 'bob', 'kerbside_admin': False})
+
+        resp = self.client.get('/console/direct/pve1/100-console-3/console.vv')
+
+        self.assertEqual(403, resp.status_code)
+        self.proxmox.assert_not_called()
+        self.assertEqual(
+            ['Refused direct console credential to non-administrator bob'],
+            self._messages())
+
 
 class ConsolesPageDirectButtonTestCase(testtools.TestCase):
     """The consoles page offers the Direct button only to administrators,
@@ -1346,13 +1404,27 @@ class ConsolesPageDirectButtonTestCase(testtools.TestCase):
         api.app.config['TESTING'] = True
         self.client = api.app.test_client()
 
-        patch = mock.patch.object(db, 'get_consoles', return_value=[{
-            'source': 'src1', 'uuid': 'console-1', 'name': 'a console',
-            'hypervisor': 'hv1', 'hypervisor_ip': '10.0.0.1',
-            'insecure_port': 5900, 'secure_port': 5901, 'audit': [],
-            'token_count': 0, 'tokens': []}])
+        patch = mock.patch.object(db, 'get_consoles', return_value=[
+            self._console('src1', 'console-1'),
+            self._console('pve1', '100-console-2')])
         patch.start()
         self.addCleanup(patch.stop)
+
+        # The real drivers decide which sources are proxied-only; os1 has
+        # no driver at all, and must not break the page.
+        patch = mock.patch.object(db, 'get_sources', return_value=[
+            {'name': 'src1', 'type': 'ovirt'},
+            {'name': 'pve1', 'type': 'proxmox'},
+            {'name': 'os1', 'type': 'openstack'}])
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _console(self, source, uuid):
+        return {
+            'source': source, 'uuid': uuid, 'name': 'a console',
+            'hypervisor': 'hv1', 'hypervisor_ip': '10.0.0.1',
+            'insecure_port': 5900, 'secure_port': 5901, 'audit': [],
+            'token_count': 0, 'tokens': []}
 
     def _page(self, claims):
         with mock.patch(
@@ -1371,6 +1443,12 @@ class ConsolesPageDirectButtonTestCase(testtools.TestCase):
         page = self._page({'sub': 'bob', 'kerbside_admin': False})
         self.assertIn('/console/proxy/src1/console-1/console.vv', page)
         self.assertNotIn('/console/direct/', page)
+
+    def test_proxied_only_console_is_not_offered_direct(self):
+        page = self._page({'sub': 'alice', 'kerbside_admin': True})
+        self.assertIn('/console/proxy/pve1/100-console-2/console.vv', page)
+        self.assertNotIn('/console/direct/pve1/', page)
+        self.assertIn('/console/direct/src1/console-1/console.vv', page)
 
 
 class KeystoneAuthVerifyTestCase(testtools.TestCase):
