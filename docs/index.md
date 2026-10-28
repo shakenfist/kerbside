@@ -205,6 +205,18 @@ Guides for working on Kerbside itself:
   it bounds the slow-link backlog at 2W+1 messages, but does not cap
   throughput on a long, fast link
 
+- [The transcoding display channel on a shaped link](performance/transcoding-measurements.md) -
+  The experimental transcoder against relaying, with and without streaming,
+  on links down to 2 Mbit: latency, proxy CPU and memory, and image quality
+
+- [Switching a display channel between relaying and transcoding](performance/transcoding-switching.md) -
+  Moving a live session's display channel between the two modes: what a
+  switch costs, and what breaks in remote-viewer and Ryll
+
+- [Transcoding the display channel: the spike's verdict](performance/transcoding-spike.md) -
+  Why the transcoder is not being productised, what it costs per
+  session, and what would change the answer
+
 ### Architecture Documentation
 
 Internal design of the Kerbside proxy:

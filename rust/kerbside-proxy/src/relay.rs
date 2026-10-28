@@ -18,7 +18,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
-use shakenfist_spice_protocol::link::SpiceStream;
 use shakenfist_spice_protocol::messages::MessageHeader;
 use shakenfist_spice_protocol::ChannelType;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -90,17 +89,27 @@ pub(crate) const STALLED_WRITE_TIMEOUT: Duration = IDLE_READ_TIMEOUT;
 /// Bytes forwarded on each `Verdict::Forward` are counted via
 /// `metrics::add_relayed_bytes`; firewall verdicts are counted via
 /// `metrics::record_firewall_verdict` inside the policy.
+///
+/// The two legs are normally the `SpiceStream`s themselves. They are generic
+/// so that a caller can relay through a wrapper and keep the client leg when
+/// the relay ends: the transcoding display channel's mode switch does that,
+/// ending the relay by making the backend leg read as closed between
+/// messages.
 #[allow(clippy::too_many_arguments)]
-pub async fn run(
+pub async fn run<C, B>(
     state: &SharedState,
     policy: Arc<FirewallPolicy>,
-    client: SpiceStream,
-    backend: SpiceStream,
+    client: C,
+    backend: B,
     channel_type: ChannelType,
     connection_ref: &str,
     target: &pb::Target,
     cancel: CancellationToken,
-) -> Result<()> {
+) -> Result<()>
+where
+    C: AsyncRead + AsyncWrite + Unpin,
+    B: AsyncRead + AsyncWrite + Unpin,
+{
     info!(
         %connection_ref,
         channel_type = channel_type.name(),

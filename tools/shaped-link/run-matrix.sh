@@ -30,8 +30,17 @@
 #                  rate of 0 leaves the veth unshaped, e.g. "0:0")
 #   ACTIVITIES     "name:fps:noise_bits ..." (fps 0 = idle;
 #                  default "idle:0:0 busy:30:3")
-#   CONFIGS        "name:notsent_lowat:backend_rcvbuf ..." (0 disables;
-#                  default "stock:0:0 tuned:131072:262144")
+#   CONFIGS        "name:notsent_lowat:backend_rcvbuf[:flags[:displays]] ..."
+#                  (0 disables; default "stock:0:0 tuned:131072:262144").
+#                  flags, optional, are extra proxy flags separated by
+#                  commas, each written --flag or --flag=value, e.g.
+#                  "tx:0:0:--transcode-display,--transcode-ack-window=40"
+#                  (the proxy must be built with FEATURES=transcode for
+#                  those). displays, optional, are DISPLAYS names
+#                  separated by commas: the config then runs only with
+#                  those displays, e.g. a transcoded config only with
+#                  streaming off, since the transcoder never streams
+#                  whatever the display allows
 #   DISPLAYS       "name:qemu_bin:streaming_video:guest_dir ..." -- the
 #                  display side of each case, interleaved with CONFIGS.
 #                  streaming_video is off, all, filter or "default"
@@ -60,12 +69,34 @@
 #                  is the sender of display traffic on the shaped leg
 #                  (default: the kernel's; "bbr" needs the tcp_bbr
 #                  module loaded on the host first, as root)
+#   QUALITY        1 takes screenshots for image quality after the key
+#                  presses (default 0, none). The guest gets kd.frames,
+#                  and once the latency samples are taken,
+#                  capture-quality.py saves mid.png while the activity
+#                  still runs, presses F12 to freeze the activity on its
+#                  final frame, and saves frozen.png once the display has
+#                  settled. quality.sh scores them against a reference.
+#                  Needs a guest built with kd.frames support
+#   QUALITY_FREEZE_FRAME  the final activity frame, kd.frames (default
+#                  36000, 20 minutes at 30 fps). The activity freezes on
+#                  F12 or on reaching it, whichever comes first; a case
+#                  whose activity froze before its last key press is
+#                  marked froze-early and its latency samples discarded
+#   QUALITY_SETTLE_MIN  seconds after the freeze before looking for a
+#                  settled display (default 2); keep it longer than the
+#                  transcoder's --transcode-lossless-delay-ms
+#   QUALITY_SETTLE_MAX  seconds after the freeze to give up waiting for a
+#                  settled display, and take frozen.png anyway (default 60)
 #
 # Each case writes WORKDIR/<profile>/<activity>/<config>-r<N>/ with
 # keydraw.csv/.json (latency samples and draw counts), metrics-{0,1}.txt
 # (proxy /metrics before and after), ss.txt (`ss -tinm` every 0.5 s on
 # the server side), ackwin.txt (the proxy's ACK-window metrics, sampled
-# with ss) and logs. summarise.py turns WORKDIR into tables.
+# with ss), proc.txt (the proxy's and qemu's CPU time and RSS, from /proc,
+# sampled with ss and on to the end of the case) and logs. With QUALITY=1
+# it adds mid.png, frozen.png and screenshots.json (when each was taken,
+# and whether the display settled). summarise.py turns WORKDIR into
+# tables.
 
 set -euo pipefail
 
@@ -91,6 +122,10 @@ ACTIVITY_DELAY="${ACTIVITY_DELAY:-0}"
 WARMUP="${WARMUP:-5}"
 BUFFER_BDP="${BUFFER_BDP:-1}"
 CC="${CC:-}"
+QUALITY="${QUALITY:-0}"
+QUALITY_FREEZE_FRAME="${QUALITY_FREEZE_FRAME:-36000}"
+QUALITY_SETTLE_MIN="${QUALITY_SETTLE_MIN:-2}"
+QUALITY_SETTLE_MAX="${QUALITY_SETTLE_MAX:-60}"
 read -r -a RYLL_EXTRA <<< "${RYLL_ARGS:-}"
 TC=/usr/sbin/tc
 ETHTOOL=/usr/sbin/ethtool
@@ -129,6 +164,25 @@ if [ -z "${SHAPED_LINK_INNER:-}" ]; then
             [ -e "${f}" ] || { echo "ERROR: ${f} not found" >&2; exit 1; }
         done
     done
+    display_names=" "
+    for display in ${DISPLAYS}; do
+        display_names="${display_names}${display%%:*} "
+    done
+    for config in ${CONFIGS}; do
+        IFS=: read -r cname _ _ _ cdisplays <<< "${config}"
+        IFS=, read -r -a wanted <<< "${cdisplays}"
+        for d in "${wanted[@]}"; do
+            case "${display_names}" in
+                *" ${d} "*) ;;
+                *) echo "ERROR: config ${cname} names display ${d}, which DISPLAYS lacks" >&2
+                   exit 1 ;;
+            esac
+        done
+    done
+    case "${QUALITY}" in
+        0|1) ;;
+        *) echo "ERROR: QUALITY must be 0 or 1" >&2; exit 1 ;;
+    esac
     mkdir -p "${WORKDIR}"
     rmdir "${SOCK_DIR}"
     SHAPED_LINK_INNER=1 exec unshare --user --map-root-user --net \
@@ -192,6 +246,10 @@ done
     done
     echo "ryll: ${RYLL_BIN}"
     echo "proxy: ${PROXY_BIN}"
+    if [ "${QUALITY}" = 1 ]; then
+        echo "quality: freeze frame ${QUALITY_FREEZE_FRAME}," \
+            "settle ${QUALITY_SETTLE_MIN}-${QUALITY_SETTLE_MAX}s"
+    fi
     if [ -w /dev/kvm ]; then echo 'accel: kvm'; else echo 'accel: tcg'; fi
 } > "${WORKDIR}/host.txt"
 cat "${WORKDIR}/host.txt" >&2
@@ -262,6 +320,22 @@ stop_pid() {
     wait "$1" 2>/dev/null || true
 }
 
+# One proc.txt line: name, utime and stime in clock ticks, VmRSS in KiB.
+# The command name in /proc/<pid>/stat is in parentheses and may contain
+# spaces, so the fields are counted from after its closing parenthesis.
+sample_proc() {
+    local name="$1" pid="$2" stat key value rss=0
+    { read -r stat < "/proc/${pid}/stat"; } 2>/dev/null || return 0
+    local -a f
+    read -r -a f <<< "${stat##*) }"
+    while read -r key value _; do
+        if [ "${key}" = 'VmRSS:' ]; then
+            rss="${value}"
+        fi
+    done < "/proc/${pid}/status" 2>/dev/null
+    echo "${name} ${f[11]} ${f[12]} ${rss}"
+}
+
 # Record why a case produced no measurement, stop what it started, and
 # fail. summarise.py counts setup-failed repeats instead of pooling them,
 # so a systematic setup fault shows as failures rather than as thin data.
@@ -277,11 +351,41 @@ fail_case() {
     return 1
 }
 
+# The quality screenshots, taken after the latency samples. An activity that
+# froze on its own before the last key press changed the workload under some
+# of the samples, so the case is marked and summarise.py drops its latency.
+quality_capture() {
+    local out="$1" fps="$2" ryll_sock="$3"
+    local wait_frozen=()
+    if grep -q 'KEYDRAW FROZEN' "${out}/serial.log" 2>/dev/null; then
+        log "the activity froze before the last key press; raise QUALITY_FREEZE_FRAME"
+        echo 'the activity froze before the last key press' > "${out}/froze-early"
+    elif [ "${fps}" != 0 ]; then
+        wait_frozen=(--wait-frozen)
+    fi
+    python3 "${SCRIPT_DIR}/capture-quality.py" --socket "${ryll_sock}" \
+        --out-dir "${out}" --serial "${out}/serial.log" "${wait_frozen[@]}" \
+        --settle-min "${QUALITY_SETTLE_MIN}" --settle-max "${QUALITY_SETTLE_MAX}" \
+        --client-port "${PROXY_SECURE_PORT}" \
+        > "${out}/quality-capture.log" 2>&1 ||
+        log "capture-quality.py failed; see ${out}/quality-capture.log"
+    if grep -q 'surface mirror lagged' "${out}/ryll.err" 2>/dev/null; then
+        log "ryll's surface mirror lagged, so its screenshots may be wrong; see ${out}/ryll.err"
+        echo "ryll's surface mirror lagged" > "${out}/mirror-lagged"
+    fi
+}
+
 # ── One case ─────────────────────────────────────────────────────────────────
 
 run_case() {
     local out="$1" fps="$2" noise="$3" lowat="$4" rcvbuf="$5"
-    local qemu="$6" streaming="$7" guest="$8"
+    local qemu="$6" streaming="$7" guest="$8" flags="$9"
+    local -a proxy_flags=()
+    [ -n "${flags}" ] && IFS=, read -r -a proxy_flags <<< "${flags}"
+    local append="console=ttyS0 loglevel=4 rdinit=/init kd.fps=${fps} kd.noise=${noise} kd.delay=${ACTIVITY_DELAY}"
+    if [ "${QUALITY}" = 1 ]; then
+        append="${append} kd.frames=${QUALITY_FREEZE_FRAME}"
+    fi
     mkdir -p "${out}"
     log "case ${out#"${WORKDIR}"/}"
 
@@ -291,7 +395,7 @@ run_case() {
     fi
     "${qemu}" -machine accel=kvm:tcg -m 512 -smp 2 \
         -kernel "${guest}/vmlinuz" -initrd "${guest}/initrd.gz" \
-        -append "console=ttyS0 loglevel=4 rdinit=/init kd.fps=${fps} kd.noise=${noise} kd.delay=${ACTIVITY_DELAY}" \
+        -append "${append}" \
         -vga none -device virtio-vga \
         -object "secret,id=spice-ticket,data=${TICKET}" \
         -spice "${spice}" \
@@ -310,7 +414,8 @@ run_case() {
         --insecure-port "${PROXY_INSECURE_PORT}" \
         --prometheus-port "${PROM_PORT}" --host-subject "${PROXY_SUBJECT}" \
         -- --client-notsent-lowat-bytes "${lowat}" \
-        --backend-rcvbuf-bytes "${rcvbuf}" > "${out}/start-proxy.log" 2>&1 || {
+        --backend-rcvbuf-bytes "${rcvbuf}" "${proxy_flags[@]}" \
+        > "${out}/start-proxy.log" 2>&1 || {
         local failed_pid
         failed_pid="$(cat "${out}/proxy.pid" 2>/dev/null)"
         fail_case "${out}" "proxy did not start; see ${out}/start-proxy.log" \
@@ -356,6 +461,18 @@ run_case() {
         done
     ) > "${out}/ackwin.txt" 2>/dev/null &
     local ackwin_pid=$!
+    # CPU time and RSS of the proxy and qemu, at the same rate, kept up to
+    # the end of the case so the peak RSS covers the quality capture too.
+    (
+        echo "# clk_tck $(getconf CLK_TCK)"
+        while true; do
+            echo "@ $(date +%s.%N)"
+            sample_proc proxy "${proxy_pid}"
+            sample_proc qemu "${qemu_pid}"
+            sleep 0.5
+        done
+    ) > "${out}/proc.txt" 2>/dev/null &
+    local proc_pid=$!
 
     curl -s "http://127.0.0.1:${PROM_PORT}/metrics" > "${out}/metrics-0.txt" || true
     date +%s.%N > "${out}/t0"
@@ -377,6 +494,10 @@ run_case() {
     fi
     stop_pid "${ss_pid}"
     stop_pid "${ackwin_pid}"
+    if [ "${QUALITY}" = 1 ] && [ "${rc}" -eq 0 ] && [ ! -e "${out}/qemu-died" ]; then
+        quality_capture "${out}" "${fps}" "${ryll_sock}"
+    fi
+    stop_pid "${proc_pid}"
     stop_pid "${ryll_pid}"
     stop_pid "${proxy_pid}"
     stop_pid "${qemu_pid}"
@@ -398,12 +519,18 @@ for rep in $(seq "${REPEATS}"); do
             for display in ${DISPLAYS}; do
                 IFS=: read -r dname dqemu dstream dguest <<< "${display}"
                 for config in ${CONFIGS}; do
-                    IFS=: read -r cname lowat rcvbuf <<< "${config}"
+                    IFS=: read -r cname lowat rcvbuf cflags cdisplays <<< "${config}"
+                    if [ -n "${cdisplays}" ]; then
+                        case ",${cdisplays}," in
+                            *",${dname},"*) ;;
+                            *) continue ;;
+                        esac
+                    fi
                     case_name="${cname}"
                     [ -n "${DISPLAYS_SET}" ] && case_name="${dname}-${cname}"
                     run_case "${WORKDIR}/${rtt}ms-${rate}mbit/${aname}/${case_name}-r${rep}" \
                         "${fps}" "${noise}" "${lowat}" "${rcvbuf}" \
-                        "${dqemu}" "${dstream}" "${dguest}" || true
+                        "${dqemu}" "${dstream}" "${dguest}" "${cflags}" || true
                 done
             done
         done

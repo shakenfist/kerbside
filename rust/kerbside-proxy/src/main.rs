@@ -213,10 +213,11 @@ async fn main() -> Result<()> {
         "kerbside-proxy starting"
     );
     #[cfg(feature = "transcode")]
-    if args.transcode.transcode_display {
+    if let Some(options) = transcode::Options::from_args(&args.transcode) {
         warn!(
-            options = ?transcode::Options::from_args(&args.transcode),
-            "transcoding display channels (--transcode-display): an experiment, not for production"
+            ?options,
+            "transcoding display channels (--transcode-display or \
+             --transcode-switch-after-secs): an experiment, not for production"
         );
     }
 
@@ -467,7 +468,8 @@ mod tests {
     }
 
     /// The transcoder is off unless asked for, its defaults are andris's,
-    /// and the ACK-window pacing flag selects that mode.
+    /// and the ACK-window pacing flag selects that mode. Async because
+    /// `shared_state` builds the gRPC client, which needs a runtime.
     #[cfg(feature = "transcode")]
     #[tokio::test]
     async fn transcode_flags_reach_shared_state() {
@@ -507,16 +509,56 @@ mod tests {
             Args::try_parse_from(["kerbside-proxy", "--transcode-notsent-lowat-bytes", "0"])
                 .is_err()
         );
+        assert!(options.start_transcoded);
+        assert_eq!(options.switch_after, None, "no switching unless asked");
     }
 
-    /// The ACK-window flag is a measurement option, kept out of `--help`.
+    /// The switch flag alone turns the transcoder's options on, starting
+    /// relayed; with --transcode-display the channel starts transcoded.
+    /// Async because `shared_state` builds the gRPC client, which needs a
+    /// runtime.
+    #[cfg(feature = "transcode")]
+    #[tokio::test]
+    async fn the_switch_flag_reaches_shared_state() {
+        use std::time::Duration;
+
+        let args = Args::try_parse_from(["kerbside-proxy", "--transcode-switch-after-secs", "8"])
+            .expect("the switch flag parses");
+        let options = shared_state(&args)
+            .transcode
+            .expect("switching needs the options");
+        assert!(!options.start_transcoded, "it starts relayed");
+        assert_eq!(options.switch_after, Some(Duration::from_secs(8)));
+
+        let args = Args::try_parse_from([
+            "kerbside-proxy",
+            "--transcode-display",
+            "--transcode-switch-after-secs",
+            "3",
+        ])
+        .expect("both flags parse");
+        let options = shared_state(&args).transcode.expect("transcoding is on");
+        assert!(options.start_transcoded, "it starts transcoded");
+        assert_eq!(options.switch_after, Some(Duration::from_secs(3)));
+
+        let args = Args::try_parse_from(["kerbside-proxy", "--transcode-switch-after-secs", "0"])
+            .expect("0 parses");
+        assert!(
+            shared_state(&args).transcode.is_none(),
+            "0 never switches, so nothing is transcoded"
+        );
+    }
+
+    /// The ACK-window and switch flags are measurement options, kept out of
+    /// `--help`.
     #[cfg(feature = "transcode")]
     #[test]
-    fn the_ack_window_flag_is_hidden() {
+    fn the_measurement_flags_are_hidden() {
         use clap::CommandFactory;
         let help = Args::command().render_long_help().to_string();
         assert!(help.contains("--transcode-display"));
         assert!(!help.contains("--transcode-ack-window"));
+        assert!(!help.contains("--transcode-switch-after-secs"));
     }
 
     /// The contract hash build.rs embeds must be a bare lowercase-hex sha256:

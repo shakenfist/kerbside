@@ -77,6 +77,16 @@ jobs:
       - name: Test
         run: cargo test
 
+      # The experimental transcoding display channel is off by default and
+      # kept out of the wheels (it builds openh264 from source), so only
+      # these steps build it; without them a ryll pin bump could break it
+      # unnoticed. The cargo cache keeps openh264 between runs.
+      - name: Clippy (transcode feature)
+        run: cargo clippy --all-targets --features transcode -- -D warnings
+
+      - name: Test (transcode feature)
+        run: cargo test --features transcode
+
       - name: Build (release)
         run: cargo build --release
 
