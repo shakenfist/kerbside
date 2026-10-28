@@ -389,6 +389,24 @@ None yet.
 
 ## Execution notes
 
+- 2026-10-28 AEDT, back brief. Mikal confirmed decision 1's
+  console uuid (`<vmid>-<smbios uuid>`) and decision 8's direct
+  refusal (a 409 before any mint, audited, with the Direct link
+  hidden). This session may push the branch and open the pull
+  request once the definition of done passes locally.
+- Steps run in sequence, 4.1 to 4.4, because each runs `tox` and
+  `pre-commit` in the shared worktree.
+- Step 4.1 made choices the plan leaves open. The console uuid
+  lowercases the SMBIOS UUID, and the parser accepts only that
+  form. A failure to list the guests raises, so the source is
+  marked errored and keeps its consoles. A failure to read one
+  VM's configuration skips only that VM. The mint also refuses
+  a guest that is not a qemu VM. Nine mutants were run against
+  the uuid check, the GET and POST timeouts, the `proxy`
+  parameter, the `t0` ordering, template listing, the SPICE
+  check at mint, and logging a failure's text. All nine were
+  killed, and the review reproduced that.
+
 ## Outcome
 
 ## Back brief
