@@ -259,7 +259,7 @@ would creep back in. **Recommendation: yes.** Extend
 | 3. OpenStack: Kolla-Ansible, and Kerbside in front of OpenStack | [PLAN-deployment-options-phase-03-openstack.md](PLAN-deployment-options-phase-03-openstack.md) | Complete | d159d17 |
 | 4. Containers: compose beyond the demo, and Kubernetes | [PLAN-deployment-options-phase-04-containers.md](PLAN-deployment-options-phase-04-containers.md) | Complete | 46a03a6 |
 | 5. Ansible: the `kerbside` role | [PLAN-deployment-options-phase-05-ansible.md](PLAN-deployment-options-phase-05-ansible.md) | Complete | c1f5938 |
-| 6. Installation hand-off and closeout | | Not started | |
+| 6. Installation hand-off and closeout | [PLAN-deployment-options-phase-06-installation.md](PLAN-deployment-options-phase-06-installation.md) | In progress | |
 | 7. Push audit | | Not started | |
 
 **Phase 1: survey, matrix and scaffolding.** Re-check the
@@ -326,9 +326,12 @@ cell. Planned at medium effort.
 `installation.md`'s "Deploying for real" becomes a pointer to
 `docs/deployment/` rather than a table keyed by cloud. Reconcile
 `docs/index.md`, and touch README.md only if its curated links
-change. Check whether ARCHITECTURE.md or AGENTS.md need anything
-(probably not: no component or convention changes). Planned at
-medium effort.
+change. They do: the README has no link to the Deployment Options
+table. ARCHITECTURE.md and AGENTS.md need index fixes but no new
+prose: neither mentions `docs/deployment/`, and ARCHITECTURE.md's
+tree has no `ansible/`. Phase 6's survey corrected this paragraph,
+which had said they probably needed nothing. Planned at medium
+effort.
 
 Phases 2, 3 and 4 are independent, and can run in any order or
 in parallel once phase 1 has merged. Phase 5 waits on another
