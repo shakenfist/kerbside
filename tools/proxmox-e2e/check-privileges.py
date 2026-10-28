@@ -31,8 +31,9 @@ Usage:
         --vmid VMID --ca-file PATH --lane-file PATH
 
 URL is deploy-proxmox-on-shakenfist's api_url output, NAME its node_name,
-VMID its vmid and PATH its ca_file. Runs with the runner's system python3,
-which has requests.
+VMID its vmid and PATH its ca_file. The workflow runs it with the
+python3 of the venv tools/proxmox-e2e/deploy-kerbside.sh makes, which has
+requests as a kerbside dependency.
 """
 
 import argparse

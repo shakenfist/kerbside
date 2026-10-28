@@ -469,6 +469,13 @@ None yet.
   changes to `backend.rs` and `relay.rs` name the new consumer of
   their log lines. Thirty-five mutants were killed
   (`step-5.2/mutants.yaml`).
+- Step 5.3 added `docs/console-sources.md` to decision 1's path
+  filter. The lane runs that page's account block, so without it
+  an edit to the block would not run the lane, and decision 2's
+  claim would be false. `check-privileges.py` runs with the venv
+  that `deploy-kerbside.sh` makes, which has `requests`, so it runs
+  after kerbside has started; its refused calls mint nothing. The
+  nightly runs at 05:30 UTC, after the other nightlies.
 
 ## Outcome
 

@@ -43,7 +43,10 @@ into two tiers.
   of which builds an entire cloud from scratch. These are the
   expensive lanes, and their failure modes are dominated by
   upstream environment churn rather than by Kerbside regressions,
-  so running them per PR bought little for what it cost.
+  so running them per PR bought little for what it cost. The Proxmox
+  VE lane (`proxmox-functional.yml`) is in this tier too, but it also
+  runs on pull requests that touch the Proxmox source, as an advisory
+  check; see [the Proxmox lane](#the-proxmox-end-to-end-lane).
 
 The trade is deliberate, and it has been made twice. The cloud lanes
 first moved from pull requests to the merge queue. They then moved
@@ -54,11 +57,11 @@ to its develop, re-testing code its own merge queue had just
 deployed with Kolla. That came to some 200 OpenStack runs a month
 and about 80 oVirt runs, each holding a runner and a nested cloud on
 sfcbr for most of an hour. A cloud-specific breakage now surfaces
-the morning after it merges, as a `Nightly oVirt lane failing` or
-`Nightly OpenStack lane failing` issue filed by the run, rather than
-on the PR or in the queue. Nothing else exercises the oVirt and
-OpenStack sources end to end, so treat those issues as release
-blockers (see "Releasing" in [development.md](development.md)), and
+the morning after it merges, as a `Nightly oVirt lane failing`,
+`Nightly OpenStack lane failing` or `Nightly proxmox lane failing`
+issue filed by the run, rather than on the PR or in the queue.
+Nothing else exercises those sources end to end, so treat those
+issues as release blockers (see "Releasing" in [development.md](development.md)), and
 dispatch the lane on a pull request that changes a source driver.
 
 Both tiers also skip entirely when a change touches only files no
@@ -91,6 +94,7 @@ change.
 | `functional-tests.yml` (`credential_scan`) | pull_request, merge_group, never path-filtered | smoke |
 | `functional-tests.yml` (`docs_checks`) | pull_request, merge_group, never path-filtered | smoke |
 | `functional-tests.yml` (`ovirt_matrix`, `openstack_matrix`) | nightly (04:30 UTC), workflow_dispatch | nightly |
+| `proxmox-functional.yml` | nightly (05:30 UTC), workflow_dispatch, and pull_request path-filtered to the Proxmox source, the proxy's backend leg, `docs/console-sources.md` and `tools/proxmox-e2e/**` (advisory, never in the merge queue) | nightly |
 | `direct-qemu-functional.yml` | pull_request, merge_group, nightly | smoke |
 | `sf-e2e-functional.yml` | pull_request, merge_group, nightly | smoke |
 | `rust.yml` | push and pull_request, path-filtered to `rust/**` and the proto | neither (advisory) |
@@ -770,6 +774,59 @@ broken parser as a security failure for two days. Any new
 log-derived oracle should draw the same distinction. Proxy log
 colouring is described in
 [proxy-architecture.md](proxy-architecture.md).
+
+## The Proxmox end-to-end lane
+
+`proxmox-functional.yml` proves the `type: proxmox` source
+(`kerbside/sources/proxmox.py`) against a real Proxmox VE node. It
+deploys a single-node PVE 9 with `shakenfist/actions`'
+`deploy-proxmox-on-shakenfist` action, deploys the PR's own kerbside
+(package plus the manylinux Rust proxy wheel) on the CI runner,
+registers a `type: proxmox` source against the node, and relays real
+SPICE sessions through kerbside's proxy and PVE's `spiceproxy`. The
+proxy wheel and ryll are built before the node is booked, so a
+compile error never spends a node.
+
+It runs nightly, on `workflow_dispatch`, and on pull requests that
+touch the Proxmox source (`kerbside/sources/proxmox.py`, `base.py` and
+`minting.py`), `kerbside/rpc/`, the proxy's backend leg and lockfile,
+`docs/console-sources.md`, the workflow or `tools/proxmox-e2e/`.
+It has no `merge_group` trigger and is not a required check: a
+path-filtered required check never reports on other pull requests,
+which would block them forever. So a pull request that breaks it can
+merge red, and the nightly `Nightly proxmox lane failing` issue is
+what catches that. Pull requests from forks skip it, because its
+runner holds the CI mesh's SSH key.
+
+What it asserts, in short:
+
+- the account in `docs/console-sources.md` works: the lane runs that
+  page's `pveum` block on the node (with the user renamed), and fails
+  if the commands are wrong or contain anything but the four commands
+  the account needs;
+- both of the account's privileges are needed, not only sufficient:
+  tokens lacking `VM.Audit` and `VM.Console` are each refused with
+  403, and the documented token is refused `status/stop`;
+- discovery lists exactly the one SPICE guest, and skips guests with
+  a `std` display, no SMBIOS UUID or a stopped state, and a template
+  when PVE accepts a diskless one;
+- PVE's own access log shows the expected number of `spiceproxy`
+  mints at each checkpoint, so supersession is measured on real PVE;
+- the backend leg is tunnelled, TLS, and pinned to the node's
+  subject, and a session survives past its 30 second ticket and
+  `CONSOLE_TOKEN_DURATION`;
+- no token secret or `pvespiceproxy:` reaches an uploaded artifact.
+
+Like the oVirt lane, its oracles keep a harness fault apart from a
+defect (see "Log-derived oracles" above), and the mint count adds a
+third verdict, a timing fault, for a channel that connected too late
+to reuse its session's ticket.
+
+The runner-side scripts, the topology, a diagram of the path proven,
+the mint-counting method, the security rules and what only the lane
+exercises are documented in `tools/proxmox-e2e/README.md`. Dispatch
+the lane on a pull request that changes the Proxmox driver in ways
+the path filter does not cover.
 
 ## Tempest tests against a Kolla-Ansible deployment
 
