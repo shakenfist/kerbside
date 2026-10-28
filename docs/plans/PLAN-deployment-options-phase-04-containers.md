@@ -185,38 +185,38 @@ each finding. A step does not need to redo them.
 
 ## Definition of done
 
-- [ ] `docs/deployment/containers.md` exists with exactly the four
+- [x] `docs/deployment/containers.md` exists with exactly the four
       `##` headings, in order:
       `grep '^## ' docs/deployment/containers.md`.
-- [ ] `docs/deployment/order.yml` lists `manual.md`,
+- [x] `docs/deployment/order.yml` lists `manual.md`,
       `kolla-ansible.md` and `containers.md`, in that order, and
       nothing else.
-- [ ] The page links #553 and `installation.md`'s
+- [x] The page links #553 and `installation.md`'s
       `#what-the-demo-is-not`:
       `grep -c 'issues/553\|what-the-demo-is-not' docs/deployment/containers.md`
       is at least 2.
-- [ ] No row label of "What the demo is not" appears on the page as
+- [x] No row label of "What the demo is not" appears on the page as
       a heading or a table row's first cell. Checked by reading.
-- [ ] The page says Kolla's images are built from `develop`, and
+- [x] The page says Kolla's images are built from `develop`, and
       that matches Kolla master's `sources.yaml` on the day.
-- [ ] Every registry fact the page states matches a quay.io query
+- [x] Every registry fact the page states matches a quay.io query
       made on the day, and the page dates them.
-- [ ] `kolla-ansible.md` no longer says Kerbside's images have to
+- [x] `kolla-ansible.md` no longer says Kerbside's images have to
       be built, and still says `nova-libvirt-spice` does:
       `grep -n 'built from kerbside-patches' docs/deployment/kolla-ansible.md`
       prints nothing.
-- [ ] The master plan's inventory row for the container image names
+- [x] The master plan's inventory row for the container image names
       quay.io and `develop`.
-- [ ] The Containers row of `docs/index.md` links
+- [x] The Containers row of `docs/index.md` links
       `deployment/containers.md`.
-- [ ] Every anchor in the changed pages resolves. Checked by hand,
+- [x] Every anchor in the changed pages resolves. Checked by hand,
       because the link test strips anchors (#490).
-- [ ] `tools/check-backend-tls-claims.py` exits 0, and
+- [x] `tools/check-backend-tls-claims.py` exits 0, and
       `tools/mutate-backend-tls-claims.py` still reports every
       mutation caught.
-- [ ] `tox -epy3`, `tox -eflake8` and `pre-commit run --all-files`
+- [x] `tox -epy3`, `tox -eflake8` and `pre-commit run --all-files`
       pass.
-- [ ] The #553 comment from step 4b exists, and its URL is in the
+- [x] The #553 comment from step 4b exists, and its URL is in the
       execution notes.
 
 ## Execution notes
@@ -233,6 +233,13 @@ each finding. A step does not need to redo them.
   (`ansible/group_vars/all/common.yml`). kerbside-patches documents
   the `nova-libvirt-spice` build in `docs/building.md` rather than
   holding a script for it, so the page links that.
+- Step 4b posted the approved comment on #553 on 2026-10-28:
+  https://github.com/shakenfist/kerbside/issues/553#issuecomment-6460770776
+- Definition of done checked on 2026-10-28. `tox -epy3` passed 556
+  tests, and flake8, pre-commit and the TLS claim guard passed. The
+  mutation tool caught all 12 mutations, and all 27 local anchors in
+  the three changed pages resolve. quay.io and Kolla's `sources.yaml`
+  were re-queried that day and match the page.
 
 ## Back brief
 
