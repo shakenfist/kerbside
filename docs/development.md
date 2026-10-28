@@ -598,7 +598,11 @@ is open and that the last nightly ran on or after the commit you are
 tagging. If not, dispatch `functional-tests.yml` on `develop` with both
 cloud targets selected and tag once it passes. A merge
 that bypassed the queue has no merge queue run, so it cannot be
-released until a later commit has gone through the queue. A gate
+released until a later non-docs queue entry has gone through the queue:
+one that changes something outside `docs/`, so the code lanes run. A
+docs-only entry skips those lanes yet still concludes successfully, so
+it would pass the gate without the queue ever having tested the
+bypassed code. A gate
 failure means nothing was signed or published, so every failure is
 recoverable: the release template's
 [recovery table](https://github.com/shakenfist/development/blob/main/templates/release-automation/README.md#recovering-from-a-gate-failure)
