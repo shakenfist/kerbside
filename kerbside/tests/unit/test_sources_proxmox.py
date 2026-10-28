@@ -6,7 +6,9 @@ from unittest import mock
 import requests
 
 from kerbside import sources
+from kerbside.rpc import servicer
 from kerbside.sources import base
+from kerbside.sources import minting
 from kerbside.sources import proxmox
 
 
@@ -119,12 +121,21 @@ class _Response(object):
         return self.body
 
 
+class _Slow(object):
+    """An answer which takes seconds longer than a request usually does."""
+
+    def __init__(self, seconds, answer):
+        self.seconds = seconds
+        self.answer = answer
+
+
 class _FakePve(object):
     """Answers the driver's requests by method and API path.
 
     Every request is recorded with its keyword arguments, and advances a
-    clock by a second, so that a test can tell when the driver read the
-    time relative to its requests. A request with no answer fails the test.
+    clock by a second, or by more for a _Slow answer, so that a test can
+    tell when the driver read the time relative to its requests. A request
+    with no answer fails the test.
     """
 
     def __init__(self, answers):
@@ -148,6 +159,9 @@ class _FakePve(object):
             answer = self.answers[(method, url)]
         except KeyError:
             raise AssertionError('unexpected request %s %s' % (method, url))
+        if isinstance(answer, _Slow):
+            self.clock += answer.seconds
+            answer = answer.answer
         if isinstance(answer, Exception):
             raise answer
         return answer
@@ -368,6 +382,30 @@ class TestDiscovery(_ProxmoxTestCase):
             ['/nodes/pve1/qemu/%d/config' % vmid for vmid in (100, 104, 105, 106, 108)],
             [path for _, path in fake.paths() if path.endswith('/config')])
 
+    def test_vm_on_a_node_pve_would_not_name_is_skipped(self):
+        """A node name goes into API paths, so one which could steer a
+        request elsewhere is never asked about."""
+        for node in ('../access', 'pve1/qemu', 'pve1.example', '-pve1', 'pve1-', '', 7):
+            guests = [_guest(100), _guest(200, node=node)]
+            records = []
+            with mock.patch.object(proxmox.LOG, 'with_fields') as with_fields:
+                with_fields.return_value.debug.side_effect = records.append
+                results, fake = self._scrape(_answers(guests=guests))
+
+            self.assertEqual(['100-%s' % SMBIOS], [r['uuid'] for r in results], node)
+            self.assertEqual(
+                [('GET', '/cluster/resources'),
+                 ('GET', '/nodes/pve1/certificates/info'),
+                 ('GET', '/nodes/pve1/qemu/100/config')],
+                fake.paths(), node)
+            self.assertEqual(1, len(records), node)
+
+    def test_node_names_pve_accepts(self):
+        for node in ('pve1', 'PVE-node-2', 'a', '9'):
+            self.assertTrue(proxmox.valid_node_name(node), node)
+        for node in ('../access', 'a/b', 'a.b', '-a', 'a-', 'a_b', 'a\n', '', None, 7):
+            self.assertFalse(proxmox.valid_node_name(node), node)
+
     def test_vm_with_no_smbios_uuid_is_logged_at_info(self):
         records = []
         with mock.patch.object(proxmox.LOG, 'with_fields') as with_fields:
@@ -558,6 +596,48 @@ class TestMinting(_ProxmoxTestCase):
             error, fake = self._refused(answers=_answers(guests=guests))
             self.assertIn('100', str(error))
             self.assertEqual([('GET', '/cluster/resources')], fake.paths())
+
+    def test_vm_on_a_node_pve_would_not_name_is_refused(self):
+        for node in ('../access', 'pve1/qemu', 'pve1.example', 7):
+            error, fake = self._refused(answers=_answers(guests=[_guest(node=node)]))
+            self.assertIn('100', str(error))
+            self.assertIn('node', str(error))
+            self.assertEqual([('GET', '/cluster/resources')], fake.paths())
+
+    def test_slow_requests_end_the_mint_before_spiceproxy(self):
+        """A mint which has run past MINT_POST_CUTOFF does not replace the
+        VM's password for a caller which may have stopped waiting."""
+        answers = _answers()
+        answers[('GET', API + '/nodes/pve1/qemu/100/config')] = _Slow(
+            proxmox.MINT_POST_CUTOFF, answers[('GET', API + '/nodes/pve1/qemu/100/config')])
+
+        error, fake = self._refused(answers=answers)
+
+        self.assertIn('100', str(error))
+        self.assertEqual(
+            [('GET', '/cluster/resources'), ('GET', '/nodes/pve1/qemu/100/config')],
+            fake.paths())
+        proxmox.requests.post.assert_not_called()
+
+    def test_requests_inside_the_cutoff_still_mint(self):
+        # Two requests at a second each, plus this, end exactly at the cutoff.
+        answers = _answers()
+        answers[('GET', API + '/nodes/pve1/qemu/100/config')] = _Slow(
+            proxmox.MINT_POST_CUTOFF - 2, answers[('GET', API + '/nodes/pve1/qemu/100/config')])
+
+        minted, fake = self._mint(answers=answers)
+
+        self.assertEqual(PASSWORD, minted.ticket)
+        self.assertEqual(('POST', '/nodes/pve1/qemu/100/spiceproxy'), fake.paths()[-1])
+
+    def test_cutoff_leaves_a_ticket_worth_reusing(self):
+        # A ticket posted for at the cutoff, whose POST takes a whole
+        # REQUEST_TIMEOUT, still outlives the reuse margin, and the POST
+        # answers before the caller's deadline.
+        self.assertGreater(
+            proxmox.TICKET_LIFETIME - proxmox.MINT_POST_CUTOFF - proxmox.REQUEST_TIMEOUT,
+            servicer.REUSE_MARGIN)
+        self.assertLess(proxmox.MINT_POST_CUTOFF + proxmox.REQUEST_TIMEOUT, minting.MINT_DEADLINE)
 
     def test_vm_with_no_spice_display_is_refused(self):
         self._refused(answers=_answers(configs={100: _config(vga='std')}))

@@ -16,7 +16,14 @@ All work for this phase lands in `shakenfist/kerbside`. It
 adds a source driver, `kerbside/sources/proxmox.py`, and
 changes the direct `.vv` handler, the consoles page, the
 Ansible role's source checker and the documentation. It
-changes nothing in Rust, the protobuf contract or the schema.
+changes nothing in Rust or the protobuf contract. It widens
+four schema columns with one migration: `consoles.uuid`,
+`consoletokens.uuid` and `auditevents.uuid` were created as
+`String(36)`, too short for decision 1's
+`<vmid>-<smbios uuid>` (38 to 46 characters), and
+`sources.username` as `String(50)`, which a token ID
+(`user@realm!tokenid`) can exceed. All four become
+`String(255)`.
 Consult `ARCHITECTURE.md`, `docs/console-sources.md`,
 `docs/proxy-architecture.md` and `kerbside/sources/ovirt.py`,
 the other minting driver. Run `tox -eflake8`, `tox -epy3` and
@@ -145,8 +152,15 @@ of `qemu-server`, `pve-manager`, `pve-common` and
    (`kerbside/main.py:192-197`), and `password` is a secret
    field. A token ID (`user@realm!tokenid`) and its secret fit
    `username` and `password`, and PVE takes them as one header,
-   `Authorization: PVEAPIToken=<id>=<secret>`. No migration is
-   needed. `requests` is already a runtime dependency
+   `Authorization: PVEAPIToken=<id>=<secret>`. The survey
+   said no migration was needed, which was wrong: the initial
+   schema made `sources.username` a `String(50)`, which a long
+   realm or token name can exceed, and made every console
+   `uuid` column a `String(36)`, which decision 1's
+   `<vmid>-<smbios uuid>` never fits. `db.py` declares them
+   unbounded and the unit tests run on SQLite, which ignores
+   lengths, so neither showed. A migration widens all four to
+   `String(255)`. `requests` is already a runtime dependency
    (`pyproject.toml:74`), so no client library is added.
 
 10. **The role refuses unknown source types.** The Ansible
@@ -415,6 +429,24 @@ None yet.
   `docs/schema.md`, `docs/installation.md`, `docs/network-ports.md`,
   `docs/configuration.md`, `docs/index.md`, `docs/proxy-architecture.md`,
   the README's two mentions and AGENTS.md's one-line summary.
+- 2026-10-28 AEDT, review round 1. The automated review found
+  that a Proxmox console uuid does not fit the `String(36)`
+  uuid columns of `consoles`, `consoletokens` and `auditevents`:
+  on MariaDB in strict mode every Proxmox console fails with
+  "Data too long", and without it the uuid is cut short. The
+  plan's premise that the schema needed no change (finding 9)
+  missed it because the models are unbounded and the unit tests
+  use SQLite. Migration `dabe2f66e369` widens the three columns
+  and `sources.username` to `String(255)`, dropping and
+  restoring `fk_consoletokens_console` around the change, since
+  MariaDB refuses to alter a column a foreign key names. A
+  functional test on MariaDB, run in the direct-qemu lane beside
+  the ticket lock test, stores the longest uuid the driver can
+  produce and a 100-character username, and fails without the
+  migration. The same round bounded a mint's elapsed time before
+  the spiceproxy POST, refused node names PVE would not accept
+  before putting them in API paths, and made the `test_api`
+  Proxmox fixture match what discovery stores.
 
 ## Outcome
 

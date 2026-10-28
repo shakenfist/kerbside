@@ -530,8 +530,22 @@ against any MariaDB the URL's user may create that database on:
 
 ```bash
 KERBSIDE_TEST_SQL_URL=mysql://kerbside:kerbside@127.0.0.1/kerbside_locktest \
-    python -m unittest -v kerbside.tests.functional.test_session_ticket_lock
+    python -m unittest -v kerbside.tests.functional.test_session_ticket_lock \
+    kerbside.tests.functional.test_column_widths
 ```
+
+### Values fit their columns
+
+SQLite ignores a `VARCHAR`'s length, so a value too long for its
+column passes every unit test and then fails on MariaDB with "Data
+too long", or is silently cut short without strict mode. The same
+script runs `kerbside/tests/functional/test_column_widths.py`, in the
+same database and the same way, which stores a console under the
+longest uuid the Proxmox VE driver produces (a nine digit vmid and an
+SMBIOS UUID, 46 characters), with a console token and an audit event
+for it, and a source with a 100 character username, and reads each
+back unchanged. `kerbside/tests/functional/sql_database.py` holds the
+setup both modules share.
 
 ### Live termination
 

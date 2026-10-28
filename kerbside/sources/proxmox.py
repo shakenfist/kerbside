@@ -13,10 +13,23 @@ from .. import util
 LOG, _ = logs.setup(__name__, **util.configure_logging())
 
 
-# Seconds to wait for any one request to the PVE API. A mint makes three
-# requests while a client waits to connect, and all three have to fit inside
-# minting.MINT_DEADLINE.
+# Seconds to wait for the PVE API to accept a connection, and then for each
+# part of its response. requests applies this to the connect and to every gap
+# between reads separately, not to a request as a whole, so an API answering
+# slowly but steadily can take longer; what bounds a whole mint for the client
+# waiting on it is minting.MINT_DEADLINE.
 REQUEST_TIMEOUT = 5
+
+# Seconds into a mint after which spiceproxy is no longer asked for a ticket.
+# Asking sets the VM's SPICE password, so a mint whose first two requests were
+# slow gives up rather than change the password for a client which may have
+# stopped waiting. Ten seconds is MINT_DEADLINE (20) less two REQUEST_TIMEOUTs,
+# so a POST sent in time normally answers before the caller gives up. It also
+# leaves the ticket TICKET_LIFETIME - 10 = 20 seconds when the POST is sent,
+# and still about 15 after a POST taking one REQUEST_TIMEOUT, more than the
+# REUSE_MARGIN (10, kerbside/rpc/servicer.py) a stored ticket must have left
+# for the session's other channels to reuse it rather than mint again at once.
+MINT_POST_CUTOFF = 10
 
 # Seconds a minted SPICE password is good for. spiceproxy sets the password
 # and then runs mon_cmd($vmid, "expire_password", ..., time => "+30") on the
@@ -43,6 +56,14 @@ _CONSOLE_UUID = re.compile(
 _SPICE_VGA_TYPE = re.compile(r'^(?:qxl[234]?$|virtio)')
 
 
+# A node name as PVE accepts one, a single hostname label (pve-common's
+# pve_verify_node_name(), the pve-node format). Node names come from the API
+# and are put into API paths, so a guest on a node named otherwise is never
+# asked about: a malformed or hostile guest list could otherwise steer a
+# request, the spiceproxy POST included, to another path.
+_NODE_NAME = re.compile(r'[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?')
+
+
 class MalformedResponse(Exception):
     """A PVE API response did not carry its payload under 'data'."""
 
@@ -67,6 +88,11 @@ def parse_console_uuid(uuid):
         raise base.ConsoleTicketUnavailable(
             'console uuid is not of the form <vmid>-<smbios uuid>')
     return int(m.group(1)), m.group(2)
+
+
+def valid_node_name(node):
+    """Whether node is a node name PVE would accept."""
+    return isinstance(node, str) and bool(_NODE_NAME.fullmatch(node))
 
 
 def _property_string(value, default_key=None):
@@ -277,6 +303,9 @@ class ProxmoxSource(base.BaseSource):
             if not node or not isinstance(vmid, int):
                 log.debug('Ignoring VM with no node or vmid')
                 continue
+            if not valid_node_name(node):
+                log.debug('Ignoring VM on a node whose name PVE would not accept')
+                continue
 
             if node not in subjects:
                 subjects[node] = self._node_subject(node)
@@ -326,7 +355,8 @@ class ProxmoxSource(base.BaseSource):
 
         # The time is taken before the first request, so that the expiry
         # reported is never later than the one qemu applies.
-        now = int(time.time())
+        started = time.time()
+        now = int(started)
         step = 'listing guests'
         try:
             # The VM's current node, so that a VM which has migrated since
@@ -336,6 +366,8 @@ class ProxmoxSource(base.BaseSource):
                  if g.get('vmid') == vmid and g.get('type') == 'qemu'), None)
             if not guest or not guest.get('node'):
                 raise self._unavailable(vmid, 'no such VM')
+            if not valid_node_name(guest['node']):
+                raise self._unavailable(vmid, 'VM is on a node whose name PVE would not accept')
             if guest.get('status') != 'running':
                 raise self._unavailable(vmid, 'VM is not running')
             node = guest['node']
@@ -349,6 +381,11 @@ class ProxmoxSource(base.BaseSource):
                 raise self._unavailable(vmid, 'VM is not the machine the console was discovered as')
             if not vga_has_spice(config.get('vga')):
                 raise self._unavailable(vmid, 'VM has no SPICE display')
+
+            # A mint which has taken too long already does not go on to
+            # replace the VM's password; see MINT_POST_CUTOFF.
+            if time.time() - started > MINT_POST_CUTOFF:
+                raise self._unavailable(vmid, 'the API was too slow to mint in time')
 
             # This sets the VM's SPICE password, so it is only ever called
             # here and never during discovery.

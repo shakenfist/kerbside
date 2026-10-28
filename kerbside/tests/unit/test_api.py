@@ -15,6 +15,11 @@ from kerbside import db
 from kerbside import sf_token
 from kerbside.sources import base as source_base
 from kerbside.sources import minting
+from kerbside.sources import proxmox
+
+
+# A console uuid as the Proxmox VE driver gives one.
+PROXMOX_UUID = proxmox.console_uuid(100, '3f0c9a52-1b7e-4d8a-9c2f-5e6d7a8b9c0d')
 
 
 class GetNavItemsTestCase(testtools.TestCase):
@@ -1238,10 +1243,13 @@ class DirectVirtViewerAdminTestCase(testtools.TestCase):
         db.add_source(
             'pve1', 'proxmox', 'https://pve.example.com:8006',
             'kerbside@pve!broker', 'sekrit-pve-secret', ca_cert=None)
+        # As discovery stores it: a Proxmox VE console has no address or
+        # port of its own, since it is only reached through spiceproxy.
         db.add_console(
-            source='pve1', uuid='100-console-3', hypervisor='pve-node1',
-            hypervisor_ip='10.0.0.3', insecure_port=3128, secure_port=None,
-            name='a proxmox console', host_subject=None)
+            source='pve1', uuid=PROXMOX_UUID, hypervisor='pve-node1',
+            hypervisor_ip='', insecure_port=None, secure_port=None,
+            name='a proxmox console',
+            host_subject='OU=PVE Cluster Node,CN=pve-node1')
 
         self.proxmox = mock.MagicMock()
         self.proxmox.MINTS_TICKETS = True
@@ -1365,7 +1373,7 @@ class DirectVirtViewerAdminTestCase(testtools.TestCase):
                 mock.patch.object(
                     db, 'get_console', wraps=db.get_console) as spy_console:
             resp = self.client.get(
-                '/console/direct/pve1/100-console-3/console.vv')
+                '/console/direct/pve1/%s/console.vv' % PROXMOX_UUID)
 
         self.assertEqual(409, resp.status_code)
         self.assertIn(
@@ -1380,13 +1388,13 @@ class DirectVirtViewerAdminTestCase(testtools.TestCase):
             ['Refused direct console for a proxied-only source to alice'],
             self._messages())
         self.assertEqual(
-            ('pve1', '100-console-3'), self.audit.call_args.args[:2])
+            ('pve1', PROXMOX_UUID), self.audit.call_args.args[:2])
 
     def test_non_admin_is_refused_as_a_non_admin_for_a_proxied_only_source(
             self):
         self._session({'sub': 'bob', 'kerbside_admin': False})
 
-        resp = self.client.get('/console/direct/pve1/100-console-3/console.vv')
+        resp = self.client.get('/console/direct/pve1/%s/console.vv' % PROXMOX_UUID)
 
         self.assertEqual(403, resp.status_code)
         self.proxmox.assert_not_called()
@@ -1406,7 +1414,7 @@ class ConsolesPageDirectButtonTestCase(testtools.TestCase):
 
         patch = mock.patch.object(db, 'get_consoles', return_value=[
             self._console('src1', 'console-1'),
-            self._console('pve1', '100-console-2')])
+            self._console('pve1', PROXMOX_UUID)])
         patch.start()
         self.addCleanup(patch.stop)
 
@@ -1446,7 +1454,7 @@ class ConsolesPageDirectButtonTestCase(testtools.TestCase):
 
     def test_proxied_only_console_is_not_offered_direct(self):
         page = self._page({'sub': 'alice', 'kerbside_admin': True})
-        self.assertIn('/console/proxy/pve1/100-console-2/console.vv', page)
+        self.assertIn('/console/proxy/pve1/%s/console.vv' % PROXMOX_UUID, page)
         self.assertNotIn('/console/direct/pve1/', page)
         self.assertIn('/console/direct/src1/console-1/console.vv', page)
 

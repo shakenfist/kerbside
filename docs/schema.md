@@ -105,7 +105,7 @@ Console sources (cloud platforms) that provide virtual machines.
 | errored | boolean | Whether the source is in error state |
 | url | string | API URL for the source |
 | ca_cert | text | CA certificate for TLS validation |
-| username | string | Authentication username |
+| username | string | Authentication username, or a Proxmox VE API token ID (`user@realm!tokenid`); up to 255 characters |
 | password | string | Authentication password/API key |
 | project_name | string | OpenStack project name (OpenStack only) |
 | user_domain_id | string | OpenStack user domain (OpenStack only) |
@@ -143,7 +143,7 @@ Virtual machine consoles discovered from sources.
 | Column | Type | Description |
 |--------|------|-------------|
 | source | string | Primary key with uuid; foreign key to sources.name |
-| uuid | string | Primary key with source; VM UUID |
+| uuid | string | Primary key with source; the source's identifier for the VM, up to 255 characters. Usually the VM's UUID; a Proxmox VE console's is `<vmid>-<SMBIOS UUID>` |
 | discovered | datetime | When the console was first discovered |
 | hypervisor | string | Hypervisor hostname |
 | hypervisor_ip | string | Hypervisor IP address |
