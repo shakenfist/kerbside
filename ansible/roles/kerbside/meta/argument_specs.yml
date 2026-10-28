@@ -72,13 +72,15 @@ argument_specs:
             is not empty.
           - >-
             Every source needs a unique source name and a type, one of
-            shakenfist, ovirt, openstack and static, and each type needs its
-            own fields. A shakenfist or ovirt source needs url, username,
-            password and ca_cert, and a Shaken Fist source's username must be
-            system. An openstack source needs url, username, password,
-            project_name, user_domain_id and project_domain_id. A static
-            source needs a consoles list, each entry with uuid, name,
-            hypervisor, hypervisor_ip, insecure_port and ticket. validate
+            shakenfist, ovirt, openstack, proxmox and static, and each type
+            needs its own fields. A shakenfist, ovirt or proxmox source needs
+            url, username, password and ca_cert, and a Shaken Fist source's
+            username must be system. A Proxmox source's username is an API
+            token ID and its password is that token's secret. An openstack
+            source needs url, username, password, project_name,
+            user_domain_id and project_domain_id. A static source needs a
+            consoles list, each entry with uuid, name, hypervisor,
+            hypervisor_ip, insecure_port and ticket. validate
             checks the list by these rules on the control node before any
             host is changed, and config checks the rendered sources.yaml again
             before it replaces the running one. Neither ever prints a value.

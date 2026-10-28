@@ -24,7 +24,7 @@ mappings. Each is checked by the rules of Kerbside's source loader and of the
 driver for its type (docs/console-sources.md):
 
 * every source has a source and a type, and no two share a source name;
-* the type is shakenfist, ovirt, openstack or static;
+* the type is shakenfist, ovirt, openstack, proxmox or static;
 * the fields every source shares (url, username, password and the like) are
   text when they are present, since Kerbside refuses the whole file otherwise;
 * each type's required fields are present and non-empty text. A Shaken Fist
@@ -59,6 +59,7 @@ TYPE_REQUIRED = {
     'ovirt': ('url', 'username', 'password', 'ca_cert'),
     'openstack': ('url', 'username', 'password', 'project_name',
                   'user_domain_id', 'project_domain_id'),
+    'proxmox': ('url', 'username', 'password', 'ca_cert'),
     'static': (),
 }
 

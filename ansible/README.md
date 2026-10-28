@@ -2,10 +2,10 @@
 
 An Ansible collection for deploying
 [Kerbside](https://github.com/shakenfist/kerbside), a SPICE VDI protocol
-proxy for Shaken Fist, OpenStack, oVirt and static consoles, onto hosts you
-choose. It carries one role, `shakenfist.kerbside.kerbside`, which installs
-Kerbside into a virtualenv, writes its configuration and systemd units, runs
-its database migrations and waits for it to be ready.
+proxy for Shaken Fist, OpenStack, oVirt, Proxmox and static consoles, onto
+hosts you choose. It carries one role, `shakenfist.kerbside.kerbside`, which
+installs Kerbside into a virtualenv, writes its configuration and systemd
+units, runs its database migrations and waits for it to be ready.
 
 The role works with any console source type. It knows nothing about your
 inventory: you map your hosts onto `kerbside_hosts` and your consoles onto
@@ -94,10 +94,10 @@ Nothing is deployed unless `kerbside_hosts` is non-empty. Secrets are marked
 `kerbside_sources` is written to `sources.yaml` as given, in the form
 Kerbside's [console sources documentation](https://github.com/shakenfist/kerbside/blob/develop/docs/console-sources.md)
 describes. Each source has a unique `source` name and a `type` of
-`shakenfist`, `ovirt`, `openstack` or `static`, and each type has its own
-required fields. `validate` checks them on the control node, by position and
-key and never by value, and `config` checks the rendered file again before it
-replaces the running one.
+`shakenfist`, `ovirt`, `openstack`, `proxmox` or `static`, and each type has
+its own required fields. `validate` checks them on the control node, by
+position and key and never by value, and `config` checks the rendered file
+again before it replaces the running one.
 
 A Shaken Fist cluster. The username must be `system`, and the password is the
 cluster's `kerbside` key:
@@ -110,6 +110,19 @@ kerbside_sources:
     username: system
     password: "{{ vault_kerbside_key }}"
     ca_cert: "{{ lookup('file', 'sf-ca.pem') }}"
+```
+
+A Proxmox VE cluster. The username is an API token ID and the password is
+that token's secret:
+
+```yaml
+kerbside_sources:
+  - source: pve-a
+    type: proxmox
+    url: https://pve.example.com:8006
+    username: kerbside@pve!console
+    password: "{{ vault_kerbside_pve_secret }}"
+    ca_cert: "{{ lookup('file', 'pve-ca.pem') }}"
 ```
 
 A static source, which needs no control plane:
