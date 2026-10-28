@@ -57,7 +57,9 @@ client ends up holding. Measured on 2026-10-28.
 
 Whether a session can move between relaying and transcoding while it
 runs, and what that costs, is on its own page:
-[switching a display channel](transcoding-switching.md).
+[switching a display channel](transcoding-switching.md). What both pages
+mean for productising the transcoder is in
+[the spike's verdict](transcoding-spike.md).
 
 ## Configurations
 

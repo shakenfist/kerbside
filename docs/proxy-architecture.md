@@ -220,7 +220,9 @@ terminates the display channel instead: the proxy decodes what the
 hypervisor sends and re-encodes it for the client, sending only what changed,
 as JPEG where the picture is photographic and losslessly otherwise, at the
 pace the client's link can take. It exists to measure whether that beats
-relaying on slow links; it is not for production.
+relaying on slow links; it is not for production, and
+[the spike's verdict](performance/transcoding-spike.md) recommends against
+productising it.
 
 It needs two things, both off by default:
 

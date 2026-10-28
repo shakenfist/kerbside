@@ -5,7 +5,9 @@ relaying and the experimental
 [transcoding display channel](../proxy-architecture.md#transcoding-the-display-channel-experimental)
 while it runs, and what a move costs. It follows
 [the transcoding measurements](transcoding-measurements.md), on the same
-guest and link profiles. Measured on 2026-10-28.
+guest and link profiles, and
+[the spike's verdict](transcoding-spike.md) draws on both. Measured on
+2026-10-28.
 
 ## Summary
 

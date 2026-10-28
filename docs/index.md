@@ -213,6 +213,10 @@ Guides for working on Kerbside itself:
   Moving a live session's display channel between the two modes: what a
   switch costs, and what breaks in remote-viewer and Ryll
 
+- [Transcoding the display channel: the spike's verdict](performance/transcoding-spike.md) -
+  Why the transcoder is not being productised, what it costs per
+  session, and what would change the answer
+
 ### Architecture Documentation
 
 Internal design of the Kerbside proxy:

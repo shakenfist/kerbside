@@ -571,7 +571,7 @@ ryll's through its own Makefile, never with a host toolchain.
 | 4a | high | opus | none | Complete (d2f3d01). The rig: per-config proxy flags, CPU and RSS sampling, the `kd.frames` freeze, screenshots and a quality script, `RYLL_REF` pinned. Commit: "Teach the shaped-link rig to measure transcoding." See brief notes for 4. |
 | 4b | high | opus | none | Complete (see Execution notes). Run the matrix and write the results page. Commit: "Measure the transcoder on the shaped-link rig." See brief notes for 4. |
 | 5 | high | opus | none | Complete (see Execution notes). Test moving a live session between relay and transcoding. Commit: "Test switching a display channel mid-session." See brief notes. |
-| 6 | high | opus | none | Write up the spike with a go or no-go recommendation. Commit: "Write up the transcoding spike." See brief notes. |
+| 6 | high | opus | none | Complete (see Execution notes). Write up the spike with a go or no-go recommendation. Commit: "Write up the transcoding spike." See brief notes. |
 
 Steps 1a to 3b are complete. The remaining steps run strictly
 in sequence: 4a, 4b, 5, 6. 4b measures what 4a built, 5 must
@@ -1119,6 +1119,45 @@ Brief notes for 6:
   The mode could follow the link only between transcoding and a relay
   without GLZ or streams, with clients fixed; choosing at connect is the
   recommendation the page makes.
+- **Step 6 verdict: no-go** (`docs/performance/transcoding-spike.md`).
+  Transcoding wins clearly only on incompressible activity with
+  streaming off on links of 10 Mbit or less, and beats streaming relay
+  in one cell (150 ms / 2 Mbit heavy, 1459 against 7328 ms). Relay with
+  `streaming-video=all` is level or two to five times faster elsewhere,
+  at 0.011 to 0.025 proxy cores against 0.27 to 0.29 on a LAN. The
+  image-quality case did not hold during motion, and switching works
+  only against a weakened relay. The strongest argument for go is
+  spice-server 0.15.2's connect crash, which keeps cautious deployments
+  on streaming off; the write-up argues that fixing or avoiding the
+  crash is far cheaper than productising. No draft phase plans were
+  written, because the verdict is no-go; the write-up lists what
+  productising would need and what would reopen the question.
+- **Step 6, the andris drift diff.** andris develop at 568a43bfc0 has
+  14 commits past e29929fa88, none touching `andris/src/` (`git log`
+  and `git diff --stat` over the range, after `git fetch origin`; no
+  remote branch touches the copied files either). `diff -u` of each
+  copied `updates/` file against develop shows only the changes the
+  headers list, and every function in `geometry.rs` exists in andris's
+  platform files. So the copy has not drifted. What it left out on
+  purpose matters more: andris's heat map and H.264 stream path, which
+  is exactly what beat the transcoder on smooth activity, and which the
+  spike could not take as it is (openh264 licensing, the client clock).
+- **Step 6, the CI-lane answer (readying decision 6).** No separate
+  lane. A productised transcoder would first split ryll's `encode`
+  feature (ryll#499) and then ride the release build, so the existing
+  `Rust proxy` job covers it. While the experiment is kept
+  unproductised, adding `--features transcode` clippy and test steps
+  to that job is the cheap guard against rot; recorded as Future work
+  in the master plan, not done here.
+- **Step 6, the master plan.** The phase 3 row's description, the
+  phase 3, 4 and 5 prose, Open question 4's answer, and the Future work
+  items on ACK pacing, the `streaming-video` recommendation, the
+  spice-server crash and RDP out were updated. New Future work items
+  record the Ryll `SET_ACK` fix (the step 5 patch; ryll develop at
+  e49ddce, a local ref, still lacks it in the display and cursor
+  channels), the Ryll display-socket stall, andris's pacing and JPEG
+  fringe, and the CI step. The phase's `Status` and `Merged` cells are
+  left for the close-out after this pull request merges.
 
 ## Risks added by the re-survey
 
