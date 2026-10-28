@@ -287,7 +287,7 @@ first phase.
 |-------|------|--------|--------|
 | 1. Proxy backpressure and a WAN baseline | [PLAN-spice-performance-phase-01-proxy-backpressure.md](PLAN-spice-performance-phase-01-proxy-backpressure.md) | Complete | 52046167f8 (#478) |
 | 2. qemu damage path: prototype and measure; carry qemu, submit the kernel fix | | In progress | kerbside-patches b53aa39c7e (#1748) |
-| 3. Display transcoding in Kerbside: feasibility spike | [PLAN-spice-performance-phase-03-transcoding.md](PLAN-spice-performance-phase-03-transcoding.md) | In progress | 2e19d737aa (#489), ryll fdb5ead5b4 (#406), eab2c572cf (#494), 9d1b64d6 (#505), 13e9e2eb (#581) |
+| 3. Display transcoding in Kerbside: feasibility spike | [PLAN-spice-performance-phase-03-transcoding.md](PLAN-spice-performance-phase-03-transcoding.md) | In progress | 2e19d737aa (#489), ryll fdb5ead5b4 (#406), eab2c572cf (#494), 9d1b64d6 (#505), 13e9e2eb (#581), bba71155 (#616) |
 | 4. Son of SPICE: D-Bus display feasibility spike | | Not started | |
 | 5. Small spice-server patches (item 9, and item 4 if still wanted) | | Not started | |
 | 6. Push audit of phases 1-5 (kerbside and kerbside-patches) | | Not started | |
@@ -632,8 +632,8 @@ the detail). Two claims above no longer hold:
   LZ4 and JPEG encoders into ryll, and ryll's RDP phase 1
   added the slim renderer and its damage accumulator.
 
-The spike's remaining steps are 2 (observe the ACK window), 3b,
-4, 5 and 6.
+Steps 2 and 3b landed in #616. The spike's remaining steps are
+4 (measure), 5 (mode switching) and 6 (the write-up).
 
 **Phase 4** is a time-boxed spike, with three steps:
 1. confirm that D-Bus `Update` rectangles for virtio-gpu
