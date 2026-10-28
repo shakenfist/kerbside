@@ -239,7 +239,7 @@ class AccountCommandsRefusalTestCase(testtools.TestCase):
         self.assertRefused(_doc('pveum user token add kerbside@pve'), 'without a user and a token name')
 
 
-_SECRETS = {
+_SENTINELS = {
     'documented': 'secret-documented-1111',
     'audit_only': 'secret-audit-2222',
     'console_only': 'secret-console-3333',
@@ -258,10 +258,10 @@ class CheckPrivilegesTestCase(testtools.TestCase):
         self.addCleanup(workdir.cleanup)
         self.workdir = workdir.name
         tokens = {}
-        for name, secret in _SECRETS.items():
+        for name, sentinel in _SENTINELS.items():
             path = os.path.join(self.workdir, name)
             with open(path, 'w') as f:
-                f.write(secret)
+                f.write(sentinel)
             tokens[name] = {'token_id': _IDS[name], 'secret_file': path}
         self.lane_file = os.path.join(self.workdir, 'lane-node.json')
         with open(self.lane_file, 'w') as f:
@@ -290,7 +290,7 @@ class CheckPrivilegesTestCase(testtools.TestCase):
                   'allow_redirects': False}
 
         def auth(name):
-            return {'Authorization': 'PVEAPIToken=%s=%s' % (_IDS[name], _SECRETS[name])}
+            return {'Authorization': 'PVEAPIToken=%s=%s' % (_IDS[name], _SENTINELS[name])}
 
         self.assertEqual([
             mock.call.request('GET', api + '/nodes/pve1/qemu/100/config', headers=auth('console_only'),
@@ -301,9 +301,9 @@ class CheckPrivilegesTestCase(testtools.TestCase):
                               data=None, **common),
         ], fake.method_calls)
 
-    def assertNoSecret(self, out):
-        for secret in _SECRETS.values():
-            self.assertNotIn(secret, out)
+    def assertNoSentinel(self, out):
+        for sentinel in _SENTINELS.values():
+            self.assertNotIn(sentinel, out)
 
     def test_three_refusals_pass(self):
         rc, out, fake = self.run_tool([self.response(403)] * 3)
@@ -311,7 +311,7 @@ class CheckPrivilegesTestCase(testtools.TestCase):
         self.assertOnlyTheThreeRequests(fake)
         self.assertEqual(3, out.count('PASS: '))
         self.assertNotIn('FAIL', out)
-        self.assertNoSecret(out)
+        self.assertNoSentinel(out)
 
     def test_each_accepted_request_fails(self):
         for accepted in range(3):
@@ -327,7 +327,7 @@ class CheckPrivilegesTestCase(testtools.TestCase):
             self.assertIn('1 of 3 privilege checks failed', out)
             # Never the body of an accepted request.
             self.assertNotIn('live-ticket', out)
-            self.assertNoSecret(out)
+            self.assertNoSentinel(out)
 
     def test_another_refusal_is_not_a_403(self):
         # 401 is a bad secret, not a missing privilege, so it proves nothing.
@@ -341,7 +341,7 @@ class CheckPrivilegesTestCase(testtools.TestCase):
         self.assertEqual(1, rc)
         self.assertOnlyTheThreeRequests(fake)
         self.assertIn('the request failed: ConnectTimeout', out)
-        self.assertNoSecret(out)
+        self.assertNoSentinel(out)
 
 
 _CA = '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n'
@@ -387,13 +387,13 @@ class GenSourcesTestCase(testtools.TestCase):
 
     def test_main_writes_the_documented_token_and_prints_no_secret(self):
         with tempfile.TemporaryDirectory() as workdir:
-            secret_file = os.path.join(workdir, 'token-console')
-            with open(secret_file, 'w') as f:
+            sentinel_file = os.path.join(workdir, 'token-console')
+            with open(sentinel_file, 'w') as f:
                 f.write('secret-documented-1111\n')
             lane_file = os.path.join(workdir, 'lane-node.json')
             with open(lane_file, 'w') as f:
                 json.dump({'tokens': {
-                    'documented': {'token_id': 'kerbside-lane@pve!console', 'secret_file': secret_file},
+                    'documented': {'token_id': 'kerbside-lane@pve!console', 'secret_file': sentinel_file},
                     'audit_only': {'token_id': 'kerbside-lane@pve!audit-only', 'secret_file': '/nonexistent'},
                 }}, f)
             ca_file = os.path.join(workdir, 'ca.pem')
@@ -772,35 +772,39 @@ class SmbiosUuidTestCase(testtools.TestCase):
             self.assertIsNone(drive_console.smbios_uuid_of(config))
 
 
-_LEAKS = {
-    'the documented token\'s secret': 'secret-documented-1111',
-    'the literal pvespiceproxy:': 'pvespiceproxy:',
-}
+# Fake values to search for, and the index of each in the list.
+_NEEDLES = ['secret-documented-1111', 'pvespiceproxy:']
+_DOCUMENTED = 0
+_LITERAL = 1
 
 
-class FindSecretsTestCase(testtools.TestCase):
+class FindNeedlesTestCase(testtools.TestCase):
     def test_found_by_file_and_label(self):
         self.assertEqual([
-            ('a.log', 'the documented token\'s secret'),
-            ('b.log', 'the documented token\'s secret'),
-            ('b.log', 'the literal pvespiceproxy:'),
-        ], drive_console.find_secrets({
+            ('a.log', _DOCUMENTED),
+            ('b.log', _DOCUMENTED),
+            ('b.log', _LITERAL),
+        ], drive_console.find_needles({
             'b.log': 'x secret-documented-1111 CONNECT pvespiceproxy:abc:100',
             'a.log': 'Authorization: PVEAPIToken=kerbside-lane@pve!console=secret-documented-1111',
             'c.log': 'secret-documented-111 pvespiceproxy',
-        }, _LEAKS))
+        }, _NEEDLES))
+
+    def test_found_by_index_in_the_order_given(self):
+        self.assertEqual([('b.log', 0), ('b.log', 1)], drive_console.find_needles(
+            {'b.log': 'x secret-documented-1111 CONNECT pvespiceproxy:abc:100'}, list(reversed(_NEEDLES))))
 
     def test_a_value_split_by_colour(self):
-        self.assertEqual([('a.log', 'the documented token\'s secret')], drive_console.find_secrets(
-            {'a.log': 'secret-\x1b[3mdocumented\x1b[0m-1111'}, _LEAKS))
+        self.assertEqual([('a.log', _DOCUMENTED)], drive_console.find_needles(
+            {'a.log': 'secret-\x1b[3mdocumented\x1b[0m-1111'}, _NEEDLES))
 
     def test_clean(self):
-        self.assertEqual([], drive_console.find_secrets({'a.log': 'nothing here', 'b.log': ''}, _LEAKS))
+        self.assertEqual([], drive_console.find_needles({'a.log': 'nothing here', 'b.log': ''}, _NEEDLES))
 
     def test_a_short_value_is_refused(self):
         for value in ('', None, 'short'):
-            e = self.assertRaises(ValueError, drive_console.find_secrets, {'a.log': 'x'}, {'the seed': value})
-            self.assertIn('the seed is too short', str(e))
+            e = self.assertRaises(ValueError, drive_console.find_needles, {'a.log': 'x'}, _NEEDLES + [value])
+            self.assertIn('needle 2 is too short', str(e))
 
 
 class ScanTestCase(testtools.TestCase):
@@ -809,19 +813,19 @@ class ScanTestCase(testtools.TestCase):
         workdir = tempfile.TemporaryDirectory()
         self.addCleanup(workdir.cleanup)
         self.workdir = workdir.name
-        self.secrets_dir = os.path.join(self.workdir, 'node')
-        os.mkdir(self.secrets_dir)
+        self.node_dir = os.path.join(self.workdir, 'node')
+        os.mkdir(self.node_dir)
 
         tokens = {}
-        for name, secret in _SECRETS.items():
-            path = os.path.join(self.secrets_dir, 'token-' + name)
+        for name, sentinel in _SENTINELS.items():
+            path = os.path.join(self.node_dir, 'token-' + name)
             with open(path, 'w') as f:
-                f.write(secret + '\n')
+                f.write(sentinel + '\n')
             tokens[name] = {'token_id': _IDS[name], 'secret_file': path}
-        lane_file = os.path.join(self.secrets_dir, 'lane-node.json')
+        lane_file = os.path.join(self.node_dir, 'lane-node.json')
         with open(lane_file, 'w') as f:
             json.dump({'tokens': tokens}, f)
-        action_file = os.path.join(self.secrets_dir, 'action-token')
+        action_file = os.path.join(self.node_dir, 'action-token')
         with open(action_file, 'w') as f:
             f.write('secret-action-4444')
         seed_file = os.path.join(self.workdir, 'kerbside-auth-seed.txt')
@@ -851,7 +855,7 @@ class ScanTestCase(testtools.TestCase):
         return rc, out.getvalue() + err.getvalue()
 
     def assertNoValue(self, output):
-        for value in list(_SECRETS.values()) + ['secret-action-4444', 'seed-5555555555', 'live-ticket-6666']:
+        for value in list(_SENTINELS.values()) + ['secret-action-4444', 'seed-5555555555', 'live-ticket-6666']:
             self.assertNotIn(value, output)
 
     def test_clean(self):
@@ -863,9 +867,9 @@ class ScanTestCase(testtools.TestCase):
             self.assertTrue(os.path.exists(os.path.join(self.workdir, name)))
 
     def test_each_secret_is_found_and_its_file_removed(self):
-        for value, label in ((_SECRETS['documented'], 'the documented token\'s secret'),
-                             (_SECRETS['audit_only'], 'the audit-only token\'s secret'),
-                             (_SECRETS['console_only'], 'the console-only token\'s secret'),
+        for value, label in ((_SENTINELS['documented'], 'the documented token\'s secret'),
+                             (_SENTINELS['audit_only'], 'the audit-only token\'s secret'),
+                             (_SENTINELS['console_only'], 'the console-only token\'s secret'),
                              ('secret-action-4444', 'the action\'s token\'s secret'),
                              ('seed-5555555555', 'the auth seed'),
                              ('CONNECT pvespiceproxy:abc:100:pve1', 'the literal pvespiceproxy:')):
@@ -892,20 +896,24 @@ class ScanTestCase(testtools.TestCase):
         err = io.StringIO()
         out = io.StringIO()
         with redirect_stdout(out), mock.patch.object(sys, 'stderr', err):
-            self.assertTrue(drive_console._scan(self.workdir, {'session 1\'s backend ticket': 'live-ticket-6666'}))
+            self.assertTrue(drive_console._scan(self.workdir, ['session 1\'s backend ticket'], ['live-ticket-6666']))
         self.assertIn('kerbside.log holds session 1\'s backend ticket', out.getvalue())
         self.assertNoValue(out.getvalue() + err.getvalue())
 
     def test_a_missing_secret_is_left_out_and_said_so(self):
-        os.remove(os.path.join(self.secrets_dir, 'token-audit_only'))
-        rc, output = self.scan_only()
-        self.assertEqual(0, rc)
-        self.assertIn('the audit-only token\'s secret could not be read', output)
-        self.assertIn('none of 5 secret(s)', output)
+        for name in sorted(_SENTINELS):
+            path = os.path.join(self.node_dir, 'token-' + name)
+            os.remove(path)
+            rc, output = self.scan_only()
+            self.assertEqual(0, rc)
+            self.assertIn('the %s token\'s secret could not be read' % name.replace('_', '-'), output)
+            self.assertIn('none of 5 secret(s)', output)
+            with open(path, 'w') as f:
+                f.write(_SENTINELS[name] + '\n')
 
     def test_without_an_env_file_only_the_literal(self):
         os.remove(os.path.join(self.workdir, 'kerbside.env'))
-        self.write('kerbside.log', _SECRETS['documented'] + ' pvespiceproxy:x\n')
+        self.write('kerbside.log', _SENTINELS['documented'] + ' pvespiceproxy:x\n')
         rc, output = self.scan_only()
         self.assertEqual(1, rc)
         self.assertIn('kerbside.log holds the literal pvespiceproxy:', output)
@@ -916,7 +924,7 @@ class ScanTestCase(testtools.TestCase):
             if os.path.exists(path):
                 os.remove(path)
         found, searched = drive_console.scan_artifacts(
-            [os.path.join(self.workdir, name) for name in drive_console.UPLOADED_FILES], _LEAKS)
+            [os.path.join(self.workdir, name) for name in drive_console.UPLOADED_FILES], _NEEDLES)
         self.assertEqual([], found)
         self.assertEqual(['kerbside.log'], searched)
 

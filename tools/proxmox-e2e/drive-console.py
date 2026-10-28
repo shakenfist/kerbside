@@ -219,7 +219,7 @@ HOLD_PAST_EXPIRY = 30
 MAX_HOLD = 300
 
 # Values shorter than this would match the artifacts by chance.
-MIN_SECRET = 8
+MIN_NEEDLE = 8
 
 # Each request to the PVE API is bounded, as kerbside bounds its own.
 REQUEST_TIMEOUT = 5
@@ -513,28 +513,30 @@ def smbios_uuid_of(config):
 # ── The artifact scan ────────────────────────────────────────────────────────
 
 
-def find_secrets(texts, secrets):
-    """Return (name, label) for each secret found in each text.
+def find_needles(texts, needles):
+    """Return (name, index) for each needle found in each text.
 
-    texts maps a file name to its contents, and secrets a description of
-    each secret to its value. A text is searched as written and with ANSI
-    escapes removed, so a colourised log line cannot split a value. Raises
-    ValueError for a value too short to search for meaningfully.
+    texts maps a file name to its contents, and needles is a sequence of
+    the values to look for; index is a needle's position in it, so that
+    the caller can name what was found without this seeing the names. A
+    text is searched as written and with ANSI escapes removed, so a
+    colourised log line cannot split a value. Raises ValueError for a
+    needle too short to search for meaningfully.
     """
-    for label, value in secrets.items():
-        if len(value or '') < MIN_SECRET:
-            raise ValueError('%s is too short to search for' % label)
+    for index, needle in enumerate(needles):
+        if len(needle or '') < MIN_NEEDLE:
+            raise ValueError('needle %d is too short to search for' % index)
     found = []
     for name, text in sorted(texts.items()):
         stripped = strip_ansi(text)
-        for label, value in sorted(secrets.items()):
-            if value in text or value in stripped:
-                found.append((name, label))
+        for index, needle in enumerate(needles):
+            if needle in text or needle in stripped:
+                found.append((name, index))
     return found
 
 
-def scan_artifacts(paths, secrets):
-    """(found, searched): find_secrets over the files at paths which exist.
+def scan_artifacts(paths, needles):
+    """(found, searched): find_needles over the files at paths which exist.
 
     found names files by their base name. A file which cannot be read is
     not searched, and is not counted in searched.
@@ -546,7 +548,7 @@ def scan_artifacts(paths, secrets):
                 texts[os.path.basename(path)] = f.read()
         except OSError:
             continue
-    return find_secrets(texts, secrets), sorted(texts)
+    return find_needles(texts, needles), sorted(texts)
 
 
 # ── Running the lane ─────────────────────────────────────────────────────────
@@ -593,53 +595,64 @@ def _tail(path, lines):
         return '(could not read %s: %s)\n' % (path, exc)
 
 
-def _lane_secrets(extra=None):
-    """Every secret the artifacts must not hold, by description, read from the env file's paths.
+def _forbidden_values(extra_descriptions=(), extra_needles=()):
+    """(descriptions, needles): what the artifacts must not hold, read from the env file's paths.
 
-    A secret which cannot be read, or is too short to search for, is left
-    out and said so. extra adds values held in memory, such as backend
-    tickets.
+    The two are parallel lists, sorted by description, so that a
+    description is only ever found by its index and is never carried
+    beside its value. A value which cannot be read, or is too short to
+    search for, is left out and said so. extra_descriptions and
+    extra_needles add, in the same parallel form, values held in memory,
+    such as backend tickets.
     """
-    files = {}
+    paths = []
+    path_descriptions = []
     lane_file = os.environ.get('PROXMOX_LANE_FILE')
     if lane_file:
         try:
             with open(lane_file) as f:
-                tokens = json.load(f)['tokens']
-            for name, token in sorted(tokens.items()):
-                files['the %s token\'s secret' % name.replace('_', '-')] = token['secret_file']
+                listed = json.load(f)['tokens']
+            for name in sorted(listed):
+                path_descriptions.append('the %s token\'s secret' % name.replace('_', '-'))
+                paths.append(listed[name]['secret_file'])
         except (OSError, ValueError, KeyError, TypeError):
             _log('could not read the token list in %s; its tokens are not scanned for' % lane_file)
     if os.environ.get('PROXMOX_ACTION_TOKEN_FILE'):
-        files['the action\'s token\'s secret'] = os.environ['PROXMOX_ACTION_TOKEN_FILE']
+        path_descriptions.append('the action\'s token\'s secret')
+        paths.append(os.environ['PROXMOX_ACTION_TOKEN_FILE'])
     if os.environ.get('KERBSIDE_SEED_FILE'):
-        files['the auth seed'] = os.environ['KERBSIDE_SEED_FILE']
+        path_descriptions.append('the auth seed')
+        paths.append(os.environ['KERBSIDE_SEED_FILE'])
 
-    secrets = {'the literal pvespiceproxy:': 'pvespiceproxy:'}
-    for label, path in files.items():
-        value = _read_text(path).strip()
-        if len(value) < MIN_SECRET:
-            _log('%s could not be read from %s; it is not scanned for' % (label, path))
+    descriptions = ['the literal pvespiceproxy:']
+    needles = ['pvespiceproxy:']
+    for index, path in enumerate(paths):
+        needle = _read_text(path).strip()
+        if len(needle) < MIN_NEEDLE:
+            _log('%s could not be read from %s; it is not scanned for' % (path_descriptions[index], path))
             continue
-        secrets[label] = value
-    for label, value in (extra or {}).items():
-        if len(value or '') >= MIN_SECRET:
-            secrets[label] = value
-    return secrets
+        descriptions.append(path_descriptions[index])
+        needles.append(needle)
+    for index, needle in enumerate(extra_needles):
+        if len(needle or '') >= MIN_NEEDLE:
+            descriptions.append(extra_descriptions[index])
+            needles.append(needle)
+    order = sorted(range(len(descriptions)), key=lambda i: descriptions[i])
+    return [descriptions[i] for i in order], [needles[i] for i in order]
 
 
-def _scan(workdir, extra=None):
-    """Scan the uploaded files, removing any which holds a secret. Returns True if one did."""
+def _scan(workdir, extra_descriptions=(), extra_needles=()):
+    """Scan the uploaded files, removing any which holds a forbidden value. Returns True if one did."""
     paths = [os.path.join(workdir, name) for name in UPLOADED_FILES]
-    secrets = _lane_secrets(extra)
-    found, searched = scan_artifacts(paths, secrets)
+    descriptions, needles = _forbidden_values(extra_descriptions, extra_needles)
+    found, searched = scan_artifacts(paths, needles)
     if not found:
         _log('none of %d secret(s) is in the %d uploaded file(s) present (%s)'
-             % (len(secrets), len(searched), ', '.join(searched) or 'none'))
+             % (len(descriptions), len(searched), ', '.join(searched) or 'none'))
         return False
-    for name, label in found:
+    for name, index in found:
         print('::error title=Proxmox lane leak::%s holds %s; it has been removed so it is not uploaded'
-              % (name, label))
+              % (name, descriptions[index]))
     for name in sorted(set(name for name, _ in found)):
         try:
             os.remove(os.path.join(workdir, name))
@@ -734,8 +747,10 @@ class Lane:
             lane = json.load(f)
         self.token_id = lane['tokens']['documented']['token_id']
         self.skipped = {rule: vmid for rule, vmid in lane['skipped_guests'].items() if vmid is not None}
-        # Backend tickets read from the database, by description, for the scan.
-        self.tickets = {}
+        # Backend tickets read from the database for the scan, and in
+        # parallel what each is, so that the two are never held together.
+        self.ticket_descriptions = []
+        self.tickets = []
 
     def checkpoint(self, name, expected, sessions=()):
         """Count mints in PVE's access log, and fail unless they are as expected."""
@@ -944,7 +959,8 @@ def _capture_ticket(db, lane, session_id, label):
                     if (e.get('message') or '').startswith(MINT_FAILED_AUDIT_PREFIX)]
         _require(DEFECT, 'session %s holds no backend ticket; failed mints audited: %s'
                  % (session_id, '; '.join(failures) or 'none'))
-    lane.tickets[label] = ticket
+    lane.ticket_descriptions.append(label)
+    lane.tickets.append(ticket)
     _log('session %s holds a backend ticket (%d characters) expiring in %ds'
          % (session_id, len(ticket), expires - time.time()))
     return expires
@@ -1097,7 +1113,7 @@ def main():
         _drive(lane)
     finally:
         # Whether or not the drive passed, before anything is uploaded.
-        leaked = _scan(workdir, lane.tickets)
+        leaked = _scan(workdir, lane.ticket_descriptions, lane.tickets)
     if leaked:
         raise SystemExit('a secret reached a file the lane uploads')
     return 0
