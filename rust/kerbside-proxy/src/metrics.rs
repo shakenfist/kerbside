@@ -8,11 +8,12 @@
 //! from that registry on every `/metrics` scrape. Callers never touch the
 //! registry directly -- they use the small helper functions at the bottom of
 //! this module (`inc_connections`, `connection_guard`, `record_authorized`,
-//! `record_denied`, `add_relayed_bytes`).
+//! `record_denied`, `add_relayed_bytes`, and the `ack_window` helpers).
 
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::LazyLock;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use bytes::Bytes;
@@ -22,7 +23,9 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
-use prometheus::{Encoder, IntCounter, IntCounterVec, IntGauge, Opts, Registry, TextEncoder};
+use prometheus::{
+    CounterVec, Encoder, IntCounter, IntCounterVec, IntGauge, Opts, Registry, TextEncoder,
+};
 use tokio::net::TcpListener;
 use tracing::{debug, info, warn};
 
@@ -125,6 +128,89 @@ static FIREWALL_VERDICTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     vec
 });
 
+/// Register a counter vector labelled by `labels` in the process registry.
+fn int_counter_vec(name: &str, help: &str, labels: &[&str]) -> IntCounterVec {
+    let vec =
+        IntCounterVec::new(Opts::new(name, help), labels).expect("static metric options are valid");
+    REGISTRY
+        .register(Box::new(vec.clone()))
+        .expect("each metric registers exactly once");
+    vec
+}
+
+/// `SET_ACK` messages seen from spice-server, by `channel` (`display` or
+/// `cursor`) and `window`. spice-server uses a window of 20 messages, or 40
+/// when the main channel's start-up bandwidth test judged the client's link
+/// slow, so the `window` label says what that test concluded. Any other
+/// value is labelled `other`, to keep the label set bounded.
+static ACK_WINDOW_SET_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    int_counter_vec(
+        "kerbside_proxy_ack_window_set_total",
+        "SET_ACK messages relayed from the server, by channel and ACK window",
+        &["channel", "window"],
+    )
+});
+
+/// Server messages counted against the ACK window (every server message from
+/// the first `SET_ACK` on), by `channel`.
+static ACK_WINDOW_MESSAGES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    int_counter_vec(
+        "kerbside_proxy_ack_window_messages_total",
+        "Server messages counted against the SPICE ACK window, by channel",
+        &["channel"],
+    )
+});
+
+/// Client `ACK`s that spice-server credits (their generation matches its
+/// latest `SET_ACK`), by `channel`. Each credits one window of messages.
+static ACK_WINDOW_ACKS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    int_counter_vec(
+        "kerbside_proxy_ack_window_acks_total",
+        "Client ACKs credited against the SPICE ACK window, by channel",
+        &["channel"],
+    )
+});
+
+/// Times the relay saw a channel's unacknowledged message count pass twice
+/// its ACK window, where spice-server stops sending until an `ACK` arrives.
+static ACK_WINDOW_STALLS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    int_counter_vec(
+        "kerbside_proxy_ack_window_stalls_total",
+        "Times a channel reached the SPICE ACK window's block threshold, by channel",
+        &["channel"],
+    )
+});
+
+/// Seconds channels spent at the ACK window's block threshold, by `channel`.
+/// Summed over every session, and updated as each message is relayed.
+static ACK_WINDOW_STALLED_SECONDS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
+    let vec = CounterVec::new(
+        Opts::new(
+            "kerbside_proxy_ack_window_stalled_seconds_total",
+            "Seconds channels spent at the SPICE ACK window's block threshold, by channel",
+        ),
+        &["channel"],
+    )
+    .expect("static metric options are valid");
+    REGISTRY
+        .register(Box::new(vec.clone()))
+        .expect("ack_window_stalled_seconds_total registers exactly once");
+    vec
+});
+
+/// Things the transcoding display channel met that ryll's renderer does
+/// not draw, by `kind` (`draw_rop3`, `draw_stroke`, `draw_text`,
+/// `draw_composite`, `offscreen_surface`, `image_type` or `stream`). Each
+/// leaves a stale region on the client.
+#[cfg(feature = "transcode")]
+static TRANSCODE_UNSUPPORTED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    int_counter_vec(
+        "kerbside_proxy_transcode_unsupported_total",
+        "Backend display messages the transcoder could not draw, by kind",
+        &["kind"],
+    )
+});
+
 /// Map a relay [`Direction`] to its Prometheus label value.
 fn direction_label(dir: Direction) -> &'static str {
     match dir {
@@ -164,6 +250,55 @@ pub fn record_firewall_verdict(channel: &str, dir: Direction, rule: &str, action
     FIREWALL_VERDICTS_TOTAL
         .with_label_values(&[channel, direction_label(dir), rule, action])
         .inc();
+}
+
+/// Record a `SET_ACK` seen on `channel` with ACK window `window`.
+pub fn record_ack_window_set(channel: &str, window: u32) {
+    let window = match window {
+        20 => "20",
+        40 => "40",
+        _ => "other",
+    };
+    ACK_WINDOW_SET_TOTAL
+        .with_label_values(&[channel, window])
+        .inc();
+}
+
+/// Count one server message against `channel`'s ACK window.
+pub fn inc_ack_window_messages(channel: &str) {
+    ACK_WINDOW_MESSAGES_TOTAL
+        .with_label_values(&[channel])
+        .inc();
+}
+
+/// Count one credited client `ACK` on `channel`.
+pub fn inc_ack_window_acks(channel: &str) {
+    ACK_WINDOW_ACKS_TOTAL.with_label_values(&[channel]).inc();
+}
+
+/// Count one arrival of `channel` at the ACK window's block threshold.
+pub fn inc_ack_window_stalls(channel: &str) {
+    ACK_WINDOW_STALLS_TOTAL.with_label_values(&[channel]).inc();
+}
+
+/// Add time `channel` spent at the ACK window's block threshold.
+pub fn add_ack_window_stalled(channel: &str, d: Duration) {
+    ACK_WINDOW_STALLED_SECONDS_TOTAL
+        .with_label_values(&[channel])
+        .inc_by(d.as_secs_f64());
+}
+
+/// Count one backend display message of `kind` the transcoder could not
+/// draw.
+#[cfg(feature = "transcode")]
+pub fn inc_transcode_unsupported(kind: &str) {
+    TRANSCODE_UNSUPPORTED_TOTAL.with_label_values(&[kind]).inc();
+}
+
+/// The count of `kind` so far, for tests.
+#[cfg(all(feature = "transcode", test))]
+pub fn transcode_unsupported(kind: &str) -> u64 {
+    TRANSCODE_UNSUPPORTED_TOTAL.with_label_values(&[kind]).get()
 }
 
 /// An RAII guard that increments `active_connections` on creation and
@@ -301,5 +436,26 @@ mod tests {
             "enforced",
         );
         assert_eq!(series.get(), before + 1);
+    }
+
+    #[test]
+    fn ack_window_label_is_bounded() {
+        // Only the windows spice-server uses get their own label value.
+        let other = ACK_WINDOW_SET_TOTAL.with_label_values(&["test_ack_channel", "other"]);
+        let twenty = ACK_WINDOW_SET_TOTAL.with_label_values(&["test_ack_channel", "20"]);
+        let (other_before, twenty_before) = (other.get(), twenty.get());
+        record_ack_window_set("test_ack_channel", 20);
+        record_ack_window_set("test_ack_channel", 7);
+        record_ack_window_set("test_ack_channel", 1_000_000);
+        assert_eq!(twenty.get(), twenty_before + 1);
+        assert_eq!(other.get(), other_before + 2);
+    }
+
+    #[test]
+    fn ack_window_stalled_seconds_accumulate() {
+        let series = ACK_WINDOW_STALLED_SECONDS_TOTAL.with_label_values(&["test_ack_channel"]);
+        let before = series.get();
+        add_ack_window_stalled("test_ack_channel", Duration::from_millis(250));
+        assert!((series.get() - before - 0.25).abs() < 1e-9);
     }
 }

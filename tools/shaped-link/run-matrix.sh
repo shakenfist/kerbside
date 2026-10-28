@@ -64,7 +64,8 @@
 # Each case writes WORKDIR/<profile>/<activity>/<config>-r<N>/ with
 # keydraw.csv/.json (latency samples and draw counts), metrics-{0,1}.txt
 # (proxy /metrics before and after), ss.txt (`ss -tinm` every 0.5 s on
-# the server side) and logs. summarise.py turns WORKDIR into tables.
+# the server side), ackwin.txt (the proxy's ACK-window metrics, sampled
+# with ss) and logs. summarise.py turns WORKDIR into tables.
 
 set -euo pipefail
 
@@ -345,6 +346,16 @@ run_case() {
         done
     ) > "${out}/ss.txt" 2>/dev/null &
     local ss_pid=$!
+    # The ACK-window counters, sampled at the same rate, so that summarise.py
+    # can take their deltas over the key-press window alone.
+    (
+        while true; do
+            echo "@ $(date +%s.%N)"
+            curl -s "http://127.0.0.1:${PROM_PORT}/metrics" | grep '^kerbside_proxy_ack_window_' || true
+            sleep 0.5
+        done
+    ) > "${out}/ackwin.txt" 2>/dev/null &
+    local ackwin_pid=$!
 
     curl -s "http://127.0.0.1:${PROM_PORT}/metrics" > "${out}/metrics-0.txt" || true
     date +%s.%N > "${out}/t0"
@@ -365,6 +376,7 @@ run_case() {
         echo 'qemu exited during the case' > "${out}/qemu-died"
     fi
     stop_pid "${ss_pid}"
+    stop_pid "${ackwin_pid}"
     stop_pid "${ryll_pid}"
     stop_pid "${proxy_pid}"
     stop_pid "${qemu_pid}"

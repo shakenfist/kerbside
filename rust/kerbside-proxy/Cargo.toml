@@ -22,7 +22,21 @@ path = "src/main.rs"
 # binary's interface; that holds only while every git dependency is pinned by
 # rev here. Switching this to a branch or tag would move the resolved commit
 # into Cargo.lock, so a ryll update would stop publishing a dev wheel.
-shakenfist-spice-protocol = { git = "https://github.com/shakenfist/ryll", rev = "4c91b13d7154914c4f1ea71decf0f51a3d210554" }
+shakenfist-spice-protocol = { git = "https://github.com/shakenfist/ryll", rev = "b33dea44be11c55166fa04aee8c83fd98592e20e" }
+
+# The transcoding display channel (src/transcode/, behind the `transcode`
+# feature below) decodes the backend's display channel with ryll's renderer
+# and re-encodes it with the compression crate's LZ4 and JPEG encoders. Both
+# are pinned to the same rev as the protocol crate, for the same reason, and
+# both are optional so a default build (and so the release wheel) carries
+# neither. The renderer needs none of its default features (audio, usbredir,
+# webdav, the H.264 encoder and decoder, mozjpeg). The compression crate's
+# `encode` feature brings the image encoders, but also builds openh264 from
+# vendored source, which is why `transcode` must stay out of release builds;
+# `lz4` and `jpeg` are its decoders, which the renderer enables anyway and the
+# transcoder's tests use to check what it sends.
+shakenfist-spice-renderer = { git = "https://github.com/shakenfist/ryll", rev = "b33dea44be11c55166fa04aee8c83fd98592e20e", default-features = false, optional = true }
+shakenfist-spice-compression = { git = "https://github.com/shakenfist/ryll", rev = "b33dea44be11c55166fa04aee8c83fd98592e20e", default-features = false, features = ["encode", "lz4", "jpeg"], optional = true }
 
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "macros", "signal", "sync"] }
 tokio-rustls = "0.26"
@@ -78,6 +92,14 @@ uuid = { version = "1", features = ["v4"] }
 # of the tree: metrics.rs only uses the text exposition format via
 # TextEncoder, never the ProtobufEncoder the default feature gates.
 prometheus = { version = "0.14", default-features = false }
+
+[features]
+default = []
+# The transcoding display channel: terminate the display channel, decode it,
+# and re-encode it for the client (`--transcode-display`). Off by default and
+# never enabled by tools/build-proxy-wheel.sh, because it builds openh264 from
+# source. See docs/proxy-architecture.md.
+transcode = ["dep:shakenfist-spice-renderer", "dep:shakenfist-spice-compression"]
 
 [dev-dependencies]
 # `test-util` enables `#[tokio::test(start_paused = true)]`, used by the relay

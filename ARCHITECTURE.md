@@ -113,6 +113,12 @@ hypervisor (its plaintext port first, escalating to its TLS port only on a
 `NEED_SECURED` answer when the console has one) → bidirectional framed relay, with every message checked against
 the firewall policy delivered in the authorize reply.
 
+An experimental alternative to the relay for the display channel, built
+only with the `transcode` cargo feature and never in release wheels,
+decodes the backend's display with ryll's renderer and re-encodes it for
+the client; see
+[Transcoding the display channel](docs/proxy-architecture.md#transcoding-the-display-channel-experimental).
+
 **Supervision.** `daemon_run` (`main.py`) binds the gRPC UDS server
 *first* — the proxy dials it at startup (`ClearNodeChannels`) and lazily
 thereafter, so the socket must already exist — then launches

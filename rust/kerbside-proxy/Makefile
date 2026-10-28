@@ -19,6 +19,12 @@ CARGO_CACHE := $(CURDIR)/.cargo-cache
 UID := $(shell id -u)
 GID := $(shell id -g)
 
+# Cargo features to build with, empty by default. `make test
+# FEATURES=transcode` builds and tests the transcoding display channel, which
+# is off by default and never in release wheels (see Cargo.toml).
+FEATURES ?=
+CARGO_FEATURES := $(if $(FEATURES),--features $(FEATURES),)
+
 # The official rust image makes /usr/local/cargo world-writable, so running
 # as an arbitrary host UID/GID and writing into the mounted cache works.
 DOCKER_RUN = docker run --rm \
@@ -30,7 +36,7 @@ DOCKER_RUN = docker run --rm \
 	-e HOME=/tmp \
 	$(IMAGE)
 
-.PHONY: all image cache build test lint clean help
+.PHONY: all image cache build release test lint clean help
 
 all: build
 
@@ -38,9 +44,11 @@ help:
 	@echo "kerbside-proxy build targets:"
 	@echo "  make image  - Build the kerbside-proxy-dev Docker image"
 	@echo "  make build  - Build the crate (debug) in the container"
+	@echo "  make release - Build the crate (release) in the container"
 	@echo "  make test   - Run the test suite in the container"
 	@echo "  make lint   - Run rustfmt --check and clippy -D warnings"
 	@echo "  make clean  - Remove target/ and the cargo cache"
+	@echo "Add FEATURES=transcode to build, test or lint the transcoding display channel."
 
 image:
 	docker build -t $(IMAGE) .
@@ -51,13 +59,16 @@ $(CARGO_CACHE)/registry $(CARGO_CACHE)/git:
 cache: $(CARGO_CACHE)/registry $(CARGO_CACHE)/git
 
 build: image cache
-	$(DOCKER_RUN) cargo build
+	$(DOCKER_RUN) cargo build $(CARGO_FEATURES)
+
+release: image cache
+	$(DOCKER_RUN) cargo build --release $(CARGO_FEATURES)
 
 test: image cache
-	$(DOCKER_RUN) cargo test
+	$(DOCKER_RUN) cargo test $(CARGO_FEATURES)
 
 lint: image cache
-	$(DOCKER_RUN) sh -c "cargo fmt --all --check && cargo clippy --all-targets -- -D warnings"
+	$(DOCKER_RUN) sh -c "cargo fmt --all --check && cargo clippy --all-targets $(CARGO_FEATURES) -- -D warnings"
 
 clean:
 	rm -rf target $(CARGO_CACHE)

@@ -19,7 +19,11 @@
 //! It builds the `ConnectionConfig` from `target`, connects via `SpiceClient`
 //! with a `need_secured` retry (which the crate does not perform itself),
 //! emits the hypervisor connect success/failure audit events, and then hands
-//! the two streams to the relay (`crate::relay::run`).
+//! the two streams to the relay (`crate::relay::run`). In a build with the
+//! `transcode` feature, run with `--transcode-display`, a session's first
+//! display channel goes to the transcoding display channel
+//! (`crate::transcode::run`) instead, dialled with the capabilities that
+//! describe ryll's renderer rather than the client's.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -86,12 +90,30 @@ pub async fn run(
     // Build the base connection config from the authorized target. The ports
     // are set per attempt below (insecure first, TLS on retry).
     let base_config = build_config(target);
+    // A transcoded display channel is read by ryll's renderer, not the
+    // client, so it is dialled with the renderer's capabilities instead of
+    // the client's (see `crate::transcode::BACKEND_DISPLAY_CAPS`).
+    #[cfg(feature = "transcode")]
+    let transcode = crate::transcode::choose(state, channel_type, channel_id, connection_ref);
+    #[cfg(feature = "transcode")]
+    let channel_caps = if transcode.is_some() {
+        debug!(
+            %connection_ref,
+            backend_channel_caps = ?crate::transcode::BACKEND_DISPLAY_CAPS,
+            "transcoding this display channel; dialling the backend with the renderer's caps"
+        );
+        crate::transcode::BACKEND_DISPLAY_CAPS.to_vec()
+    } else {
+        client_caps.channel.clone()
+    };
+    #[cfg(not(feature = "transcode"))]
+    let channel_caps = client_caps.channel.clone();
     let link = BackendLink {
         connection_id,
         channel_type,
         channel_id,
         common_caps: caps::backend_common_caps(&client_caps.common),
-        channel_caps: client_caps.channel.clone(),
+        channel_caps,
     };
 
     // Connect with an insecure-first + RetrySecured fallback: attempt the
@@ -145,7 +167,22 @@ pub async fn run(
     // relayed, so the backlog we hold on spice-server's behalf stays small.
     set_backend_rcvbuf(&backend_stream, state.backend_rcvbuf_bytes, connection_ref);
 
-    log_backend_caps(connection_ref, channel_type, &link, &backend_reply);
+    // The caps Kerbside offered the client say nothing about a transcoded
+    // backend leg, so the mismatch warning is for relayed channels only.
+    #[cfg(feature = "transcode")]
+    let relayed = transcode.is_none();
+    #[cfg(not(feature = "transcode"))]
+    let relayed = true;
+    if relayed {
+        log_backend_caps(connection_ref, channel_type, &link, &backend_reply);
+    } else {
+        debug!(
+            %connection_ref,
+            backend_common_caps = ?backend_reply.common_caps,
+            backend_channel_caps = ?backend_reply.channel_caps,
+            "transcoded backend link capabilities"
+        );
+    }
 
     // Successful hypervisor connection: record the audit event. The ticket is
     // never logged. Audit RPC failures are non-fatal -- log and continue
@@ -176,6 +213,22 @@ pub async fn run(
         connection_id,
         "hypervisor connection successful; handing off to relay"
     );
+
+    #[cfg(feature = "transcode")]
+    if let Some(options) = transcode {
+        return crate::transcode::run(
+            state,
+            policy,
+            client_stream,
+            backend_stream,
+            client_caps,
+            connection_ref,
+            target,
+            cancel,
+            &options,
+        )
+        .await;
+    }
 
     // Hand both owned streams to the relay seam, along with the connection's
     // firewall policy and the state/target the relay needs to flush a single
@@ -329,7 +382,7 @@ async fn connect_once(
 
 /// The raw TCP socket underneath a `SpiceStream`, whichever variant it is.
 /// The tokio-rustls streams' `get_ref()` returns `(io, connection)`.
-fn tcp_of(stream: &SpiceStream) -> &TcpStream {
+pub(crate) fn tcp_of(stream: &SpiceStream) -> &TcpStream {
     match stream {
         SpiceStream::Plain(tcp) => tcp,
         SpiceStream::Tls(tls) => tls.get_ref().0,
