@@ -114,7 +114,11 @@ phase's planning commit: the inventory row for the role, and the phase
    runs `tools/ci-test-ansible-role.sh`. That is a rootless test of
    `validate`, of `bootstrap` against a stub virtualenv, and of
    `config`, with sources of every type, including an oVirt and a
-   static source and no `kerbside_url`. It does not run `register`.
+   static source and no `kerbside_url`. It also runs `register`,
+   without the migration or the units, and with a stub readiness
+   check. (Planning read the workflow's comment, which said
+   `register` was not run; step 5a's review corrected this finding
+   and that comment.)
    The same job runs `tools/ci-check-ansible-collection.sh`:
    ansible-lint, a build, and galaxy-importer. `sf-e2e` deploys
    through the role with one `shakenfist` source, co-located, and
@@ -230,41 +234,66 @@ phase's planning commit: the inventory row for the role, and the phase
 
 ## Definition of done
 
-- [ ] `docs/deployment/ansible.md` exists with exactly the four `##`
+- [x] `docs/deployment/ansible.md` exists with exactly the four `##`
       headings, in order: `grep '^## ' docs/deployment/ansible.md`.
-- [ ] `docs/deployment/order.yml` lists `manual.md`, `ansible.md`,
+- [x] `docs/deployment/order.yml` lists `manual.md`, `ansible.md`,
       `kolla-ansible.md` and `containers.md`, in that order, and
       nothing else.
-- [ ] The Ansible role row of `docs/index.md` links
+- [x] The Ansible role row of `docs/index.md` links
       `deployment/ansible.md`, and its other cells are unchanged:
       `git diff origin/develop -- docs/index.md` shows that row only.
-- [ ] The page has no variable table. At most ten lines name a
+- [x] The page has no variable table. At most ten lines name a
       `kerbside_` variable:
       `grep -c 'kerbside_[a-z_]*' docs/deployment/ansible.md`.
-- [ ] `ansible/README.md` no longer says "works with any console
+- [x] `ansible/README.md` no longer says "works with any console
       source type", and links #602.
-- [ ] The page links #602, the step 5b issue (no `#TBD` remains), the
+- [x] The page links #602, the step 5b issue (no `#TBD` remains), the
       collection README and Shaken Fist's Kerbside guide.
-- [ ] The drop-in example uses `EnvironmentFile=` and no
+- [x] The drop-in example uses `EnvironmentFile=` and no
       `Environment=` line with a value: `grep -n '^Environment='
       docs/deployment/ansible.md` prints nothing. Every variable it
       names is a `KERBSIDE_` field in `kerbside/config.py`.
-- [ ] The page's list of settings the role writes matches
+- [x] The page's list of settings the role writes matches
       `ansible/roles/kerbside/templates/kerbside.ini`, setting for
       setting. Checked by reading.
-- [ ] `manual.md` links `ansible.md`, and `use-cases/shakenfist.md`
+- [x] `manual.md` links `ansible.md`, and `use-cases/shakenfist.md`
       "How to set it up" links it.
-- [ ] Every anchor in the changed pages resolves, including those in
+- [x] Every anchor in the changed pages resolves, including those in
       Shaken Fist's guide. Checked by hand, because the link test
       strips anchors (#490).
-- [ ] `tools/check-backend-tls-claims.py` exits 0, and
+- [x] `tools/check-backend-tls-claims.py` exits 0, and
       `tools/mutate-backend-tls-claims.py` still reports every mutation
       caught.
-- [ ] `tox -epy3`, `tox -eflake8` and `pre-commit run --all-files`
+- [x] `tox -epy3`, `tox -eflake8` and `pre-commit run --all-files`
       pass.
-- [ ] The step 5b issue exists, and its URL is in the execution notes.
+- [x] The step 5b issue exists, and its URL is in the execution notes.
 
 ## Execution notes
+
+- Back brief answered on 2026-10-28 (AEDT). Mikal kept decisions 2
+  and 5, and approved step 5b's issue as worded.
+- Step 5b ran before step 5a, so that the page could link the issue's
+  real number rather than `#TBD`. It was filed on 2026-10-28 as #629:
+  https://github.com/shakenfist/kerbside/issues/629
+- The review of step 5a found finding 5 wrong: the rootless role test
+  runs `register`, without the migration or the units. The sanity
+  job's comment in `.github/workflows/functional-tests.yml` said it
+  did not, which is where planning got it. Both are corrected, the
+  comment in its own commit.
+- Decision 4 said the index's sources cell would gain #629. It did not:
+  that cell is about which sources the role can deploy, and #629 is
+  about settings, so the definition of done's "other cells unchanged"
+  stands.
+- With every mechanism in the index now linked, its sentence
+  "Mechanisms whose name is not a link are planned rather than written"
+  has no case left. Phase 6 reconciles `docs/index.md`, so it is left
+  for that phase.
+- Definition of done checked on 2026-10-28. `tox -epy3` passed 571
+  tests, and flake8, pre-commit and the TLS claim guard passed. The
+  mutation tool caught all 12 mutations. All 38 local anchors in the
+  changed pages resolve, and the README's and Shaken Fist's guide's
+  anchors match their headings on the day. One line of the page names
+  a `kerbside_` variable. #602 and #629 are both open.
 
 ## Back brief
 
