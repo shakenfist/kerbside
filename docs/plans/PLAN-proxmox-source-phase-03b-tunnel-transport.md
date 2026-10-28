@@ -339,10 +339,10 @@ three.
 - [x] `test_rpc.py` shows a minted tunnel reaching `Target`
       and being reused by a second channel, and no
       `tunnel` field for a source that does not mint one.
-- [ ] The direct-qemu run on the pull request passes all three
+- [x] The direct-qemu run on the pull request passes all three
       tunnel modes, with the proxy's counts as decision 7
       states, and its link is in *Outcome*.
-- [ ] The connect-host sentinel appears in none of that run's
+- [x] The connect-host sentinel appears in none of that run's
       uploaded artifacts.
 - [x] `tools/check-backend-tls-claims.py` passes, and no page
       under `docs/` says the backend leg always dials the
@@ -405,6 +405,49 @@ said the backend leg always dials the plaintext port first, and
 named the tunnelled exception in both.
 
 ## Outcome
+
+All five steps landed on `proxmox-source-phase-03b-tunnel` on
+2026-10-26 (AEDT), one commit each. 565 unit tests and 86 Rust
+tests pass.
+
+The direct-qemu lane passed on `2025bfc`, the pull request's
+head after its review round and a rebase onto develop:
+[run 40606519156](https://github.com/shakenfist/kerbside/actions/runs/40606519156).
+All three tunnel modes passed, with the CONNECT proxy's counts
+as decision 7 states:
+
+| Mode | Tunnels | Refused | Upstream failed | Channels relayed |
+|---|---|---|---|---|
+| `match` | 5 | 0 | 0 | 5 |
+| `no-subject` | 0 | 0 | 0 | 0 |
+| `mismatch` | 1 | 0 | 0 | 0 |
+
+The lane's own leak check found no connect host in any collected
+artifact, the copy of its console output included. The uploaded
+artifacts and the step log were also checked after the run for
+the sentinel's shape, which is the `pvespiceproxy:` prefix or
+any 40-character hex run, since each sentinel is random and
+never uploaded. Neither appears anywhere.
+
+CI found one defect. `tunnelled_target_dials_only_its_proxy_once`
+passed only when a `tls.rs` test had first installed the rustls
+crypto provider, which ryll needs to build a TLS verifier. The
+test harness now installs it as `main.rs` does (`245daa5`).
+
+One automated review round raised 0 fix, 2 document and
+6 consider items, and was not re-run. It took both document items
+and three consider items (`2025bfc`):
+- A minted tunnel missing a field is refused before it is
+  stored, rather than reaching protobuf as a gRPC INTERNAL
+  error.
+- A partly stored tunnel is minted again.
+- The lane fails on a missing counter, and its leak check
+  covers its own console output.
+
+The demo compose lane failed twice before the rebase, because
+the PyPI dev proxy wheel predated this proto change. That is the
+residual case the lane's workflow header describes. It passed on
+`2025bfc`.
 
 ## Back brief
 
