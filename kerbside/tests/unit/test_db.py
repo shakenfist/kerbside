@@ -650,13 +650,23 @@ class SessionBackendTicketTestCase(testtools.TestCase):
                 filter(db.ConsoleToken.token == token).one().\
                 export(include_secrets=True)
 
-    def _store(self, ticket, expires, token='client-token'):
+    def _store(self, ticket, expires, token='client-token', tunnel=None):
         with Session(self.engine) as session:
             row = session.query(db.ConsoleToken).\
                 filter(db.ConsoleToken.token == token).one()
             row.backend_ticket = ticket
             row.backend_ticket_expires = expires
+            if tunnel:
+                row.backend_proxy_uri = tunnel.proxy_uri
+                row.backend_connect_host = tunnel.connect_host
+                row.backend_port = tunnel.port
             session.commit()
+
+    def _stored_tunnel(self, token='client-token'):
+        exported = self._token(token)
+        return (exported['backend_proxy_uri'],
+                exported['backend_connect_host'],
+                exported['backend_port'])
 
     def test_mints_and_stores_when_empty(self):
         ticket = db.session_ticket('sess', self._mint, 90, 10)
@@ -684,6 +694,61 @@ class SessionBackendTicketTestCase(testtools.TestCase):
 
         self.assertEqual([90], self.minted)
         self.assertEqual(first, second)
+
+    def test_stores_and_reuses_a_tunnel_intact(self):
+        tunnel = source_base.Tunnel(
+            'http://node1.example:3128', 'opaque-connect-host', 61000)
+
+        def mint(lifetime):
+            self.minted.append(lifetime)
+            return source_base.MintedTicket(
+                'tunnelled', self.now + lifetime, tunnel)
+
+        first = db.session_ticket('sess', mint, 90, 10)
+        second = db.session_ticket('sess', mint, 90, 10)
+
+        self.assertEqual([90], self.minted)
+        self.assertEqual(
+            source_base.MintedTicket('tunnelled', self.now + 90, tunnel),
+            first)
+        self.assertEqual(first, second)
+        self.assertEqual(tuple(tunnel), self._stored_tunnel())
+
+    def test_a_partly_stored_tunnel_is_not_reused(self):
+        for tunnel in (
+                source_base.Tunnel(None, 'stale-connect-host', 61000),
+                source_base.Tunnel('http://node1.example:3128', None, 61000),
+                source_base.Tunnel('http://node1.example:3128',
+                                   'stale-connect-host', None),
+                source_base.Tunnel('http://node1.example:3128', None, None)):
+            self._store('stored', int(time.time()) + 60, tunnel=tunnel)
+            self.minted = []
+
+            ticket = db.session_ticket('sess', self._mint, 90, 10)
+
+            self.assertEqual([90], self.minted, tunnel)
+            self.assertEqual('minted-1', ticket.ticket)
+            self.assertIsNone(ticket.tunnel)
+            self.assertEqual((None, None, None), self._stored_tunnel())
+
+    def test_a_ticket_without_a_tunnel_stores_nulls(self):
+        ticket = db.session_ticket('sess', self._mint, 90, 10)
+
+        self.assertIsNone(ticket.tunnel)
+        self.assertEqual((None, None, None), self._stored_tunnel())
+        self.assertIsNone(db.session_ticket('sess', self._mint, 90, 10).tunnel)
+
+    def test_a_remint_without_a_tunnel_forgets_the_old_one(self):
+        self._store('nearly-gone', int(time.time()) + 5,
+                    tunnel=source_base.Tunnel(
+                        'http://node1.example:3128', 'stale-connect-host',
+                        61000))
+
+        ticket = db.session_ticket('sess', self._mint, 30, 10)
+
+        self.assertEqual('minted-1', ticket.ticket)
+        self.assertIsNone(ticket.tunnel)
+        self.assertEqual((None, None, None), self._stored_tunnel())
 
     def test_remints_a_ticket_past_the_margin(self):
         self._store('nearly-gone', int(time.time()) + 5)
@@ -732,18 +797,24 @@ class SessionBackendTicketTestCase(testtools.TestCase):
             ('ticket-expired', now + 60, now - 1),
             ('token-expired', now - 1, now + 90),
         ]
+        tunnel = source_base.Tunnel(
+            'http://node1.example:3128', 'opaque-connect-host', 61000)
         for token, expires, ticket_expires in rows:
             db.add_token(token, 'sess-' + token, 'engine', 'vm-1',
                          now - 60, expires)
-            self._store('ticket-' + token, ticket_expires, token=token)
+            self._store('ticket-' + token, ticket_expires, token=token,
+                        tunnel=tunnel)
 
         self.assertEqual(2, db.clear_expired_backend_tickets())
 
         self.assertEqual('ticket-live', self._token('live')['backend_ticket'])
+        self.assertEqual(tuple(tunnel), self._stored_tunnel('live'))
         for token in ('ticket-expired', 'token-expired'):
             cleared = self._token(token)
             self.assertIsNone(cleared['backend_ticket'], token)
             self.assertIsNone(cleared['backend_ticket_expires'], token)
+            self.assertEqual((None, None, None), self._stored_tunnel(token),
+                             token)
         # The rows themselves stay: reap_expired_tokens() decides that.
         self.assertIsNotNone(db.get_token_by_session_id('sess-token-expired'))
 
@@ -756,10 +827,11 @@ class SessionBackendTicketTestCase(testtools.TestCase):
 
 
 class ConsoleTokenSecretsTestCase(testtools.TestCase):
-    """A token row's backend ticket is never exported unless asked for.
+    """A token row's backend credentials are never exported unless asked for.
 
     The token getters feed API handlers (session termination returns the
-    tokens it revoked), so the ticket must stay out of every one of them.
+    tokens it revoked), so the ticket and the tunnel's connect host must
+    stay out of every one of them.
     """
 
     def setUp(self):
@@ -782,7 +854,9 @@ class ConsoleTokenSecretsTestCase(testtools.TestCase):
         db.session_ticket(
             'sess',
             lambda lifetime: source_base.MintedTicket(
-                'sekrit-backend-ticket', now + lifetime),
+                'sekrit-backend-ticket', now + lifetime,
+                source_base.Tunnel('http://node1.example:3128',
+                                   'sekrit-connect-host', 61000)),
             90, 10)
 
     def test_export_omits_the_ticket_by_default(self):
@@ -796,12 +870,28 @@ class ConsoleTokenSecretsTestCase(testtools.TestCase):
             self.assertIn('backend_ticket_expires', token)
             self.assertNotIn('sekrit-backend-ticket', repr(token))
 
+    def test_export_omits_the_connect_host_by_default(self):
+        exported = [
+            db.get_token_by_token('client-token'),
+            db.get_token_by_session_id('sess'),
+        ] + db.get_tokens_by_console('engine', 'vm-1')
+
+        for token in exported:
+            self.assertNotIn('backend_connect_host', token)
+            self.assertNotIn('sekrit-connect-host', repr(token))
+            # The rest of the tunnel is not a credential.
+            self.assertEqual('http://node1.example:3128',
+                             token['backend_proxy_uri'])
+            self.assertEqual(61000, token['backend_port'])
+
     def test_export_with_secrets_is_opt_in(self):
         with Session(self.engine) as session:
             row = session.query(db.ConsoleToken).one()
-            self.assertEqual(
-                'sekrit-backend-ticket',
-                row.export(include_secrets=True)['backend_ticket'])
+            exported = row.export(include_secrets=True)
+            self.assertEqual('sekrit-backend-ticket',
+                             exported['backend_ticket'])
+            self.assertEqual('sekrit-connect-host',
+                             exported['backend_connect_host'])
 
     def test_reaped_tokens_omit_the_ticket(self):
         with Session(self.engine) as session:
@@ -813,6 +903,7 @@ class ConsoleTokenSecretsTestCase(testtools.TestCase):
 
         self.assertEqual(1, len(reaped))
         self.assertNotIn('backend_ticket', reaped[0])
+        self.assertNotIn('backend_connect_host', reaped[0])
 
     def test_secret_fields_are_exported_only_with_secrets(self):
         with Session(self.engine) as session:

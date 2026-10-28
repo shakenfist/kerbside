@@ -7,4 +7,4 @@
 # kerbside/proxy_supervisor.py before launching the proxy, so a Python/Rust
 # pairing that disagrees on the RPC contract is refused at startup instead
 # of failing subtly at connection time.
-CONTRACT_HASH = 'f06c4ef819009d68c0d0e91ff3ea3fa1b53f3d4cfe6a16efa4510f951e988291'
+CONTRACT_HASH = 'e99c56b4ee6d0d184ae5b0330de18dd8116a4ffb8cf3f239ad4d353da1d5bbd2'

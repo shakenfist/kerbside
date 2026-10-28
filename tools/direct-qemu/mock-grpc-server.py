@@ -28,6 +28,17 @@ firewall/denial test rig:
     send_auth_result(PermissionDenied) path end to end. Denied replies carry
     NO firewall_policy.
 
+--tunnel-proxy-uri URI and --tunnel-connect-host-file PATH, given together,
+make the Target a tunnelled one, as kerbside sends for a console which is
+only reachable through an HTTP CONNECT proxy: it carries a Tunnel naming the
+proxy and the host to CONNECT to, its secure_port (which must be set) is the
+TLS port behind the tunnel, and its insecure_port is 0, so --insecure-port
+is not needed. The connect host is a credential, so it is read once at
+startup from a file rather than taken as an argument, which would put it in
+`ps` and the CI log. This script never logs it. RecordAuditEvent still logs
+each audit message verbatim, as the proxy sent it, so a connect host the
+proxy leaked into an audit event shows up in this script's log.
+
 RegisterChannel, RecordAuditEvent, DeregisterChannel, and ClearNodeChannels
 all log their request and reply with StatusReply(success=True). ProxyControl
 mirrors the real servicer: it opens the stream, emits an immediate
@@ -42,6 +53,11 @@ special test mode.
 Usage:
     mock-grpc-server.py --socket /tmp/kerbside-rust-proxy-verify/mock-grpc.sock \\
         --insecure-port 5910 --ticket ci-ticket-vm-1
+
+    mock-grpc-server.py --socket /tmp/kerbside-rust-proxy-verify/mock-grpc.sock \\
+        --hypervisor-ip 192.0.2.1 --secure-port 5911 --ticket ci-ticket-vm-1 \\
+        --tunnel-proxy-uri http://127.0.0.1:3128 \\
+        --tunnel-connect-host-file /tmp/kerbside-rust-proxy-verify/connect-host
 
 Requires: grpcio (pinned to the same version kerbside uses, see
 pyproject.toml) and the kerbside package importable (either `pip install
@@ -105,7 +121,8 @@ class MockKerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
     def __init__(self, hypervisor, hypervisor_ip, insecure_port, secure_port,
                  ticket, ca_cert, host_subject, source, uuid, session_id,
                  firewall_mode, permitted_channels, deny_tokens, deny_all,
-                 terminate_after=0):
+                 terminate_after=0, tunnel_proxy_uri=None,
+                 tunnel_connect_host=None):
         self.hypervisor = hypervisor
         self.hypervisor_ip = hypervisor_ip
         self.insecure_port = insecure_port
@@ -116,6 +133,13 @@ class MockKerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
         self.source = source
         self.uuid = uuid
         self.session_id = session_id
+        # The HTTP CONNECT tunnel to the backend, or None to dial it directly.
+        # The connect host is a credential: it goes into the Target and
+        # nowhere else, and in particular into no log line.
+        self.tunnel = None
+        if tunnel_proxy_uri:
+            self.tunnel = kerbside_pb2.Tunnel(
+                proxy_uri=tunnel_proxy_uri, connect_host=tunnel_connect_host)
         # Firewall / denial behaviour. firewall_mode is 'enforce' or
         # 'warn'; permitted_channels is a list of ChannelType discriminants
         # (empty => permit all); deny_tokens is a set of decrypted plaintext
@@ -171,21 +195,24 @@ class MockKerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
         if self._first_auth_time is None:
             self._first_auth_time = time.time()
 
+        # A tunnelled target has no plaintext port, as in the real servicer.
         target = kerbside_pb2.Target(
             hypervisor=self.hypervisor,
             hypervisor_ip=self.hypervisor_ip,
-            insecure_port=self.insecure_port,
+            insecure_port=0 if self.tunnel else self.insecure_port,
             secure_port=self.secure_port,
             ticket=self.ticket,
             ca_cert=self.ca_cert,
             host_subject=self.host_subject,
             source=self.source,
             uuid=self.uuid,
-            session_id=self.session_id)
+            session_id=self.session_id,
+            tunnel=self.tunnel)
         policy = self._build_firewall_policy()
         LOG.info(
-            'AuthorizeConnection: returning Target + FirewallPolicy(mode=%s, '
+            'AuthorizeConnection: returning Target (%s) + FirewallPolicy(mode=%s, '
             'permitted_channels=%s)',
+            'tunnelled via %s' % self.tunnel.proxy_uri if self.tunnel else 'direct',
             'WARN_ONLY' if self.firewall_mode == 'warn' else 'ENFORCE',
             self.permitted_channels or '<permit all>')
         return kerbside_pb2.AuthorizeConnectionReply(
@@ -200,6 +227,8 @@ class MockKerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
         return kerbside_pb2.StatusReply(success=True)
 
     def RecordAuditEvent(self, request, context):
+        # The message is logged as the proxy sent it, never scrubbed: a
+        # credential the proxy leaked into an audit event must show up here.
         LOG.info(
             'RecordAuditEvent: source=%s uuid=%s session_id=%s channel=%s node=%s '
             'connection_ref=%s message=%r',
@@ -274,8 +303,9 @@ def _parse_args():
     parser.add_argument(
         '--insecure-port', type=int, default=_int_env('MOCK_GRPC_INSECURE_PORT'),
         help='Target.insecure_port -- the qemu SPICE server\'s plaintext port. Required '
-             '(via flag or env var): the backend leg in this harness always connects to '
-             'qemu in plaintext.')
+             '(via flag or env var) unless the target is tunnelled: the backend leg in this '
+             'harness otherwise connects to qemu in plaintext first. Ignored for a tunnelled '
+             'target, which is sent an insecure_port of 0.')
     parser.add_argument(
         '--secure-port', type=int, default=_int_env('MOCK_GRPC_SECURE_PORT', 0),
         help='Target.secure_port. Defaults to 0 (no TLS leg to qemu in this harness); the '
@@ -334,6 +364,18 @@ def _parse_args():
              'connection" test. May also be set via MOCK_GRPC_TERMINATE_AFTER. '
              'Default 0 (disabled).')
     parser.add_argument(
+        '--tunnel-proxy-uri', default=os.environ.get('MOCK_GRPC_TUNNEL_PROXY_URI'),
+        help='Target.tunnel.proxy_uri -- the HTTP CONNECT proxy the backend leg dials, as '
+             'http://host[:port]. Requires --tunnel-connect-host-file, and --secure-port '
+             'for the TLS port behind the tunnel. May also be set via '
+             'MOCK_GRPC_TUNNEL_PROXY_URI.')
+    parser.add_argument(
+        '--tunnel-connect-host-file', default=os.environ.get('MOCK_GRPC_TUNNEL_CONNECT_HOST_FILE'),
+        help='A file holding Target.tunnel.connect_host, the host the CONNECT request names. '
+             'It is a credential, so it is read from a file once at startup and never logged. '
+             'Requires --tunnel-proxy-uri. May also be set via '
+             'MOCK_GRPC_TUNNEL_CONNECT_HOST_FILE.')
+    parser.add_argument(
         '--workers', type=int, default=int(os.environ.get('MOCK_GRPC_WORKERS', '8')),
         help='gRPC server ThreadPoolExecutor size.')
     parser.add_argument(
@@ -341,16 +383,43 @@ def _parse_args():
         help='Enable DEBUG-level logging.')
     args = parser.parse_args()
 
+    # A tunnel is both of its halves or neither.
+    if bool(args.tunnel_proxy_uri) != bool(args.tunnel_connect_host_file):
+        parser.error('--tunnel-proxy-uri and --tunnel-connect-host-file must be given together')
+    tunnelled = bool(args.tunnel_proxy_uri)
+
+    # A tunnelled target is dialled over TLS only, so it needs no plaintext
+    # port, and must have a TLS one.
     missing = [
         name for name, value in (
             ('--socket (or MOCK_GRPC_SOCKET)', args.socket),
-            ('--insecure-port (or MOCK_GRPC_INSECURE_PORT)', args.insecure_port),
+            ('--insecure-port (or MOCK_GRPC_INSECURE_PORT)',
+             0 if tunnelled else args.insecure_port),
             ('--ticket (or MOCK_GRPC_TICKET)', args.ticket),
         )
         if value is None
     ]
     if missing:
         parser.error('missing required argument(s): %s' % ', '.join(missing))
+    if tunnelled and not args.secure_port:
+        parser.error('a tunnel needs --secure-port (or MOCK_GRPC_SECURE_PORT), the TLS port '
+                     'behind it')
+
+    # Read the connect host once. Errors name the file, never what is in it.
+    args.tunnel_connect_host = None
+    if tunnelled:
+        try:
+            with open(args.tunnel_connect_host_file) as f:
+                connect_host = f.read()
+        except OSError as e:
+            parser.error('cannot read --tunnel-connect-host-file %s: %s'
+                         % (args.tunnel_connect_host_file, e.strerror))
+        if connect_host.endswith('\n'):
+            connect_host = connect_host[:-1]
+        if not connect_host:
+            parser.error('--tunnel-connect-host-file %s is empty'
+                         % args.tunnel_connect_host_file)
+        args.tunnel_connect_host = connect_host
 
     # Resolve --permitted-channels NAMES to ChannelType discriminants, the same
     # way servicer.build_firewall_policy does; unknown names are a hard error
@@ -428,7 +497,9 @@ def main():
         permitted_channels=args.permitted_channel_ids,
         deny_tokens=args.deny_tokens,
         deny_all=args.deny_all,
-        terminate_after=args.terminate_after_seconds)
+        terminate_after=args.terminate_after_seconds,
+        tunnel_proxy_uri=args.tunnel_proxy_uri,
+        tunnel_connect_host=args.tunnel_connect_host)
 
     server, _ = _bind(args.socket, args.workers)
     kerbside_pb2_grpc.add_KerbsideProxyServicer_to_server(servicer, server)
@@ -441,12 +512,17 @@ def main():
         auth_desc = 'authorizing every token except %d on the deny list' % len(args.deny_tokens)
     else:
         auth_desc = 'authorizing every token'
+    if args.tunnel_proxy_uri:
+        target_desc = 'tunnelled via %s to secure_port=%s' % (
+            args.tunnel_proxy_uri, args.secure_port)
+    else:
+        target_desc = 'hypervisor_ip=%s insecure_port=%s secure_port=%s' % (
+            args.hypervisor_ip, args.insecure_port, args.secure_port)
     LOG.info(
         'mock KerbsideProxy gRPC server listening on unix:%s (%s; firewall_mode=%s '
-        'permitted_channels=%s; target hypervisor_ip=%s insecure_port=%s secure_port=%s)',
+        'permitted_channels=%s; target %s)',
         args.socket, auth_desc, args.firewall_mode,
-        args.permitted_channel_ids or '<permit all>',
-        args.hypervisor_ip, args.insecure_port, args.secure_port)
+        args.permitted_channel_ids or '<permit all>', target_desc)
 
     stop_event = threading.Event()
 

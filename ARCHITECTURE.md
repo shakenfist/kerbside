@@ -28,7 +28,7 @@ graph TD
     kerbside <-->|"SQL :3306"| db
     kerbside -->|"discovery, token<br/>validation"| clouds
     kerbside <-->|"supervises;<br/>gRPC over UDS<br/>/run/kerbside/api.sock"| proxy
-    proxy -->|"plaintext port first,<br/>TLS port on NEED_SECURED"| hv
+    proxy -->|"plaintext port first,<br/>TLS port on NEED_SECURED<br/>(TLS via CONNECT proxy if tunnelled)"| hv
 ```
 
 All ports shown are defaults. SPICE clients need **both** 5900 and

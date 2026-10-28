@@ -120,14 +120,21 @@ def _mint_backend_ticket(driver, source_name, uuid, lifetime):
 
     The source's credentials are fetched here, so that only a channel which
     actually mints holds them, and the driver gets at most
-    minting.MINT_DEADLINE seconds to build itself and mint.
+    minting.MINT_DEADLINE seconds to build itself and mint. A minted tunnel
+    missing its proxy, connect host or port raises ConsoleTicketUnavailable.
     """
     authed = db.get_source(source_name, include_secrets=True)
     if not authed:
         raise source_base.ConsoleTicketUnavailable(
             'source %s no longer exists' % source_name)
-    return minting.mint_with_deadline(
+    minted = minting.mint_with_deadline(
         driver, authed, uuid, lifetime, minting.MINT_DEADLINE)
+    # Refused here, before it is stored: the proxy could not dial it, and
+    # would only find out on every channel of the session.
+    if minted.tunnel is not None and not source_base.tunnel_complete(minted.tunnel):
+        raise source_base.ConsoleTicketUnavailable(
+            'source %s minted an incomplete tunnel' % source_name)
+    return minted
 
 
 class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
@@ -147,6 +154,11 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
         backend ticket, minted for its first channel and reused by the rest
         (see db.session_ticket()); a channel is denied if no ticket can be
         minted. Any other source's ticket is the one on the console row.
+
+        A minted ticket can come with a tunnel, for a console which is only
+        reachable through an HTTP CONNECT proxy. The Target then carries the
+        tunnel, and the TLS port the tunnel was minted for, and no plaintext
+        port.
         """
         try:
             token = db.get_token_by_token(request.token)
@@ -182,6 +194,9 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
                 driver = None
 
             ticket = console['ticket'] or ''
+            insecure_port = console['insecure_port'] or 0
+            secure_port = console['secure_port'] or 0
+            tunnel = None
             if driver and driver.MINTS_TICKETS:
                 # The ticket has to last for as long as the client's token
                 # can still authorize a channel, plus TICKET_SLACK.
@@ -250,6 +265,15 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
                         % minted_for)
                 ticket = backend.ticket
 
+                # The tunnel's connect host is a credential like the ticket:
+                # it goes to the proxy in the Target, and nowhere else.
+                if backend.tunnel:
+                    tunnel = kerbside_pb2.Tunnel(
+                        proxy_uri=backend.tunnel.proxy_uri,
+                        connect_host=backend.tunnel.connect_host)
+                    secure_port = backend.tunnel.port
+                    insecure_port = 0
+
             db.record_channel_info_by_ref(
                 config.NODE_NAME, request.connection_ref,
                 session_id=token['session_id'])
@@ -262,14 +286,15 @@ class KerbsideProxyServicer(kerbside_pb2_grpc.KerbsideProxyServicer):
                 target=kerbside_pb2.Target(
                     hypervisor=console['hypervisor'],
                     hypervisor_ip=console['hypervisor_ip'] or '',
-                    insecure_port=console['insecure_port'] or 0,
-                    secure_port=console['secure_port'] or 0,
+                    insecure_port=insecure_port,
+                    secure_port=secure_port,
                     ticket=ticket,
                     ca_cert=source['ca_cert'] or '',
                     host_subject=console['host_subject'] or '',
                     source=console['source'],
                     uuid=console['uuid'],
-                    session_id=token['session_id']),
+                    session_id=token['session_id'],
+                    tunnel=tunnel),
                 firewall_policy=build_firewall_policy())
 
         except Exception as e:

@@ -16,20 +16,25 @@
 //!   / insecure ports, ticket, CA cert, host subject) to build a
 //!   `ConnectionConfig` from.
 //!
-//! It builds the `ConnectionConfig` from `target`, connects via `SpiceClient`
-//! with a `need_secured` retry (which the crate does not perform itself),
+//! It builds the `ConnectionConfig` from `target`, connects via `SpiceClient`,
 //! emits the hypervisor connect success/failure audit events, and then hands
 //! the two streams to the relay (`crate::relay::run`). In a build with the
 //! `transcode` feature, run with `--transcode-display`, a session's first
 //! display channel goes to the transcoding display channel
 //! (`crate::transcode::run`) instead, dialled with the capabilities that
 //! describe ryll's renderer rather than the client's.
+//!
+//! A direct target is dialled insecure first, with a `need_secured` retry over
+//! TLS (which the crate does not perform itself). A tunnelled target
+//! (`target.tunnel` set) is dialled once, over TLS only, through its HTTP
+//! CONNECT proxy.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Error, Result};
 use shakenfist_spice_protocol::link::{SpiceLinkReply, SpiceStream};
+use shakenfist_spice_protocol::proxy::parse_proxy_uri;
 use shakenfist_spice_protocol::{ChannelType, ConnectionConfig, SpiceClient};
 use socket2::SockRef;
 use tokio::net::TcpStream;
@@ -68,12 +73,14 @@ fn is_need_secured(err: &Error) -> bool {
     })
 }
 
-/// Connect to the hypervisor (with the proxy-side `need_secured` retry the
-/// crate lacks), emit the connect audit events, and hand both streams to the
-/// relay.
+/// Connect to the hypervisor, emit the connect audit events, and hand both
+/// streams to the relay.
 ///
-/// Returns `Err` if the backend connection cannot be established (after any
-/// retry); the caller closes the client connection and deregisters the channel.
+/// A tunnelled target gets exactly one TLS attempt through its proxy; a direct
+/// one gets the proxy-side `need_secured` retry the crate lacks (see
+/// `connect_direct`). Returns `Err` if the backend connection cannot be
+/// established (after any retry); the caller closes the client connection and
+/// deregisters the channel.
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     state: &SharedState,
@@ -87,9 +94,6 @@ pub async fn run(
     target: &pb::Target,
     cancel: CancellationToken,
 ) -> Result<()> {
-    // Build the base connection config from the authorized target. The ports
-    // are set per attempt below (insecure first, TLS on retry).
-    let base_config = build_config(target);
     // A transcoded display channel is read by ryll's renderer, not the
     // client, so it is dialled with the renderer's capabilities instead of
     // the client's (see `crate::transcode::BACKEND_DISPLAY_CAPS`).
@@ -116,50 +120,20 @@ pub async fn run(
         channel_caps,
     };
 
-    // Connect with an insecure-first + RetrySecured fallback: attempt the
-    // insecure leg and, only on a NeedSecured signal, retry over TLS. Any
-    // other failure on the first attempt is returned as-is (no retry).
-    let (backend_stream, backend_reply) = match connect_once(&base_config, &link).await {
+    // An unusable target is a failed connect like any other, so it reaches
+    // the audit trail rather than only the proxy's log.
+    let connected = match build_config(target) {
+        // A tunnel is TLS only: build_config has already set tls_port, and
+        // there is no insecure attempt to escalate from.
+        Ok(config) if target.tunnel.is_some() => connect_once(&config, &link).await,
+        Ok(config) => connect_direct(config, &link, connection_ref, target).await,
+        Err(e) => Err(e),
+    };
+    let (backend_stream, backend_reply) = match connected {
         Ok(connected) => connected,
-        Err(first_err) => {
-            // Only retry when the server explicitly asked for a secure
-            // connection and we actually have a secure port to try.
-            if is_need_secured(&first_err) && target.secure_port != 0 {
-                // CI-ORACLE: the message text and the host_subject field are
-                // load-bearing for tools/ovirt-e2e/drive-console.py, which
-                // asserts both that the escalation happened and that it
-                // carried a non-empty certificate-subject pin (an empty
-                // subject maps to None in build_config, silently disabling
-                // verification). Update the consumer if either changes.
-                info!(
-                    %connection_ref,
-                    hypervisor = %target.hypervisor,
-                    channel_type = channel_type.name(),
-                    host_subject = %target.host_subject,
-                    "hypervisor requires TLS; retrying backend connection over the secure port"
-                );
-                let mut secure_config = base_config;
-                // `port` is unused once tls_port is set; the crate dials tls_port.
-                secure_config.tls_port = Some(target.secure_port as u16);
-                match connect_once(&secure_config, &link).await {
-                    Ok(connected) => connected,
-                    Err(retry_err) => {
-                        record_connect_failure(
-                            state,
-                            connection_ref,
-                            channel_type,
-                            target,
-                            &retry_err,
-                        )
-                        .await;
-                        return Err(retry_err);
-                    }
-                }
-            } else {
-                record_connect_failure(state, connection_ref, channel_type, target, &first_err)
-                    .await;
-                return Err(first_err);
-            }
+        Err(e) => {
+            record_connect_failure(state, connection_ref, channel_type, target, &e).await;
+            return Err(e);
         }
     };
 
@@ -207,6 +181,7 @@ pub async fn run(
         %connection_ref,
         hypervisor = %target.hypervisor,
         hypervisor_ip = %target.hypervisor_ip,
+        tunnelled = target.tunnel.is_some(),
         session_id = %target.session_id,
         channel_type = channel_type.name(),
         channel_id,
@@ -246,22 +221,64 @@ pub async fn run(
     .await
 }
 
+/// Connect to a direct (untunnelled) target insecure first, retrying over TLS
+/// only when the server answers `NEED_SECURED` and there is a secure port to
+/// try. Any other failure on the first attempt is returned as-is (no retry).
+async fn connect_direct(
+    base_config: ConnectionConfig,
+    link: &BackendLink,
+    connection_ref: &str,
+    target: &pb::Target,
+) -> Result<(SpiceStream, SpiceLinkReply)> {
+    let first_err = match connect_once(&base_config, link).await {
+        Ok(connected) => return Ok(connected),
+        Err(e) => e,
+    };
+    if !is_need_secured(&first_err) || target.secure_port == 0 {
+        return Err(first_err);
+    }
+
+    // CI-ORACLE: the message text and the host_subject field are
+    // load-bearing for tools/ovirt-e2e/drive-console.py, which asserts both
+    // that the escalation happened and that it carried a non-empty
+    // certificate-subject pin (an empty subject maps to None in
+    // build_config, silently disabling verification). Update the consumer
+    // if either changes.
+    info!(
+        %connection_ref,
+        hypervisor = %target.hypervisor,
+        channel_type = link.channel_type.name(),
+        host_subject = %target.host_subject,
+        "hypervisor requires TLS; retrying backend connection over the secure port"
+    );
+    let mut secure_config = base_config;
+    // `port` is unused once tls_port is set; the crate dials tls_port.
+    secure_config.tls_port = Some(target.secure_port as u16);
+    connect_once(&secure_config, link).await
+}
+
 /// Build the base `ConnectionConfig` from an authorized `Target`.
 ///
-/// The ports are set per attempt by the caller (insecure first, TLS on the
-/// `need_secured` retry), so `tls_port` starts `None` here. Extracted from
-/// `run` so the several `Target` field mappings (host fallback, always-`Some`
-/// ticket, empty-string -> `None`) are unit-testable in isolation.
-fn build_config(target: &pb::Target) -> ConnectionConfig {
-    // `host`: prefer the numeric hypervisor_ip when the control plane provided
-    // one, else the hypervisor name.
-    let host = if target.hypervisor_ip.is_empty() {
-        target.hypervisor.clone()
-    } else {
-        target.hypervisor_ip.clone()
-    };
-    ConnectionConfig {
-        host,
+/// For a direct target the ports are set per attempt by the caller (insecure
+/// first, TLS on the `need_secured` retry), so `tls_port` starts `None` here.
+/// For a tunnelled target the config is final: `host` is the connect host the
+/// proxy is asked for, `tls_port` is `secure_port`, and `proxy` is the parsed
+/// `proxy_uri`. Extracted from `run` so the several `Target` field mappings
+/// (host fallback, always-`Some` ticket, empty-string -> `None`, the tunnel)
+/// are unit-testable in isolation.
+///
+/// Fails only for a tunnel that cannot be dialled: an empty connect host, a
+/// secure port that is not a TCP port, or a proxy URI the crate refuses. The
+/// errors name the field, never the connect host, which is a credential.
+fn build_config(target: &pb::Target) -> Result<ConnectionConfig> {
+    let mut config = ConnectionConfig {
+        // `host`: prefer the numeric hypervisor_ip when the control plane
+        // provided one, else the hypervisor name. Replaced below for a tunnel.
+        host: if target.hypervisor_ip.is_empty() {
+            target.hypervisor.clone()
+        } else {
+            target.hypervisor_ip.clone()
+        },
         port: target.insecure_port as u16,
         tls_port: None,
         // The crate encrypts even an empty ticket; an empty ticket is valid for
@@ -282,10 +299,36 @@ fn build_config(target: &pb::Target) -> ConnectionConfig {
         } else {
             Some(target.host_subject.clone())
         },
-        // Kerbside dials hypervisors directly; no source delivers an HTTP
-        // CONNECT proxy in `Target`.
         proxy: None,
+    };
+
+    let Some(tunnel) = &target.tunnel else {
+        return Ok(config);
+    };
+    // A tunnel without a host_subject is refused by SpiceClient::new, so it
+    // is deliberately not checked here as well.
+    if tunnel.connect_host.is_empty() {
+        return Err(anyhow!("tunnelled target has an empty tunnel.connect_host"));
     }
+    let tls_port = match u16::try_from(target.secure_port) {
+        Ok(port) if port != 0 => port,
+        _ => {
+            return Err(anyhow!(
+                "tunnelled target has secure_port {}, which is not a TCP port",
+                target.secure_port
+            ))
+        }
+    };
+    let proxy = parse_proxy_uri(&tunnel.proxy_uri)
+        .map_err(|e| anyhow!("tunnelled target has an unusable tunnel.proxy_uri: {e}"))?;
+
+    // Under a tunnel hypervisor_ip and insecure_port are never dialled: the
+    // crate dials the proxy and asks it to CONNECT to host:tls_port.
+    config.host = tunnel.connect_host.clone();
+    config.port = tls_port;
+    config.tls_port = Some(tls_port);
+    config.proxy = Some(proxy);
+    Ok(config)
 }
 
 /// What the backend link handshake advertises: the client's channel identity
@@ -446,6 +489,7 @@ async fn record_connect_failure(
     warn!(
         %connection_ref,
         hypervisor = %target.hypervisor,
+        tunnelled = target.tunnel.is_some(),
         channel_type = channel_type.name(),
         error = %format_args!("{err:#}"),
         "hypervisor connection failed"
@@ -472,6 +516,49 @@ async fn record_connect_failure(
 mod tests {
     use super::*;
     use anyhow::anyhow;
+    use shakenfist_spice_protocol::proxy::HttpProxy;
+
+    /// A stand-in for a signed CONNECT host, shaped like Proxmox's. It must
+    /// never appear in an error kerbside builds.
+    const SENTINEL_CONNECT_HOST: &str = "pvespiceproxy:sentinel-0d15ea5e:100:pve1:61000::cafe";
+
+    /// `build_config` for a target without a tunnel, which never fails.
+    fn direct_config(target: &pb::Target) -> ConnectionConfig {
+        build_config(target).expect("a target without a tunnel always builds")
+    }
+
+    /// A target with every field set, tunnelled through `proxy_uri`.
+    fn tunnelled_target(proxy_uri: &str, connect_host: &str, secure_port: u32) -> pb::Target {
+        pb::Target {
+            hypervisor: "pve1".to_string(),
+            hypervisor_ip: "192.0.2.1".to_string(),
+            insecure_port: 5900,
+            secure_port,
+            ticket: "vmticket".to_string(),
+            ca_cert: "-----BEGIN CERT-----".to_string(),
+            host_subject: "CN=pve1".to_string(),
+            source: "src".to_string(),
+            uuid: "uuid".to_string(),
+            session_id: "session".to_string(),
+            tunnel: Some(pb::Tunnel {
+                proxy_uri: proxy_uri.to_string(),
+                connect_host: connect_host.to_string(),
+            }),
+        }
+    }
+
+    /// Build a tunnelled config that must fail, and return its error text,
+    /// checked for the sentinel in both its Display and Debug forms.
+    fn tunnel_refusal(target: &pb::Target) -> String {
+        let err = build_config(target).expect_err("the tunnel must be refused");
+        let shown = format!("{err:#}");
+        assert!(
+            !shown.contains(SENTINEL_CONNECT_HOST)
+                && !format!("{err:?}").contains(SENTINEL_CONNECT_HOST),
+            "the error quotes the connect host"
+        );
+        shown
+    }
 
     #[test]
     fn connect_failure_message_keeps_the_cause() {
@@ -542,7 +629,7 @@ mod tests {
             ticket: "vmticket".to_string(),
             ..Default::default()
         };
-        let config = build_config(&target);
+        let config = direct_config(&target);
         assert_eq!(config.host, "10.0.0.5");
         assert_eq!(config.port, 5901);
         assert!(config.tls_port.is_none());
@@ -555,17 +642,17 @@ mod tests {
             hypervisor_ip: String::new(),
             ..Default::default()
         };
-        assert_eq!(build_config(&target).host, "hv.example");
+        assert_eq!(direct_config(&target).host, "hv.example");
     }
 
     #[test]
     fn build_config_always_passes_some_ticket_even_when_empty() {
         // An empty ticket is valid for the shakenfist/openstack sources; the
         // crate encrypts even an empty ticket, so it must stay Some(...).
-        let empty = build_config(&pb::Target::default());
+        let empty = direct_config(&pb::Target::default());
         assert_eq!(empty.password.as_deref(), Some(""));
 
-        let set = build_config(&pb::Target {
+        let set = direct_config(&pb::Target {
             ticket: "secret".to_string(),
             ..Default::default()
         });
@@ -574,11 +661,11 @@ mod tests {
 
     #[test]
     fn build_config_maps_empty_ca_cert_and_host_subject_to_none() {
-        let empty = build_config(&pb::Target::default());
+        let empty = direct_config(&pb::Target::default());
         assert!(empty.ca_cert.is_none());
         assert!(empty.host_subject.is_none());
 
-        let set = build_config(&pb::Target {
+        let set = direct_config(&pb::Target {
             ca_cert: "-----BEGIN CERT-----".to_string(),
             host_subject: "C=US,CN=hv".to_string(),
             ..Default::default()
@@ -596,9 +683,78 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            build_config(&target).host_subject.as_deref(),
+            direct_config(&target).host_subject.as_deref(),
             Some("O=Acme\\, Inc,CN=hv")
         );
+    }
+
+    #[test]
+    fn build_config_without_a_tunnel_maps_exactly_as_before() {
+        // Every field set, secure_port included: a direct target still
+        // starts insecure, with no proxy, whatever else it carries.
+        let target = pb::Target {
+            tunnel: None,
+            ..tunnelled_target("", "", 5901)
+        };
+        let config = direct_config(&target);
+        assert_eq!(config.host, "192.0.2.1");
+        assert_eq!(config.port, 5900);
+        assert!(config.tls_port.is_none());
+        assert_eq!(config.password.as_deref(), Some("vmticket"));
+        assert_eq!(config.ca_cert.as_deref(), Some("-----BEGIN CERT-----"));
+        assert_eq!(config.host_subject.as_deref(), Some("CN=pve1"));
+        assert!(config.proxy.is_none());
+    }
+
+    #[test]
+    fn build_config_maps_a_tunnel_to_tls_through_the_proxy() {
+        let target = tunnelled_target("http://pve1.example:3128", SENTINEL_CONNECT_HOST, 61000);
+        let config = build_config(&target).expect("a well-formed tunnel builds");
+        // The proxy is asked to CONNECT to connect_host:secure_port, over TLS.
+        // Compared without assert_eq!, whose failure would print the host.
+        assert!(
+            config.host == SENTINEL_CONNECT_HOST,
+            "host is not the connect host"
+        );
+        assert_eq!(config.tls_port, Some(61000));
+        assert_eq!(
+            config.proxy,
+            Some(HttpProxy {
+                host: "pve1.example".to_string(),
+                port: 3128,
+            })
+        );
+        // Neither hypervisor_ip nor insecure_port survives to be dialled.
+        assert_eq!(config.port, 61000);
+        // The credentials and the pin pass through unchanged.
+        assert_eq!(config.password.as_deref(), Some("vmticket"));
+        assert_eq!(config.ca_cert.as_deref(), Some("-----BEGIN CERT-----"));
+        assert_eq!(config.host_subject.as_deref(), Some("CN=pve1"));
+    }
+
+    #[test]
+    fn build_config_refuses_a_tunnel_with_an_empty_connect_host() {
+        let target = tunnelled_target("http://pve1.example:3128", "", 61000);
+        assert!(tunnel_refusal(&target).contains("connect_host"));
+    }
+
+    #[test]
+    fn build_config_refuses_a_tunnel_without_a_usable_secure_port() {
+        for port in [0, 65536] {
+            let target = tunnelled_target("http://pve1.example:3128", SENTINEL_CONNECT_HOST, port);
+            let message = tunnel_refusal(&target);
+            assert!(message.contains("secure_port"), "port {port}: {message}");
+        }
+    }
+
+    #[test]
+    fn build_config_refuses_a_tunnel_with_a_bad_proxy_uri() {
+        // An empty URI, a scheme the crate refuses, and a port out of range.
+        for uri in ["", "https://pve1.example:3128", "http://pve1.example:99999"] {
+            let target = tunnelled_target(uri, SENTINEL_CONNECT_HOST, 61000);
+            let message = tunnel_refusal(&target);
+            assert!(message.contains("proxy_uri"), "uri {uri:?}: {message}");
+        }
     }
 
     /// Build a connected loopback pair: (accepted server side, client side).

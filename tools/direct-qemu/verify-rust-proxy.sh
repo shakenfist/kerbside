@@ -51,8 +51,12 @@
 #          need_secured and the proxy's backend leg must retry on the
 #          TLS port), and the mock's Target carries the CA plus a
 #          host_subject pin: the qemu server cert's real subject when
-#          HOST_SUBJECT_EXPECT=match (default), or a deliberately wrong
-#          subject when HOST_SUBJECT_EXPECT=mismatch.
+#          HOST_SUBJECT_EXPECT=match (default), a deliberately wrong
+#          subject when HOST_SUBJECT_EXPECT=mismatch, or no pin at all when
+#          HOST_SUBJECT_EXPECT=none. With TUNNEL_PROXY_URI and
+#          TUNNEL_CONNECT_HOST_FILE also set, the Target is tunnelled: the
+#          proxy reaches qemu's TLS port only through that HTTP CONNECT
+#          proxy, which the caller runs (see run-tunnel-checks.sh).
 #   assert -- poll the proxy's /metrics (GET http://127.0.0.1:<prometheus
 #          port>/metrics) and assert kerbside_proxy_authorized_total >= 1
 #          and kerbside_proxy_bytes_relayed_total > 0 for BOTH the
@@ -91,6 +95,10 @@
 #                        is what triggers the backend attempt; the client
 #                        itself fails to get a session, which is the
 #                        point).
+#            none     -- for a tunnelled target, which is refused without a
+#                        pin: require authorized >= 1, ZERO bytes relayed,
+#                        and a "Hypervisor connection failed" audit event
+#                        naming host_subject.
 #          Same exit codes as `assert`.
 #   down   -- tear everything down by pidfile (best-effort, never errors).
 #
@@ -106,7 +114,10 @@
 # (1 to enable the qemu TLS listener + host_subject pinning), QEMU_TLS_PORT,
 # BACKEND_HOST_SUBJECT (the pin sent when HOST_SUBJECT_EXPECT=match),
 # MISMATCH_HOST_SUBJECT (the pin sent when HOST_SUBJECT_EXPECT=mismatch),
-# HOST_SUBJECT_EXPECT (match|mismatch, for up and assert-host-subject).
+# HOST_SUBJECT_EXPECT (match|mismatch|none, for up and assert-host-subject),
+# and the target the mock hands out: MOCK_HYPERVISOR_IP (Target.hypervisor_ip,
+# default 127.0.0.1), TUNNEL_PROXY_URI and TUNNEL_CONNECT_HOST_FILE (set both
+# to tunnel the target; needs BACKEND_TLS=1).
 
 set -euo pipefail
 
@@ -138,9 +149,32 @@ QEMU_TLS_PORT="${QEMU_TLS_PORT:-5911}"
 BACKEND_HOST_SUBJECT="${BACKEND_HOST_SUBJECT:-C=US,O=Kerbside CI,CN=qemu-hv}"
 MISMATCH_HOST_SUBJECT="${MISMATCH_HOST_SUBJECT:-CN=not-the-hypervisor}"
 HOST_SUBJECT_EXPECT="${HOST_SUBJECT_EXPECT:-match}"
-if [ "${HOST_SUBJECT_EXPECT}" != 'match' ] && [ "${HOST_SUBJECT_EXPECT}" != 'mismatch' ]; then
-    echo "ERROR: HOST_SUBJECT_EXPECT must be 'match' or 'mismatch', got '${HOST_SUBJECT_EXPECT}'" >&2
-    exit 1
+case "${HOST_SUBJECT_EXPECT}" in
+    match|mismatch|none) ;;
+    *)
+        echo "ERROR: HOST_SUBJECT_EXPECT must be 'match', 'mismatch' or 'none'," \
+             "got '${HOST_SUBJECT_EXPECT}'" >&2
+        exit 1
+        ;;
+esac
+
+# The backend address the mock's Target names, and an optional HTTP CONNECT
+# tunnel to it. A tunnelled Target is dialled only through TUNNEL_PROXY_URI,
+# so a caller proving that sets MOCK_HYPERVISOR_IP to an address nothing
+# answers on. The connect host is a credential, so it is passed to the mock
+# as a file and never printed here.
+MOCK_HYPERVISOR_IP="${MOCK_HYPERVISOR_IP:-127.0.0.1}"
+TUNNEL_PROXY_URI="${TUNNEL_PROXY_URI:-}"
+TUNNEL_CONNECT_HOST_FILE="${TUNNEL_CONNECT_HOST_FILE:-}"
+if [ -n "${TUNNEL_PROXY_URI}" ] || [ -n "${TUNNEL_CONNECT_HOST_FILE}" ]; then
+    if [ -z "${TUNNEL_PROXY_URI}" ] || [ -z "${TUNNEL_CONNECT_HOST_FILE}" ]; then
+        echo "ERROR: TUNNEL_PROXY_URI and TUNNEL_CONNECT_HOST_FILE must be set together" >&2
+        exit 1
+    fi
+    if [ "${BACKEND_TLS}" != '1' ]; then
+        echo "ERROR: a tunnelled target is TLS only; set BACKEND_TLS=1" >&2
+        exit 1
+    fi
 fi
 
 # The mock KerbsideProxy gRPC control-plane service.
@@ -461,7 +495,23 @@ if [ "${ACTION}" = 'assert-host-subject' ]; then
         echo "[verify-rust-proxy] authorized=${AUTHORIZED} bytes{c2s}=${C2S} bytes{s2c}=${S2C}" \
              "hypervisor_failure_audit=$([ -n "${FAILED_AUDIT}" ] && echo present || echo absent)"
 
-        if [ "${HOST_SUBJECT_EXPECT}" = 'match' ]; then
+        if [ "${HOST_SUBJECT_EXPECT}" = 'none' ]; then
+            # A tunnel without a pin: authorization succeeds, the backend is
+            # refused before any dial, and the refusal names the missing pin.
+            if [ "${AUTHORIZED}" -ge 1 ] 2>/dev/null \
+                    && printf '%s' "${FAILED_AUDIT}" | grep -q 'host_subject'; then
+                if [ "${C2S}" -eq 0 ] 2>/dev/null && [ "${S2C}" -eq 0 ] 2>/dev/null; then
+                    echo "[verify-rust-proxy] refusal audit event:"
+                    printf '%s\n' "${FAILED_AUDIT}" | tail -1 | sed 's/^/[verify-rust-proxy]   /'
+                    echo "[verify-rust-proxy] PASS: a target without a host_subject pin was" \
+                         "refused (audit event names host_subject, zero bytes relayed)"
+                    exit 0
+                fi
+                echo "ERROR: bytes were relayed despite a missing host_subject --" \
+                     "c2s=${C2S} s2c=${S2C} (expected 0/0)" >&2
+                exit 1
+            fi
+        elif [ "${HOST_SUBJECT_EXPECT}" = 'match' ]; then
             if [ -n "${FAILED_AUDIT}" ]; then
                 echo "ERROR: backend connect failed under a MATCHING host_subject pin:" >&2
                 printf '%s\n' "${FAILED_AUDIT}" | tail -5 >&2
@@ -592,7 +642,7 @@ echo "[verify-rust-proxy] Starting mock-grpc-server.py (firewall_mode=${FIREWALL
      "deny_token=${DENY_TOKEN:+<set>})"
 MOCK_ARGS=(
     --socket "${GRPC_SOCKET}"
-    --hypervisor-ip '127.0.0.1'
+    --hypervisor-ip "${MOCK_HYPERVISOR_IP}"
     --insecure-port "${SPICE_PORT}"
     --ticket "${SPICE_TICKET}"
     --source "${CONSOLE_SOURCE}"
@@ -612,6 +662,8 @@ if [ "${BACKEND_TLS}" = '1' ]; then
     # HOST_SUBJECT_EXPECT=mismatch.
     if [ "${HOST_SUBJECT_EXPECT}" = 'mismatch' ]; then
         TARGET_HOST_SUBJECT="${MISMATCH_HOST_SUBJECT}"
+    elif [ "${HOST_SUBJECT_EXPECT}" = 'none' ]; then
+        TARGET_HOST_SUBJECT=''
     else
         TARGET_HOST_SUBJECT="${BACKEND_HOST_SUBJECT}"
     fi
@@ -624,6 +676,14 @@ if [ "${BACKEND_TLS}" = '1' ]; then
     )
 else
     MOCK_ARGS+=(--secure-port 0)
+fi
+if [ -n "${TUNNEL_PROXY_URI}" ]; then
+    echo "[verify-rust-proxy] backend tunnelled via ${TUNNEL_PROXY_URI}" \
+         "(hypervisor_ip=${MOCK_HYPERVISOR_IP} is not dialled)"
+    MOCK_ARGS+=(
+        --tunnel-proxy-uri "${TUNNEL_PROXY_URI}"
+        --tunnel-connect-host-file "${TUNNEL_CONNECT_HOST_FILE}"
+    )
 fi
 if [ -n "${DENY_ALL}" ]; then
     MOCK_ARGS+=(--deny-all)

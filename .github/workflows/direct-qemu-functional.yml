@@ -299,6 +299,25 @@ jobs:
             /tmp/kerbside-host-subject-checks-mismatch/ryll-ci.stderr
             /tmp/kerbside-host-subject-checks-mismatch/tls/
 
+      # Prove a tunnelled backend leg: the proxy reaches qemu's TLS port only
+      # through an HTTP CONNECT proxy, and is refused without a host_subject
+      # pin or with a wrong one. Same harness and ports as the host-subject
+      # checks above, so it runs after them. The script fails the run if a
+      # collected artifact holds a connect host, and removes that file.
+      - name: Tunnel transport checks
+        run: tools/direct-qemu/run-tunnel-checks.sh
+
+      - name: Upload tunnel-checks artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        continue-on-error: true  # a failed upload must not fail a lane that passed (#403)
+        with:
+          name: direct-qemu-tunnel-artifacts-${{ github.run_id }}
+          retention-days: 90
+          if-no-files-found: warn
+          path: |
+            /tmp/tunnel-artifacts/
+
   # The aggregate gate whose display name is the required status check
   # in the develop ruleset -- do not rename it (or this workflow's
   # jobs) without updating the ruleset, or the queue wedges on a check

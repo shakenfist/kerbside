@@ -1,4 +1,5 @@
 from unittest import mock
+import logging
 import shutil
 import tempfile
 import threading
@@ -599,13 +600,56 @@ class AuthorizeConnectionMintingTestCase(testtools.TestCase):
                 db.ConsoleToken.session_id == 's').one()
             return token.backend_ticket, token.backend_ticket_expires
 
-    def _store(self, ticket, expires):
+    def _store(self, ticket, expires, tunnel=None):
         with Session(self.engine) as session:
             token = session.query(db.ConsoleToken).filter(
                 db.ConsoleToken.session_id == 's').one()
             token.backend_ticket = ticket
             token.backend_ticket_expires = expires
+            if tunnel:
+                token.backend_proxy_uri = tunnel.proxy_uri
+                token.backend_connect_host = tunnel.connect_host
+                token.backend_port = tunnel.port
             session.commit()
+
+    def _stored_tunnel(self):
+        with Session(self.engine) as session:
+            token = session.query(db.ConsoleToken).filter(
+                db.ConsoleToken.session_id == 's').one()
+            return (token.backend_proxy_uri, token.backend_connect_host,
+                    token.backend_port)
+
+    def _mint_tunnelled(self, connect_host):
+        """Mint like _mint_ok, but with a tunnel to connect_host."""
+        def mint(uuid, lifetime):
+            return source_base.MintedTicket(
+                'minted-%d' % len(self.mints), int(time.time()) + lifetime,
+                source_base.Tunnel('http://pve1.example:3128', connect_host,
+                                   61000))
+        return mint
+
+    def _capture_logs(self):
+        """Capture every log record emitted while the test runs.
+
+        The handler sits on the root logger, so it sees the servicer's,
+        db.py's and the minting helper's loggers alike. Each record is kept
+        as its rendered message and every attribute it carries, which
+        includes the structured fields with_fields() attaches.
+        """
+        records = []
+
+        class Capture(logging.Handler):
+            def emit(self, record):
+                records.append(record.getMessage())
+                records.append(repr(vars(record)))
+
+        handler = Capture(level=logging.DEBUG)
+        root = logging.getLogger()
+        root.addHandler(handler)
+        self.addCleanup(root.removeHandler, handler)
+        self.addCleanup(root.setLevel, root.level)
+        root.setLevel(logging.DEBUG)
+        return records
 
     def test_mints_once_for_every_channel_of_a_session(self):
         replies = [
@@ -811,6 +855,170 @@ class AuthorizeConnectionMintingTestCase(testtools.TestCase):
         self.assertEqual('', openstack_reply.target.ticket)
         self.assertEqual([], self.mints)
         self.assertEqual([], self._minted_messages())
+        # Neither is tunnelled: both are dialled on their console's ports.
+        for reply in (static_reply, openstack_reply):
+            self.assertFalse(reply.target.HasField('tunnel'))
+            self.assertEqual(5901, reply.target.insecure_port)
+            self.assertEqual(5900, reply.target.secure_port)
+            self.assertEqual('10.0.0.2', reply.target.hypervisor_ip)
+
+    def test_a_minted_tunnel_reaches_every_channel_of_a_session(self):
+        self.mint = self._mint_tunnelled('opaque-connect-host')
+
+        replies = [
+            self._authorize(connection_ref='cr-%s' % channel,
+                            channel_type=channel)
+            for channel in ('main', 'display', 'inputs')]
+
+        # One mint, and every channel gets its tunnel: the first from the
+        # mint, the rest from the session's token row.
+        self.assertEqual(1, len(self.mints))
+        for reply in replies:
+            self.assertEqual('target', reply.WhichOneof('result'))
+            target = reply.target
+            self.assertEqual('minted-1', target.ticket)
+            self.assertTrue(target.HasField('tunnel'))
+            self.assertEqual('http://pve1.example:3128',
+                             target.tunnel.proxy_uri)
+            self.assertEqual('opaque-connect-host',
+                             target.tunnel.connect_host)
+            # TLS on the port the tunnel was minted for, and no plaintext
+            # port at all.
+            self.assertEqual(61000, target.secure_port)
+            self.assertEqual(0, target.insecure_port)
+            # The rest of the Target is the console's, as for any other
+            # minted ticket: hypervisor names the node, never the connect
+            # host.
+            self.assertEqual('hv', target.hypervisor)
+            self.assertEqual('10.0.0.1', target.hypervisor_ip)
+            self.assertEqual('HS', target.host_subject)
+            self.assertEqual('CA', target.ca_cert)
+            self.assertEqual('s', target.session_id)
+        self.assertEqual(
+            ('http://pve1.example:3128', 'opaque-connect-host', 61000),
+            self._stored_tunnel())
+
+    def test_reuses_a_stored_tunnel_without_minting(self):
+        expires = int(time.time()) + servicer_module.REUSE_MARGIN + 20
+        self._store('stored-ticket', expires,
+                    tunnel=source_base.Tunnel(
+                        'http://pve2.example:8080', 'stored-connect-host',
+                        61001))
+
+        reply = self._authorize()
+
+        self.assertEqual('target', reply.WhichOneof('result'))
+        self.assertEqual([], self.mints)
+        self.assertEqual('stored-ticket', reply.target.ticket)
+        self.assertEqual('http://pve2.example:8080',
+                         reply.target.tunnel.proxy_uri)
+        self.assertEqual('stored-connect-host',
+                         reply.target.tunnel.connect_host)
+        self.assertEqual(61001, reply.target.secure_port)
+        self.assertEqual(0, reply.target.insecure_port)
+
+    def test_an_incomplete_minted_tunnel_is_denied_and_not_stored(self):
+        for tunnel in (
+                source_base.Tunnel('http://pve1.example:3128', 'host', None),
+                source_base.Tunnel('http://pve1.example:3128', 'host', 0),
+                source_base.Tunnel('http://pve1.example:3128', 'host', 65536),
+                source_base.Tunnel('http://pve1.example:3128', '', 61000),
+                source_base.Tunnel(None, 'host', 61000)):
+            def mint(uuid, lifetime, tunnel=tunnel):
+                return source_base.MintedTicket(
+                    'minted', int(time.time()) + lifetime, tunnel)
+            self.mint = mint
+            self.audit.reset_mock()
+
+            reply = self._authorize()
+
+            self.assertEqual('denied', reply.WhichOneof('result'), tunnel)
+            self.assertEqual('console ticket unavailable',
+                             reply.denied.reason)
+            self.assertEqual((None, None), self._stored())
+            self.assertEqual((None, None, None), self._stored_tunnel())
+            self.assertIn(
+                'Backend console ticket mint failed: '
+                'ConsoleTicketUnavailable', repr(self.audit.call_args_list))
+
+    def test_a_partly_stored_tunnel_is_reminted(self):
+        expires = int(time.time()) + servicer_module.REUSE_MARGIN + 20
+        self._store('stored-ticket', expires,
+                    tunnel=source_base.Tunnel(
+                        'http://pve2.example:8080', 'stored-connect-host',
+                        None))
+        self.mint = self._mint_tunnelled('fresh-connect-host')
+
+        reply = self._authorize()
+
+        self.assertEqual('target', reply.WhichOneof('result'))
+        self.assertEqual(1, len(self.mints))
+        self.assertEqual('fresh-connect-host',
+                         reply.target.tunnel.connect_host)
+        self.assertEqual(61000, reply.target.secure_port)
+        self.assertEqual(
+            ('http://pve1.example:3128', 'fresh-connect-host', 61000),
+            self._stored_tunnel())
+
+    def test_a_minted_ticket_without_a_tunnel_is_dialled_directly(self):
+        reply = self._authorize()
+
+        self.assertEqual('target', reply.WhichOneof('result'))
+        self.assertEqual('minted-1', reply.target.ticket)
+        self.assertFalse(reply.target.HasField('tunnel'))
+        self.assertEqual(5901, reply.target.insecure_port)
+        self.assertEqual(5900, reply.target.secure_port)
+        self.assertEqual('10.0.0.1', reply.target.hypervisor_ip)
+        self.assertEqual((None, None, None), self._stored_tunnel())
+
+    def test_the_connect_host_is_never_logged_or_audited(self):
+        sentinel = 'sentinel-connect-host-3f9c1d'
+        records = self._capture_logs()
+
+        # A tunnel minted, then reused by a second channel.
+        self.mint = self._mint_tunnelled(sentinel)
+        for ref in ('cr-1', 'cr-2'):
+            reply = self._authorize(connection_ref=ref)
+            self.assertEqual(sentinel, reply.target.tunnel.connect_host)
+
+        # A minted tunnel which fails after the mint, in the catch-all.
+        self._store(None, None)
+        with mock.patch('kerbside.db.record_channel_info_by_ref',
+                        side_effect=RuntimeError(
+                            'channel row for %s is locked' % sentinel)):
+            try:
+                self._authorize(connection_ref='cr-3')
+                self.fail('expected grpc.RpcError')
+            except grpc.RpcError as e:
+                self.assertEqual(grpc.StatusCode.INTERNAL, e.code())
+                self.assertNotIn(sentinel, e.details())
+
+        # A driver whose failure quotes the connect host, both as an
+        # exception the driver diagnosed and one it let through.
+        for error in (source_base.ConsoleTicketUnavailable,
+                      RuntimeError):
+            def fail(uuid, lifetime, error=error):
+                raise error('CONNECT %s:61000 refused' % sentinel)
+            self.mint = fail
+            self._store(None, None)
+
+            reply = self._authorize(connection_ref='cr-%s' % error.__name__)
+
+            self.assertEqual('denied', reply.WhichOneof('result'))
+            self.assertNotIn(sentinel, reply.denied.reason)
+
+        # The capture saw the authorize path's logging, failures included,
+        # so its silence about the sentinel means something.
+        logged = '\n'.join(records)
+        self.assertIn('AuthorizeConnection failed: RuntimeError', logged)
+        self.assertIn('Backend console ticket mint failed', logged)
+        self.assertIn('ConsoleTicketUnavailable', logged)
+        self.assertNotIn(sentinel, logged)
+
+        audited = repr(self.audit.call_args_list)
+        self.assertIn('Backend console ticket mint failed: RuntimeError',
+                      audited)
+        self.assertNotIn(sentinel, audited)
 
 
 class BuildFirewallPolicyTestCase(testtools.TestCase):
