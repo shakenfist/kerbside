@@ -65,7 +65,7 @@ keeps the option of a second one without redeploying.
 | Shaken Fist's ansible collection | A `kerbside` role exists and is the most complete deployer Kerbside has: about 2000 lines, two systemd units, validation plays, and co-located or dedicated hosts. It writes exactly one `type: shakenfist` source (`templates/sources.yaml`). It also has a bring-your-own-Kerbside path: set `kerbside_url` with an empty `kerbside` group, and Shaken Fist is configured for a Kerbside it does not deploy. | `shakenfist/deploy/collection/roles/kerbside/`; being built by `PLAN-kerbside-deployer.md`, phases 1 to 3 merged, phase 4 open as shakenfist#4479 |
 | Kolla-Ansible | The Kolla image build merged upstream (kolla 975495). The deployment (kolla-ansible 976889) and four CI and enablement changes are still open. | `kerbside-patches`; `docs/use-cases/openstack.md` "Deployment" |
 | Docker compose | Demo only, and labelled that way. Builds its image locally. | `demo/`; `installation.md` "Try it: the demo stack" |
-| A first-party container image | None. Kolla's image is the only published Kerbside image, and it is built around Kolla's `config.json` and `kolla_start` conventions. | - |
+| A first-party container image | None. Kolla publishes `kerbside-api` and `kerbside-proxy` images on quay.io (`openstack.kolla`), built from Kerbside's `develop` branch rather than a release, and started through Kolla's `config.json` and `kolla_start` conventions. They are the only published Kerbside images. (Phase 4's survey corrected this row, which had not said where they are published or what they are built from.) | - |
 | Kubernetes / Helm | Nothing. | - |
 
 ### The Kolla-Ansible patch set changes role
@@ -256,8 +256,8 @@ would creep back in. **Recommendation: yes.** Extend
 |-------|------|--------|--------|
 | 1. Survey, matrix and scaffolding | [PLAN-deployment-options-phase-01-survey-and-scaffolding.md](PLAN-deployment-options-phase-01-survey-and-scaffolding.md) | Complete | 200d6b3 |
 | 2. By hand: pip, venv and systemd | [PLAN-deployment-options-phase-02-manual.md](PLAN-deployment-options-phase-02-manual.md) | Complete | b10f2ac |
-| 3. OpenStack: Kolla-Ansible, and Kerbside in front of OpenStack | [PLAN-deployment-options-phase-03-openstack.md](PLAN-deployment-options-phase-03-openstack.md) | In progress | |
-| 4. Containers: compose beyond the demo, and Kubernetes | | Not started | |
+| 3. OpenStack: Kolla-Ansible, and Kerbside in front of OpenStack | [PLAN-deployment-options-phase-03-openstack.md](PLAN-deployment-options-phase-03-openstack.md) | Complete | d159d17 |
+| 4. Containers: compose beyond the demo, and Kubernetes | [PLAN-deployment-options-phase-04-containers.md](PLAN-deployment-options-phase-04-containers.md) | In progress | |
 | 5. Ansible: the `kerbside` role | | Not started | |
 | 6. Installation hand-off and closeout | | Not started | |
 | 7. Push audit | | Not started | |

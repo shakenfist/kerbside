@@ -13,10 +13,11 @@ way, and configure a stock Kolla-Ansible's Nova to point at it.
 
 An operator who already runs Kolla-Ansible, wants Kerbside as one
 more control-plane service beside Nova, and is content to deploy
-from a patched Kolla-Ansible and images built from kerbside-patches.
-The role then does nearly everything: the containers, the database,
-the Keystone account, the certificates, HAProxy, and the Nova setting
-that sends `spice-direct` consoles to Kerbside.
+from a patched Kolla-Ansible and to build one image, Nova's
+`nova-libvirt-spice`, which Kolla does not publish. The role then
+does nearly everything: the containers, the database, the Keystone
+account, the certificates, HAProxy, and the Nova setting that sends
+`spice-direct` consoles to Kerbside.
 
 It is not for an operator who wants one Kerbside in front of several
 clouds, or in front of anything other than the cloud deploying it.
@@ -72,9 +73,15 @@ deployment does.
 
 What it leaves to you:
 
-- **A patched Kolla-Ansible, and images.** The role exists only in
-  kerbside-patches, and so do the build scripts the CI uses to make
-  the images.
+- **A patched Kolla-Ansible, and one image.** The role exists only
+  in kerbside-patches. Kolla publishes Kerbside's own images,
+  `kerbside-api` and `kerbside-proxy`, on quay.io, built from
+  Kerbside's `develop` branch
+  ([Kerbside in containers](containers.md#what-it-deploys) has the
+  detail). It does not publish `nova-libvirt-spice`, which the role
+  switches Nova to, so that image has to be built. kerbside-patches'
+  [Building patched container images](https://github.com/shakenfist/kerbside-patches/blob/develop/docs/building.md)
+  describes how its CI builds it.
 - **`nova_console: "spice"`.** The role's precheck fails unless Nova
   is enabled with SPICE consoles. It does not set this for you.
 - **Who may log in.** The role creates the `kerbside` group and adds
