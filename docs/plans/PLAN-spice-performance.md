@@ -304,7 +304,7 @@ first phase.
 | 1. Proxy backpressure and a WAN baseline | [PLAN-spice-performance-phase-01-proxy-backpressure.md](PLAN-spice-performance-phase-01-proxy-backpressure.md) | Complete | 52046167f8 (#478) |
 | 2. qemu damage path: prototype and measure; carry qemu, submit the kernel fix | | In progress | kerbside-patches b53aa39c7e (#1748) |
 | 3. Display transcoding in Kerbside: feasibility spike (verdict: no-go) | [PLAN-spice-performance-phase-03-transcoding.md](PLAN-spice-performance-phase-03-transcoding.md) | Complete | 2e19d737aa (#489), ryll fdb5ead5b4 (#406), eab2c572cf (#494), 9d1b64d6 (#505), 13e9e2eb (#581), bba71155 (#616), 7919eadf73 (#630) |
-| 4. Son of SPICE: D-Bus display feasibility spike | | Not started | |
+| 4. Son of SPICE: D-Bus display feasibility spike | [PLAN-spice-performance-phase-04-dbus-spike.md](PLAN-spice-performance-phase-04-dbus-spike.md) | In progress | |
 | 5. Small spice-server patches (item 9, and item 4 if still wanted) | | Not started | |
 | 6. Push audit of phases 1-5 (kerbside and kerbside-patches) | | Not started | |
 | 7. QUIC client leg: experiments | | Not started | |
@@ -696,6 +696,31 @@ planning should start by asking whether the helper is andris
 with a D-Bus input. Its output is a go or
 no-go recommendation, with a proposal for a separate master
 plan if the answer is go.
+
+The phase plan
+([PLAN-spice-performance-phase-04-dbus-spike.md](PLAN-spice-performance-phase-04-dbus-spike.md),
+2026-10-29) grounds this sketch in the code and changes it in
+these places:
+- Step 1's trace "through every device's refresh path" is
+  answered by reading qemu. virtio-gpu 2D hands the guest's
+  flush rectangle to the listener with no timer. std-vga is
+  polled every 30 ms in full-width scanline bands. QXL exists
+  only with SPICE. The D-Bus listener neither merges nor splits
+  rectangles. What remains is runtime promptness, which needs a
+  listener, so step 1 now builds the helper's picture half and
+  measures with it, as a gate on the rest.
+- Step 2's "minimal helper" is a `qemu` platform backend in
+  andris, not a new program. andris already separates its
+  source from its SPICE output behind seven platform traits.
+- Upstream is building helpers on this interface in other
+  protocols: qemu 11.1 ships `tools/qemu-vnc`, and libvirt runs
+  qemu-rdp for `<graphics type='rdp'>`. No SPICE helper exists.
+- Nova and oVirt cannot configure a D-Bus display, so a go
+  helps the sources we control first. The verdict must name
+  which sources could attach a helper.
+- No component (andris, qemu-display's servers) handles a GPU
+  frame. The design inputs below need a second pipeline
+  whatever the spike finds.
 
 Design inputs for phase 4, from the low-latency streaming
 stacks: NVIDIA GameStream and its open reimplementation
