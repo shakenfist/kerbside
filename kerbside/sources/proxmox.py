@@ -29,6 +29,9 @@ REQUEST_TIMEOUT = 5
 # and still about 15 after a POST taking one REQUEST_TIMEOUT, more than the
 # REUSE_MARGIN (10, kerbside/rpc/servicer.py) a stored ticket must have left
 # for the session's other channels to reuse it rather than mint again at once.
+# It counts from when this driver starts minting, not from when the caller
+# began waiting, so time the caller spent queued behind an earlier mint of
+# the same console is not counted: this narrows the window, not closes it.
 MINT_POST_CUTOFF = 10
 
 # Seconds a minted SPICE password is good for. spiceproxy sets the password
@@ -252,13 +255,17 @@ class ProxmoxSource(base.BaseSource):
         return config
 
     def _node_subject(self, node):
-        """The host subject of a node's SPICE certificate, or None."""
+        """The host subject of a node's SPICE certificate, or None.
+
+        None means the node answered and has no such certificate. A request
+        which fails is raised.
+        """
         try:
             certificates = self._get('/nodes/%s/certificates/info' % node)
         except API_ERRORS as e:
-            LOG.with_fields(dict(_failure(e), source=self.args['source'], node=node)).warning(
-                'Ignoring consoles on a node whose certificates could not be listed')
-            return None
+            fields = dict(_failure(e), source=self.args['source'], node=node)
+            LOG.with_fields(fields).warning('Could not list the certificates of a node')
+            raise
 
         for certificate in certificates or []:
             if (isinstance(certificate, dict) and
@@ -275,9 +282,12 @@ class ProxmoxSource(base.BaseSource):
             LOG.warning('Ignoring source %s as it is not usable' % self.args.get('source'))
             return
 
-        # A failure to list the guests is raised, so that the source is
-        # recorded as errored and its known consoles are kept. A failure for
-        # one node or one VM only skips the consoles it would have yielded.
+        # A request which fails, for the guest list, a node's certificates or
+        # one VM's configuration, is raised, so that the source is recorded
+        # as errored and keeps every console it had. Finishing without a
+        # console would instead remove it, and with it the tokens of any
+        # session using it. Only a VM the API has described, and which cannot
+        # be brokered, is skipped.
         subjects = {}
         for guest in self._guests():
             log = LOG.with_fields({
@@ -315,9 +325,8 @@ class ProxmoxSource(base.BaseSource):
             try:
                 config = self._config(node, vmid)
             except API_ERRORS as e:
-                log.with_fields(_failure(e)).warning(
-                    'Ignoring VM whose configuration could not be read')
-                continue
+                log.with_fields(_failure(e)).warning('Could not read the configuration of a VM')
+                raise
 
             if not vga_has_spice(config.get('vga')):
                 log.debug('Ignoring VM with no SPICE display')
@@ -355,8 +364,8 @@ class ProxmoxSource(base.BaseSource):
 
         # The time is taken before the first request, so that the expiry
         # reported is never later than the one qemu applies.
-        started = time.time()
-        now = int(started)
+        now = int(time.time())
+        started = time.monotonic()
         step = 'listing guests'
         try:
             # The VM's current node, so that a VM which has migrated since
@@ -384,7 +393,7 @@ class ProxmoxSource(base.BaseSource):
 
             # A mint which has taken too long already does not go on to
             # replace the VM's password; see MINT_POST_CUTOFF.
-            if time.time() - started > MINT_POST_CUTOFF:
+            if time.monotonic() - started > MINT_POST_CUTOFF:
                 raise self._unavailable(vmid, 'the API was too slow to mint in time')
 
             # This sets the VM's SPICE password, so it is only ever called

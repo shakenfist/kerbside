@@ -355,33 +355,33 @@ Each one runs `tox`.
 
 ## Definition of done
 
-- [ ] `driver_class('proxmox')` returns `ProxmoxSource`, by unit
+- [x] `driver_class('proxmox')` returns `ProxmoxSource`, by unit
       test.
-- [ ] `test_sources_proxmox.py` passes, and covers discovery
+- [x] `test_sources_proxmox.py` passes, and covers discovery
       filtering (stopped, template, LXC, non-SPICE, no SMBIOS),
       the subject conversion on the master plan's measured
       subject, the uuid parse, and a mint's three requests in
       order with `proxy` equal to the source URL's host.
-- [ ] A mint for a VM whose SMBIOS UUID differs raises
+- [x] A mint for a VM whose SMBIOS UUID differs raises
       `ConsoleTicketUnavailable` and never reaches `spiceproxy`,
       by unit test.
-- [ ] Discovery makes no `POST`, by unit test.
-- [ ] Every `requests` call the driver makes has a timeout, by
+- [x] Discovery makes no `POST`, by unit test.
+- [x] Every `requests` call the driver makes has a timeout, by
       unit test, and removing it fails that test.
-- [ ] A sentinel token secret, password and connect host appear
+- [x] A sentinel token secret, password and connect host appear
       in no captured log record, on success or failure paths, by
       unit test.
-- [ ] A direct `.vv` request for a Proxmox console returns 409,
+- [x] A direct `.vv` request for a Proxmox console returns 409,
       writes an audit event, and never calls the driver's mint,
       by unit test. Moving the refusal after the mint fails it.
-- [ ] The consoles page has no *Direct* link for a Proxmox
+- [x] The consoles page has no *Direct* link for a Proxmox
       console and keeps one for an oVirt console, by unit test.
-- [ ] The role's checker accepts a complete Proxmox source and
+- [x] The role's checker accepts a complete Proxmox source and
       refuses one without `ca_cert`, by unit test.
-- [ ] `docs/console-sources.md` has a Proxmox VE section naming
+- [x] `docs/console-sources.md` has a Proxmox VE section naming
       both privileges, both ports and the uuid form, and
       `tools/check-backend-tls-claims.py` passes.
-- [ ] `tox -epy3`, `tox -eflake8` and `pre-commit run
+- [x] `tox -epy3`, `tox -eflake8` and `pre-commit run
       --all-files` pass.
 - [ ] The master plan's Execution table records this phase's
       merge commit, set by the next phase's close-out.
@@ -400,6 +400,16 @@ None yet.
   forwarded beside the API (decision 4). Choosing a proxy per
   node instead would need the node's FQDN to resolve from the
   broker again.
+- A VM that live-migrates mints on its new node, but its console
+  keeps the old node's pinned subject until the next scrape, so it
+  cannot be reached for up to a minute. A `MintedTicket` could
+  carry a subject the driver reads from the new node's
+  `certificates/info`, overriding the console row's.
+- The mint's cutoff before the `spiceproxy` POST counts from when
+  the driver starts, not from when the caller began waiting, so a
+  mint queued behind another for the same console can still set
+  the password after its caller gave up. Passing the remaining
+  deadline into the driver would close that.
 
 ## Execution notes
 
@@ -447,8 +457,33 @@ None yet.
   the spiceproxy POST, refused node names PVE would not accept
   before putting them in API paths, and made the `test_api`
   Proxmox fixture match what discovery stores.
+- Review round 2 (0 fix) found that skipping a node or VM whose
+  read failed let the scrape finish normally, so the scrape loop
+  removed those consoles and, by cascade, the tokens of sessions
+  using them. Any failed request now raises, as a failed guest
+  list already did, and the source keeps its consoles for that
+  scrape. This reverses step 4.1's choice above. The cutoff now
+  uses a monotonic clock. Live migration and the cutoff's
+  remaining gap are recorded under Future work.
 
 ## Outcome
+
+All four steps landed on `proxmox-source-phase-04-source-driver`
+on 2026-10-28 (AEDT), one commit each, followed by two review
+rounds. 632 unit tests pass; the new MariaDB test,
+`test_column_widths`, passed on MariaDB 11.8 locally and runs in
+the direct-qemu lane.
+
+Review round 1 found the one defect the plan missed: console
+uuid columns 36 characters wide, too narrow for the uuid scheme
+of decision 1. Migration `dabe2f66e369` widens them. Round 2
+raised no fix items; it made discovery keep a source's consoles
+when any read fails. Twenty-nine mutants were run across the
+steps and both rounds, and each was killed by its intended test.
+
+The driver has not yet run against a real PVE node. Proving the
+`pveum` commands, the mint and the tunnel end to end is the
+next phase's lane.
 
 ## Back brief
 

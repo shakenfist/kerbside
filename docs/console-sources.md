@@ -309,10 +309,18 @@ Kerbside reads each VM's running configuration, not changes still pending
 until its next restart.
 
 Each node's SPICE certificate subject is read once per scrape and pinned for
-that node's consoles. A node whose subject cannot be read yields no consoles,
-and the scrape logs a warning. A VM whose configuration cannot be read is
-skipped, and is listed again by the next scrape. If the VM list itself cannot
-be read, the source is marked errored and keeps the consoles it had.
+that node's consoles. A node which answers but has no `pve-ssl.pem` subject
+yields no consoles, and the scrape logs a warning. If any request fails, for
+the VM list, a node's certificates or one VM's configuration, the source is
+marked errored for that scrape and keeps every console it had. A scrape that
+finished without those consoles would remove them, and with them the tokens
+of any session using them. While a source is errored, no new consoles are
+discovered in it.
+
+A VM which migrates to another node still mints on its new node, but its
+console keeps the old node's pinned subject until the next scrape, so for up
+to a minute after a migration the backend connection fails its subject check
+and the console cannot be reached.
 
 ### Proxmox VE console uuid
 

@@ -209,9 +209,10 @@ class _ProxmoxTestCase(unittest.TestCase):
             patcher = mock.patch.object(proxmox.requests, name, side_effect=getattr(fake, name))
             patcher.start()
             self.addCleanup(patcher.stop)
-        patcher = mock.patch.object(proxmox.time, 'time', side_effect=fake.time)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for name in ('time', 'monotonic'):
+            patcher = mock.patch.object(proxmox.time, name, side_effect=fake.time)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         return fake
 
     def _scrape(self, answers=None, src=None):
@@ -440,28 +441,38 @@ class TestDiscovery(_ProxmoxTestCase):
             ['/nodes/pve1/certificates/info', '/nodes/pve2/certificates/info'],
             [path for _, path in fake.paths() if path.endswith('/certificates/info')])
 
-    def test_node_whose_subject_cannot_be_read_yields_nothing(self):
+    def test_node_with_no_spice_certificate_yields_nothing(self):
         guests = [_guest(100), _guest(200, node='pve2')]
-        for failure in (requests.exceptions.HTTPError('595 no route', response=_Response(status=595)),
-                        requests.exceptions.ConnectTimeout('timed out'),
-                        _Response(_certificates()[:1]),
-                        _Response(body={'errors': 'nope'})):
+        answers = _answers(guests=guests)
+        answers[('GET', API + '/nodes/pve2/certificates/info')] = _Response(_certificates()[:1])
+
+        results, fake = self._scrape(answers)
+
+        self.assertEqual(['pve1'], [r['hypervisor'] for r in results])
+        self.assertNotIn(('GET', '/nodes/pve2/qemu/200/config'), fake.paths())
+
+    def test_a_node_whose_certificates_cannot_be_read_is_raised(self):
+        """Rather than finish without that node's consoles, which would
+        remove them and the tokens of every session using them."""
+        guests = [_guest(100), _guest(200, node='pve2')]
+        for failure, raised in (
+                (requests.exceptions.HTTPError('595 no route', response=_Response(status=595)),
+                 requests.exceptions.HTTPError),
+                (requests.exceptions.ConnectTimeout('timed out'), requests.exceptions.ConnectTimeout),
+                (_Response(body={'errors': 'nope'}), proxmox.MalformedResponse)):
             answers = _answers(guests=guests)
             answers[('GET', API + '/nodes/pve2/certificates/info')] = failure
+            with self.assertRaises(raised):
+                self._scrape(answers)
 
-            results, fake = self._scrape(answers)
-
-            self.assertEqual(['pve1'], [r['hypervisor'] for r in results])
-            self.assertNotIn(('GET', '/nodes/pve2/qemu/200/config'), fake.paths())
-
-    def test_vm_whose_config_cannot_be_read_is_skipped(self):
+    def test_a_vm_whose_config_cannot_be_read_is_raised(self):
         guests = [_guest(100), _guest(101)]
         configs = {
-            100: requests.exceptions.HTTPError('500', response=_Response(status=500)),
-            101: _config(smbios1='uuid=%s' % OTHER_SMBIOS),
+            100: _config(),
+            101: requests.exceptions.HTTPError('500', response=_Response(status=500)),
         }
-        results, _ = self._scrape(_answers(guests=guests, configs=configs))
-        self.assertEqual(['101-%s' % OTHER_SMBIOS], [r['uuid'] for r in results])
+        with self.assertRaises(requests.exceptions.HTTPError):
+            self._scrape(_answers(guests=guests, configs=configs))
 
     def test_a_failed_guest_list_is_raised(self):
         """So that the source is marked errored and its consoles are kept."""
@@ -479,13 +490,13 @@ class TestDiscovery(_ProxmoxTestCase):
             with self.assertRaises(proxmox.MalformedResponse):
                 self._scrape(answers)
 
-    def test_malformed_config_skips_the_vm(self):
+    def test_a_malformed_config_is_raised(self):
         guests = [_guest(100), _guest(101)]
         configs = {100: _config(), 101: _config(smbios1='uuid=%s' % OTHER_SMBIOS)}
         answers = _answers(guests=guests, configs=configs)
         answers[('GET', API + '/nodes/pve1/qemu/100/config')] = _Response(['vga', 'qxl'])
-        results, _ = self._scrape(answers)
-        self.assertEqual(['101-%s' % OTHER_SMBIOS], [r['uuid'] for r in results])
+        with self.assertRaises(proxmox.MalformedResponse):
+            self._scrape(answers)
 
     def test_discovery_never_posts(self):
         guests = [_guest(100), _guest(101, status='stopped'), _guest(102, type='lxc')]
@@ -675,7 +686,8 @@ class TestEveryRequest(_ProxmoxTestCase):
 
     def setUp(self):
         super().setUp()
-        # Discovery reads a failing node's subject as well as a good one's.
+        # Discovery reads a good node's subject, then a failing one's, which
+        # ends the scrape.
         guests = [_guest(100), _guest(101, status='stopped'), _guest(200, node='pve2')]
         answers = _answers(guests=guests)
         answers[('GET', API + '/nodes/pve2/certificates/info')] = _Response(status=500)
@@ -683,7 +695,8 @@ class TestEveryRequest(_ProxmoxTestCase):
 
     def test_every_request_carries_timeout_token_and_ca(self):
         src = self._source()
-        list(src())
+        with self.assertRaises(requests.exceptions.HTTPError):
+            list(src())
         discovery = len(proxmox.requests.get.call_args_list)
         src.mint_console_ticket(proxmox.console_uuid(100, SMBIOS), 90)
         calls = proxmox.requests.get.call_args_list + proxmox.requests.post.call_args_list
@@ -732,14 +745,14 @@ class TestNothingSecretIsLogged(_ProxmoxTestCase):
 
     def test_discovery_failures(self):
         records = self._capture_logs()
-        guests = [_guest(100), _guest(101), _guest(200, node='pve2')]
-        answers = _answers(guests=guests, configs={
-            100: self._leaky(requests.exceptions.HTTPError, status=500),
-            101: self._leaky(requests.exceptions.ConnectionError)})
-        answers[('GET', API + '/nodes/pve2/certificates/info')] = self._leaky(
-            requests.exceptions.HTTPError, status=595)
-        results, _ = self._scrape(answers)
-        self.assertEqual([], results)
+        for path, failure in (
+                ('/nodes/pve1/qemu/100/config', self._leaky(requests.exceptions.HTTPError, status=500)),
+                ('/nodes/pve1/qemu/100/config', self._leaky(requests.exceptions.ConnectionError)),
+                ('/nodes/pve1/certificates/info', self._leaky(requests.exceptions.HTTPError, status=595))):
+            answers = _answers()
+            answers[('GET', API + path)] = failure
+            with self.assertRaises(type(failure)):
+                self._scrape(answers)
 
         logged = self._assert_clean(records)
         self.assertIn('HTTPError', logged)
