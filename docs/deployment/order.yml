@@ -6,5 +6,6 @@
 # docs/development.md.
 
 - manual.md: By hand
+- ansible.md: Ansible
 - kolla-ansible.md: Kolla-Ansible
 - containers.md: Containers
