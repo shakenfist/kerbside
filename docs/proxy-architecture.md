@@ -244,7 +244,14 @@ How a transcoded display channel works (`rust/kerbside-proxy/src/transcode/`):
   `SURFACE_DESTROY` and the same start sequence. No video stream is ever
   sent, and no image asks the client to cache it. The client's messages pass
   through the same L0 and L1 firewall as the relay's, and its bytes count in
-  `kerbside_proxy_bytes_relayed_total`.
+  `kerbside_proxy_bytes_relayed_total`. Unlike the relay, the client leg has
+  no idle-read timeout, because once initialised a client paced on the
+  socket has nothing to say. TCP keepalive ends a client that has gone. A
+  client that stays connected but stops reading (a zero window, or no ACKs
+  under ACK pacing) is ended, logged at info, once a write to it has made
+  no progress for 15 minutes, the relay's idle-read timeout.
+  A slow link is not a stall: the bound is on progress, not on how long a
+  frame takes.
 - **What a frame sends.** The surface's damage says where to look; each
   damaged 64-pixel tile is compared with a shadow of what the client already
   holds, and only tiles that differ are sent. Tiles are merged into at most
@@ -267,6 +274,14 @@ What it does not do:
   second display channel is relayed, and the proxy logs that it did so.
 - The choice between relaying and transcoding is made when the channel
   connects, and cannot change while it runs.
+- The backend leg is not firewalled. The server-to-client messages of a
+  transcoded display channel skip the L0 and L1 policy and the relay's
+  16 MiB framing cap, and go straight to ryll's renderer, which frames them
+  and decompresses guest-influenced LZ4, GLZ, QUIC and JPEG data inside the
+  proxy process. Only the renderer's own limits bound that decode, so a
+  decoder panic or an allocation the guest can drive is reachable from the
+  guest, in the process that carries every other session. Only the
+  client's messages are firewalled.
 - Its scope is a virtio-gpu or std-vga guest, whose display reaches
   spice-server as bitmap draws on the primary surface. A guest running the
   QXL driver can send draws ryll's renderer does not implement (ROP3, stroke,

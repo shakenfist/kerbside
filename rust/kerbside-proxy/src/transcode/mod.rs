@@ -21,7 +21,12 @@
 //!   then `MARK`. A new primary surface from the backend (a resize, or a
 //!   destroy and create) is sent as `SURFACE_DESTROY`, then the same start
 //!   sequence. Nothing is ever sent as a video stream, and no image asks
-//!   the client to cache it.
+//!   the client to cache it. The client's reader has no idle timeout,
+//!   because a client paced on the socket has nothing to say once
+//!   initialised; TCP keepalive ends a client that has gone, and a write to
+//!   the client that makes no progress for
+//!   [`STALLED_WRITE_TIMEOUT`](crate::relay::STALLED_WRITE_TIMEOUT) ends one
+//!   that is alive but has stopped reading.
 //!
 //! # From damage to draws
 //!
@@ -87,6 +92,7 @@ use tracing::{debug, info, warn};
 use crate::caps::ClientCaps;
 use crate::pb;
 use crate::policy::{Direction, EnforcingPolicy, FirewallPolicy, Policy, Verdict, VerdictTally};
+use crate::relay::STALLED_WRITE_TIMEOUT;
 use crate::session::SharedState;
 pub use pacing::PacingMode;
 use pacing::{Pacer, ACK_GENERATION};
@@ -274,7 +280,13 @@ pub async fn run(
         message_tx,
         connection_ref,
     );
-    let writer = write_client(client_writer, frame_rx, done_tx, Arc::clone(&pacer));
+    let writer = write_client(
+        client_writer,
+        frame_rx,
+        done_tx,
+        Arc::clone(&pacer),
+        connection_ref,
+    );
     let mut display = Display::new(options, client_caps, pacer, frame_tx, connection_ref);
     let core = display.run(&mut backend.events, message_rx, done_rx);
 
@@ -345,7 +357,8 @@ fn set_client_lowat(client: &SpiceStream, bytes: u32, connection_ref: &str) {
 /// Unlike the relay, there is no idle timeout: once it has sent
 /// `DISPLAY_INIT`, a client paced on the socket has nothing more to say (no
 /// `SET_ACK` means no `ACK`s, and the transcoder sends no `PING`). TCP
-/// keepalive on the client socket still finds a peer that has gone.
+/// keepalive on the client socket still finds a peer that has gone, and
+/// [`write_client`] ends a live one that stops reading.
 async fn read_client<R, P>(
     mut reader: R,
     mut policy: P,
@@ -428,29 +441,77 @@ where
 
 /// Write each frame the display hands over to the client, then tell the
 /// display it is done. Each message waits for room under ACK pacing. Ends
-/// with `Ok(())` when the display stops sending frames.
+/// with `Ok(())` when the display stops sending frames, or when the client
+/// stops taking them.
+///
+/// The client stops taking frames when a write, a flush or the wait for room
+/// under ACK pacing makes no progress for [`STALLED_WRITE_TIMEOUT`]. That is
+/// a client whose TCP stack is alive, so keepalive does not end it, but
+/// which no longer reads: it advertises a zero window, or never ACKs. The
+/// reader has no idle timeout to catch it, so without this bound it would
+/// hold the channel, its renderer and its concurrency permit forever. A slow
+/// link is not a stall: the bound is on progress, not on how long a frame
+/// takes, and it is as generous as the relay's idle-read timeout.
 async fn write_client<W>(
     mut writer: W,
     mut frames: mpsc::Receiver<Vec<Vec<u8>>>,
     done: mpsc::Sender<()>,
     pacer: Arc<Pacer>,
+    connection_ref: &str,
 ) -> Result<()>
 where
     W: AsyncWrite + Unpin,
 {
+    let stalled = |what: &str| -> Result<()> {
+        info!(
+            %connection_ref,
+            timeout_secs = STALLED_WRITE_TIMEOUT.as_secs(),
+            waiting_for = what,
+            "the client has stopped taking the display; ending transcoding"
+        );
+        Ok(())
+    };
     while let Some(frame) = frames.recv().await {
         for message in &frame {
-            pacer.wait_for_room().await;
-            writer.write_all(message).await?;
+            if tokio::time::timeout(STALLED_WRITE_TIMEOUT, pacer.wait_for_room())
+                .await
+                .is_err()
+            {
+                return stalled("an ACK");
+            }
+            if !write_all_progressing(&mut writer, message).await? {
+                return stalled("a write");
+            }
             pacer.sent();
             crate::metrics::add_relayed_bytes(Direction::ServerToClient, message.len() as u64);
         }
-        writer.flush().await?;
+        match tokio::time::timeout(STALLED_WRITE_TIMEOUT, writer.flush()).await {
+            Ok(flushed) => flushed?,
+            Err(_) => return stalled("a flush"),
+        }
         if done.send(()).await.is_err() {
             break;
         }
     }
     Ok(())
+}
+
+/// Write all of `buf` to `writer`, as `write_all` does, but give up if one
+/// write makes no progress for [`STALLED_WRITE_TIMEOUT`]. Returns whether it
+/// wrote everything.
+async fn write_all_progressing<W>(writer: &mut W, mut buf: &[u8]) -> std::io::Result<bool>
+where
+    W: AsyncWrite + Unpin,
+{
+    while !buf.is_empty() {
+        match tokio::time::timeout(STALLED_WRITE_TIMEOUT, writer.write(buf)).await {
+            Ok(Ok(0)) => return Err(std::io::ErrorKind::WriteZero.into()),
+            Ok(Ok(n)) => buf = &buf[n..],
+            Ok(Err(e)) => return Err(e),
+            Err(_) => return Ok(false),
+        }
+    }
+    Ok(true)
 }
 
 /// A typed message body as a framed message.

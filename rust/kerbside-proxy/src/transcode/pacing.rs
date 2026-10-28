@@ -23,7 +23,7 @@
 //! that reads the client (which sees the `ACK`s) and the writer (which
 //! waits for room).
 
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 use tokio::sync::Notify;
 
@@ -108,6 +108,13 @@ impl Pacer {
         }
     }
 
+    /// Lock the ACK window. A panic while it was held leaves a plain count
+    /// that is still usable, so poisoning is ignored rather than spread to
+    /// the writer and the reader.
+    fn lock(window: &Mutex<AckWindow>) -> MutexGuard<'_, AckWindow> {
+        window.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// Whether a new frame may start, given whether the writer has finished
     /// the last one.
     pub fn may_start_frame(&self, writer_idle: bool) -> bool {
@@ -118,20 +125,20 @@ impl Pacer {
     pub fn has_room(&self) -> bool {
         self.window
             .as_ref()
-            .is_none_or(|w| w.lock().expect("ack window mutex poisoned").has_room())
+            .is_none_or(|w| Self::lock(w).has_room())
     }
 
     /// Count one message sent.
     pub fn sent(&self) {
         if let Some(window) = &self.window {
-            window.lock().expect("ack window mutex poisoned").sent();
+            Self::lock(window).sent();
         }
     }
 
     /// Count one `ACK` from the client, and wake a writer waiting for room.
     pub fn acked(&self) {
         if let Some(window) = &self.window {
-            window.lock().expect("ack window mutex poisoned").acked();
+            Self::lock(window).acked();
             self.room.notify_waiters();
         }
     }

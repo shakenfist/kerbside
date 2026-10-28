@@ -692,6 +692,13 @@ Brief notes for 4:
   - keypress-to-draw latency, p50 and p95;
   - CPU on the Kerbside host, including an unshaped LAN run
     (the always-transcode cost);
+  - resident memory per transcoded session, against relay. Each
+    one holds the renderer's pixmap cache (sized at 256 MiB), a
+    GLZ dictionary (64 MiB), the mirror's RGBA surface and the
+    BGRX shadow, and the guest chooses the resolution, so this
+    sets how many sessions a node can carry. Record how full the
+    pixmap cache gets, and shrink it if spice-server barely uses
+    it on these guests;
   - image quality: SSIM and PSNR of the client's final frame
     against a lossless capture of the same workload, taken at
     the same instants. Say how the capture was made and aligned;
@@ -733,7 +740,11 @@ Brief notes for 6:
   3b copied from andris into a shared crate both use, deleting
   the copy; and split the compression crate's `encode` feature
   so the image encoders build without openh264 (ryll#499,
-  re-survey finding 6).
+  re-survey finding 6). The sandboxed worker is not optional
+  either: a transcoded backend leg skips the relay's L0/L1
+  inspection and its 16 MiB framing cap, so ryll's renderer
+  limits are all that bound guest-influenced decode inside the
+  process that holds every session.
 - Say what this spike's output half means for phase 4. Andris
   is already most of the Son of SPICE helper, with an X11
   input where phase 4 wants D-Bus.
@@ -819,8 +830,11 @@ Brief notes for 6:
     (`--transcode-ack-window`), not a debug build, because
     step 4 measures release builds.
   - The client leg has no idle-read timeout: a socket-paced
-    client is silent after DISPLAY_INIT. TCP keepalive on the
-    client socket remains the dead-peer detector.
+    client is silent after DISPLAY_INIT. TCP keepalive catches
+    a dead client. A live client that stops reading is caught by
+    a bound on the writes instead: one that makes no progress
+    for the relay's idle timeout (15 minutes) ends the channel.
+    The first review of #616 found that gap.
   - The ryll pin is b33dea4, 117 commits past 4c91b13. The
     protocol crate's source is unchanged across them.
 - **Step 3b verification.** 92 tests without the feature, 173

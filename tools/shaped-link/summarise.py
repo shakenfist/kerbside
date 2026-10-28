@@ -185,7 +185,8 @@ def ack_stats(rep_dirs, rate_mbit):
                 or os.path.exists(os.path.join(d, 'qemu-died'))):
             continue
         try:
-            t1 = float(open(os.path.join(d, 't1')).read())
+            with open(os.path.join(d, 't1')) as f:
+                t1 = float(f.read())
             with open(os.path.join(d, 'keydraw.json')) as f:
                 ta = t1 - json.load(f)['elapsed_s']
         except (OSError, ValueError, KeyError):
@@ -216,7 +217,7 @@ def ack_stats(rep_dirs, rate_mbit):
         # proxy's backend Recv-Q plus spice-server's own Send-Q.
         backend = {k: v for k, v in socks.items() if k[1].endswith(':5910')}
         qemu = {k: v for k, v in socks.items() if k[0].endswith(':5910')}
-        brecv = qsend = []
+        brecv, qsend = [], []
         if backend:
             bdisp = max(backend.values(), key=lambda x: x[-1]['bytes_received'])
             brecv = [(x['ts'], x['recvq']) for x in bdisp]
@@ -272,8 +273,10 @@ def case_stats(rep_dirs):
                 lat += [float(x) for x in f if x.strip()]
             with open(os.path.join(d, 'keydraw.json')) as f:
                 timeouts += json.load(f)['timeouts']
-            t0 = float(open(os.path.join(d, 't0')).read())
-            t1 = float(open(os.path.join(d, 't1')).read())
+            with open(os.path.join(d, 't0')) as f:
+                t0 = float(f.read())
+            with open(os.path.join(d, 't1')) as f:
+                t1 = float(f.read())
         except (OSError, ValueError, KeyError):
             failed += 1
             continue

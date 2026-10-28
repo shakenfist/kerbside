@@ -203,10 +203,13 @@ impl Tap {
     /// Report `found`: count it, and log it the first time this session.
     fn report(&self, found: Unsupported, msg_name: &str) {
         crate::metrics::inc_transcode_unsupported(found.label());
+        // A panic while the set was held leaves it usable; at worst a kind
+        // is logged twice, so poisoning is ignored rather than spread to the
+        // renderer's traffic hook.
         let first = self
             .logged
             .lock()
-            .expect("transcode tap mutex poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .insert(found);
         if first {
             warn!(

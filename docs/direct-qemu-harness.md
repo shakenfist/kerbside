@@ -278,8 +278,8 @@ client a new primary surface` for the display channel, while the other
 channels log `relay starting` as usual, and the debug lines from ryll's
 renderer show the backend's draws arriving as `type=Some(Lz4)`. Any client
 works: remote-viewer, or ryll headless as described at the top of
-`verify-rust-proxy.sh`. Use a ryll built from October 2026 or later: older
-builds cannot decode the LZ4 images the transcoder sends.
+`verify-rust-proxy.sh`. Use ryll 0.2.0 or later: older releases cannot
+decode the LZ4 images the transcoder sends.
 
 qemu's spice-server serves one client at a time, so a second client
 connecting straight to qemu disconnects the transcoded session. The Sextant

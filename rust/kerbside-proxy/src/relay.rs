@@ -57,6 +57,16 @@ const READ_CHUNK_SIZE: usize = 64 * 1024;
 /// later once real idle patterns are observed.
 const IDLE_READ_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
+/// How long a transcoded display channel's write to the client may go without
+/// progress before the channel is torn down: the same backstop as
+/// [`IDLE_READ_TIMEOUT`], for the client that stays alive (answering TCP
+/// keepalives, advertising a zero window) but stops reading. The relay needs
+/// no write bound for that client, because its client-to-server direction
+/// stops hearing from it and times out; the transcoder's client reader has no
+/// idle timeout, so the bound sits on the writes instead.
+#[cfg(feature = "transcode")]
+pub(crate) const STALLED_WRITE_TIMEOUT: Duration = IDLE_READ_TIMEOUT;
+
 /// Relay the authorized client connection to the connected backend channel.
 ///
 /// Splits both streams into read/write halves and runs two framing pumps
