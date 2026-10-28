@@ -15,7 +15,8 @@ and registered a "type: proxmox" source against the lane's PVE node. It:
      log names the guest with no SMBIOS UUID at info level;
   2. asks for a direct .vv as an administrator, and asserts the 409 and its
      audit event;
-  3. fetches a proxied .vv and launches ryll --headless against it, asserts
+  3. fetches a proxied .vv and launches ryll --headless against it, polls
+     the session's token row until its backend ticket appears, asserts
      real SPICE with tools/direct-qemu/smoke-client.py, waits for the
      session's channels to settle, and asserts from the proxy log that every
      backend leg was tunnelled, over TLS, and checked against a non-empty
@@ -30,7 +31,8 @@ and registered a "type: proxmox" source against the lane's PVE node. It:
   6. terminates the first session over the REST API, and asserts that the
      proxy dropped its channels and not the second session's;
   7. scans every file the lane uploads for each token secret, the auth seed,
-     each session's backend ticket and the literal "pvespiceproxy:", and
+     each session's backend ticket, the password in each proxied .vv (kerbside's
+     own console token), each API JWT and the literal "pvespiceproxy:", and
      removes any file that holds one.
 
 At each checkpoint it counts mints in PVE's own access log, rather than
@@ -89,13 +91,14 @@ overridden by the WORKDIR environment variable or --workdir (the argument
 wins).
 
 With --scan-only it does nothing but step 7, without the backend tickets,
-which it cannot know. Run that before uploading artifacts on every run, so
+.vv passwords and API JWTs, which it cannot know. Run that before uploading artifacts on every run, so
 that a drive which was cut short is scanned too.
 
 SECURITY: the token secrets, the auth seed, the API JWTs, the .vv bodies,
 the backend tickets and the connect hosts are NEVER printed or logged.
-Each backend ticket is read from the database once, held in memory to
-search the artifacts for it, and only its length is reported. The scan
+Each backend ticket is read from the database as soon as it is minted,
+and only its length is reported. It, each .vv's password and each API JWT
+are held in memory to search the artifacts for them. The scan
 reports file names and what was found in them, never the value.
 Exits non-zero on any failure.
 """
@@ -212,6 +215,17 @@ CHANNEL_TIME_SLACK = 5
 MIN_CHANNELS = 2
 SETTLE = 5
 
+# A session's token row is polled for its backend ticket this often from
+# the moment the session is known, so that the ticket is read within a poll
+# of its mint, long before it expires and the daemon's maintenance loop,
+# about once a minute, clears it. A channel's backend connection is logged
+# after its authorization stored the ticket, so once the proxy has logged
+# one for the session the ticket has TICKET_GRACE more seconds to be seen;
+# with none logged, the poll gives up after TICKET_CHANNEL_TIMEOUT.
+TICKET_POLL_INTERVAL = 0.25
+TICKET_GRACE = 3
+TICKET_CHANNEL_TIMEOUT = 60
+
 # How far past the later of the backend ticket's and the .vv token's expiry
 # the first session is held, and the longest hold allowed: with the default
 # CONSOLE_TOKEN_DURATION the hold is about a minute and a half.
@@ -326,6 +340,50 @@ def mint_verdict(count, expected, sessions, window):
                     % (count.mints, expected,
                        'only %d channel(s) connected late' % len(late) if late
                        else 'every channel connected within %ds of its session\'s first' % window))
+
+
+def ticket_verdict(ticket, expires, minted, failures, first_channel, now, lifetime):
+    """Judge what polling a session's token row for its backend ticket found.
+
+    ticket and expires are what the row held when the poll stopped: the
+    first ticket it saw, or None if it saw none. minted is how many mints
+    kerbside audited for the session, and failures the messages of its
+    audited failed mints. first_channel is when the proxy logged the
+    session's first backend connection, or None if it logged none; now is
+    when the poll stopped; and lifetime is the ticket's TICKET_LIFETIME.
+
+    A ticket seen only once it had expired, or a minted ticket gone from
+    the row late enough for the sweep of expired tickets to have cleared
+    it, means the harness was too slow: a timing fault. A ticket gone from
+    the row while it must still have been live, and channels which
+    connected with no ticket ever minted, are defects. Returns (kind,
+    message), and never names the ticket, only its length.
+    """
+    if ticket:
+        if not expires:
+            return DEFECT, 'the session\'s token row holds a backend ticket with no expiry'
+        if expires <= now:
+            return TIMING, ('the poll first saw the backend ticket %ds after it expired; the harness was too slow '
+                            'to read it while it was live' % (now - expires))
+        return OK, 'a backend ticket (%d characters) expiring in %ds' % (len(ticket), expires - now)
+    if minted:
+        if first_channel is None:
+            return HARNESS, ('kerbside audited %d mint(s) for the session but the proxy logged no backend '
+                             'connection for it, so the ticket\'s age cannot be judged' % minted)
+        # The mint came a little before the first channel's connection, so
+        # its expiry is judged with the same slack as the reuse window.
+        age = now - first_channel
+        if age >= lifetime - CHANNEL_TIME_SLACK:
+            return TIMING, ('kerbside audited %d mint(s) for the session, but its token row held no ticket when '
+                            'polled %.1fs after its first channel connected, late enough for the sweep of expired '
+                            'tickets to have cleared it; the harness was too slow to read it' % (minted, age))
+        return DEFECT, ('kerbside audited %d mint(s) for the session, but its token row held no ticket when polled '
+                        '%.1fs after its first channel connected, while the ticket was still live' % (minted, age))
+    if first_channel is not None:
+        return DEFECT, ('the session\'s channels connected but no backend ticket was ever minted for it; failed '
+                        'mints audited: %s' % ('; '.join(failures) or 'none'))
+    return HARNESS, ('no channel of the session connected while its token row was polled, so no ticket could '
+                     'have been minted')
 
 
 # ── The proxy log ────────────────────────────────────────────────────────────
@@ -510,6 +568,15 @@ def smbios_uuid_of(config):
     return m.group(1).lower() if m else None
 
 
+def vv_password(text):
+    """The password a .vv file carries, or None."""
+    for line in text.splitlines():
+        key, sep, value = line.partition('=')
+        if sep and key.strip() == 'password' and value.strip():
+            return value.strip()
+    return None
+
+
 # ── The artifact scan ────────────────────────────────────────────────────────
 
 
@@ -603,7 +670,7 @@ def _forbidden_values(extra_descriptions=(), extra_needles=()):
     beside its value. A value which cannot be read, or is too short to
     search for, is left out and said so. extra_descriptions and
     extra_needles add, in the same parallel form, values held in memory,
-    such as backend tickets.
+    such as backend tickets, .vv passwords and API JWTs.
     """
     paths = []
     path_descriptions = []
@@ -747,10 +814,16 @@ class Lane:
             lane = json.load(f)
         self.token_id = lane['tokens']['documented']['token_id']
         self.skipped = {rule: vmid for rule, vmid in lane['skipped_guests'].items() if vmid is not None}
-        # Backend tickets read from the database for the scan, and in
-        # parallel what each is, so that the two are never held together.
-        self.ticket_descriptions = []
-        self.tickets = []
+        # The values the drive holds in memory that the scan must look for,
+        # and in parallel what each is, so that the two are never held
+        # together.
+        self.needle_descriptions = []
+        self.needles = []
+
+    def remember(self, description, needle):
+        """Hold a value the drive learned, so the scan searches for it. Never printed."""
+        self.needle_descriptions.append(description)
+        self.needles.append(needle)
 
     def checkpoint(self, name, expected, sessions=()):
         """Count mints in PVE's access log, and fail unless they are as expected."""
@@ -928,6 +1001,11 @@ def _open_session(db, lane, headers, n, known_sessions):
     fd = os.open(vv_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, 'w') as f:
         f.write(resp.text)
+    password = vv_password(resp.text)
+    if password is None:
+        _log('.vv %d carries no password, so there is none to scan for' % n)
+    else:
+        lane.remember('the password in .vv %d' % n, password)
     ryll = Ryll(lane, n, vv_path)
 
     tokens = [t for t in db.get_tokens_by_console(lane.source, lane.console_uuid)
@@ -959,20 +1037,48 @@ def _wait_for_channels(lane, session_id, timeout=60):
 
 
 def _capture_ticket(db, lane, session_id, label):
-    """Read the session's backend ticket once, for the scan, and return its expiry. Never printed."""
-    with db.Session(db.ENGINE) as session:
-        row = session.query(db.ConsoleToken).filter(db.ConsoleToken.session_id == session_id).one_or_none()
-        ticket = row.backend_ticket if row is not None else None
-        expires = row.backend_ticket_expires if row is not None else None
-    if not ticket or not expires:
-        failures = [e.get('message') or '' for e in db.get_audit_events(lane.source, lane.console_uuid, limit=500)
+    """Poll the session's token row until its backend ticket appears, hold it for the scan, and return its expiry.
+
+    Called as soon as the session is known, so that the ticket is read
+    within a poll of its mint. Never printed.
+    """
+    from kerbside.sources.proxmox import TICKET_LIFETIME
+
+    started = time.time()
+    first_channel = None
+    noticed = None
+    while True:
+        now = time.time()
+        with db.Session(db.ENGINE) as session:
+            row = session.query(db.ConsoleToken).filter(db.ConsoleToken.session_id == session_id).one_or_none()
+            ticket = row.backend_ticket if row is not None else None
+            expires = row.backend_ticket_expires if row is not None else None
+        if ticket:
+            break
+        if first_channel is None:
+            times = session_channel_times(proxy_log_facts(_read_text(lane.log_path)), [session_id])[session_id]
+            if times:
+                first_channel = min(times)
+                noticed = now
+        if noticed is not None and now - noticed >= TICKET_GRACE:
+            break
+        if noticed is None and now - started >= TICKET_CHANNEL_TIMEOUT:
+            break
+        time.sleep(TICKET_POLL_INTERVAL)
+
+    if ticket:
+        # Held for the scan whatever the verdict.
+        lane.remember(label, ticket)
+        minted = 0
+        failures = []
+    else:
+        events = [e for e in db.get_audit_events(lane.source, lane.console_uuid, limit=500)
+                  if e.get('session_id') == session_id]
+        minted = len([e for e in events if (e.get('message') or '').startswith(MINT_AUDIT_PREFIX)])
+        failures = [e.get('message') or '' for e in events
                     if (e.get('message') or '').startswith(MINT_FAILED_AUDIT_PREFIX)]
-        _require(DEFECT, 'session %s holds no backend ticket; failed mints audited: %s'
-                 % (session_id, '; '.join(failures) or 'none'))
-    lane.ticket_descriptions.append(label)
-    lane.tickets.append(ticket)
-    _log('session %s holds a backend ticket (%d characters) expiring in %ds'
-         % (session_id, len(ticket), expires - time.time()))
+    kind, message = ticket_verdict(ticket, expires, minted, failures, first_channel, now, TICKET_LIFETIME)
+    _require(kind, 'session %s: %s' % (session_id, message))
     return expires
 
 
@@ -998,9 +1104,12 @@ def _drive(lane):
     lane.console_uuid = console['uuid']
     lane.checkpoint('after the first scrape', 0)
 
-    headers = {'Authorization': 'Bearer %s' % _mint_auth_jwt(lane.seed_path), 'Accept': 'application/json'}
-    admin_headers = {'Authorization': 'Bearer %s' % _mint_auth_jwt(lane.seed_path, admin=True),
-                     'Accept': 'application/json'}
+    jwt = _mint_auth_jwt(lane.seed_path)
+    lane.remember('the API JWT', jwt)
+    admin_jwt = _mint_auth_jwt(lane.seed_path, admin=True)
+    lane.remember('the administrator API JWT', admin_jwt)
+    headers = {'Authorization': 'Bearer %s' % jwt, 'Accept': 'application/json'}
+    admin_headers = {'Authorization': 'Bearer %s' % admin_jwt, 'Accept': 'application/json'}
 
     # 2. The direct .vv, refused before anything is minted. The body is
     # never printed: had the request been accepted, it would hold a ticket.
@@ -1023,10 +1132,10 @@ def _drive(lane):
     first, s1 = _open_session(db, lane, headers, 1, set())
     second = None
     try:
+        ticket_expires = _capture_ticket(db, lane, s1, 'session 1\'s backend ticket')
         first.smoke('smoke-client-1.log')
         _wait_for_channels(lane, s1)
         lane.checkpoint('after the first session\'s channels have connected', 1, [s1])
-        ticket_expires = _capture_ticket(db, lane, s1, 'session 1\'s backend ticket')
         _require(*backend_leg_verdict(proxy_log_facts(_read_text(lane.log_path)), {s1}, expected_subject))
 
         # 4. Hold it past the ticket's and the token's expiry.
@@ -1045,10 +1154,10 @@ def _drive(lane):
         # 5. A second session, while the first is held. Its mint replaces
         # the guest's SPICE password; the first must not notice.
         second, s2 = _open_session(db, lane, headers, 2, {s1})
+        _capture_ticket(db, lane, s2, 'session 2\'s backend ticket')
         second.smoke('smoke-client-2.log')
         _wait_for_channels(lane, s2)
         lane.checkpoint('after the second session\'s channels have connected', 2, [s1, s2])
-        _capture_ticket(db, lane, s2, 'session 2\'s backend ticket')
         first.smoke('smoke-client-1-superseded.log')
         _log('session %s still passes frames after session %s minted' % (s1, s2))
         _require(*backend_leg_verdict(proxy_log_facts(_read_text(lane.log_path)), {s1, s2}, expected_subject))
@@ -1123,7 +1232,7 @@ def main():
         _drive(lane)
     finally:
         # Whether or not the drive passed, before anything is uploaded.
-        leaked = _scan(workdir, lane.ticket_descriptions, lane.tickets)
+        leaked = _scan(workdir, lane.needle_descriptions, lane.needles)
     if leaked:
         raise SystemExit('a secret reached a file the lane uploads')
     return 0

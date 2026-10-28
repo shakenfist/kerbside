@@ -23,8 +23,9 @@ on:
       - develop
     # Keep in step with the files the lane exercises: the source driver and
     # what it is built on, the RPC messages, the proxy's backend leg and the
-    # relay whose log lines the lane's oracles read, the lane's own scripts
-    # and the direct-qemu ones it reuses, and docs/console-sources.md, whose
+    # relay whose log lines the lane's oracles read, the crate pin and the
+    # script which build the proxy wheel, the lane's own scripts and the
+    # direct-qemu ones it reuses, and docs/console-sources.md, whose
     # Proxmox VE account block the lane runs. kerbside/api.py and
     # kerbside/db.py are exercised too but deliberately left out: they
     # change on most pull requests, and would book a PVE node for each. The
@@ -36,7 +37,9 @@ on:
       - 'kerbside/rpc/**'
       - 'rust/kerbside-proxy/src/backend.rs'
       - 'rust/kerbside-proxy/src/relay.rs'
+      - 'rust/kerbside-proxy/Cargo.toml'
       - 'rust/kerbside-proxy/Cargo.lock'
+      - 'tools/build-proxy-wheel.sh'
       - 'docs/console-sources.md'
       - '.github/workflows/proxmox-functional.yml'
       - 'tools/proxmox-e2e/**'

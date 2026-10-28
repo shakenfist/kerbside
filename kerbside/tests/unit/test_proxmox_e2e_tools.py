@@ -3,6 +3,7 @@ import io
 import json
 import os
 import shlex
+import subprocess
 import sys
 import tempfile
 from contextlib import redirect_stdout
@@ -916,6 +917,40 @@ class ScanTestCase(testtools.TestCase):
         self.assertIn('kerbside.log holds session 1\'s backend ticket', out.getvalue())
         self.assertNoValue(out.getvalue() + err.getvalue())
 
+    def test_each_secret_held_in_memory_is_named(self):
+        drive_console._load_env_file(os.path.join(self.workdir, 'kerbside.env'))
+        held = [('session 1\'s backend ticket', 'live-ticket-6666'),
+                ('the password in .vv 1', 'vv-password-7777'),
+                ('the API JWT', 'eyJhbGciOi.jwt-8888'),
+                ('the administrator API JWT', 'eyJhbGciOi.admin-jwt-9999')]
+        for description, value in held:
+            self.write('ryll-proxmox-1.stderr', 'before %s after\n' % value)
+            err = io.StringIO()
+            out = io.StringIO()
+            with redirect_stdout(out), mock.patch.object(sys, 'stderr', err):
+                self.assertTrue(drive_console._scan(self.workdir, [d for d, _ in held], [v for _, v in held]))
+            self.assertIn('ryll-proxmox-1.stderr holds %s;' % description, out.getvalue())
+            self.assertEqual(1, out.getvalue().count(' holds '))
+            for _, other in held:
+                self.assertNotIn(other, out.getvalue() + err.getvalue())
+            self.assertFalse(os.path.exists(os.path.join(self.workdir, 'ryll-proxmox-1.stderr')))
+
+    def test_the_drive_s_held_secrets_are_scanned_for(self):
+        self.write('ryll-proxmox-1.stdout', 'before vv-password-7777 after\n')
+        lane = _bare_lane(self.workdir)
+
+        def drive(lane):
+            lane.remember('the password in .vv 1', 'vv-password-7777')
+
+        out = io.StringIO()
+        argv = ['drive-console.py', '--workdir', self.workdir]
+        with mock.patch.object(sys, 'argv', argv), mock.patch.object(drive_console, 'Lane', return_value=lane), \
+                mock.patch.object(drive_console, '_drive', side_effect=drive), redirect_stdout(out), \
+                mock.patch.object(sys, 'stderr', io.StringIO()):
+            self.assertRaises(SystemExit, drive_console.main)
+        self.assertIn('ryll-proxmox-1.stdout holds the password in .vv 1;', out.getvalue())
+        self.assertNotIn('vv-password-7777', out.getvalue())
+
     def test_a_missing_secret_is_left_out_and_said_so(self):
         for name in sorted(_SENTINELS):
             path = os.path.join(self.node_dir, 'token-' + name)
@@ -983,3 +1018,195 @@ class UploadListTestCase(testtools.TestCase):
         listed = [line.strip()[len('- '):].strip('`').rsplit('/', 1)[-1]
                   for line in block.splitlines() if line.strip().startswith('- `')]
         self.assertEqual(sorted(drive_console.UPLOADED_FILES), sorted(listed))
+
+
+class TicketVerdictTestCase(testtools.TestCase):
+    NOW = 1000.0
+    LIFETIME = 30
+
+    def verdict(self, ticket=None, expires=None, minted=0, failures=(), first_channel=None):
+        return drive_console.ticket_verdict(ticket, expires, minted, list(failures), first_channel, self.NOW,
+                                            self.LIFETIME)
+
+    def test_a_live_ticket(self):
+        kind, message = self.verdict('live-ticket-6666', self.NOW + 20, first_channel=self.NOW - 1)
+        self.assertEqual(drive_console.OK, kind)
+        self.assertIn('16 characters', message)
+        self.assertNotIn('live-ticket-6666', message)
+
+    def test_a_ticket_found_before_any_channel_is_logged(self):
+        self.assertEqual(drive_console.OK, self.verdict('live-ticket-6666', self.NOW + 29)[0])
+
+    def test_a_ticket_with_no_expiry_is_a_defect(self):
+        self.assertEqual(drive_console.DEFECT, self.verdict('live-ticket-6666', None)[0])
+
+    def test_a_ticket_first_seen_expired_is_a_timing_fault(self):
+        for expires in (self.NOW, self.NOW - 1, self.NOW - 60):
+            kind, message = self.verdict('live-ticket-6666', expires, first_channel=self.NOW - 40)
+            self.assertEqual(drive_console.TIMING, kind, expires)
+            self.assertNotIn('live-ticket-6666', message)
+
+    def test_a_ticket_the_sweep_cleared_is_a_timing_fault(self):
+        # The mint came up to CHANNEL_TIME_SLACK before the first channel,
+        # so 25 seconds after it the ticket may have expired.
+        for age in (25, 26, 90):
+            self.assertEqual(drive_console.TIMING, self.verdict(minted=1, first_channel=self.NOW - age)[0], age)
+
+    def test_a_ticket_gone_while_live_is_a_defect(self):
+        for age in (0, 3, 24.9):
+            self.assertEqual(drive_console.DEFECT, self.verdict(minted=1, first_channel=self.NOW - age)[0], age)
+
+    def test_a_mint_with_no_connection_logged_is_a_harness_fault(self):
+        self.assertEqual(drive_console.HARNESS, self.verdict(minted=1)[0])
+
+    def test_channels_with_no_mint_is_a_defect(self):
+        kind, message = self.verdict(failures=['Backend console ticket mint failed: HTTPError'],
+                                     first_channel=self.NOW - 2)
+        self.assertEqual(drive_console.DEFECT, kind)
+        self.assertIn('no backend ticket was ever minted', message)
+        self.assertIn('Backend console ticket mint failed: HTTPError', message)
+
+    def test_no_channel_is_a_harness_fault(self):
+        self.assertEqual(drive_console.HARNESS, self.verdict()[0])
+
+
+class VvPasswordTestCase(testtools.TestCase):
+    def test_parsed(self):
+        vv = '[virt-viewer]\ntype=spice\nhost=kerbside\nport=5900\npassword=vv-password-7777\ntitle=x\n'
+        self.assertEqual('vv-password-7777', drive_console.vv_password(vv))
+
+    def test_absent_or_empty(self):
+        for vv in ('[virt-viewer]\ntype=spice\n', '[virt-viewer]\npassword=\n', 'proxy-password=vv-7777\n'):
+            self.assertIsNone(drive_console.vv_password(vv), vv)
+
+
+def _bare_lane(workdir, seed_path=None):
+    """A Lane without its environment, for the parts of the drive which need little of it."""
+    lane = drive_console.Lane.__new__(drive_console.Lane)
+    lane.run_dir = workdir
+    lane.source = 'pve'
+    lane.console_uuid = '100-uuid'
+    lane.api = 'http://127.0.0.1:1'
+    lane.seed_path = seed_path
+    lane.needle_descriptions = []
+    lane.needles = []
+    return lane
+
+
+class HeldSecretsTestCase(testtools.TestCase):
+    def setUp(self):
+        super().setUp()
+        workdir = tempfile.TemporaryDirectory()
+        self.addCleanup(workdir.cleanup)
+        self.workdir = workdir.name
+
+    def test_the_vv_password_is_held(self):
+        lane = _bare_lane(self.workdir)
+        resp = mock.Mock(status_code=200, text='[virt-viewer]\ntype=spice\npassword=vv-password-7777\n')
+        db = mock.Mock()
+        db.get_tokens_by_console.return_value = [{'session_id': 's1'}]
+        err = io.StringIO()
+        with mock.patch.object(requests, 'get', return_value=resp), \
+                mock.patch.object(drive_console, 'Ryll'), mock.patch.object(sys, 'stderr', err):
+            _, session_id = drive_console._open_session(db, lane, {}, 1, set())
+        self.assertEqual('s1', session_id)
+        self.assertEqual(['the password in .vv 1'], lane.needle_descriptions)
+        self.assertEqual(['vv-password-7777'], lane.needles)
+        self.assertNotIn('vv-password-7777', err.getvalue())
+
+    def test_the_api_jwts_are_held(self):
+        import jwt as pyjwt
+
+        seed_path = os.path.join(self.workdir, 'seed')
+        with open(seed_path, 'w') as f:
+            f.write('seed-5555555555')
+        lane = _bare_lane(self.workdir, seed_path)
+        lane.checkpoint = mock.Mock()
+        err = io.StringIO()
+        # The drive is stopped at its first request, once the JWTs are minted.
+        with mock.patch.object(drive_console, '_discover', return_value=({'uuid': '100-uuid'}, 'subject')), \
+                mock.patch.object(requests, 'get', side_effect=SystemExit('stop')), \
+                mock.patch('kerbside.db.get_audit_events', return_value=[]), mock.patch.object(sys, 'stderr', err):
+            self.assertRaises(SystemExit, drive_console._drive, lane)
+        self.assertEqual(['the API JWT', 'the administrator API JWT'], lane.needle_descriptions)
+        claims = [pyjwt.decode(t, 'seed-5555555555', algorithms=['HS256']) for t in lane.needles]
+        self.assertEqual([False, True], [c.get('kerbside_admin', False) for c in claims])
+        for token in lane.needles:
+            self.assertNotIn(token, err.getvalue())
+
+
+class ReadAccessLogTestCase(testtools.TestCase):
+    def setUp(self):
+        super().setUp()
+        env = mock.patch.dict(os.environ, {'PROXMOX_SSH_USER': 'debian', 'PROXMOX_NODE_ADDRESS': '10.0.0.5',
+                                           'PROXMOX_SSH_KEY': '/k/id'})
+        env.start()
+        self.addCleanup(env.stop)
+
+    def read(self, stdout='', returncode=0, stderr='', offset=100, token_id=_TOKEN):
+        result = subprocess.CompletedProcess([], returncode, stdout=stdout, stderr=stderr)
+        out = io.StringIO()
+        with mock.patch.object(drive_console.subprocess, 'run', return_value=result) as run, \
+                redirect_stdout(out), mock.patch.object(sys, 'stderr', io.StringIO()):
+            try:
+                lines = drive_console._read_access_log(offset, token_id)
+            except SystemExit as e:
+                return run, None, str(e)
+        return run, lines, None
+
+    def test_the_command_filters_on_the_node(self):
+        run, lines, failure = self.read('100\n')
+        self.assertIsNone(failure)
+        argv = run.call_args[0][0]
+        self.assertEqual(['timeout', '60', 'ssh'], argv[:3])
+        self.assertEqual('debian@10.0.0.5', argv[-2])
+        remote = shlex.split(argv[-1])
+        self.assertEqual(['bash', '-o', 'pipefail', '-c'], remote[:4])
+        self.assertEqual(5, len(remote))
+        inner = remote[4]
+        self.assertEqual(['sudo', '-n', 'stat', '-c', '%s', drive_console.ACCESS_LOG, '&&',
+                          'sudo', '-n', 'tail', '-c', '+101', drive_console.ACCESS_LOG, '|',
+                          'awk', '-v', 'user=%s' % _TOKEN, '$3 == user'], shlex.split(inner))
+        # The token ID reaches the node quoted, never bare.
+        self.assertIn('user=%s ' % shlex.quote(_TOKEN), inner)
+        self.assertNotEqual(_TOKEN, shlex.quote(_TOKEN))
+
+    def test_a_malformed_token_id_is_refused_before_ssh(self):
+        for token_id in ('kerbside@pve!console; cat /etc/shadow', 'kerbside@pve', 'kerbside!console',
+                         "kerbside@pve!con'sole", 'kerbside@pve!console x', ''):
+            run, lines, failure = self.read('100\n', token_id=token_id)
+            self.assertIsNotNone(failure, token_id)
+            self.assertTrue(failure.startswith('HARNESS FAULT: '), failure)
+            run.assert_not_called()
+
+    def test_the_lines_after_the_size_are_returned(self):
+        run, lines, failure = self.read('1234\n%s\n%s\n' % (_access(), _SCRAPE))
+        self.assertIsNone(failure)
+        self.assertEqual([_access(), _SCRAPE], lines)
+
+    def test_an_unchanged_log_holds_nothing(self):
+        run, lines, failure = self.read('100\n', offset=100)
+        self.assertIsNone(failure)
+        self.assertEqual([], lines)
+
+    def test_a_shrunken_log_is_a_harness_fault(self):
+        run, lines, failure = self.read('99\n%s\n' % _access(), offset=100)
+        self.assertTrue(failure.startswith('HARNESS FAULT: '), failure)
+        self.assertIn('rotated', failure)
+
+    def test_no_size_is_a_harness_fault(self):
+        for stdout in ('', 'stat: cannot stat\n', '%s\n' % _access()):
+            run, lines, failure = self.read(stdout)
+            self.assertIsNotNone(failure, stdout)
+            self.assertTrue(failure.startswith('HARNESS FAULT: '), failure)
+
+    def test_a_failed_read_names_only_the_last_stderr_line(self):
+        run, lines, failure = self.read('', returncode=255,
+                                        stderr='debug1: an earlier line\nPermission denied (publickey).\n')
+        self.assertTrue(failure.startswith('HARNESS FAULT: '), failure)
+        self.assertIn('exit 255: Permission denied (publickey).', failure)
+        self.assertNotIn('an earlier line', failure)
+
+    def test_a_failed_read_with_no_message(self):
+        run, lines, failure = self.read('100\n', returncode=1)
+        self.assertIn('exit 1: no message', failure)

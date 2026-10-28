@@ -794,7 +794,9 @@ touch any of:
   `minting.py`;
 - `kerbside/rpc/**`;
 - the proxy's backend leg and relay, `rust/kerbside-proxy/src/backend.rs`
-  and `relay.rs`, and its `Cargo.lock`;
+  and `relay.rs`, its `Cargo.toml` and `Cargo.lock`, which pin the ryll
+  crate whose log lines the lane reads, and `tools/build-proxy-wheel.sh`,
+  which builds the wheel the lane installs;
 - `docs/console-sources.md`, whose account block the lane runs;
 - the workflow itself and `tools/proxmox-e2e/**`;
 - the direct-qemu scripts the lane reuses:
@@ -829,12 +831,15 @@ What it asserts, in short:
 - the backend leg is tunnelled, TLS, and pinned to the node's
   subject, and a session survives past its 30 second ticket and
   `CONSOLE_TOKEN_DURATION`;
-- no token secret or `pvespiceproxy:` reaches an uploaded artifact.
+- no token secret, backend ticket, `.vv` password, API JWT or
+  `pvespiceproxy:` reaches an uploaded artifact.
 
 Like the oVirt lane, its oracles keep a harness fault apart from a
 defect (see "Log-derived oracles" above), and the mint count adds a
 third verdict, a timing fault, for a channel that connected too late
-to reuse its session's ticket.
+to reuse its session's ticket. Reading each session's backend ticket
+can give a timing fault too, when the harness was too slow to read it
+before it expired.
 
 The runner-side scripts, the topology, a diagram of the path proven,
 the mint-counting method, the security rules and what only the lane

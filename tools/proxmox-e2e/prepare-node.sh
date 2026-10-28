@@ -168,7 +168,7 @@ create_token() {
 # Fail if TOKEN_ID's effective privileges on the smoke guest are not exactly
 # the space separated, sorted PRIVILEGES.
 check_privileges() {
-    local token_id="$1" privileges="$2" granted
+    local token_id="$1" privileges="$2" granted held
 
     granted="$(node "sudo -n pveum user token permissions '${token_id%%!*}' '${token_id#*!}' --path /vms/${vmid} --output-format json")" \
         || fail "could not read the privileges of ${token_id}"

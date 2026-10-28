@@ -174,6 +174,24 @@ Each checkpoint fails with one of three labels:
   too high with every channel in time. PVE refused a mint. A leg was not
   tunnelled, not TLS, or pinned to the wrong subject.
 
+Each session's backend ticket is read for the scan by polling its token
+row every quarter second from the moment the session is known, so it is
+read within a poll of its mint. The ticket lasts 30 seconds, and the
+daemon's maintenance loop clears an expired one about once a minute.
+Reading it gives the same three labels:
+
+- **harness fault** -- no channel of the session connected within 60
+  seconds, so nothing could have minted; or kerbside audited a mint but
+  the proxy logged no backend connection, so the ticket's age cannot be
+  judged.
+- **timing fault** -- the ticket was first seen after it had expired, or
+  kerbside audited its mint but the row held no ticket when polled 25
+  seconds or more after the session's first channel connected, late
+  enough for the sweep to have cleared it.
+- **defect** -- the row held no ticket although kerbside audited a mint
+  which was still live, the ticket had no expiry, or the session's
+  channels connected with no ticket ever minted.
+
 ## Security
 
 The lane holds four API token secrets (the action's, the documented
@@ -183,10 +201,12 @@ token secret is in a 0600 file and is masked in the job log before
 anything reads it. The lane never mints itself.
 
 Before upload, `drive-console.py` scans every file the workflow uploads
-for each token secret, the auth seed, each session's backend ticket
-(read once from the database and held in memory only), and the literal
-`pvespiceproxy:`. It removes any file holding one and fails the run.
-`--scan-only` does the same without the backend tickets.
+for each token secret, the auth seed, each session's backend ticket,
+the password in each proxied `.vv` (kerbside's own console token), each
+API JWT the drive mints, and the literal `pvespiceproxy:`. The tickets,
+passwords and JWTs are held in memory only. It removes any file holding one and fails
+the run. `--scan-only` does the same without the values held in memory,
+which it cannot know.
 
 Never uploaded: `sources.yaml` (it holds the documented token's
 secret), any `.vv` file, the auth seed, any token file, PVE's access
