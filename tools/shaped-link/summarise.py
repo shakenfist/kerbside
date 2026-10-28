@@ -45,6 +45,26 @@ The window's ceiling follows from the client acknowledging every W messages:
 two batches of W circulate, and each takes a round trip plus the time to
 serialise W messages on the link, so at most 2W / (sRTT + W * size / rate)
 messages a second get through.
+
+A third table reports what each case cost the host, from the proxy's and
+qemu's CPU time and RSS that run-matrix.sh samples into proc.txt: CPU in
+cores used over the key-press window (CPU seconds per second), the mean RSS
+over that window, and the peak RSS over the whole case, which includes the
+quality capture when there was one. Cores and mean RSS are averaged over the
+good repeats; the peak is the largest of them. The last column is the peak
+of a transcoded display channel's pixmap cache, from the line the proxy logs
+when the channel ends ("-" for a relayed case).
+
+A fourth table, printed when run-matrix.sh ran with QUALITY=1 and
+quality.sh has scored the screenshots, reports image quality from each
+repeat's quality.json: how many repeats' backgrounds matched the reference
+exactly while the activity ran (and the most pixels that differed in any),
+the mean and lowest SSIM and the lowest PSNR of the frozen frame, and how
+many repeats' displays settled before frozen.png was taken. A repeat whose
+activity froze before its last key press (a `froze-early` marker) is counted
+as failed in every table, since its latency samples did not all see the
+activity; one whose ryll surface mirror lagged (`mirror-lagged`) is counted
+in the quality table's last column, since its screenshots may be wrong.
 """
 
 # audit-allow-print: this is a reporting CLI -- its markdown tables on
@@ -181,8 +201,7 @@ def ack_stats(rep_dirs, rate_mbit):
     rows = []
     windows = set()
     for d in rep_dirs:
-        if (os.path.exists(os.path.join(d, 'setup-failed'))
-                or os.path.exists(os.path.join(d, 'qemu-died'))):
+        if bad_repeat(d) or os.path.exists(os.path.join(d, 'qemu-died')):
             continue
         try:
             with open(os.path.join(d, 't1')) as f:
@@ -254,6 +273,137 @@ def ack_stats(rep_dirs, rate_mbit):
     return out
 
 
+def bad_repeat(d):
+    """Whether repeat directory `d` failed its setup, or froze too early."""
+    return (os.path.exists(os.path.join(d, 'setup-failed'))
+            or os.path.exists(os.path.join(d, 'froze-early')))
+
+
+def keypress_window(d):
+    """Return (start, end) of a repeat's key presses, or None."""
+    try:
+        with open(os.path.join(d, 't1')) as f:
+            t1 = float(f.read())
+        with open(os.path.join(d, 'keydraw.json')) as f:
+            return t1 - json.load(f)['elapsed_s'], t1
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def parse_proc(path):
+    """Return (clk_tck, {name: [(ts, cpu_ticks, rss_kib)]}) from proc.txt."""
+    clk_tck = 100
+    series = collections.defaultdict(list)
+    ts = None
+    try:
+        with open(path) as f:
+            for line in f:
+                parts = line.split()
+                if line.startswith('# clk_tck') and len(parts) == 3:
+                    clk_tck = int(parts[2])
+                elif line.startswith('@ '):
+                    ts = float(parts[1])
+                elif ts is not None and len(parts) == 4:
+                    series[parts[0]].append((ts, int(parts[1]) + int(parts[2]), int(parts[3])))
+    except (OSError, ValueError):
+        pass
+    return clk_tck, series
+
+
+PIXMAP_RE = re.compile(r'pixmap_cache_peak_bytes=(\d+)')
+
+
+def pixmap_peak(path):
+    """The largest pixmap cache peak a proxy log reports, or None."""
+    peak = None
+    try:
+        with open(path, errors='replace') as f:
+            for line in f:
+                m = PIXMAP_RE.search(line)
+                if m:
+                    peak = max(peak or 0, int(m.group(1)))
+    except OSError:
+        pass
+    return peak
+
+
+def host_stats(rep_dirs):
+    """CPU and memory for one case, over its good repeats, or None."""
+    rows = []
+    for d in rep_dirs:
+        if bad_repeat(d) or os.path.exists(os.path.join(d, 'qemu-died')):
+            continue
+        window = keypress_window(d)
+        clk_tck, series = parse_proc(os.path.join(d, 'proc.txt'))
+        if window is None or not series:
+            continue
+        row = {'pixmap': pixmap_peak(os.path.join(d, 'proxy.log'))}
+        for name in ('proxy', 'qemu'):
+            samples = series.get(name, [])
+            inside = [x for x in samples if window[0] <= x[0] <= window[1]]
+            row[name + '_cores'] = float('nan')
+            row[name + '_rss_mean'] = float('nan')
+            row[name + '_rss_peak'] = max((x[2] for x in samples), default=float('nan'))
+            if len(inside) >= 2:
+                (t0, c0, _), (t1, c1, _) = inside[0], inside[-1]
+                row[name + '_cores'] = (c1 - c0) / clk_tck / (t1 - t0)
+                row[name + '_rss_mean'] = statistics.mean(x[2] for x in inside)
+        rows.append(row)
+    if not rows:
+        return None
+    out = {'good': len(rows)}
+    for key in rows[0]:
+        if key == 'pixmap':
+            peaks = [r['pixmap'] for r in rows if r['pixmap'] is not None]
+            out[key] = max(peaks) if peaks else None
+        elif key.endswith('_peak'):
+            out[key] = max(r[key] for r in rows)
+        else:
+            out[key] = statistics.mean(r[key] for r in rows)
+    return out
+
+
+def quality_stats(rep_dirs):
+    """Image quality for one case, from its repeats' quality.json, or None."""
+    rows = []
+    lagged = 0
+    for d in rep_dirs:
+        if bad_repeat(d) or os.path.exists(os.path.join(d, 'qemu-died')):
+            continue
+        try:
+            with open(os.path.join(d, 'quality.json')) as f:
+                q = json.load(f)
+        except (OSError, ValueError):
+            continue
+        try:
+            with open(os.path.join(d, 'screenshots.json')) as f:
+                q['settled'] = json.load(f).get('settled', False)
+        except (OSError, ValueError):
+            q['settled'] = False
+        if os.path.exists(os.path.join(d, 'mirror-lagged')):
+            lagged += 1
+        rows.append(q)
+    if not rows:
+        return None
+
+    def num(v):
+        return float('inf') if v == 'inf' else float('nan') if v is None else float(v)
+
+    mids = [r['mid_background'] for r in rows if 'differing_pixels' in r.get('mid_background', {})]
+    frozen = [r['frozen'] for r in rows if 'ssim' in r.get('frozen', {})]
+    ssims = [num(f['ssim']) for f in frozen]
+    return {
+        'n': len(rows), 'lagged': lagged,
+        'mid_n': len(mids),
+        'mid_exact': sum(1 for m in mids if m['exact']),
+        'mid_diff': max((m['differing_pixels'] for m in mids), default=float('nan')),
+        'ssim_mean': statistics.mean(ssims) if ssims else float('nan'),
+        'ssim_min': min(ssims) if ssims else float('nan'),
+        'psnr_min': min((num(f['psnr_db']) for f in frozen), default=float('nan')),
+        'settled': sum(1 for r in rows if r['settled']),
+    }
+
+
 def case_stats(rep_dirs):
     lat, timeouts, tput, sendq, rtt, cwnd, rmem, rcvbuf = (
         [], 0, [], [], [], [], [], [])
@@ -262,7 +412,7 @@ def case_stats(rep_dirs):
     relayed = []
     good = died = failed = 0
     for d in rep_dirs:
-        if os.path.exists(os.path.join(d, 'setup-failed')):
+        if bad_repeat(d):
             failed += 1
             continue
         if os.path.exists(os.path.join(d, 'qemu-died')):
@@ -323,6 +473,21 @@ def case_stats(rep_dirs):
     }
 
 
+def cases(root):
+    """Yield (profile, activity, config, [repeat dirs]) for every case."""
+    for profile in sorted(os.listdir(root)):
+        pdir = os.path.join(root, profile)
+        if not os.path.isdir(pdir) or profile == 'tls':
+            continue
+        for activity in sorted(os.listdir(pdir)):
+            adir = os.path.join(pdir, activity)
+            configs = collections.defaultdict(list)
+            for rep in os.listdir(adir):
+                configs[rep.rsplit('-r', 1)[0]].append(rep)
+            for config in sorted(configs):
+                yield profile, activity, config, [os.path.join(adir, r) for r in sorted(configs[config])]
+
+
 def main():
     root = sys.argv[1]
     lost = 0
@@ -332,48 +497,27 @@ def main():
           'Client sRTT ms | cwnd | Backend Recv-Q p50/max KiB | '
           'Backend skmem max KiB (rcvbuf) | qemu Send-Q p50/p95 KiB |')
     print('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|')
-    for profile in sorted(os.listdir(root)):
-        pdir = os.path.join(root, profile)
-        if not os.path.isdir(pdir) or profile == 'tls':
-            continue
-        for activity in sorted(os.listdir(pdir)):
-            adir = os.path.join(pdir, activity)
-            configs = collections.defaultdict(list)
-            for rep in os.listdir(adir):
-                configs[rep.rsplit('-r', 1)[0]].append(rep)
-            for config in sorted(configs):
-                stats = case_stats(
-                    [os.path.join(adir, r) for r in sorted(configs[config])])
-                lost += stats['died'] + stats['failed']
-                print(f'| {profile} | {activity} | {config} | '
-                      f'{stats["good"]} ({stats["died"]}, '
-                      f'{stats["failed"]}) | '
-                      f'{stats["n"]} ({stats["timeouts"]}) | '
-                      f'{stats["p50"]:.0f} | {stats["p95"]:.0f} | '
-                      f'{stats["max"]:.0f} | {stats["tput"]:.1f} / '
-                      f'{stats["relayed"]:.1f} | '
-                      f'{stats["sendq50"]:.0f}/{stats["sendq95"]:.0f} | '
-                      f'{stats["rtt50"]:.0f} | {stats["cwnd50"]:.0f} | '
-                      f'{stats["recvq50"]:.0f}/{stats["recvqmax"]:.0f} | '
-                      f'{stats["rmemmax"]:.0f} ({stats["rcvbuf"]:.0f}) | '
-                      f'{stats["qsendq50"]:.0f}/{stats["qsendq95"]:.0f} |')
+    for profile, activity, config, rep_dirs in cases(root):
+        stats = case_stats(rep_dirs)
+        lost += stats['died'] + stats['failed']
+        print(f'| {profile} | {activity} | {config} | '
+              f'{stats["good"]} ({stats["died"]}, '
+              f'{stats["failed"]}) | '
+              f'{stats["n"]} ({stats["timeouts"]}) | '
+              f'{stats["p50"]:.0f} | {stats["p95"]:.0f} | '
+              f'{stats["max"]:.0f} | {stats["tput"]:.1f} / '
+              f'{stats["relayed"]:.1f} | '
+              f'{stats["sendq50"]:.0f}/{stats["sendq95"]:.0f} | '
+              f'{stats["rtt50"]:.0f} | {stats["cwnd50"]:.0f} | '
+              f'{stats["recvq50"]:.0f}/{stats["recvqmax"]:.0f} | '
+              f'{stats["rmemmax"]:.0f} ({stats["rcvbuf"]:.0f}) | '
+              f'{stats["qsendq50"]:.0f}/{stats["qsendq95"]:.0f} |')
     ack_rows = []
-    for profile in sorted(os.listdir(root)):
-        pdir = os.path.join(root, profile)
-        if not os.path.isdir(pdir) or profile == 'tls':
-            continue
-        for activity in sorted(os.listdir(pdir)):
-            adir = os.path.join(pdir, activity)
-            configs = collections.defaultdict(list)
-            for rep in os.listdir(adir):
-                configs[rep.rsplit('-r', 1)[0]].append(rep)
-            for config in sorted(configs):
-                m = re.search(r'-(\d+)mbit$', profile)
-                stats = ack_stats(
-                    [os.path.join(adir, r) for r in sorted(configs[config])],
-                    int(m.group(1)) if m else 0)
-                if stats:
-                    ack_rows.append((profile, activity, config, stats))
+    for profile, activity, config, rep_dirs in cases(root):
+        m = re.search(r'-(\d+)mbit$', profile)
+        stats = ack_stats(rep_dirs, int(m.group(1)) if m else 0)
+        if stats:
+            ack_rows.append((profile, activity, config, stats))
     if ack_rows:
         print()
         print('| Link | Activity | Proxy | Repeats | Window | Display msgs/s | '
@@ -387,6 +531,36 @@ def main():
                   f'{a["per_rtt"]:.0f} | {a["limit"]:.0f} | {a["ceiling"]:.0f} | '
                   f'{a["stalls"]:.1f} | {a["stalled"] * 100:.0f}% | '
                   f'{a["relay50"]:.0f} / {a["total50"]:.0f} |')
+    host_rows, quality_rows = [], []
+    for profile, activity, config, rep_dirs in cases(root):
+        stats = host_stats(rep_dirs)
+        if stats:
+            host_rows.append((profile, activity, config, stats))
+        stats = quality_stats(rep_dirs)
+        if stats:
+            quality_rows.append((profile, activity, config, stats))
+    if host_rows:
+        print()
+        print('| Link | Activity | Proxy | Repeats | Proxy cores | Proxy RSS mean / peak MiB | '
+              'qemu cores | qemu RSS mean / peak MiB | Pixmap cache peak MiB |')
+        print('|---|---|---|---|---|---|---|---|---|')
+        for profile, activity, config, h in host_rows:
+            pixmap = '-' if h['pixmap'] is None else f'{h["pixmap"] / 1048576:.1f}'
+            print(f'| {profile} | {activity} | {config} | {h["good"]} | '
+                  f'{h["proxy_cores"]:.3f} | '
+                  f'{h["proxy_rss_mean"] / 1024:.0f} / {h["proxy_rss_peak"] / 1024:.0f} | '
+                  f'{h["qemu_cores"]:.3f} | '
+                  f'{h["qemu_rss_mean"] / 1024:.0f} / {h["qemu_rss_peak"] / 1024:.0f} | {pixmap} |')
+    if quality_rows:
+        print()
+        print('| Link | Activity | Proxy | Repeats | Background exact while animating (most px differing) | '
+              'Frozen SSIM mean / min | Frozen PSNR min dB | Settled (mirror lagged) |')
+        print('|---|---|---|---|---|---|---|---|')
+        for profile, activity, config, q in quality_rows:
+            print(f'| {profile} | {activity} | {config} | {q["n"]} | '
+                  f'{q["mid_exact"]} of {q["mid_n"]} ({q["mid_diff"]}) | '
+                  f'{q["ssim_mean"]:.4f} / {q["ssim_min"]:.4f} | {q["psnr_min"]:.1f} | '
+                  f'{q["settled"]} of {q["n"]} ({q["lagged"]}) |')
     if lost:
         print(f'WARNING: {lost} repeat(s) were lost to a qemu exit or a '
               f'setup failure and are excluded; see the Repeats column',

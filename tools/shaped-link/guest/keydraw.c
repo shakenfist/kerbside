@@ -24,6 +24,18 @@
  *               connects while video streams already exist, so a run
  *               that lets spice-server stream the activity starts it
  *               only after the client has connected.
+ *   kd.frames=N stop the activity after frame N, leaving frame N on the
+ *               screen (0, the default, never stops). Pressing F12 stops
+ *               it at once, drawing frame N in place of whichever frame
+ *               is next; F12 does nothing with kd.frames=0.
+ *
+ * Activity frames are numbered from 0 in the order they are drawn, and
+ * frame n is a function of n alone: its plasma phase is n, and its noise
+ * is the noise generator's output from step n * width * height on. So the
+ * picture left by a freeze is the same in every run, however long the run
+ * took to get there, which is what lets a client's screenshot of it be
+ * compared with a reference. F12 reaches frame N's noise without drawing
+ * the frames before it (see xorshift_jump).
  *
  * The box and the activity are more than 32 pixels apart horizontally,
  * so qemu's column-sliced update path never emits a single drawable
@@ -61,9 +73,19 @@ static const char *mods[] = {
     NULL,
 };
 
+/* The noise generator's state before frame 0's first pixel. */
+#define NOISE_SEED 0x9e3779b9u
+
 static uint32_t *fb;
 static uint32_t pitch_px, W, H, fb_id;
 static int dfd;
+
+/* The animated rectangle, and what it is drawn from. */
+struct activity {
+    uint32_t x, y, w, h;
+    uint32_t noise_mask;
+    const float *st;            /* one period of sin, 1024 steps */
+};
 
 static void die(const char *m)
 {
@@ -83,6 +105,79 @@ static void dirty(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
     if (ioctl(dfd, DRM_IOCTL_MODE_DIRTYFB, &d) < 0) {
         die("DIRTYFB");
     }
+}
+
+/* One step of the activity's noise generator (xorshift32). */
+static uint32_t xorshift(uint32_t x)
+{
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    return x;
+}
+
+/* Apply a 32x32 GF(2) matrix, held as the images of the basis vectors. */
+static uint32_t gf2_apply(const uint32_t m[32], uint32_t x)
+{
+    uint32_t y = 0;
+    for (int i = 0; i < 32; i++) {
+        if ((x >> i) & 1) {
+            y ^= m[i];
+        }
+    }
+    return y;
+}
+
+/*
+ * The noise generator's state `steps` steps after `x`, without taking
+ * them. A xorshift step is linear over GF(2), so it is a 32x32 bit matrix,
+ * and `steps` of them are that matrix raised to the power `steps`, which
+ * squaring reaches in 64 rounds at most.
+ */
+static uint32_t xorshift_jump(uint32_t x, uint64_t steps)
+{
+    uint32_t m[32], sq[32];
+    for (int i = 0; i < 32; i++) {
+        m[i] = xorshift(1u << i);
+    }
+    while (steps) {
+        if (steps & 1) {
+            x = gf2_apply(m, x);
+        }
+        for (int i = 0; i < 32; i++) {
+            sq[i] = gf2_apply(m, m[i]);
+        }
+        memcpy(m, sq, sizeof(m));
+        steps >>= 1;
+    }
+    return x;
+}
+
+/*
+ * Draw activity frame `f` and flush it. `*rng` must be the noise state at
+ * the frame's first pixel; it is left at the next frame's.
+ */
+static void draw_frame(const struct activity *a, unsigned f, uint32_t *rng)
+{
+    const float *st = a->st;
+    uint32_t r_ = *rng;
+    for (uint32_t y = 0; y < a->h; y++) {
+        uint32_t *row = fb + (a->y + y) * pitch_px + a->x;
+        float s = st[(y * 3 + f * 7) & 1023];
+        for (uint32_t x = 0; x < a->w; x++) {
+            float v = st[(x * 2 + f * 5) & 1023] + s +
+                      st[((x + y) * 2 + f * 11) & 1023];
+            int r = 128 + 42 * v;
+            int g = 128 + 42 * st[((int)(v * 170) + f * 3) & 1023];
+            int b = 128 - 42 * v;
+            r_ = xorshift(r_);
+            row[x] = ((r ^ (r_ & a->noise_mask)) & 0xff) << 16 |
+                     ((g ^ ((r_ >> 8) & a->noise_mask)) & 0xff) << 8 |
+                     ((b ^ ((r_ >> 16) & a->noise_mask)) & 0xff);
+        }
+    }
+    *rng = r_;
+    dirty(a->x, a->y, a->w, a->h);
 }
 
 static int param(const char *cmdline, const char *key, int def)
@@ -156,6 +251,7 @@ int main(void)
     uint32_t vh = param(cmdline, "kd.h=", 480);
     int noise = param(cmdline, "kd.noise=", 3);
     int delay = param(cmdline, "kd.delay=", 0);
+    int frames = param(cmdline, "kd.frames=", 0);
     uint32_t noise_mask = noise <= 0 ? 0 : noise >= 8 ? 0xff : (1u << noise) - 1;
 
     for (int i = 0; mods[i]; i++) {
@@ -269,41 +365,37 @@ int main(void)
         vh = H - 32;
     }
     uint32_t vx = W - vw - 16, vy = (H - vh) / 2;
-    printf("KEYDRAW START %ux%u box %ux%u@%u,%u activity %ux%u@%u,%u fps=%d noise=%d delay=%d\n",
-           W, H, BOX_W, BOX_H, BOX_X, BOX_Y, vw, vh, vx, vy, fps, noise, delay);
+    printf("KEYDRAW START %ux%u box %ux%u@%u,%u activity %ux%u@%u,%u fps=%d noise=%d delay=%d frames=%d\n",
+           W, H, BOX_W, BOX_H, BOX_X, BOX_Y, vw, vh, vx, vy, fps, noise, delay, frames);
     fflush(stdout);
 
     float *st = malloc(sizeof(float) * 1024);
     for (int i = 0; i < 1024; i++) {
         st[i] = sinf(i * 2 * (float)M_PI / 1024);
     }
+    struct activity act = {
+        .x = vx, .y = vy, .w = vw, .h = vh, .noise_mask = noise_mask, .st = st,
+    };
     struct timespec next;
     clock_gettime(CLOCK_MONOTONIC, &next);
     time_t activity_from = next.tv_sec + delay;
     long period = fps > 0 ? 1000000000L / fps : 0;
-    uint32_t rng = 0x9e3779b9;
-    for (unsigned f = 0;; f++) {
-        if (fps > 0 && next.tv_sec >= activity_from) {
-            for (uint32_t y = 0; y < vh; y++) {
-                uint32_t *row = fb + (vy + y) * pitch_px + vx;
-                float a = st[(y * 3 + f * 7) & 1023];
-                for (uint32_t x = 0; x < vw; x++) {
-                    float v = st[(x * 2 + f * 5) & 1023] + a +
-                              st[((x + y) * 2 + f * 11) & 1023];
-                    int r = 128 + 42 * v;
-                    int g = 128 + 42 * st[((int)(v * 170) + f * 3) & 1023];
-                    int b = 128 - 42 * v;
-                    rng ^= rng << 13;
-                    rng ^= rng >> 17;
-                    rng ^= rng << 5;
-                    row[x] = ((r ^ (rng & noise_mask)) & 0xff) << 16 |
-                             ((g ^ ((rng >> 8) & noise_mask)) & 0xff) << 8 |
-                             ((b ^ ((rng >> 16) & noise_mask)) & 0xff);
-                }
+    uint32_t rng = NOISE_SEED;
+    unsigned drawn = 0;         /* the next activity frame's number */
+    int frozen = 0;
+    for (;;) {
+        /* Paced: an activity runs, or is waiting for kd.delay to pass. */
+        int paced = fps > 0 && !frozen;
+        if (paced && next.tv_sec >= activity_from) {
+            draw_frame(&act, drawn, &rng);
+            if (frames > 0 && drawn == (unsigned)frames) {
+                frozen = 1;
+                printf("KEYDRAW FROZEN frame %u after the last frame\n", drawn);
+                fflush(stdout);
             }
-            dirty(vx, vy, vw, vh);
+            drawn++;
         }
-        if (fps > 0) {
+        if (paced) {
             next.tv_nsec += period;
             while (next.tv_nsec >= 1000000000L) {
                 next.tv_nsec -= 1000000000L;
@@ -317,7 +409,7 @@ int main(void)
          */
         for (;;) {
             int timeout_ms = -1;
-            if (fps > 0) {
+            if (fps > 0 && !frozen) {
                 struct timespec now;
                 clock_gettime(CLOCK_MONOTONIC, &now);
                 long ms = (next.tv_sec - now.tv_sec) * 1000 +
@@ -329,7 +421,7 @@ int main(void)
             }
             struct pollfd p = { .fd = kfd, .events = POLLIN };
             if (poll(&p, 1, timeout_ms) <= 0) {
-                if (fps > 0) {
+                if (fps > 0 && !frozen) {
                     break;
                 }
                 continue;
@@ -337,8 +429,17 @@ int main(void)
             struct input_event ev[16];
             ssize_t n = read(kfd, ev, sizeof(ev));
             for (ssize_t i = 0; i < n / (ssize_t)sizeof(ev[0]); i++) {
-                if (ev[i].type == EV_KEY && ev[i].value == 1) {
+                if (ev[i].type != EV_KEY || ev[i].value != 1) {
+                    continue;
+                }
+                if (ev[i].code != KEY_F12) {
                     paint_box(++presses);
+                } else if (fps > 0 && frames > 0 && !frozen) {
+                    rng = xorshift_jump(NOISE_SEED, (uint64_t)frames * vw * vh);
+                    draw_frame(&act, frames, &rng);
+                    frozen = 1;
+                    printf("KEYDRAW FROZEN frame %d on F12 after %u frames\n", frames, drawn);
+                    fflush(stdout);
                 }
             }
         }

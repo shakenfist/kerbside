@@ -4,16 +4,24 @@
 # Usage: build-ryll.sh OUTDIR
 #
 # Clones ryll (RYLL_SRC, a local checkout or a git URL; RYLL_REF, default
-# the source's HEAD) into OUTDIR/ryll, applies ryll-surface-drawn-rect.patch
-# and builds a release binary in ryll's own ryll-dev Docker image, never
-# with a host Rust toolchain. The binary lands at
-# OUTDIR/ryll/target/release/ryll.
+# 0d140b3, see below) into OUTDIR/ryll, applies
+# ryll-surface-drawn-rect.patch and builds a release binary in ryll's own
+# ryll-dev Docker image, never with a host Rust toolchain. The binary lands
+# at OUTDIR/ryll/target/release/ryll.
 #
 # The patch adds a `rect` field ([left, top, right, bottom]) to the
 # control socket's `surface_drawn` event. keydraw-latency.py needs it to
 # tell the guest's key-box draw apart from the screen activity's draws.
 # It is an additive field, so it is a candidate for ryll's control socket
 # protocol proper; until it lands there, it lives here.
+#
+# RYLL_REF defaults to a fixed commit rather than the source's HEAD, for two
+# reasons. Every run measures the same client, so results stay comparable.
+# And the patch stopped applying to ryll develop when control/server.rs
+# moved after 0d140b3, so HEAD no longer builds. 0d140b3 already decodes
+# the LZ4 draws the proxy's transcoding display channel sends. Move the pin
+# when the rect field lands in ryll's control socket protocol, and drop the
+# patch then.
 
 set -euo pipefail
 
@@ -28,7 +36,7 @@ if [ -z "${RYLL_SRC:-}" ]; then
     [ -d "${RYLL_SRC}" ] || RYLL_SRC='https://github.com/shakenfist/ryll.git'
 fi
 echo "build-ryll.sh: building ryll from ${RYLL_SRC}"
-RYLL_REF="${RYLL_REF:-HEAD}"
+RYLL_REF="${RYLL_REF:-0d140b3}"
 
 mkdir -p "${OUTDIR}"
 SRC="${OUTDIR}/ryll"

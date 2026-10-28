@@ -288,7 +288,7 @@ pub async fn run(
         connection_ref,
     );
     let mut display = Display::new(options, client_caps, pacer, frame_tx, connection_ref);
-    let core = display.run(&mut backend.events, message_rx, done_rx);
+    let core = display.run(&mut backend.events, &backend.cache, message_rx, done_rx);
 
     let result = tokio::select! {
         r = reader => r.context("reading the client"),
@@ -316,6 +316,7 @@ pub async fn run(
     };
     // Close the backend leg with the client leg.
     backend.task.abort();
+    backend.cache.log_end(connection_ref);
 
     match &result {
         Ok(()) => info!(%connection_ref, "transcoding display channel ended"),
@@ -584,10 +585,12 @@ impl Display {
 
     /// Apply the backend's events and the client's messages, and send each
     /// frame when the pacing allows, until the backend's events end or the
-    /// writer stops.
+    /// writer stops. `cache` samples the renderer's pixmap cache after each
+    /// batch of events.
     async fn run(
         &mut self,
         events: &mut mpsc::Receiver<ChannelEvent>,
+        cache: &decode::CacheWatch,
         mut messages: mpsc::Receiver<ClientMessage>,
         mut done: mpsc::Receiver<()>,
     ) -> Result<()> {
@@ -617,6 +620,7 @@ impl Display {
                         while let Ok(event) = events.try_recv() {
                             self.apply(&event);
                         }
+                        cache.sample();
                     }
                     None => return Ok(()),
                 },

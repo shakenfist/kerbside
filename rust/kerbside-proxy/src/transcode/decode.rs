@@ -23,6 +23,7 @@
 //! transcoder's own surface.
 
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -38,7 +39,7 @@ use shakenfist_spice_renderer::{
 };
 use tokio::sync::{mpsc, Notify};
 use tokio::task::JoinHandle;
-use tracing::warn;
+use tracing::{info, warn};
 
 /// How many decoded events may queue between the renderer and the
 /// transcoder. When the queue is full the renderer stops reading the
@@ -64,6 +65,8 @@ pub struct Backend {
     /// The renderer's task. It ends when the backend closes the channel or
     /// fails; aborting it closes the backend socket.
     pub task: JoinHandle<Result<()>>,
+    /// How full the renderer's pixmap cache gets.
+    pub cache: CacheWatch,
 }
 
 /// Start ryll's renderer on `stream`, a linked backend display channel,
@@ -73,6 +76,7 @@ pub fn start(stream: SpiceStream, tap: Arc<Tap>) -> Backend {
     // The transcoder waits on the queue itself, so the wake-up the renderer
     // pairs with each event has no listener.
     let sink = EventSink::new(tx, Arc::new(Notify::new()));
+    let snapshot = Arc::new(Mutex::new(DisplaySnapshot::default()));
     let mut channel = DisplayChannel::new(
         RENDERER_CHANNEL_ID,
         stream,
@@ -80,7 +84,7 @@ pub fn start(stream: SpiceStream, tap: Arc<Tap>) -> Backend {
         None,
         Arc::new(ByteCounter::new()),
         tap,
-        Arc::new(Mutex::new(DisplaySnapshot::default())),
+        Arc::clone(&snapshot),
         DisplayChannel::new_shared_glz_dictionary(GLZ_DICTIONARY_BYTES),
         LogConfig::default(),
         Arc::new(MmClock::new()),
@@ -89,7 +93,66 @@ pub fn start(stream: SpiceStream, tap: Arc<Tap>) -> Backend {
         image_compression::LZ4,
     );
     let task = tokio::spawn(async move { channel.run().await });
-    Backend { events, task }
+    Backend {
+        events,
+        task,
+        cache: CacheWatch::new(snapshot),
+    }
+}
+
+/// How full the renderer's pixmap cache gets, read from the snapshot the
+/// renderer publishes after each read from the backend. Each session holds
+/// a cache of up to [`IMAGE_CACHE_BYTES`], so this is what says whether that
+/// size is worth its memory: the peak is logged when the channel ends.
+pub struct CacheWatch {
+    snapshot: Arc<Mutex<DisplaySnapshot>>,
+    peak_bytes: AtomicUsize,
+    peak_entries: AtomicUsize,
+}
+
+impl CacheWatch {
+    pub fn new(snapshot: Arc<Mutex<DisplaySnapshot>>) -> Self {
+        Self {
+            snapshot,
+            peak_bytes: AtomicUsize::new(0),
+            peak_entries: AtomicUsize::new(0),
+        }
+    }
+
+    /// Record the cache's size now, keeping the largest seen. A poisoned
+    /// snapshot is still read: the counters in it are plain numbers.
+    pub fn sample(&self) {
+        let snapshot = self.snapshot.lock().unwrap_or_else(|e| e.into_inner());
+        self.peak_bytes
+            .fetch_max(snapshot.image_cache_bytes, Ordering::Relaxed);
+        self.peak_entries
+            .fetch_max(snapshot.image_cache_entries, Ordering::Relaxed);
+    }
+
+    /// The largest cache seen, as (bytes, entries).
+    pub fn peak(&self) -> (usize, usize) {
+        (
+            self.peak_bytes.load(Ordering::Relaxed),
+            self.peak_entries.load(Ordering::Relaxed),
+        )
+    }
+
+    /// Log the cache's peak and final size, once the channel has ended.
+    pub fn log_end(&self, connection_ref: &str) {
+        self.sample();
+        let (peak_bytes, peak_entries) = self.peak();
+        let snapshot = self.snapshot.lock().unwrap_or_else(|e| e.into_inner());
+        info!(
+            %connection_ref,
+            pixmap_cache_peak_bytes = peak_bytes,
+            pixmap_cache_peak_entries = peak_entries,
+            pixmap_cache_bytes = snapshot.image_cache_bytes,
+            pixmap_cache_entries = snapshot.image_cache_entries,
+            pixmap_cache_evictions = snapshot.image_cache_evictions_total,
+            pixmap_cache_cap_bytes = IMAGE_CACHE_BYTES,
+            "the transcoder's pixmap cache at channel end"
+        );
+    }
 }
 
 /// Something the backend sent that the renderer does not draw.
@@ -377,6 +440,27 @@ mod tests {
         let body = draw_body(0, 0, ImageType::Surface as u8);
         assert_eq!(classify(display_server::DRAW_COPY, &body[..30]), None);
         assert_eq!(classify(display_server::DRAW_COPY, &[]), None);
+    }
+
+    #[test]
+    fn the_cache_watch_keeps_the_peak() {
+        let snapshot = Arc::new(Mutex::new(DisplaySnapshot::default()));
+        let watch = CacheWatch::new(Arc::clone(&snapshot));
+        watch.sample();
+        assert_eq!(watch.peak(), (0, 0));
+        {
+            let mut s = snapshot.lock().unwrap();
+            s.image_cache_bytes = 4096;
+            s.image_cache_entries = 3;
+        }
+        watch.sample();
+        {
+            let mut s = snapshot.lock().unwrap();
+            s.image_cache_bytes = 1024;
+            s.image_cache_entries = 1;
+        }
+        watch.sample();
+        assert_eq!(watch.peak(), (4096, 3));
     }
 
     #[test]

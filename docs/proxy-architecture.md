@@ -285,6 +285,12 @@ How a transcoded display channel works (`rust/kerbside-proxy/src/transcode/`):
   the link has nearly drained it. Meanwhile damage merges in the mirror, so a
   slow client is sent the screen as it is when it can take more, never the
   frames it missed. No `SET_ACK` is sent, so the client sends no ACKs.
+- **Memory.** Each transcoded channel holds ryll's pixmap cache (up to
+  256 MiB) and GLZ dictionary (up to 64 MiB) besides the mirror and the
+  shadow. When the channel ends the proxy logs, at info, how full the pixmap
+  cache got (`pixmap_cache_peak_bytes`, `pixmap_cache_peak_entries`) and
+  how many entries it evicted. The shaped-link rig's `summarise.py` reports
+  the peak.
 
 What it does not do:
 

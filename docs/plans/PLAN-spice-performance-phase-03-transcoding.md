@@ -1019,6 +1019,28 @@ Brief notes for 6:
   0.42) drew correctly. Not tested: a guest resize end to end.
   Ryll releases up to 0.1.5 cannot decode the LZ4 draws the
   transcoder sends, and the harness doc says so.
+- **2026-10-28 (AEDT), back brief for steps 4 to 6.** Mikal chose
+  to run 4a, 4b, 5 and 6 through to the verdict in one pull
+  request, which the session may push and open.
+- **Step 4a departed from readying decision 2 in one place.**
+  Besides `kd.frames=N`, an F12 key press makes the guest draw
+  frame N at once and stop. A frame count fixed at boot cannot
+  know how long a case's key presses take, so it would either
+  freeze in the middle of the latency samples or leave dead
+  time. The animation index now counts drawn frames rather than
+  loop passes (identical with `kd.delay=0`), and the noise
+  generator jumps ahead, so frame N is the same however it was
+  reached. That was checked: frame 30 reached by F12 is
+  byte-identical to frame 30 reached frame by frame. The rig
+  presses F12 only after the last latency sample, and drops a
+  case's latency if the freeze came early.
+- **Step 4a smoke run.** The two unshaped reference captures are
+  byte-identical (checked again with `cmp` by the management
+  session), so readying decision 1 holds. The renderer's pixmap
+  cache peaked at 0 bytes: qemu's display path never asks for an
+  image to be cached. Early sign for 4b: while the activity
+  runs, the transcoder's JPEG reaches background tiles next to
+  it, and the frozen frame converges to exact.
 - **Not done here: CI does not build the `transcode` feature,**
   so it can rot unnoticed until step 4 builds it. A lane would
   build openh264 on every run. Left for the productising
