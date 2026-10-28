@@ -63,8 +63,9 @@ evidence that would reopen the question.
   It loses there only at 80 ms / 10 Mbit busy (244 against 192 ms).
 - **It always ends with the exact picture.** Every transcoded repeat
   converged to the lossless reference once motion stopped. Relay with
-  streaming off kept its JPEG on every 80 ms link (frozen-frame SSIM
-  0.9888, 43.9 dB). On the 2 Mbit link the transcoder settled in 8.2 s,
+  streaming off kept its JPEG with busy activity on every link of 80 ms
+  or more, and on the 20 ms link when spice-server judged it slow
+  (frozen-frame SSIM 0.9888, 43.9 dB). On the 2 Mbit link the transcoder settled in 8.2 s,
   where relay with streaming off took 17.5 s.
 - **It moves work off the hypervisor.** qemu used 0.13 cores with the
   transcoder against 0.68 with relay and streaming off, for heavy
@@ -363,23 +364,20 @@ session would support moving ryll's RDP output into Kerbside.
 
 ## Does a productised transcoder need its own CI lane?
 
-No separate lane. Today no CI job builds the `transcode` feature,
-because its compression dependency's `encode` feature builds openh264
-from source. A productised transcoder would first split that feature
+No separate lane. The `transcode` feature is kept out of the release
+build because its compression dependency's `encode` feature builds
+openh264 from source. A productised transcoder would first split that feature
 (ryll#499), so that the JPEG and LZ4 encoders build without openh264.
 It would then be in the release wheel, either as a default feature or
 enabled by `tools/build-proxy-wheel.sh`. The existing `Rust proxy`
 workflow job would then build, lint and test it with no new lane and
 no new gate job.
 
-While the experiment stays in the tree unproductised, nothing builds
-it, so a ryll pin bump can break it unnoticed. The cheap guard is to
-add `--features transcode` clippy and test steps to the existing job.
-That is a step, not a new job, so it renames no required check. Its
-cost is building openh264 on a cache miss, which the job's cargo cache
-otherwise keeps. The alternative is to accept the rot, and have any
-re-measurement start by repairing the build. Adding the steps is
-recorded as a follow-up, not done here.
+While the experiment stays in the tree unproductised, the existing
+job also runs clippy and the tests with `--features transcode`, so a
+ryll pin bump cannot break it unnoticed. Those are steps, not a new
+job, so they rename no required check. Their cost is building openh264
+on a cache miss, which the job's cargo cache otherwise keeps.
 
 ## What would change the answer
 
@@ -455,8 +453,5 @@ Nothing here has been filed.
   crash, once the two items above are settled.
 - **Andris: socket pacing, and the JPEG fringe** at the edges of
   moving content, as described above.
-- **Kerbside CI: add `--features transcode` clippy and test steps** to
-  the existing Rust job for as long as the experiment is kept, or
-  remove the experiment.
 - **remote-viewer's black display** on a switch to transcode was not
   explained. It matters only if switching is ever revisited.

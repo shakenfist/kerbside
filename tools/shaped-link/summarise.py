@@ -72,6 +72,7 @@ in the quality table's last column, since its screenshots may be wrong.
 
 import collections
 import json
+import math
 import os
 import re
 import statistics
@@ -356,10 +357,17 @@ def host_stats(rep_dirs):
         if key == 'pixmap':
             peaks = [r['pixmap'] for r in rows if r['pixmap'] is not None]
             out[key] = max(peaks) if peaks else None
-        elif key.endswith('_peak'):
-            out[key] = max(r[key] for r in rows)
         else:
-            out[key] = statistics.mean(r[key] for r in rows)
+            # A repeat without samples for a value is NaN there; leave it out
+            # rather than let it decide the result, and give NaN only when no
+            # repeat had one.
+            values = [r[key] for r in rows if not math.isnan(r[key])]
+            if not values:
+                out[key] = float('nan')
+            elif key.endswith('_peak'):
+                out[key] = max(values)
+            else:
+                out[key] = statistics.mean(values)
     return out
 
 
@@ -391,7 +399,10 @@ def quality_stats(rep_dirs):
 
     mids = [r['mid_background'] for r in rows if 'differing_pixels' in r.get('mid_background', {})]
     frozen = [r['frozen'] for r in rows if 'ssim' in r.get('frozen', {})]
-    ssims = [num(f['ssim']) for f in frozen]
+    # A missing score is NaN, which min() and mean() handle by position, so
+    # it is left out.
+    ssims = [s for s in (num(f['ssim']) for f in frozen) if not math.isnan(s)]
+    psnrs = [s for s in (num(f['psnr_db']) for f in frozen) if not math.isnan(s)]
     return {
         'n': len(rows), 'lagged': lagged,
         'mid_n': len(mids),
@@ -399,7 +410,7 @@ def quality_stats(rep_dirs):
         'mid_diff': max((m['differing_pixels'] for m in mids), default=float('nan')),
         'ssim_mean': statistics.mean(ssims) if ssims else float('nan'),
         'ssim_min': min(ssims) if ssims else float('nan'),
-        'psnr_min': min((num(f['psnr_db']) for f in frozen), default=float('nan')),
+        'psnr_min': min(psnrs, default=float('nan')),
         'settled': sum(1 for r in rows if r['settled']),
     }
 

@@ -1001,6 +1001,16 @@ async fn a_switching_channel_moves_between_relaying_and_transcoding() {
         ));
 
         let (client_far, mut client_near) = pair().await;
+        // The listener's TCP_NOTSENT_LOWAT, which the transcoder changes and
+        // a relay after it must put back; read through a second handle on
+        // the same socket.
+        const LISTENER_LOWAT: u32 = 12_345;
+        let probe = socket2::Socket::from(
+            std::os::fd::AsFd::as_fd(&client_far)
+                .try_clone_to_owned()
+                .unwrap(),
+        );
+        probe.set_tcp_notsent_lowat(LISTENER_LOWAT).unwrap();
         let state = state(None);
         let mut options = options(PacingMode::Socket);
         options.start_transcoded = false;
@@ -1065,11 +1075,13 @@ async fn a_switching_channel_moves_between_relaying_and_transcoding() {
             // The client keeps spice-server's surface and MONITORS_CONFIG.
             assert!(!transcoded.contains(&display_server::SURFACE_CREATE));
             assert!(!transcoded.contains(&display_server::MONITORS_CONFIG));
+            assert_eq!(probe.tcp_notsent_lowat().unwrap(), options.notsent_lowat);
 
             // Relayed again: the new channel's start sequence.
             let resumed =
                 read_types_until_shows(&mut client_near, &mut buffer, &mut client, &third).await;
             assert_eq!(resumed[0], display_server::SURFACE_CREATE);
+            assert_eq!(probe.tcp_notsent_lowat().unwrap(), LISTENER_LOWAT);
             // Closing the client ends the channel.
             drop(client_near);
         };
@@ -1114,6 +1126,69 @@ async fn a_switching_channel_moves_between_relaying_and_transcoding() {
             reports[2].1[..2],
             [(display_client::INIT, init.clone()), no_glz]
         );
+        server.abort();
+    })
+    .await
+    .expect("the test timed out");
+}
+
+/// A relay after a transcoder that cannot start for a reason a redial would
+/// not cure (here, no DISPLAY_INIT to replay) ends the channel, rather than
+/// being dialled again as if spice-server had refused it.
+#[tokio::test]
+async fn a_relay_that_cannot_resume_ends_the_channel_without_redialling() {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        let desktop = Desktop::pattern(SIZE);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (received_tx, mut received_rx) = mpsc::unbounded_channel();
+        // More dials served than the channel should use: a redial would be
+        // accepted, and would show as a third report.
+        let server = tokio::spawn(fake_server(
+            listener,
+            vec![
+                Dialled::Serve(desktop.clone()),
+                Dialled::Serve(desktop.clone()),
+                Dialled::Serve(desktop),
+            ],
+            received_tx,
+        ));
+
+        // The client connects but never sends DISPLAY_INIT.
+        let (client_far, client_near) = pair().await;
+        let state = state(None);
+        let options = options(PacingMode::Socket);
+        assert!(options.start_transcoded);
+        let caps = client_caps();
+        let dials = std::sync::atomic::AtomicUsize::new(0);
+        let result = switch::run(
+            &state,
+            Arc::new(FirewallPolicy::default()),
+            SpiceStream::Plain(client_far),
+            &caps,
+            "test-switch",
+            &pb::Target::default(),
+            CancellationToken::new(),
+            &options,
+            Duration::from_millis(300),
+            || {
+                dials.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                async move {
+                    Ok::<_, anyhow::Error>(SpiceStream::Plain(TcpStream::connect(addr).await?))
+                }
+            },
+        )
+        .await;
+        result.expect("a relay that cannot resume ends the channel with Ok");
+        assert_eq!(
+            dials.load(std::sync::atomic::Ordering::SeqCst),
+            2,
+            "one dial to transcode, one to relay, and no redial"
+        );
+        drop(client_near);
+        for _ in 0..2 {
+            received_rx.recv().await.expect("each served dial reports");
+        }
         server.abort();
     })
     .await

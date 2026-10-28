@@ -72,7 +72,12 @@ without. It is an experiment trigger, not a product interface.
 The client leg stays open throughout; the backend display channel is
 closed and dialled again for the other mode. Both modes dial it with the
 transcoder's capabilities: LZ4, and `MULTI_CODEC` with no codec, so
-spice-server never streams to either.
+spice-server never streams to either. A relay spell therefore offers
+spice-server the transcoder's capabilities, not the client's, and does not
+warn about the difference. It assumes a client that can take LZ4 and
+`MONITORS_CONFIG`, as remote-viewer and current Ryll can; a client
+without them, such as Ryll 0.1.5 or earlier, which cannot decode LZ4,
+could be sent what it never offered.
 
 - **Relay to transcode.** The relay ends when its backend leg reads as
   closed, which its server-to-client pump sees only between messages, so

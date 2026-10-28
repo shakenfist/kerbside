@@ -40,7 +40,12 @@
 //!
 //! [`ClientLeg`] keeps the client's messages whole across a switch: a mode
 //! only ever reads complete messages, so a message the client was half way
-//! through sending reaches the next mode intact. It also keeps the
+//! through sending reaches the next mode intact. A message already handed to
+//! the stopping mode is not replayed to the next: on a display channel that
+//! is an `ACK` (the next backend channel starts its own window with
+//! `SET_ACK`), a stream report (there are no streams) or a
+//! `PREFERRED_COMPRESSION`, which [`ClientLeg`] has already kept for the
+//! next relay spell to send. It also keeps the
 //! `DISPLAY_INIT` and `PREFERRED_COMPRESSION` the relay replays, takes GLZ
 //! out of the latter, and follows the size of the client's primary surface
 //! in what is written to it.
@@ -57,6 +62,7 @@ use shakenfist_spice_protocol::constants::image_compression;
 use shakenfist_spice_protocol::link::SpiceStream;
 use shakenfist_spice_protocol::messages::{MessageHeader, PreferredCompression, WireType};
 use shakenfist_spice_protocol::{display_client, display_server, ChannelType};
+use socket2::SockRef;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
@@ -126,7 +132,10 @@ enum Spell {
 /// again for each refusal.
 ///
 /// Returns `Err` only if a dial fails, or spice-server refuses a switch
-/// [`MAX_DIALS`] times; the caller closes the client leg either way.
+/// [`MAX_DIALS`] times; the caller closes the client leg either way. A
+/// re-dialled relay that fails in any other way before relaying (no answer
+/// to the replayed `DISPLAY_INIT`, or none to replay) ends the channel with
+/// `Ok`, logged, rather than being dialled again.
 #[allow(clippy::too_many_arguments)]
 pub async fn run<D, F>(
     state: &SharedState,
@@ -144,6 +153,19 @@ where
     D: FnMut() -> F,
     F: Future<Output = Result<SpiceStream>>,
 {
+    // What the listener set the client socket's unsent-data limit to, so
+    // that a relay spell after a transcoder can put it back.
+    let relay_lowat = SockRef::from(crate::backend::tcp_of(&client))
+        .tcp_notsent_lowat()
+        .unwrap_or_else(|e| {
+            warn!(
+                %connection_ref,
+                error = %e,
+                "reading the client socket's TCP_NOTSENT_LOWAT failed; relay spells after a \
+                 transcoder will use the kernel's"
+            );
+            0
+        });
     let mut client = ClientLeg::new(client);
     let switching = Switching {
         state,
@@ -154,6 +176,7 @@ where
         cancel,
         options,
         every,
+        relay_lowat,
     };
     switching.run(&mut client, dial).await
 }
@@ -168,6 +191,8 @@ struct Switching<'a> {
     cancel: CancellationToken,
     options: &'a Options,
     every: Duration,
+    /// The client socket's `TCP_NOTSENT_LOWAT` as the listener set it.
+    relay_lowat: u32,
 }
 
 impl Switching<'_> {
@@ -283,19 +308,21 @@ impl Switching<'_> {
                 return Spell::Ended;
             }
         } else {
-            // The transcoder may have tightened the socket's unsent-data
-            // limit; the relay runs with the kernel's.
-            set_client_lowat(client.get_ref(), 0, connection_ref);
+            // The transcoder may have changed the socket's unsent-data limit;
+            // the relay runs with the one the listener set.
+            set_client_lowat(client.get_ref(), self.relay_lowat, connection_ref);
             match replay_init(client, &preference, &mut backend).await {
                 Ok(Some(first)) => prefix = first,
+                // Closed before answering: how spice-server refuses a channel.
                 Ok(None) => return Spell::Refused,
+                // Anything else would fail again on a redial.
                 Err(e) => {
                     warn!(
                         %connection_ref,
                         error = format!("{e:#}"),
                         "the new backend display channel failed before the relay started"
                     );
-                    return Spell::Refused;
+                    return Spell::Ended;
                 }
             }
             info!(
@@ -364,8 +391,9 @@ impl Switching<'_> {
         );
         match self.spell(transcoder, &stop, Mode::Transcode).await {
             Ended::Stopped if !client.closed => Spell::Stopped,
-            Ended::Refused => Spell::Refused,
-            Ended::Stopped | Ended::Closed => Spell::Ended,
+            // Nobody would use a channel dialled again.
+            Ended::Refused if !client.closed && !self.cancel.is_cancelled() => Spell::Refused,
+            Ended::Stopped | Ended::Refused | Ended::Closed => Spell::Ended,
         }
     }
 }
@@ -445,6 +473,9 @@ struct Written {
     /// The start of its body: as much as a surface message needs.
     body: Vec<u8>,
     primary: Option<Size>,
+    /// A header could not be read, so message boundaries, and with them the
+    /// primary surface, are no longer known.
+    lost: bool,
 }
 
 impl Written {
@@ -452,13 +483,17 @@ impl Written {
     const BODY_NEEDED: usize = 12;
 
     fn track(&mut self, mut bytes: &[u8]) {
-        while !bytes.is_empty() {
+        while !self.lost && !bytes.is_empty() {
             if self.header.len() < MessageHeader::SIZE {
                 let take = (MessageHeader::SIZE - self.header.len()).min(bytes.len());
                 self.header.extend_from_slice(&bytes[..take]);
                 bytes = &bytes[take..];
                 if self.header.len() == MessageHeader::SIZE {
                     let Ok(header) = MessageHeader::read(&self.header) else {
+                        // Unknown is safer than stale: with no primary
+                        // surface, the next transcoder sends its own.
+                        self.lost = true;
+                        self.primary = None;
                         return;
                     };
                     self.msg_type = header.message_type;

@@ -1003,11 +1003,11 @@ Other deferred items:
   where the link was the limit (andris paces on a window of 20),
   and that 64-pixel tiles which moving content only partly
   covers send their text as JPEG. Both are andris's behaviour.
-- **The `transcode` feature is not built in CI.** While the
-  experiment is kept, add `--features transcode` clippy and test
-  steps to the existing Rust job, or remove the experiment. A
-  productised transcoder would need no separate lane once
-  ryll#499 lets it build without openh264.
+- **The `transcode` feature's CI steps.** The Rust proxy job runs
+  clippy and the tests with `--features transcode` while the
+  experiment is kept; drop them if the experiment is removed. A
+  productised transcoder would need no separate lane once ryll#499
+  lets it build without openh264.
 
 ## Bugs fixed during this work
 

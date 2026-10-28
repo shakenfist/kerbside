@@ -468,7 +468,8 @@ mod tests {
     }
 
     /// The transcoder is off unless asked for, its defaults are andris's,
-    /// and the ACK-window pacing flag selects that mode.
+    /// and the ACK-window pacing flag selects that mode. Async because
+    /// `shared_state` builds the gRPC client, which needs a runtime.
     #[cfg(feature = "transcode")]
     #[tokio::test]
     async fn transcode_flags_reach_shared_state() {
@@ -514,6 +515,8 @@ mod tests {
 
     /// The switch flag alone turns the transcoder's options on, starting
     /// relayed; with --transcode-display the channel starts transcoded.
+    /// Async because `shared_state` builds the gRPC client, which needs a
+    /// runtime.
     #[cfg(feature = "transcode")]
     #[tokio::test]
     async fn the_switch_flag_reaches_shared_state() {

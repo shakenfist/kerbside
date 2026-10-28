@@ -303,7 +303,9 @@ What it does not do:
   connects. Only the hidden `--transcode-switch-after-secs` experiment
   changes it while the channel runs: it keeps the client leg, closes the
   backend display channel and dials it again for the other mode, and keeps
-  GLZ out of the relay, because GLZ does not survive the switch.
+  GLZ out of the relay, because GLZ does not survive the switch. Both modes
+  dial with the transcoder's capabilities, so its relay assumes a client
+  that takes LZ4 and `MONITORS_CONFIG`.
   [Switching a display channel](performance/transcoding-switching.md)
   has what that costs, and what breaks in each client.
 - The backend leg is not firewalled. The server-to-client messages of a

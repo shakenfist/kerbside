@@ -46,7 +46,8 @@ client ends up holding. Measured on 2026-10-28.
   stops, every transcoded repeat converged to the lossless reference
   exactly. Relaying with streaming on leaves a 16-pixel lossy strip
   during animation and is also exact afterwards. Relaying with streaming
-  off keeps the text exact. But with busy activity on any 80 ms link,
+  off keeps the text exact. But with busy activity on every link of
+  80 ms or more, and on the 20 ms link when spice-server judged it slow,
   the activity's last frame keeps its JPEG (SSIM 0.9888, 43.9 dB).
 - **The run was noisy.** Other work on this shared host pushed its load
   average past its 16 cores for a third of the run. Unshaped latency is
@@ -250,9 +251,9 @@ not the reference.
 reference exactly once the activity had been still for longer than the
 500 ms lossless delay. The relay with streaming on also ended exact,
 because spice-server redraws losslessly once a stream ends. The relay with
-streaming off keeps whatever it last sent. With busy activity on any 80 ms
-link, and at 20 ms when spice-server's bandwidth test called the link slow,
-that was JPEG: SSIM 0.9888 and 43.9 dB. The heavy activity's last frame was
+streaming off keeps whatever it last sent. With busy activity on every
+link of 80 ms or more, and at 20 ms when spice-server's bandwidth test
+called the link slow, that was JPEG: SSIM 0.9888 and 43.9 dB. The heavy activity's last frame was
 exact in every configuration, presumably because JPEG does not pay on
 noise either and spice-server sent it losslessly.
 

@@ -1158,6 +1158,12 @@ Brief notes for 6:
   channels), the Ryll display-socket stall, andris's pacing and JPEG
   fringe, and the CI step. The phase's `Status` and `Merged` cells are
   left for the close-out after this pull request merges.
+- **The first review round added the CI steps after all.** The
+  review pointed out that the pull request adds the switching code and
+  its tests to a feature no CI job built. The Rust proxy job now runs
+  clippy and the tests with `--features transcode`, which supersedes
+  the earlier "not done here" notes for steps 4a and 6; the spike page
+  and the master plan's Future work item say so.
 
 ## Risks added by the re-survey
 
