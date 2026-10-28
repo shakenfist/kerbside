@@ -60,17 +60,21 @@ a compile error costs no PVE node. Then, in one job:
    extracts it, with the user renamed `kerbside-lane@pve`. It makes two
    single-privilege tokens beside the documented one, checks what each
    holds, and creates the guests to skip. It writes `lane-node.json`.
-3. `check-privileges.py` shows each privilege is needed: the token
-   without `VM.Audit` is refused the smoke guest's config, the one
-   without `VM.Console` is refused `spiceproxy`, and the documented token
-   is refused `status/stop`.
-4. `deploy-kerbside.sh` installs kerbside and the pull request's proxy
+3. `deploy-kerbside.sh` installs kerbside and the pull request's proxy
    wheel into a venv, creates the MariaDB database
    (`tools/direct-qemu/setup-mariadb.sh`), generates proxy TLS
    (`tools/direct-qemu/generate-tls.sh`), and writes `sources.yaml`
    (`gen-sources.py`). It records the size of PVE's access log, writes
    `kerbside.env`, starts kerbside with `tools/direct-qemu/start-kerbside.sh`
    unchanged, and waits for the source to leave the errored state.
+4. `check-privileges.py`, run with the kerbside venv's python for its
+   `requests`, shows each privilege is needed: the token without
+   `VM.Audit` is refused the smoke guest's config, the one without
+   `VM.Console` is refused `spiceproxy`, and the documented token is
+   refused `status/stop`. Its requests come after the access log's
+   recorded size but are never counted as mints: two are made by other
+   token IDs, the count is filtered to the documented token, and a
+   refused request mints nothing.
 5. `drive-console.py` drives the session and runs the oracles below, then
    scans the artifacts.
 6. `drive-console.py --scan-only` runs again under `if: always()`, before
@@ -241,4 +245,7 @@ the verdicts and the scan, are unit tested in
 the node or to a running kerbside is exercised only by the lane itself,
 against a real node. That includes the text of the ryll crate's debug
 lines as the proxy writes them, and the `<user>` PVE logs for a token's
-request, both of which the parsers were written from source.
+request, both of which the parsers were written from source. It also
+includes the JSON `pveum user token permissions` prints, with and without
+`--path`, which `prepare-node.sh` reads to check that each token holds
+exactly its privileges on the smoke guest and nothing outside `/vms`.

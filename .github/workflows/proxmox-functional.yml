@@ -22,19 +22,28 @@ on:
     branches:
       - develop
     # Keep in step with the files the lane exercises: the source driver and
-    # what it is built on, the RPC messages, the proxy's backend leg, the
-    # lane's own scripts, and docs/console-sources.md, whose Proxmox VE
-    # account block the lane runs.
+    # what it is built on, the RPC messages, the proxy's backend leg and the
+    # relay whose log lines the lane's oracles read, the lane's own scripts
+    # and the direct-qemu ones it reuses, and docs/console-sources.md, whose
+    # Proxmox VE account block the lane runs. kerbside/api.py and
+    # kerbside/db.py are exercised too but deliberately left out: they
+    # change on most pull requests, and would book a PVE node for each. The
+    # nightly covers them. Mirrored in docs/testing.md's lane section.
     paths:
       - 'kerbside/sources/proxmox.py'
       - 'kerbside/sources/base.py'
       - 'kerbside/sources/minting.py'
       - 'kerbside/rpc/**'
       - 'rust/kerbside-proxy/src/backend.rs'
+      - 'rust/kerbside-proxy/src/relay.rs'
       - 'rust/kerbside-proxy/Cargo.lock'
       - 'docs/console-sources.md'
       - '.github/workflows/proxmox-functional.yml'
       - 'tools/proxmox-e2e/**'
+      - 'tools/direct-qemu/start-kerbside.sh'
+      - 'tools/direct-qemu/smoke-client.py'
+      - 'tools/direct-qemu/setup-mariadb.sh'
+      - 'tools/direct-qemu/generate-tls.sh'
   workflow_dispatch:
   schedule:
     # Nightly at 05:30 UTC, clear of sf-e2e (02:30), direct-qemu (03:30) and
@@ -236,10 +245,10 @@ jobs:
       # IDs and the well-known loopback MariaDB credential only. These are
       # world-downloadable for the full retention period, and the list is
       # UPLOADED_FILES in tools/proxmox-e2e/drive-console.py, which the scan
-      # above reads: change them together. Deliberately excludes
-      # sources.yaml (holds the documented token's secret), any .vv file,
-      # the auth seed, every token file, PVE's access log and ryll's
-      # unredacted /tmp/ryll.log; do not add them here.
+      # above reads: change them together, and a unit test checks they
+      # agree. Deliberately excludes sources.yaml (holds the documented
+      # token's secret), any .vv file, the auth seed, every token file, PVE's
+      # access log and ryll's unredacted /tmp/ryll.log; do not add them here.
       # if-no-files-found is warn rather than error: a failure before the
       # deploy step legitimately leaves these absent.
       - name: Upload kerbside artifacts

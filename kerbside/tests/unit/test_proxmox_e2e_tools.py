@@ -19,6 +19,7 @@ import yaml
 # hyphen, so load each by path.
 _TOOLS = Path(__file__).resolve().parents[3] / 'tools' / 'proxmox-e2e'
 _DOC = Path(__file__).resolve().parents[3] / 'docs' / 'console-sources.md'
+_WORKFLOW = Path(__file__).resolve().parents[3] / '.github' / 'workflows' / 'proxmox-functional.yml'
 
 
 def _load_tool(name, filename):
@@ -237,6 +238,21 @@ class AccountCommandsRefusalTestCase(testtools.TestCase):
 
     def test_a_token_without_a_name(self):
         self.assertRefused(_doc('pveum user token add kerbside@pve'), 'without a user and a token name')
+
+    def test_a_token_user_which_is_not_plain(self):
+        # prepare-node.sh builds root commands and a file path from the
+        # token ID, so a quote, a slash or a space in it must never get
+        # that far.
+        for user in ('"a\'b@pve"', 'a/b@pve', '"a b@pve"', 'kerbside', '"a@b@pve"'):
+            self.assertRefused(_doc('pveum user token add %s console' % user), 'not of the form name@realm')
+
+    def test_a_token_name_which_is_not_plain(self):
+        for name in ('"t\'x"', 't/x', '"t x"', '"t!x"', '"t@x"'):
+            self.assertRefused(_doc('pveum user token add kerbside@pve %s' % name), 'not a plain PVE token name')
+
+    def test_a_plain_token_id_is_accepted(self):
+        _, token_id = account_commands.account_commands(_doc('pveum user token add a.b_c-d@pve-2 t.1_x-y'))
+        self.assertEqual('a.b_c-d@pve-2!t.1_x-y', token_id)
 
 
 _SENTINELS = {
@@ -939,9 +955,29 @@ class UploadListTestCase(testtools.TestCase):
             self.assertFalse(name.endswith('.vv'), name)
             self.assertNotIn('ryll.log', name)
 
+    def test_the_workflow_uploads_exactly_the_scanned_files(self):
+        # The scan reads UPLOADED_FILES, so a file the workflow uploads
+        # which is not in it would be uploaded unscanned, and a file in it
+        # which is not uploaded is a list out of step with the workflow.
+        workflow = yaml.safe_load(_WORKFLOW.read_text())
+        steps = [step for step in workflow['jobs']['proxmox']['steps']
+                 if step.get('uses', '').startswith('actions/upload-artifact@')]
+        self.assertEqual(1, len(steps))
+        prefix = '${{ env.PROXMOX_LANE_WORKDIR }}/'
+        uploaded = []
+        for line in steps[0]['with']['path'].splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            self.assertTrue(line.startswith(prefix), line)
+            uploaded.append(line[len(prefix):])
+        self.assertEqual(len(uploaded), len(set(uploaded)))
+        self.assertEqual(set(drive_console.UPLOADED_FILES), set(uploaded))
+
     def test_the_readme_lists_the_uploaded_files(self):
-        # The workflow's upload list is copied from the README, so the
-        # README and the list the scan reads must agree.
+        # The README documents the upload list for a person, so it and the
+        # list the scan reads must agree, as the test above makes the
+        # workflow's list agree with it too.
         readme = (_TOOLS / 'README.md').read_text()
         block = readme.split('<!-- uploaded-files -->', 2)[1]
         listed = [line.strip()[len('- '):].strip('`').rsplit('/', 1)[-1]

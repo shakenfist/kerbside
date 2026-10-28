@@ -46,9 +46,13 @@
 # mint included, to /var/log/pveproxy/access.log on the node. Its size is
 # read over ssh just before kerbside starts, and kept in kerbside.env as
 # PROXMOX_ACCESS_LOG_OFFSET. drive-console.py counts mints in what PVE
-# writes after that point, so the action's own mints and
-# check-privileges.py's refused requests, which come before it, are not
-# counted.
+# writes after that point, so the action's own mints, which come before it,
+# are not counted. check-privileges.py runs after this script, because it
+# needs the venv's requests, so its requests come after the offset. They
+# are not counted either: two are made by the single-privilege tokens,
+# which are other token IDs, and the count is filtered to the documented
+# token's; the third, the documented token's status/stop, is refused, and a
+# refused request mints nothing.
 #
 # THE PROXY'S LOG LEVEL. RUST_LOG is set so that the proxy logs, at debug,
 # the two lines of the ryll protocol crate's client that show a backend leg

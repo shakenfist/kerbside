@@ -36,7 +36,11 @@
 #   3. Checks that the three tokens' effective privileges on the smoke
 #      guest are exactly the expected ones. Without this, a token whose ACL
 #      was never applied would hold nothing, and be refused everything:
-#      that would pass check-privileges.py while proving nothing.
+#      that would pass check-privileges.py while proving nothing. It also
+#      checks every path each token holds privileges on, so that a
+#      documented ACL granting more elsewhere (on /, say, or /nodes) fails
+#      the lane: each such path must be /vms or under it, and hold none but
+#      the expected privileges.
 #   4. Creates diskless 64 MB guests, which never boot an OS, for the
 #      discovery rules to skip:
 #        101  running, with the default std display (no SPICE server);
@@ -50,6 +54,15 @@
 #      guests made. None of it is secret. Under GitHub Actions the documented
 #      token's ID and file, and that JSON file's path, are also step outputs
 #      (token_id, token_file and lane_file).
+#
+# WHAT ONLY THE LANE EXERCISES. These were written from PVE's documented
+# behaviour and source, and are first checked by the lane on a real node:
+#
+#   - the JSON "pveum user token permissions" prints, with --path (one
+#     path, each privilege a key) and without it (every path the token
+#     holds privileges on, and none it holds nothing on);
+#   - whether "qm template" accepts a diskless guest (step 4 copes with
+#     either answer).
 #
 # It is not idempotent. The node is discarded with the runner's namespace,
 # and a second run fails at the first "pveum role add".
@@ -164,6 +177,25 @@ check_privileges() {
         <<< "${granted}" > /dev/null \
         || fail "${token_id} should hold exactly ${privileges} on /vms/${vmid}, but PVE says: ${granted}"
     echo "${token_id} holds exactly ${privileges} on /vms/${vmid}"
+
+    # With no --path, PVE lists every path the token holds a privilege on.
+    granted="$(node "sudo -n pveum user token permissions '${token_id%%!*}' '${token_id#*!}' --output-format json")" \
+        || fail "could not read the privileges of ${token_id} on every path"
+    # Paths and privilege names only, one path to a line.
+    held="$(jq -r 'to_entries[] | "\(.key): \(.value | keys | join(" "))"' <<< "${granted}")" \
+        || fail "PVE's list of ${token_id}'s privileges on every path is not a JSON object of paths"
+    jq -e --arg want "${privileges}" \
+        '($want | split(" ")) as $want
+         | type == "object"
+           and all(to_entries[]; (.value | type) == "object"
+                                 and (((.key == "/vms" or (.key | startswith("/vms/")))
+                                       and ((.value | keys) - $want | length) == 0)
+                                      or (.value | length) == 0))' \
+        <<< "${granted}" > /dev/null \
+        || { echo "${held}" >&2
+             fail "${token_id} should hold nothing outside /vms, and nothing but ${privileges} within it (it holds the above)"; }
+    echo "${token_id} holds nothing outside /vms, and nothing but ${privileges} within it:"
+    echo "${held}"
 }
 
 node 'sudo -n true' \
@@ -174,6 +206,11 @@ node 'sudo -n true' \
 commands="$(python3 "${here}/account_commands.py")" \
     || fail 'refusing to run the documented account commands (the reason is above)'
 documented_id="$(python3 "${here}/account_commands.py" --token-id)"
+# account_commands.py refuses any other form, but the ID is built into root
+# commands and a file path below, so it is checked again here.
+token_id_form='^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+![A-Za-z0-9._-]+$'
+[[ "${documented_id}" =~ ${token_id_form} ]] \
+    || fail "the documented token ID is not of the form user@realm!tokenid: ${documented_id}"
 user="${documented_id%%!*}"
 documented_file="${workdir}/token-${documented_id#*!}"
 

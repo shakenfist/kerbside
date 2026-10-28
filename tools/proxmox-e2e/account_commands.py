@@ -27,6 +27,12 @@ argument: a block like that does not say what a reader pasting it would
 run. Each command is printed re-quoted with shlex.join, so the shell on the
 node sees exactly the arguments checked here.
 
+The token's user and name are refused too unless each is of the plain form
+PVE IDs take: a user name@realm and a token name, each of letters, digits,
+'.', '_' and '-' only. prepare-node.sh builds further root commands, and a
+file path, from the token ID this prints, so a quote, a slash or a space in
+either would reach the node's shell, or the runner's file system, unchecked.
+
 Usage:
     tools/proxmox-e2e/account_commands.py [--doc PATH] [--token-id]
 
@@ -55,6 +61,11 @@ ALLOWED = (
     ('pveum', 'user', 'token', 'add'),
 )
 TOKEN_ADD = ('pveum', 'user', 'token', 'add')
+
+# The plain form of a PVE user ID and token name, the same shape
+# drive-console.py's _TOKEN_ID requires of the whole token ID.
+USER_ID = re.compile(r'^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$')
+TOKEN_NAME = re.compile(r'^[A-Za-z0-9._-]+$')
 
 # shlex's punctuation_chars: the characters a shell reads as a command
 # separator, a pipe, a redirection or a subshell.
@@ -140,7 +151,8 @@ def account_commands(markdown, old_user=DOC_USER, new_user=LANE_USER):
     commands is a list of argument lists, in the documentation's order.
     token_id is the ID of the one token the block creates. Raises
     RefusedBlock if the block is missing, empty, holds a command outside
-    the allowlist, or does not create exactly one token.
+    the allowlist, or does not create exactly one token, with a plain user
+    and token name.
     """
     # A trailing backslash continues a command onto the next line, as it
     # would in a shell.
@@ -163,7 +175,12 @@ def account_commands(markdown, old_user=DOC_USER, new_user=LANE_USER):
     token_add = token_adds[0]
     if len(token_add) < len(TOKEN_ADD) + 2:
         raise RefusedBlock('the token is created without a user and a token name: %s' % shlex.join(token_add))
-    token_id = '%s!%s' % (token_add[len(TOKEN_ADD)], token_add[len(TOKEN_ADD) + 1])
+    user, token_name = token_add[len(TOKEN_ADD)], token_add[len(TOKEN_ADD) + 1]
+    if not USER_ID.match(user):
+        raise RefusedBlock('the token\'s user is not of the form name@realm: %s' % shlex.join(token_add))
+    if not TOKEN_NAME.match(token_name):
+        raise RefusedBlock('the token\'s name is not a plain PVE token name: %s' % shlex.join(token_add))
+    token_id = '%s!%s' % (user, token_name)
     if '--output-format' not in token_add:
         token_add.extend(['--output-format', 'json'])
     return commands, token_id

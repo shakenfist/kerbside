@@ -94,7 +94,7 @@ change.
 | `functional-tests.yml` (`credential_scan`) | pull_request, merge_group, never path-filtered | smoke |
 | `functional-tests.yml` (`docs_checks`) | pull_request, merge_group, never path-filtered | smoke |
 | `functional-tests.yml` (`ovirt_matrix`, `openstack_matrix`) | nightly (04:30 UTC), workflow_dispatch | nightly |
-| `proxmox-functional.yml` | nightly (05:30 UTC), workflow_dispatch, and pull_request path-filtered to the Proxmox source, the proxy's backend leg, `docs/console-sources.md` and `tools/proxmox-e2e/**` (advisory, never in the merge queue) | nightly |
+| `proxmox-functional.yml` | nightly (05:30 UTC), workflow_dispatch, and pull_request path-filtered to the Proxmox path; see "The Proxmox end-to-end lane" below (advisory, never in the merge queue) | nightly |
 | `direct-qemu-functional.yml` | pull_request, merge_group, nightly | smoke |
 | `sf-e2e-functional.yml` | pull_request, merge_group, nightly | smoke |
 | `rust.yml` | push and pull_request, path-filtered to `rust/**` and the proto | neither (advisory) |
@@ -788,9 +788,23 @@ proxy wheel and ryll are built before the node is booked, so a
 compile error never spends a node.
 
 It runs nightly, on `workflow_dispatch`, and on pull requests that
-touch the Proxmox source (`kerbside/sources/proxmox.py`, `base.py` and
-`minting.py`), `kerbside/rpc/`, the proxy's backend leg and lockfile,
-`docs/console-sources.md`, the workflow or `tools/proxmox-e2e/`.
+touch any of:
+
+- the Proxmox source: `kerbside/sources/proxmox.py`, `base.py` and
+  `minting.py`;
+- `kerbside/rpc/**`;
+- the proxy's backend leg and relay, `rust/kerbside-proxy/src/backend.rs`
+  and `relay.rs`, and its `Cargo.lock`;
+- `docs/console-sources.md`, whose account block the lane runs;
+- the workflow itself and `tools/proxmox-e2e/**`;
+- the direct-qemu scripts the lane reuses:
+  `tools/direct-qemu/start-kerbside.sh`, `smoke-client.py`,
+  `setup-mariadb.sh` and `generate-tls.sh`.
+
+`kerbside/api.py` and `kerbside/db.py` are exercised by the lane but
+left out of the filter: they change on most pull requests, and would
+book a PVE node for each. The nightly covers them.
+
 It has no `merge_group` trigger and is not a required check: a
 path-filtered required check never reports on other pull requests,
 which would block them forever. So a pull request that breaks it can

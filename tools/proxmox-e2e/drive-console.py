@@ -117,7 +117,7 @@ DEFAULT_WORKDIR = '/tmp/kerbside-proxmox-ci'
 
 # The files under WORKDIR the workflow uploads, and so the files the scan
 # reads. Keep this in step with the workflow's upload step and
-# tools/proxmox-e2e/README.md. Never add sources.yaml, a .vv file, the auth
+# tools/proxmox-e2e/README.md; a unit test checks each against it. Never add sources.yaml, a .vv file, the auth
 # seed, a token file, PVE's access log or ryll's /tmp/ryll.log.
 UPLOADED_FILES = (
     'kerbside.log',
@@ -857,9 +857,12 @@ class Ryll:
         self.stdout_path = os.path.join(lane.run_dir, 'ryll-proxmox-%d.stdout' % n)
         self.stderr_path = os.path.join(lane.run_dir, 'ryll-proxmox-%d.stderr' % n)
         _log('launching ryll %d headless' % n)
+        # The child has its own copies of these descriptors. The parent's
+        # are kept only to be closed once ryll is reaped or stopped.
+        self._logs = [open(self.stdout_path, 'wb'), open(self.stderr_path, 'wb')]
         self.proc = subprocess.Popen(
             [lane.ryll_bin, '--verbose', '--headless', '--file', vv_path, '--control-socket', self.sock],
-            stdout=open(self.stdout_path, 'wb'), stderr=open(self.stderr_path, 'wb'))
+            stdout=self._logs[0], stderr=self._logs[1])
 
         deadline = time.time() + 30
         while time.time() < deadline:
@@ -871,11 +874,16 @@ class Ryll:
                 raise SystemExit('ryll %d exited (code %s) before its control socket appeared'
                                  % (n, self.proc.returncode))
             time.sleep(0.5)
+        self.stop()
         self.diagnose()
-        self.proc.terminate()
         raise SystemExit('ryll %d control socket did not appear within 30s' % n)
 
+    def _close_logs(self):
+        for f in self._logs:
+            f.close()
+
     def diagnose(self):
+        self._close_logs()
         _dump_ryll_diagnostics(self.proc, self.stdout_path, self.stderr_path, self.lane.log_path)
 
     def smoke(self, name):
@@ -900,6 +908,8 @@ class Ryll:
             self.proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             self.proc.kill()
+            self.proc.wait()
+        self._close_logs()
 
 
 def _open_session(db, lane, headers, n, known_sessions):
