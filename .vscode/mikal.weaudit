@@ -104,15 +104,7 @@
       "author": "mikal"
     },
     {
-      "path": "rust/kerbside-proxy/src/metrics.rs",
-      "author": "mikal"
-    },
-    {
       "path": "rust/kerbside-proxy/src/policy.rs",
-      "author": "mikal"
-    },
-    {
-      "path": "rust/kerbside-proxy/src/relay.rs",
       "author": "mikal"
     },
     {
@@ -364,15 +356,7 @@
       "author": "mikal"
     },
     {
-      "path": "docs/performance/proxy-backpressure.md",
-      "author": "mikal"
-    },
-    {
       "path": "docs/performance/streaming-rebaseline.md",
-      "author": "mikal"
-    },
-    {
-      "path": "docs/performance",
       "author": "mikal"
     },
     {

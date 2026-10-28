@@ -69,10 +69,6 @@
       "sha": "78514c2afb47e97e928655faa78dc70c92fb9f57",
       "date": "2026-09-27"
     },
-    "docs/performance/proxy-backpressure.md": {
-      "sha": "54294dd7bedfd75e9fcbc62e9ab4eccad51ca9f2",
-      "date": "2026-09-27"
-    },
     "docs/performance/streaming-rebaseline.md": {
       "sha": "693d8284d3ca31296628ecb45f223b2345abf593",
       "date": "2026-09-27"
@@ -209,16 +205,8 @@
       "sha": "986a0e57e486d95869634f76d307579210f6d31e",
       "date": "2026-08-18"
     },
-    "rust/kerbside-proxy/src/metrics.rs": {
-      "sha": "521fa7d251dc05fbf4d92f440069ae8d73570ddb",
-      "date": "2026-08-15"
-    },
     "rust/kerbside-proxy/src/policy.rs": {
       "sha": "e5ec82cc156bc9e03561fafe554fcfe55107fd9a",
-      "date": "2026-08-15"
-    },
-    "rust/kerbside-proxy/src/relay.rs": {
-      "sha": "9f46aa32f6a7919ceb00c2d95f86c672f7e8b92c",
       "date": "2026-08-15"
     },
     "rust/kerbside-proxy/src/tls.rs": {
