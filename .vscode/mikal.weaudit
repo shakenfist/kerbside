@@ -378,10 +378,6 @@
     {
       "path": "docs/spice/order.yml",
       "author": "mikal"
-    },
-    {
-      "path": "docs/use-cases/order.yml",
-      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
