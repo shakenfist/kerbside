@@ -245,7 +245,7 @@ cores.
 **The proxy** relays both alike: 0.001 to 0.08 cores. It used less with the
 helper, because the helper sent less.
 
-**Memory.** Without spice-server, qemu's peak RSS was 20 to 43 MiB smaller.
+**Memory.** Without spice-server, qemu's peak RSS was 19 to 43 MiB smaller.
 andris's peak, 34 to 66 MiB, holds its copy of the framebuffer and its
 shadow (4 MiB each at 1280x800), its encoders, and the stream's state.
 

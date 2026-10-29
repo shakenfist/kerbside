@@ -20,6 +20,13 @@
 # every run measures the same helper and results stay comparable. The
 # qemu platform is behind andris's non-default `qemu` cargo feature; the
 # pinned commit must have it.
+#
+# The default, 440b782, is the commit that
+# docs/performance/dbus-helper-measurements.md measured, kept so that page
+# can be reproduced. It predates review changes merged with it in andris
+# 9a997a3, among them copying qemu's shared screen through raw pointers
+# rather than reading it through a Rust slice. A new measurement should
+# pin a merged commit and name it on its results page.
 
 set -euo pipefail
 
@@ -38,8 +45,15 @@ SRC="${OUTDIR}/andris"
 if [ ! -d "${SRC}/.git" ]; then
     git clone --quiet "${ANDRIS_SRC}" "${SRC}"
 fi
-# A new ref may postdate the clone, so fetch before checking it out.
-git -C "${SRC}" fetch --quiet origin '+refs/heads/*:refs/remotes/origin/*' || true
+# An existing clone may come from another source, so point it at this one.
+git -C "${SRC}" remote set-url origin "${ANDRIS_SRC}"
+# A new ref may postdate the clone, so fetch before checking it out. A
+# local source's remote-tracking branches come too, since the pinned
+# commit may be on one of those only. A failed fetch is reported, not
+# fatal: a pinned commit already in the clone still builds.
+git -C "${SRC}" fetch --quiet origin '+refs/heads/*:refs/remotes/origin/*' \
+    '+refs/remotes/*:refs/remotes/source/*' ||
+    echo "build-andris.sh: warning: fetching ${ANDRIS_SRC} failed; using what the clone has" >&2
 git -C "${SRC}" checkout --quiet --force "${ANDRIS_REF}"
 echo "[build-andris] andris $(git -C "${SRC}" rev-parse --short HEAD)"
 

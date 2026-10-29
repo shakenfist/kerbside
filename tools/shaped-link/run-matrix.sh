@@ -361,10 +361,14 @@ host-subject=${PROXY_SUBJECT}
 EOF
 
 wait_port() {
-    local port="$1"
+    local port="$1" pid="${2:-}"
     for _ in $(seq 60); do
         if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
             return 0
+        fi
+        # A server that has already exited will never listen.
+        if [ -n "${pid}" ] && ! kill -0 "${pid}" 2>/dev/null; then
+            return 1
         fi
         sleep 0.25
     done
@@ -486,10 +490,10 @@ run_case() {
             > "${out}/andris.log" 2>&1 &
         andris_pid=$!
         server_pids=("${andris_pid}" "${qemu_pid}")
-        wait_port "${SPICE_PORT}" ||
+        wait_port "${SPICE_PORT}" "${andris_pid}" ||
             { fail_case "${out}" "andris never listened; see ${out}/andris.log" "${server_pids[@]}"; return 1; }
     else
-        wait_port "${SPICE_PORT}" ||
+        wait_port "${SPICE_PORT}" "${qemu_pid}" ||
             { fail_case "${out}" 'qemu SPICE port never opened' "${qemu_pid}"; return 1; }
     fi
 

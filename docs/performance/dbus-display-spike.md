@@ -112,7 +112,7 @@ Outside the criterion:
   copies each changed band over the socket. qemu alone used 0.76 to 0.78
   cores whatever the guest drew. A helper is a virtio-gpu proposition.
 - **Memory moves rather than grows.** Without spice-server qemu's peak
-  RSS was 20 to 43 MiB smaller, and andris peaked at 34 to 66 MiB.
+  RSS was 19 to 43 MiB smaller, and andris peaked at 34 to 66 MiB.
 
 The merged platform copies each update's rows out of qemu's shared
 memory before copying them into its own screen, which the measured

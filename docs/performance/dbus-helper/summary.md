@@ -8,6 +8,12 @@ names are `<display>-relay`: `off` and `all` are spice-server's
 andris on std-vga. 13 repeats were lost to a first key press over 15 s and
 are excluded; see the Repeats column.
 
+In the `helper-relay` and `stdhelper-relay` rows, the backend columns
+(Backend Recv-Q, Backend skmem) and "qemu Send-Q" describe andris's SPICE
+socket, not qemu's: andris listens where spice-server would. So the
+1957 / 2570 KiB "qemu Send-Q" at 80 ms / 10 Mbit heavy is andris's send
+queue, not a queue inside qemu.
+
 | Link | Activity | Proxy | Repeats good (died, failed) | n (timeouts) | p50 ms | p95 ms | max ms | Display Mbit/s ss / metrics | Client Send-Q p50/p95 KiB | Client sRTT ms | cwnd | Backend Recv-Q p50/max KiB | Backend skmem max KiB (rcvbuf) | qemu Send-Q p50/p95 KiB |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 0ms-0mbit | busy | all-relay | 2 (0, 0) | 80 (0) | 20 | 32 | 35 | 8.9 / 8.7 | 0/0 | 0 | 82 | 0/0 | 0 (5441) | 0/0 |
