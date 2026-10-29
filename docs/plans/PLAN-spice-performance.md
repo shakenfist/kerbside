@@ -198,7 +198,7 @@ Future work for what is scheduled.
 | 6 | Link-quality hint from the proxy; client-initiated RTT ping | spice-server, spice-protocol | Medium-high |
 | 7 | Disconnect reasons, ticket id and per-channel stats in QMP events | spice-server, qemu, libvirt | High |
 | 8 | Token auth inside TLS replacing RSA-1024/SHA-1 | spice-protocol, spice-server | Medium-high |
-| 9 | `NUM_TRACE_ITEMS` 8 to 64; GLZ invalidations in the zlib fallback | spice-server | High |
+| 9 | `NUM_TRACE_ITEMS` 8 to 64; GLZ invalidations in the zlib fallback (GLZ half withdrawn 2026-10-30: not a server defect, see phase 5) | spice-server | High |
 
 Ruled out: kTLS, splice, `MSG_ZEROCOPY` and io_uring
 zero-copy in the proxy. Kerbside must parse plaintext and
@@ -314,7 +314,7 @@ first phase.
 | 2. qemu damage path: prototype and measure; carry qemu, submit the kernel fix | | In progress | kerbside-patches b53aa39c7e (#1748) |
 | 3. Display transcoding in Kerbside: feasibility spike (verdict: no-go) | [PLAN-spice-performance-phase-03-transcoding.md](PLAN-spice-performance-phase-03-transcoding.md) | Complete | 2e19d737aa (#489), ryll fdb5ead5b4 (#406), eab2c572cf (#494), 9d1b64d6 (#505), 13e9e2eb (#581), bba71155 (#616), 7919eadf73 (#630) |
 | 4. Son of SPICE: D-Bus display feasibility spike (verdict: no-go, as measured) | [PLAN-spice-performance-phase-04-dbus-spike.md](PLAN-spice-performance-phase-04-dbus-spike.md) | Complete | andris 9a997a3 (#56), a90f17ff90 (#637) |
-| 5. Small spice-server patches (item 9, and item 4 if still wanted) | | Not started | |
+| 5. spice-server patches, measured: codec choice, the connect crash, trace ring, 60 fps, hardware probing | [PLAN-spice-performance-phase-05-spice-server.md](PLAN-spice-performance-phase-05-spice-server.md) | In progress | |
 | 6. Push audit of phases 1-5 (kerbside and kerbside-patches) | | Not started | |
 | 7. QUIC client leg: experiments | | Not started | |
 | 8. QUIC client leg: implementation, if phase 7 says go | | Not started | |
@@ -815,6 +815,33 @@ server-internal, in two parts:
   waits; even a later go would leave Nova and oVirt on
   spice-server's encoder.
 
+The phase plan
+([PLAN-spice-performance-phase-05-spice-server.md](PLAN-spice-performance-phase-05-spice-server.md),
+2026-10-30) grounds this sketch in spice-server master
+(adeb620a04) and changes it in these places:
+- spice-server takes AI-assisted patches. 55 commits since
+  2026-02-09 carry a `Co-Authored-By: Claude` trailer, 54 of them
+  the maintainer's. So unlike the qemu series, this one is
+  `submit`, and Mikal sends it.
+- Item 9's GLZ half is withdrawn. Every GLZ image carries its
+  window-head distance, which is how the server tells the client
+  what to drop, and Ryll has honoured it since April. The ~30 MiB/s
+  growth behind the item was Ryll's own image cache.
+- Item 4 splits. Hardware encoding is gated on an Intel GPU,
+  though GStreamer's `va` plugin is vendor-neutral, and this host
+  has an AMD GPU that can measure a vendor-neutral probe. The
+  60 fps ceiling is `MAX_FPS`. H.265 and a faster bitrate ramp
+  cannot be measured on the rig, so they go to Future work.
+- The phase takes in the connect crash and the codec question
+  from Future work. The crash is a spice-server patch, or a named
+  upstream fix. The codec question decides what the other
+  measurements measure: qemu 10.0.13 has no codec option, so the
+  codec spice-server uses depends on the client's preference
+  reaching it.
+- Every patch is kept only if the rig shows it helps and
+  regresses nowhere, measured against master with a 0.15.2 row
+  for what deployments run today.
+
 **Phase 6** is the push audit for the plan as first written,
 phases 1-5, run before the QUIC work starts so that the two
 bodies of work are audited separately. It follows the shared
@@ -978,7 +1005,8 @@ Phases follow `PLAN-TEMPLATE.md`'s sub-agent execution model:
 implementation by sub-agents, review and commits in the
 management session. Phases 2, 3 and 4 involve protocol and
 upstream-codebase judgement and are planned at high effort;
-phases 1 and 5 at medium. Rust builds run in Docker, per
+phase 1 at medium. Phase 5 was planned at high, once its survey
+widened it. Rust builds run in Docker, per
 the proxy's Makefile, never with a native toolchain on the
 host.
 
@@ -1051,8 +1079,8 @@ Other deferred items:
   control socket's `surface_drawn` event
   (`tools/shaped-link/ryll-surface-drawn-rect.patch`). Until
   then the rig carries it as a patch.
-- Report spice-server 0.15.2's crash when a client connects
-  while streams already exist, once it has been reproduced
+- *Taken by phase 5 (2026-10-30).* Report spice-server 0.15.2's
+  crash when a client connects while streams already exist, once it has been reproduced
   against spice-server's current master. Since phase 3's no-go
   this is the main obstacle to recommending
   `streaming-video=all`; it crashed qemu twice in phase 3's
@@ -1094,8 +1122,8 @@ Other deferred items:
   stream, andris's message-counted window held seconds of JPEG
   tiles on slow links (3263 ms p50 at 80 ms / 5 Mbit busy,
   against 371 ms for spice-server with streaming off).
-- **Find out which codec spice-server chooses for
-  `streaming-video=all`, and why.** Phase 4's 28 `all` repeats
+- *Taken by phase 5 (2026-10-30).* **Find out which codec
+  spice-server chooses for `streaming-video=all`, and why.** Phase 4's 28 `all` repeats
   sent MJPEG (codec 1); the re-baseline, ACK-window,
   transcoding measurement and transcoding spike pages report
   H.264 with the same Ryll (0d140b3) and an unchanged proxy.
