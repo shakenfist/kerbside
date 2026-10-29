@@ -16,6 +16,16 @@
 #
 #   ryll --(veth, shaped)--> kerbside-proxy --(loopback)--> qemu
 #
+# A helper display (streaming_video "helper" in DISPLAYS) puts andris, a
+# standalone SPICE server, in front of qemu instead of qemu's own
+# spice-server. qemu runs with -display dbus,p2p=on and no -spice; andris
+# attaches to it through qemu's QMP socket (--platform qemu) and listens
+# where spice-server would, with the same ticket, so the mock control
+# plane and the proxy are unchanged:
+#
+#   ryll --(veth, shaped)--> kerbside-proxy --(loopback)--> andris
+#        --(D-Bus, peer to peer)--> qemu
+#
 # Usage: run-matrix.sh
 #
 # Inputs (environment):
@@ -44,13 +54,23 @@
 #   DISPLAYS       "name:qemu_bin:streaming_video:guest_dir ..." -- the
 #                  display side of each case, interleaved with CONFIGS.
 #                  streaming_video is off, all, filter or "default"
-#                  (qemu's own default, which is off); guest_dir holds
+#                  (qemu's own default, which is off), or "helper" for
+#                  qemu's D-Bus display behind andris (see above, and
+#                  ANDRIS_BIN); guest_dir holds
 #                  a build-guest.sh output, so a guest with a patched
 #                  drm_kms_helper.ko (build-guest.sh KMS_HELPER=) can be
 #                  compared with a stock one. Default: one display,
 #                  qemu-system-x86_64 from PATH, qemu's default
 #                  streaming, GUEST_DIR. Case names gain a "<name>-"
 #                  prefix only when DISPLAYS is set.
+#   ANDRIS_BIN     andris built by build-andris.sh, with its qemu
+#                  platform (required when a display is "helper")
+#   ANDRIS_ARGS    extra andris arguments for helper displays, e.g.
+#                  --jpeg-quality=0 (default none)
+#   GUEST_VGA      the guest's display device: virtio (virtio-vga, the
+#                  default) or std (qemu's std-vga, driven by bochs-drm in
+#                  the guest, which build-guest.sh includes). It applies to
+#                  every display in the run
 #   REPEATS        passes over the matrix (default 2); configs are
 #                  interleaved inside each pass to spread drift evenly
 #   SAMPLES        key presses per case (default 40)
@@ -93,7 +113,10 @@
 # (proxy /metrics before and after), ss.txt (`ss -tinm` every 0.5 s on
 # the server side), ackwin.txt (the proxy's ACK-window metrics, sampled
 # with ss), proc.txt (the proxy's and qemu's CPU time and RSS, from /proc,
-# sampled with ss and on to the end of the case) and logs. With QUALITY=1
+# sampled with ss and on to the end of the case; a helper display adds
+# andris's, as its own line) and logs. A helper display also writes
+# andris.log, and an andris-died marker if andris exited during the case.
+# With QUALITY=1
 # it adds mid.png, frozen.png and screenshots.json (when each was taken,
 # and whether the display settled). summarise.py turns WORKDIR into
 # tables.
@@ -127,6 +150,9 @@ QUALITY_FREEZE_FRAME="${QUALITY_FREEZE_FRAME:-36000}"
 QUALITY_SETTLE_MIN="${QUALITY_SETTLE_MIN:-2}"
 QUALITY_SETTLE_MAX="${QUALITY_SETTLE_MAX:-60}"
 read -r -a RYLL_EXTRA <<< "${RYLL_ARGS:-}"
+ANDRIS_BIN="${ANDRIS_BIN:-}"
+read -r -a ANDRIS_EXTRA <<< "${ANDRIS_ARGS:-}"
+GUEST_VGA="${GUEST_VGA:-virtio}"
 TC=/usr/sbin/tc
 ETHTOOL=/usr/sbin/ethtool
 
@@ -156,7 +182,12 @@ if [ -z "${SHAPED_LINK_INNER:-}" ]; then
         IFS=: read -r _ dqemu dstream dguest <<< "${display}"
         case "${dstream}" in
             default|off|all|filter) ;;
-            *) echo "ERROR: streaming_video ${dstream} is not off, all, filter or default" >&2
+            helper)
+                if [ -z "${ANDRIS_BIN}" ] || [ ! -x "${ANDRIS_BIN}" ]; then
+                    echo "ERROR: a helper display needs ANDRIS_BIN, an andris built by build-andris.sh" >&2
+                    exit 1
+                fi ;;
+            *) echo "ERROR: streaming_video ${dstream} is not off, all, filter, default or helper" >&2
                exit 1 ;;
         esac
         command -v "${dqemu}" >/dev/null || { echo "ERROR: ${dqemu} not found" >&2; exit 1; }
@@ -182,6 +213,10 @@ if [ -z "${SHAPED_LINK_INNER:-}" ]; then
     case "${QUALITY}" in
         0|1) ;;
         *) echo "ERROR: QUALITY must be 0 or 1" >&2; exit 1 ;;
+    esac
+    case "${GUEST_VGA}" in
+        virtio|std) ;;
+        *) echo "ERROR: GUEST_VGA must be virtio or std" >&2; exit 1 ;;
     esac
     mkdir -p "${WORKDIR}"
     rmdir "${SOCK_DIR}"
@@ -239,13 +274,29 @@ done
             net/ipv4/tcp_congestion_control; do
         echo "${s}: $(tr '\t' ' ' < "/proc/sys/${s}")"
     done
+    helper=''
     for display in ${DISPLAYS}; do
         IFS=: read -r dname dqemu dstream dguest <<< "${display}"
-        echo "display ${dname}: $("${dqemu}" --version | head -1)," \
-            "streaming-video ${dstream}, guest ${dguest}"
+        if [ "${dstream}" = 'helper' ]; then
+            helper=1
+            echo "display ${dname}: $("${dqemu}" --version | head -1)," \
+                "D-Bus display behind andris, guest ${dguest}"
+        else
+            echo "display ${dname}: $("${dqemu}" --version | head -1)," \
+                "streaming-video ${dstream}, guest ${dguest}"
+        fi
     done
+    if [ "${GUEST_VGA}" != 'virtio' ]; then
+        echo "guest vga: ${GUEST_VGA}"
+    fi
     echo "ryll: ${RYLL_BIN}"
     echo "proxy: ${PROXY_BIN}"
+    if [ -n "${helper}" ]; then
+        # build-andris.sh leaves the binary in its clone, so name the commit.
+        andris_commit="$(git -C "$(dirname "${ANDRIS_BIN}")" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+        echo "andris: ${ANDRIS_BIN} ($("${ANDRIS_BIN}" --version), commit ${andris_commit})" \
+            "${ANDRIS_ARGS:+args ${ANDRIS_ARGS}}"
+    fi
     if [ "${QUALITY}" = 1 ]; then
         echo "quality: freeze frame ${QUALITY_FREEZE_FRAME}," \
             "settle ${QUALITY_SETTLE_MIN}-${QUALITY_SETTLE_MAX}s"
@@ -288,6 +339,11 @@ for _ in $(seq 60); do
 done
 [ -S "${GRPC_SOCKET}" ] || { echo 'ERROR: mock gRPC server did not start' >&2; exit 1; }
 
+# andris reads the ticket the mock hands the proxy from a file that only its
+# user may read.
+ANDRIS_TICKET="${SOCK_DIR}/andris-ticket"
+(umask 077 && printf '%s' "${TICKET}" > "${ANDRIS_TICKET}")
+
 PROXY_SUBJECT='C=US,O=Kerbside CI,CN=kerbside-ci'
 CA_ESCAPED="$(sed ':a;N;$!ba;s/\n/\\n/g' "${WORKDIR}/tls/ca-cert.pem")"
 CONSOLE_VV="${WORKDIR}/console.vv"
@@ -305,10 +361,14 @@ host-subject=${PROXY_SUBJECT}
 EOF
 
 wait_port() {
-    local port="$1"
+    local port="$1" pid="${2:-}"
     for _ in $(seq 60); do
         if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
             return 0
+        fi
+        # A server that has already exited will never listen.
+        if [ -n "${pid}" ] && ! kill -0 "${pid}" 2>/dev/null; then
+            return 1
         fi
         sleep 0.25
     done
@@ -389,21 +449,53 @@ run_case() {
     mkdir -p "${out}"
     log "case ${out#"${WORKDIR}"/}"
 
-    local spice="port=${SPICE_PORT},addr=127.0.0.1,password-secret=spice-ticket"
-    if [ "${streaming}" != 'default' ]; then
-        spice="${spice},streaming-video=${streaming}"
+    local -a vga=(-vga none -device virtio-vga)
+    [ "${GUEST_VGA}" = 'std' ] && vga=(-vga std)
+    local -a display
+    local qmp_sock="${SOCK_DIR}/qmp.sock"
+    if [ "${streaming}" = 'helper' ]; then
+        rm -f "${qmp_sock}"
+        # qemu's option strings separate their fields with commas.
+        local qmp_opt="unix:${qmp_sock},server=on,wait=off" dbus_opt='dbus,p2p=on,gl=off'
+        display=(-qmp "${qmp_opt}" -serial "file:${out}/serial.log" -display "${dbus_opt}")
+    else
+        local spice="port=${SPICE_PORT},addr=127.0.0.1,password-secret=spice-ticket"
+        if [ "${streaming}" != 'default' ]; then
+            spice="${spice},streaming-video=${streaming}"
+        fi
+        display=(-object "secret,id=spice-ticket,data=${TICKET}" -spice "${spice}"
+                 -serial "file:${out}/serial.log" -display none)
     fi
     "${qemu}" -machine accel=kvm:tcg -m 512 -smp 2 \
         -kernel "${guest}/vmlinuz" -initrd "${guest}/initrd.gz" \
-        -append "${append}" \
-        -vga none -device virtio-vga \
-        -object "secret,id=spice-ticket,data=${TICKET}" \
-        -spice "${spice}" \
-        -serial "file:${out}/serial.log" -display none \
+        -append "${append}" "${vga[@]}" "${display[@]}" \
         > "${out}/qemu.log" 2>&1 &
     local qemu_pid=$!
-    wait_port "${SPICE_PORT}" ||
-        { fail_case "${out}" 'qemu SPICE port never opened' "${qemu_pid}"; return 1; }
+    # The pids this case stops on a setup failure, newest first.
+    local -a server_pids=("${qemu_pid}")
+    local andris_pid=''
+    if [ "${streaming}" = 'helper' ]; then
+        local waited=0
+        until [ -S "${qmp_sock}" ]; do
+            if [ "${waited}" -ge 60 ] || ! kill -0 "${qemu_pid}" 2>/dev/null; then
+                fail_case "${out}" 'qemu QMP socket never appeared' "${qemu_pid}"
+                return 1
+            fi
+            sleep 0.25
+            waited=$((waited + 1))
+        done
+        RUST_LOG="${RUST_LOG:-warn,andris=info}" "${ANDRIS_BIN}" --platform qemu \
+            --qmp "${qmp_sock}" --ticket-file "${ANDRIS_TICKET}" \
+            --listen "127.0.0.1:${SPICE_PORT}" --no-audio "${ANDRIS_EXTRA[@]}" \
+            > "${out}/andris.log" 2>&1 &
+        andris_pid=$!
+        server_pids=("${andris_pid}" "${qemu_pid}")
+        wait_port "${SPICE_PORT}" "${andris_pid}" ||
+            { fail_case "${out}" "andris never listened; see ${out}/andris.log" "${server_pids[@]}"; return 1; }
+    else
+        wait_port "${SPICE_PORT}" "${qemu_pid}" ||
+            { fail_case "${out}" 'qemu SPICE port never opened' "${qemu_pid}"; return 1; }
+    fi
 
     # start-rust-proxy.sh waits for every listener and fails if one never
     # comes up (including a binary that rejects the tuning flags).
@@ -419,7 +511,7 @@ run_case() {
         local failed_pid
         failed_pid="$(cat "${out}/proxy.pid" 2>/dev/null)"
         fail_case "${out}" "proxy did not start; see ${out}/start-proxy.log" \
-            "${qemu_pid}" ${failed_pid:+"${failed_pid}"}
+            "${server_pids[@]}" ${failed_pid:+"${failed_pid}"}
         return 1
     }
     local proxy_pid
@@ -436,7 +528,7 @@ run_case() {
     until [ -S "${ryll_sock}" ]; do
         if [ "${waited}" -ge 80 ] || ! kill -0 "${ryll_pid}" 2>/dev/null; then
             fail_case "${out}" "ryll control socket never appeared; see ${out}/ryll.err" \
-                "${ryll_pid}" "${proxy_pid}" "${qemu_pid}"
+                "${ryll_pid}" "${proxy_pid}" "${server_pids[@]}"
             return 1
         fi
         sleep 0.25
@@ -461,14 +553,18 @@ run_case() {
         done
     ) > "${out}/ackwin.txt" 2>/dev/null &
     local ackwin_pid=$!
-    # CPU time and RSS of the proxy and qemu, at the same rate, kept up to
-    # the end of the case so the peak RSS covers the quality capture too.
+    # CPU time and RSS of the proxy and qemu, and andris for a helper
+    # display, at the same rate, kept up to the end of the case so the peak
+    # RSS covers the quality capture too.
     (
         echo "# clk_tck $(getconf CLK_TCK)"
         while true; do
             echo "@ $(date +%s.%N)"
             sample_proc proxy "${proxy_pid}"
             sample_proc qemu "${qemu_pid}"
+            if [ -n "${andris_pid}" ]; then
+                sample_proc andris "${andris_pid}"
+            fi
             sleep 0.5
         done
     ) > "${out}/proc.txt" 2>/dev/null &
@@ -492,15 +588,23 @@ run_case() {
         log "qemu exited during the case; see ${out}/qemu.log"
         echo 'qemu exited during the case' > "${out}/qemu-died"
     fi
+    if [ -n "${andris_pid}" ] && ! kill -0 "${andris_pid}" 2>/dev/null; then
+        log "andris exited during the case; see ${out}/andris.log"
+        echo 'andris exited during the case' > "${out}/andris-died"
+    fi
     stop_pid "${ss_pid}"
     stop_pid "${ackwin_pid}"
-    if [ "${QUALITY}" = 1 ] && [ "${rc}" -eq 0 ] && [ ! -e "${out}/qemu-died" ]; then
+    if [ "${QUALITY}" = 1 ] && [ "${rc}" -eq 0 ] && [ ! -e "${out}/qemu-died" ] &&
+            [ ! -e "${out}/andris-died" ]; then
         quality_capture "${out}" "${fps}" "${ryll_sock}"
     fi
     stop_pid "${proc_pid}"
     stop_pid "${ryll_pid}"
     stop_pid "${proxy_pid}"
-    stop_pid "${qemu_pid}"
+    local pid
+    for pid in "${server_pids[@]}"; do
+        stop_pid "${pid}"
+    done
     if [ "${rc}" -ne 0 ]; then
         log "keydraw-latency.py failed (rc ${rc}); see ${out}/keydraw.log"
     fi
