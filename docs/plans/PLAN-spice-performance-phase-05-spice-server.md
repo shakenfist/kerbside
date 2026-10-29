@@ -514,6 +514,58 @@ The kerbside-patches work is in the worktree
   are in the session scratchpad's `p5rig/`. Its `env.sh` names
   every commit.
 
+**Step 2, 2026-10-30.**
+- **Master still crashes.** With `streaming-video=all` and the
+  guest streaming before Ryll connected, 0.15.2, 0.16.0 and
+  master adeb620a04 each crashed in 20 of 20 connects. Master with
+  the patch crashed in 0 of 20.
+- **The cause.** A new display client is on the channel's client
+  list from `dcc_new()`, but it is given the existing streams only
+  at the end of `dcc_start()`. Ryll's `PREFERRED_VIDEO_CODEC_TYPE`
+  arrives in that window and stops every stream. That queues a
+  `STREAM_CLIP` for a stream the new client was never given, and
+  the clip's destructor dereferences the agent's NULL `dcc`.
+- **The patch.** It is draft 0001, "video-stream: skip streams a
+  client has not been given", 16 lines.
+  - It adds a per-agent `client_created` flag, as for surfaces.
+  - It sets the agent's `dcc` when the client is created.
+  - The review swept every other user of a stream agent and found
+    none that can act on a stream the client lacks.
+  - No spice-server test was added: nothing in the suite can link
+    a display channel as a client.
+- **Mikal approved continuing at the review gate.**
+- **Open for step 5:** whether stock remote-viewer sends the codec
+  preference early enough to crash. This is spice-gtk's behaviour,
+  and nobody has checked it yet.
+
+**Step 3, 2026-10-30.** Drafts 0002 (trace ring 8 to 64), 0003
+(`MAX_FPS` 60) and 0004 (hardware probing on any GPU, with a
+software fallback) each pass `meson test` 25 of 25. Each applies
+alone on 0001, and all four apply in order. Two findings
+narrowed what can be measured:
+- **0002 matters less than survey finding 4 supposed.** The ring
+  is consulted only when many drawables leave the tree at once
+  (`update_area`, `free_some`, memory pressure). Otherwise a
+  successor finds its predecessor directly.
+- **Stock qemu cannot exercise 0003 or 0004.**
+  - Its 30 ms refresh timer holds streams to about 33 fps.
+  - Its 32-pixel-wide column streams are narrower than this
+    host's radeonsi `vah264enc` accepts (at least 128x128). So
+    every stream fell back to x264enc. The fallback worked, as it
+    did with `/dev/dri` hidden.
+  - 0004 grew to 201 added lines once the fallback was made
+    real. Step 5 should consider splitting it for upstream.
+
+**Step 4 departs from the plan.** The matrix gains a second qemu,
+the downstream-carried series (`upstream/qemu/series/v2/`). It
+sends each region whole, in one 480x360 stream here, and paces
+by `max-refresh-rate`. That gives 0003 and 0004 a fair test
+instead of a drop under decision 5 for want of a measurement.
+Stock qemu stays the display for 0002 and for the 0.15.2-to-master
+question. Plain master is not measured separately: with
+`ACTIVITY_DELAY` avoiding the crash, master with 0001 is the
+baseline for every patch.
+
 ## Back brief
 
 Before executing any step, back brief the operator. The points
