@@ -305,6 +305,54 @@ None yet.
   table was gone after the rebase onto deployment options phase 6,
   which replaced it with a pointer to the Use Cases index, so that
   addition was dropped. 6.1 left `console-sources.md` unedited.
+- Step 6.2's tunnel sentence said a tunnelled target is dialled "over
+  TLS only". The management session reworded it before committing:
+  the CONNECT to the proxy is plaintext, and only the SPICE session
+  inside the tunnel is TLS. The plan's own wording in finding 3 and
+  in 6.2's brief has the same imprecision. It is left as written,
+  because it records what the brief said.
+- 2026-10-30 AEDT, step 6.3. The fact check found nothing that
+  contradicts `console-sources.md`, but some claims went further
+  than the code or Proxmox supports. Corrected:
+  1. The backend leg. The hop to `spiceproxy` is a plaintext HTTP
+     CONNECT, and the signed connect host crosses that network in the
+     clear; only the SPICE session inside the tunnel is TLS. This is
+     fixed in the value bullet, the mermaid labels and the backend
+     leg paragraph. The same imprecision was swept from
+     `docs/network-ports.md`'s tunnel sentence and the
+     `docs/index.md` row.
+  2. The account commands. The lane also adds `--output-format
+     json`, not only a renamed user.
+  3. `spiceproxy` setup. It honours `/etc/default/pveproxy`'s
+     `ALLOW_FROM`, `DENY_FROM`, `POLICY` and `LISTEN_IP` on port
+     3128, which an address restriction must account for.
+  4. The `.vv` from PVE's console button names the host in the
+     browser's address bar, not "the node's" `spiceproxy`.
+  5. Who keeps that button. `PVEVMUser`, `PVEVMAdmin`, `PVEAdmin`,
+     `Administrator` and `root@pam` all hold `VM.Console`, not only
+     "administrators".
+  6. Another minter changes the password a Kerbside session's later
+     channels expect (see the refusal comment in `kerbside/api.py`'s
+     direct console handler). This is now stated, where the page had
+     said a mint "leaves clients already connected alone".
+  7. "Whoever opened it" is dropped as unverifiable.
+  8. "Only Kerbside can make the CONNECT" overstated what is a
+     network design choice. The reason given for no direct consoles
+     is now the password change, as `api.py` gives it.
+  9. The CI runner is self-hosted, not GitHub-hosted. Only Kerbside
+     is limited to 8006 and 3128; the lane's scripts reach the node
+     separately.
+  10. Pull requests from forks skip the lane. The live migration
+      gap is "expected from the code", not "known".
+  Declined, because ovirt.md shares the claims and they are not
+  Proxmox-specific: the SPICE features paragraph, and the firewall
+  "classifies every framed message". Kept, as decision 2 allows:
+  the few numbers the page repeats from `console-sources.md` (30
+  seconds, the ports, the two privileges).
+- The definition of done's mutant for the new tests had to remove
+  every condition word in the fixture, not one. The bullet's heading
+  holds its own `only`, and the checker works per block. That is the
+  checker's documented limit, not a gap in the tests.
 
 ## Outcome
 

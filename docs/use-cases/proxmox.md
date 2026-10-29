@@ -34,15 +34,18 @@ Kerbside puts a protocol-aware front door before it:
   Clients reach Kerbside; Kerbside reaches the PVE API and
   `spiceproxy`. Users need no route to a node and no PVE
   account: Kerbside holds one API token, with two privileges.
-- **The backend leg is TLS and pinned, because there is only one
-  way in.** Kerbside reaches a Proxmox VM only through
-  `spiceproxy`, so every backend connection is a tunnel, and a
-  tunnel is dialled once, over TLS only, never in plaintext
-  first. A tunnel without a node certificate subject is refused
-  rather than relayed unpinned, and discovery lists no console
-  on a node that has no such subject. The certificate is checked
-  against the source's `ca_cert`, never against the CA the API's
-  response names.
+- **The SPICE session to qemu is TLS and pinned, because there is
+  only one way in.** Kerbside reaches a Proxmox VM only through
+  `spiceproxy`, so every backend connection is a tunnel: a
+  plaintext HTTP CONNECT to `spiceproxy`, then a SPICE session
+  that is TLS only inside it, never attempted in plaintext first.
+  The CONNECT carries the ticket's signed connect host in the
+  clear, so the network between Kerbside and the node should be
+  one you trust. A tunnel without a node certificate subject is
+  refused rather than relayed unpinned, and discovery lists no
+  console on a node that has no such subject. The certificate is
+  checked against the source's `ca_cert`, never against the CA
+  the API's response names.
 - **[One entry point across clouds.](multi-cloud.md)** A single
   Kerbside can broker Proxmox VE alongside oVirt, Shaken Fist and
   OpenStack sources; users keep one console entry point as
@@ -72,8 +75,8 @@ flowchart TD
     broker -- "3. deliver" --> client
     client -- "4. connect, token as password" --> kerbside
     kerbside <-- "A. discovery (per minute)<br/>B. ticket, when a session's<br/>first channel connects" --> api
-    kerbside -- "5. HTTP CONNECT to<br/>the minted connect host" --> spiceproxy
-    spiceproxy -- "6. TLS end to end, Kerbside to qemu:<br/>source CA verified, node subject pinned" --> qemu
+    kerbside -- "5. plaintext HTTP CONNECT to<br/>the minted connect host" --> spiceproxy
+    spiceproxy -- "6. SPICE over TLS inside the tunnel,<br/>Kerbside to qemu: source CA verified,<br/>node subject pinned" --> qemu
 ```
 
 **Discovery (A).** Once a minute the `type: proxmox` source
@@ -113,8 +116,11 @@ unreachable is denied with `console ticket unavailable`.
 
 **Two sessions on one VM.** qemu's SPICE server serves one client
 at a time, so a second session on the same VM disconnects the
-first, whoever opened it. Minting a ticket changes the VM's SPICE
-password, which leaves clients already connected alone.
+first. Minting a ticket changes the VM's SPICE password. Channels
+already connected stay connected, but a Kerbside session that is
+still opening channels on its own ticket will have them refused,
+so a ticket minted elsewhere, such as by PVE's own console
+button, can break a session that is still opening.
 
 **The client leg (4).** The `.vv` points at `PUBLIC_FQDN` and
 Kerbside's own ports, carries Kerbside's CA, and uses a
@@ -123,11 +129,13 @@ authenticates to *Kerbside*; the Proxmox ticket never leaves the
 server side.
 
 **The backend leg (5, 6).** Kerbside's proxy connects to
-`spiceproxy` and asks it to CONNECT to the connect host and TLS
-port the ticket named. Inside that tunnel it runs the SPICE TLS
-handshake with qemu itself, so `spiceproxy` relays a TLS stream
-it cannot read. The tunnel is the only path to the VM, and it is
-TLS only: there is no plaintext attempt and no `NEED_SECURED`
+`spiceproxy` in plaintext and asks it to CONNECT to the connect
+host and TLS port the ticket named; that request, signed connect
+host included, crosses the network in the clear. Inside the
+tunnel the proxy runs the SPICE TLS handshake with qemu itself,
+so `spiceproxy` relays a TLS stream it cannot read. The tunnel is
+the only path to the VM, and the SPICE session inside it is TLS
+only: there is no plaintext SPICE attempt and no `NEED_SECURED`
 escalation. The proxy verifies qemu's certificate against the
 source's `ca_cert`, the cluster CA that signs each node's
 `pve-ssl.pem`, and pins the node subject discovery recorded; a
@@ -143,8 +151,9 @@ position. It is no longer the front door users reach, but a relay
 behind Kerbside that carries Kerbside's TLS session to qemu.
 
 There is no direct console for a Proxmox VM: a 30 second ticket
-is too short for a file to be downloaded and opened, and only
-Kerbside can make the CONNECT it is for. See
+is too short for a file to be downloaded and opened, and minting
+one for a client would change the SPICE password a proxied
+session's next channel expects. See
 [Proxmox VE has no direct consoles](../console-sources.md#proxmox-ve-has-no-direct-consoles).
 
 ## How to set it up
@@ -159,7 +168,8 @@ token that grant exactly that, and how a privilege-separated
 token's privileges combine with its user's, are in
 [Proxmox VE account](../console-sources.md#proxmox-ve-account).
 The CI lane runs those commands as they are written there, with
-only the user renamed, so they are the tested ones.
+the user renamed and `--output-format json` added where it reads
+a command's output, so they are the tested ones.
 
 **Guests.** Give each VM a SPICE display (`qxl`, or a `virtio`
 one) and keep the SMBIOS UUID that `qm create` and the web
@@ -169,9 +179,13 @@ for clipboard sharing and display resizing, as for any SPICE
 console. Kerbside relays the agent channel; it does not decode
 it.
 
-**`spiceproxy`.** Nothing to configure. Kerbside asks each mint
-to name the source's own host as the proxy, so it uses the
-`spiceproxy` on the node it already reaches for the API.
+**`spiceproxy`.** Nothing to configure for Kerbside. Kerbside
+asks each mint to name the source's own host as the proxy, so it
+uses the `spiceproxy` on the node it already reaches for the
+API. `spiceproxy` honours the same `ALLOW_FROM`, `DENY_FROM`,
+`POLICY` and `LISTEN_IP` settings in `/etc/default/pveproxy` as
+the API does, so an address restriction there applies to port
+3128 too, and must admit Kerbside.
 
 ### Network
 
@@ -215,9 +229,10 @@ ports and CA, are in [configuration.md](../configuration.md).
 `.github/workflows/proxmox-functional.yml` builds a single-node
 Proxmox VE 9 with `shakenfist/actions`'
 `deploy-proxmox-on-shakenfist` action and deploys Kerbside
-against it. Kerbside runs on the GitHub Actions runner, off-box
-from PVE, reaching the node by name on 8006 and 3128 only. The
-runner-side scripts are in `tools/proxmox-e2e/` (see
+against it. Kerbside runs on the lane's self-hosted runner,
+off-box from PVE, and reaches the node by name on 8006 and 3128
+only; the lane's own scripts reach the node separately to set it
+up. The runner-side scripts are in `tools/proxmox-e2e/` (see
 `tools/proxmox-e2e/README.md`):
 
 - `prepare-node.sh` runs the account commands from
@@ -270,14 +285,19 @@ integrated broker today, so the options are:
 - **The PVE web interface's own console button**, which bypasses
   Kerbside entirely. It asks the API for a SPICE ticket as the
   logged-in user and hands the browser a `.vv` pointing at the
-  node's `spiceproxy`, so the user connects without Kerbside,
-  which neither sees nor audits the session.
+  `spiceproxy` of the host in the browser's address bar, so the
+  user connects without Kerbside, which neither sees nor audits
+  the session. That mint also changes the VM's SPICE password
+  under any Kerbside session still opening channels.
 
 Kerbside is therefore the only way in exactly when nobody else
 can mint a ticket, and minting needs `VM.Console`. To route every
 SPICE console through Kerbside, give `VM.Console` to Kerbside's
-token and to no user or other token. Administrators hold every
-privilege, so they keep the button. The same privilege gates the
+token and to no user or other token. Several built-in roles
+include it, `PVEVMUser`, `PVEVMAdmin`, `PVEAdmin` and
+`Administrator` among them, and `root@pam` holds every
+privilege, so check what your users already hold: anyone with
+one of those on a VM keeps the button. The same privilege gates the
 web interface's noVNC and xterm.js consoles for a VM, so a user
 without it has no VM console there at all.
 
@@ -286,7 +306,8 @@ without it has no VM console there at all.
 Kerbside is experimental overall. The Proxmox VE source is
 exercised end to end by the `proxmox-functional` lane, nightly
 and on `workflow_dispatch`, and as an advisory check on pull
-requests that touch the Proxmox path. It is not in the merge
+requests that touch the Proxmox path; pull requests from forks
+skip it. It is not in the merge
 queue and not a required check, so a change that breaks it can
 merge, and the next nightly files a
 `Nightly proxmox lane failing` issue. See
@@ -298,7 +319,7 @@ Not covered, and worth knowing before you deploy:
 |------------|--------|
 | One node tested | The lane runs a single PVE 9 node. A cluster, where `spiceproxy` on the API host relays to VMs on other nodes, has not been tested. |
 | Proxmox VE 9 only | No other version is tested. |
-| Live migration during a session | Not tested, and known to break briefly. When a VM migrates, its next mint finds the new node, but its console keeps the old node's subject until the next scrape, so for up to a minute the backend connection fails its subject check. See [Which VMs are listed](../console-sources.md#which-vms-are-listed). |
+| Live migration during a session | Not tested; expected from the code to break briefly. When a VM migrates, its next mint finds the new node, but its console keeps the old node's subject until the next scrape, so for up to a minute the backend connection fails its subject check. See [Which VMs are listed](../console-sources.md#which-vms-are-listed). |
 | Ticket lifetime | Set by Proxmox, not Kerbside: 30 seconds from the mint, whatever `CONSOLE_TOKEN_DURATION` says. A channel connecting after the reuse window mints again, which changes the VM's SPICE password. |
 | No direct consoles | `/console/direct` answers 409 for a Proxmox console. Every console is proxied. |
 | One client per VM | A second session on a VM displaces the first, as qemu's SPICE server does for any client. |
