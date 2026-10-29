@@ -313,7 +313,7 @@ first phase.
 | 1. Proxy backpressure and a WAN baseline | [PLAN-spice-performance-phase-01-proxy-backpressure.md](PLAN-spice-performance-phase-01-proxy-backpressure.md) | Complete | 52046167f8 (#478) |
 | 2. qemu damage path: prototype and measure; carry qemu, submit the kernel fix | | In progress | kerbside-patches b53aa39c7e (#1748) |
 | 3. Display transcoding in Kerbside: feasibility spike (verdict: no-go) | [PLAN-spice-performance-phase-03-transcoding.md](PLAN-spice-performance-phase-03-transcoding.md) | Complete | 2e19d737aa (#489), ryll fdb5ead5b4 (#406), eab2c572cf (#494), 9d1b64d6 (#505), 13e9e2eb (#581), bba71155 (#616), 7919eadf73 (#630) |
-| 4. Son of SPICE: D-Bus display feasibility spike (verdict: no-go, as measured) | [PLAN-spice-performance-phase-04-dbus-spike.md](PLAN-spice-performance-phase-04-dbus-spike.md) | In progress | andris 9a997a3 (#56) |
+| 4. Son of SPICE: D-Bus display feasibility spike (verdict: no-go, as measured) | [PLAN-spice-performance-phase-04-dbus-spike.md](PLAN-spice-performance-phase-04-dbus-spike.md) | Complete | andris 9a997a3 (#56), a90f17ff90 (#637) |
 | 5. Small spice-server patches (item 9, and item 4 if still wanted) | | Not started | |
 | 6. Push audit of phases 1-5 (kerbside and kerbside-patches) | | Not started | |
 | 7. QUIC client leg: experiments | | Not started | |
