@@ -505,6 +505,20 @@ Order:
   answered: the qemu platform lands in andris now, behind its
   `qemu` feature, as its own pull request with its own push
   audit (decision 2).
+- 2026-10-29 (AEDT): the rest of the back brief was answered.
+  - The pinned `qemu-display` crate is accepted (decision 3).
+  - Decision 8's criteria stand as written, with reachability
+    a hard criterion.
+  - The session runs every step and opens the andris and
+    kerbside pull requests. The management session reviews step
+    1's gate and stops early only if it fails.
+- Step 1's precision check compares the listener's rectangle
+  with the guest's flush (qemu's `virtio_gpu_cmd_res_flush`
+  trace), not with ideal damage. The rig's guest uses the host
+  kernel (6.12) with the stock `drm_kms_helper`, as phase 3 did,
+  and that kernel has the sticky `ignore_damage_clips` bug, so
+  the guest may flush the full plane. What the guest flushes is
+  reported separately.
 
 ## Back brief
 
