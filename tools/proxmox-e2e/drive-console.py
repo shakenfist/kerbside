@@ -1212,9 +1212,11 @@ def _drive(lane):
     resp = requests.get('%s/console/direct/%s/%s/console.vv' % (lane.api, lane.source, lane.console_uuid),
                         headers=admin_headers, timeout=30)
     _log('the direct .vv request was answered %d' % resp.status_code)
-    lane.checkpoint('after the refused direct .vv', 0)
+    # The status first: an accepted request also mints, and the count below
+    # would then name the wrong cause.
     if resp.status_code != 409:
         _require(DEFECT, 'the direct .vv request was answered %d, not 409' % resp.status_code)
+    lane.checkpoint('after the refused direct .vv', 0)
     if len(refusals()) != before + 1:
         _require(DEFECT, 'the direct .vv refusal was not audited')
     _log('the direct .vv request was refused with 409 and audited')

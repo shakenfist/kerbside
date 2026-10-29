@@ -75,8 +75,11 @@ jobs:
     # upstream squid cache for apt, github, and the cargo registry.
     # Loopback traffic to kerbside on 127.0.0.1 must bypass that proxy or
     # squid returns 503 ERR_CONNECT_FAIL when it cannot route the request
-    # back through itself. The PVE node must bypass it too, and the deploy
-    # action appends it to no_proxy once it exists.
+    # back through itself. The PVE node must bypass it too. The deploy action
+    # appends it to no_proxy through GITHUB_ENV, but this job-level value may
+    # take precedence over that, so the lane's scripts do not rely on it:
+    # deploy-kerbside.sh exports its own no_proxy, and the Python scripts
+    # set their own or pass explicit proxies to requests.
     env:
       no_proxy: 127.0.0.1,localhost
       # The single source of truth for the runner-side kerbside deploy

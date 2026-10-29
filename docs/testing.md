@@ -61,8 +61,9 @@ the morning after it merges, as a `Nightly oVirt lane failing`,
 `Nightly OpenStack lane failing` or `Nightly proxmox lane failing`
 issue filed by the run, rather than on the PR or in the queue.
 Nothing else exercises those sources end to end, so treat those
-issues as release blockers (see "Releasing" in [development.md](development.md)), and
-dispatch the lane on a pull request that changes a source driver.
+issues as release blockers (see "Releasing" in
+[development.md](development.md)), and dispatch the lane on a pull
+request that changes a source driver.
 
 Both tiers also skip entirely when a change touches only files no
 lane exercises: the review-tracking state (`REVIEWS.md` and the
