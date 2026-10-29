@@ -478,7 +478,7 @@ and cited from phase 2's *Outcome*.
 | 3a. Minting at connect time | [PLAN-proxmox-source-phase-03a-connect-time-minting.md](PLAN-proxmox-source-phase-03a-connect-time-minting.md) | Complete | 696f5aa |
 | 3b. Tunnel transport | [PLAN-proxmox-source-phase-03b-tunnel-transport.md](PLAN-proxmox-source-phase-03b-tunnel-transport.md) | Complete | c435ea3 |
 | 4. The source driver | [PLAN-proxmox-source-phase-04-source-driver.md](PLAN-proxmox-source-phase-04-source-driver.md) | Complete | 6519c3b |
-| 5. CI lane | [PLAN-proxmox-source-phase-05-ci-lane.md](PLAN-proxmox-source-phase-05-ci-lane.md) | In progress | |
+| 5. CI lane | [PLAN-proxmox-source-phase-05-ci-lane.md](PLAN-proxmox-source-phase-05-ci-lane.md) | Complete | c4b4011 |
 | 6. Docs | | Not started | |
 | 7. Push audit | | Not started | |
 
@@ -499,7 +499,7 @@ and cited from phase 2's *Outcome*.
 
 ## Status
 
-In progress. Phases 1, 1b, 2, 3a, 3b and 4 are complete.
+In progress. Phases 1, 1b, 2, 3a, 3b, 4 and 5 are complete.
 - CI can build a Proxmox VE node on demand.
 - ryll tunnels through `spiceproxy`, proven against a real node
   on every ryll pull request that touches the tunnel.
@@ -511,5 +511,3 @@ In progress. Phases 1, 1b, 2, 3a, 3b and 4 are complete.
 - A nightly lane, also run on pull requests that touch the Proxmox
   path, drives a proxied session through a real node's
   `spiceproxy` with the documented least-privilege token.
-
-Phase 5, the CI lane, is in progress.
