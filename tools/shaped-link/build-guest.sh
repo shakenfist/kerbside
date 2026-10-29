@@ -5,8 +5,9 @@
 # Usage: build-guest.sh OUTDIR
 #
 # The guest reuses the host's own kernel (/boot/vmlinuz-$(uname -r)) and
-# takes the handful of modules it needs (virtio-gpu and its helpers,
-# evdev) from /lib/modules/$(uname -r), so there is nothing to download.
+# takes the handful of modules it needs (virtio-gpu, bochs-drm for qemu's
+# std-vga, their helpers, and evdev) from /lib/modules/$(uname -r), so
+# there is nothing to download.
 # It needs gcc with a static glibc, and cpio. Writes OUTDIR/vmlinuz and
 # OUTDIR/initrd.gz.
 #
@@ -28,7 +29,11 @@ MODULES=(
     drivers/gpu/drm/drm.ko.xz
     drivers/gpu/drm/drm_kms_helper.ko.xz
     drivers/gpu/drm/drm_shmem_helper.ko.xz
+    drivers/gpu/drm/ttm/ttm.ko.xz
+    drivers/gpu/drm/drm_ttm_helper.ko.xz
+    drivers/gpu/drm/drm_vram_helper.ko.xz
     drivers/gpu/drm/virtio/virtio-gpu.ko.xz
+    drivers/gpu/drm/tiny/bochs.ko.xz
     drivers/input/evdev.ko.xz
 )
 

@@ -1,7 +1,8 @@
 /*
  * keydraw: a minimal static PID 1 for the shaped-link latency rig.
  *
- * It loads virtio-gpu and evdev, takes KMS master on /dev/dri/card0,
+ * It loads virtio-gpu, bochs-drm (qemu's std-vga) and evdev, takes KMS
+ * master on /dev/dri/card0 (whichever of the two drives the display),
  * paints a static "text" background, then does two things on the same
  * framebuffer (and therefore the same SPICE display channel):
  *
@@ -69,7 +70,9 @@
 
 static const char *mods[] = {
     "/m/virtio_dma_buf.ko.xz", "/m/drm.ko.xz", "/m/drm_kms_helper.ko.xz",
-    "/m/drm_shmem_helper.ko.xz", "/m/virtio-gpu.ko.xz", "/m/evdev.ko.xz",
+    "/m/drm_shmem_helper.ko.xz", "/m/ttm.ko.xz", "/m/drm_ttm_helper.ko.xz",
+    "/m/drm_vram_helper.ko.xz", "/m/virtio-gpu.ko.xz", "/m/bochs.ko.xz",
+    "/m/evdev.ko.xz",
     NULL,
 };
 
@@ -103,6 +106,10 @@ static void dirty(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
         .fb_id = fb_id, .num_clips = 1, .clips_ptr = (uintptr_t)&c,
     };
     if (ioctl(dfd, DRM_IOCTL_MODE_DIRTYFB, &d) < 0) {
+        /* bochs-drm (std-vga) scans VRAM directly and has no DIRTYFB. */
+        if (errno == ENOSYS) {
+            return;
+        }
         die("DIRTYFB");
     }
 }

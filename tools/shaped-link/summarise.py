@@ -5,9 +5,10 @@ Usage: summarise.py WORKDIR
 
 For each case (profile/activity/config), pools the latency samples from
 every good repeat and reports p50/p95/max, the sample and timeout
-counts, and how many repeats were good, lost to a qemu exit (a
-`qemu-died` marker from run-matrix.sh) or failed (a `setup-failed`
-marker, or files that cannot be read). Only good repeats are pooled.
+counts, and how many repeats were good, lost to a server exit (a
+`qemu-died` marker from run-matrix.sh, or `andris-died` for a helper
+display) or failed (a `setup-failed` marker, or files that cannot be
+read). Only good repeats are pooled.
 
 It reports the display channel's delivered throughput twice: from the
 client-leg socket's `bytes_acked` in the `ss` snapshots, and from the
@@ -51,7 +52,10 @@ qemu's CPU time and RSS that run-matrix.sh samples into proc.txt: CPU in
 cores used over the key-press window (CPU seconds per second), the mean RSS
 over that window, and the peak RSS over the whole case, which includes the
 quality capture when there was one. Cores and mean RSS are averaged over the
-good repeats; the peak is the largest of them. The last column is the peak
+good repeats; the peak is the largest of them. When any case ran a helper
+display, the table gains andris's cores and RSS beside qemu's ("-" for a case
+without andris), since the helper's cost is qemu's plus andris's. The last
+column is the peak
 of a transcoded display channel's pixmap cache, from the line the proxy logs
 when the channel ends ("-" for a relayed case).
 
@@ -202,7 +206,7 @@ def ack_stats(rep_dirs, rate_mbit):
     rows = []
     windows = set()
     for d in rep_dirs:
-        if bad_repeat(d) or os.path.exists(os.path.join(d, 'qemu-died')):
+        if bad_repeat(d) or server_died(d):
             continue
         try:
             with open(os.path.join(d, 't1')) as f:
@@ -274,6 +278,12 @@ def ack_stats(rep_dirs, rate_mbit):
     return out
 
 
+def server_died(d):
+    """Whether qemu, or a helper display's andris, exited during repeat `d`."""
+    return (os.path.exists(os.path.join(d, 'qemu-died'))
+            or os.path.exists(os.path.join(d, 'andris-died')))
+
+
 def bad_repeat(d):
     """Whether repeat directory `d` failed its setup, or froze too early."""
     return (os.path.exists(os.path.join(d, 'setup-failed'))
@@ -332,14 +342,16 @@ def host_stats(rep_dirs):
     """CPU and memory for one case, over its good repeats, or None."""
     rows = []
     for d in rep_dirs:
-        if bad_repeat(d) or os.path.exists(os.path.join(d, 'qemu-died')):
+        if bad_repeat(d) or server_died(d):
             continue
         window = keypress_window(d)
         clk_tck, series = parse_proc(os.path.join(d, 'proc.txt'))
         if window is None or not series:
             continue
         row = {'pixmap': pixmap_peak(os.path.join(d, 'proxy.log'))}
-        for name in ('proxy', 'qemu'):
+        for name in ('proxy', 'qemu', 'andris'):
+            if name == 'andris' and name not in series:
+                continue
             samples = series.get(name, [])
             inside = [x for x in samples if window[0] <= x[0] <= window[1]]
             row[name + '_cores'] = float('nan')
@@ -353,7 +365,7 @@ def host_stats(rep_dirs):
     if not rows:
         return None
     out = {'good': len(rows)}
-    for key in rows[0]:
+    for key in sorted({k for r in rows for k in r}):
         if key == 'pixmap':
             peaks = [r['pixmap'] for r in rows if r['pixmap'] is not None]
             out[key] = max(peaks) if peaks else None
@@ -361,7 +373,7 @@ def host_stats(rep_dirs):
             # A repeat without samples for a value is NaN there; leave it out
             # rather than let it decide the result, and give NaN only when no
             # repeat had one.
-            values = [r[key] for r in rows if not math.isnan(r[key])]
+            values = [r[key] for r in rows if key in r and not math.isnan(r[key])]
             if not values:
                 out[key] = float('nan')
             elif key.endswith('_peak'):
@@ -376,7 +388,7 @@ def quality_stats(rep_dirs):
     rows = []
     lagged = 0
     for d in rep_dirs:
-        if bad_repeat(d) or os.path.exists(os.path.join(d, 'qemu-died')):
+        if bad_repeat(d) or server_died(d):
             continue
         try:
             with open(os.path.join(d, 'quality.json')) as f:
@@ -426,7 +438,7 @@ def case_stats(rep_dirs):
         if bad_repeat(d):
             failed += 1
             continue
-        if os.path.exists(os.path.join(d, 'qemu-died')):
+        if server_died(d):
             died += 1
             continue
         try:
@@ -551,17 +563,28 @@ def main():
         if stats:
             quality_rows.append((profile, activity, config, stats))
     if host_rows:
+        # andris's columns appear only when some case ran a helper display, so
+        # a run without one prints the table it always has.
+        helper = any('andris_cores' in h for _, _, _, h in host_rows)
         print()
         print('| Link | Activity | Proxy | Repeats | Proxy cores | Proxy RSS mean / peak MiB | '
-              'qemu cores | qemu RSS mean / peak MiB | Pixmap cache peak MiB |')
-        print('|---|---|---|---|---|---|---|---|---|')
+              'qemu cores | qemu RSS mean / peak MiB | '
+              + ('andris cores | andris RSS mean / peak MiB | ' if helper else '')
+              + 'Pixmap cache peak MiB |')
+        print('|---|---|---|---|---|---|---|---|---|' + ('---|---|' if helper else ''))
         for profile, activity, config, h in host_rows:
             pixmap = '-' if h['pixmap'] is None else f'{h["pixmap"] / 1048576:.1f}'
+            andris = ''
+            if helper and 'andris_cores' in h:
+                andris = (f'{h["andris_cores"]:.3f} | '
+                          f'{h["andris_rss_mean"] / 1024:.0f} / {h["andris_rss_peak"] / 1024:.0f} | ')
+            elif helper:
+                andris = '- | - | '
             print(f'| {profile} | {activity} | {config} | {h["good"]} | '
                   f'{h["proxy_cores"]:.3f} | '
                   f'{h["proxy_rss_mean"] / 1024:.0f} / {h["proxy_rss_peak"] / 1024:.0f} | '
                   f'{h["qemu_cores"]:.3f} | '
-                  f'{h["qemu_rss_mean"] / 1024:.0f} / {h["qemu_rss_peak"] / 1024:.0f} | {pixmap} |')
+                  f'{h["qemu_rss_mean"] / 1024:.0f} / {h["qemu_rss_peak"] / 1024:.0f} | {andris}{pixmap} |')
     if quality_rows:
         print()
         print('| Link | Activity | Proxy | Repeats | Background exact while animating (most px differing) | '
@@ -573,7 +596,7 @@ def main():
                   f'{q["ssim_mean"]:.4f} / {q["ssim_min"]:.4f} | {q["psnr_min"]:.1f} | '
                   f'{q["settled"]} of {q["n"]} ({q["lagged"]}) |')
     if lost:
-        print(f'WARNING: {lost} repeat(s) were lost to a qemu exit or a '
+        print(f'WARNING: {lost} repeat(s) were lost to a server exit or a '
               f'setup failure and are excluded; see the Repeats column',
               file=sys.stderr)
 
