@@ -254,28 +254,28 @@ page as written.
 
 ## Definition of done
 
-- [ ] `docs/use-cases/proxmox.md` exists, has the seven section
+- [x] `docs/use-cases/proxmox.md` exists, has the seven section
       headings of `ovirt.md` in the same order, and contains a
       mermaid diagram that `tools/mermaid-lint.sh` accepts.
-- [ ] `docs/index.md`'s Proxmox row links the page and names
+- [x] `docs/index.md`'s Proxmox row links the page and names
       `proxmox-functional`. No Use Cases row is left without a link,
       and the "Scenarios without a link" sentence is gone.
-- [ ] `docs/use-cases/order.yml` lists `proxmox.md`.
-- [ ] The page contains no `pveum` command and no `sources.yaml`
+- [x] `docs/use-cases/order.yml` lists `proxmox.md`.
+- [x] The page contains no `pveum` command and no `sources.yaml`
       field table. `grep -c 'pveum ' docs/use-cases/proxmox.md` is 0,
       and each anchor it links in `console-sources.md` exists.
-- [ ] No sibling page still says "four source pages" or omits
+- [x] No sibling page still says "four source pages" or omits
       Proxmox from a list of the source pages.
-- [ ] `ovirt.md` no longer says the oVirt lane runs on every
+- [x] `ovirt.md` no longer says the oVirt lane runs on every
       merge-queue entry.
-- [ ] `tools/check-backend-tls-claims.py` passes. Its docstring
+- [x] `tools/check-backend-tls-claims.py` passes. Its docstring
       describes tunnelled targets with current line numbers, and its
       two new test cases fail if the conditioned sentence loses its
       condition word.
-- [ ] Step 6.3's fact check found no claim overstated or wrong, or
+- [x] Step 6.3's fact check found no claim overstated or wrong, or
       each one it found is corrected, with the correction listed in
       *Execution notes*.
-- [ ] `tox -epy3`, `tox -eflake8`, `pre-commit run --all-files` and
+- [x] `tox -epy3`, `tox -eflake8`, `pre-commit run --all-files` and
       `tools/mermaid-lint.sh` pass.
 - [ ] The master plan's Execution table records this phase's merge
       commit, set by the close-out commit of the push-audit phase's
@@ -356,7 +356,32 @@ None yet.
 
 ## Outcome
 
-Not yet run.
+The definition of done was run locally on 2026-10-30 AEDT, at the
+head of `proxmox-source-phase-06-use-case-page`:
+
+- `proxmox.md` has `ovirt.md`'s seven section headings in order
+  (`diff` of the `## ` lines is empty) and one mermaid diagram,
+  which `tools/mermaid-lint.sh` accepts.
+- Every Use Cases row in `docs/index.md` links a page. The Proxmox
+  row names `proxmox-functional`, and "Scenarios without a link" no
+  longer appears.
+- `order.yml` lists `proxmox.md`.
+- `grep -c 'pveum ' docs/use-cases/proxmox.md` is 0, there is no
+  field table, and all 8 `console-sources.md` anchors the page links
+  exist.
+- "four source pages" appears only in this plan, and `ovirt.md`
+  no longer mentions the merge queue.
+- `tools/check-backend-tls-claims.py` passes over 12 files. Its 21
+  tests pass, and `tools/mutate-backend-tls-claims.py` catches all
+  12 of its mutations. A mutant that strips the condition words
+  from the new tunnel fixture fails
+  `test_a_tunnel_page_naming_its_condition_passes`.
+- Step 6.3's corrections are listed in *Execution notes*.
+- `tox -epy3` (801 passed), `tox -eflake8`, `pre-commit run
+  --all-files` and `tools/mermaid-lint.sh` pass.
+
+The last item, this phase's merge commit, is recorded by the
+push-audit phase's planning close-out, so it is unticked here.
 
 ## Back brief
 
