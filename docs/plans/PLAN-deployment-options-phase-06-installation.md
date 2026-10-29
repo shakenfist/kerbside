@@ -216,6 +216,14 @@ The two steps write to the same tree, so they run one after the other.
 
 ## Execution notes
 
+- Back brief answered on 2026-10-29 (AEDT). Mikal kept decision 4, so
+  the README's pitch paragraph stays, and gave this session permission
+  to push and open the pull request once the definition of done
+  passes.
+- Step 6a's Installation bullet in the index was tightened in review
+  to "a pointer to the deployment pages: by hand, Ansible,
+  Kolla-Ansible and containers".
+
 ## Back brief
 
 Before executing any step of this plan, back brief the operator
