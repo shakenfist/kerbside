@@ -80,11 +80,14 @@ Out of scope:
    `tools/check-backend-tls-claims.py`'s docstring says the proxy
    dials the insecure port first and escalates to TLS only on
    `NEED_SECURED`, and it cites `backend.rs:85-115` and `:206`. Since
-   phase 3b a tunnelled target is dialled once, over TLS only
-   (`backend.rs:31-32`, `:82`, `:214-216`), and a tunnel without a
+   phase 3b a tunnelled target is dialled once: a plaintext HTTP
+   CONNECT to the proxy, then a SPICE session that is TLS only inside
+   it (`backend.rs:31-32`, `:82`, `:214-216`). A tunnel without a
    host subject is refused (`backend.rs:367`, and ryll's
    `SpiceClient::new`). So on this page the honest claim is the
-   strong one: the backend leg is always TLS and always pinned. The
+   strong one: the SPICE session to qemu is always TLS and always
+   pinned, though the CONNECT carrying the signed connect host is
+   not. The
    checker would flag that sentence unless its block names a
    condition. Its vocabulary already has the true one: a tunnel
    `without` a subject is refused, and a VM is reached `only`
@@ -171,11 +174,13 @@ describes this phase from the survey.
    the CI lane executes, so a second copy would be the one that
    drifts.
 
-3. **The backend leg is described as it is: always TLS, always
-   pinned, and why.** That is stronger than any sibling page can say.
-   So the page gives the reason in the same block: Kerbside reaches a
-   Proxmox VM only through `spiceproxy`, a tunnel is dialled over TLS
-   only, and a tunnel without a node subject is refused. The CA is
+3. **The backend leg is described as it is: the SPICE session is
+   always TLS and always pinned, the CONNECT before it is plaintext,
+   and why.** That is stronger than any sibling page can say. So the
+   page gives the reason in the same block: Kerbside reaches a
+   Proxmox VM only through `spiceproxy`, the session inside the
+   tunnel is TLS only, and a tunnel without a node subject is
+   refused. The CA is
    the source's `ca_cert`, never the CA the API returns. Every such
    sentence is checked against `backend.rs`, `proxmox.py` and the
    lane's log lines in step 6.3, not against this plan.
@@ -244,7 +249,7 @@ page as written.
 - **The page drifts from `console-sources.md`.** Mitigation:
   decision 2 keeps one home for each fact. Step 6.3 flags any number
   or command that appears on both pages.
-- **A broken anchor.** The page links seven subsections by
+- **A broken anchor.** The page links eight subsections by
   generated anchor. Mitigation: `tox -epy3` runs the docs link tests.
   Step 6.1 checks each anchor exists. Note that issue #490 records
   that the link test strips anchors from relative links, so step 6.1
@@ -308,9 +313,11 @@ None yet.
 - Step 6.2's tunnel sentence said a tunnelled target is dialled "over
   TLS only". The management session reworded it before committing:
   the CONNECT to the proxy is plaintext, and only the SPICE session
-  inside the tunnel is TLS. The plan's own wording in finding 3 and
-  in 6.2's brief has the same imprecision. It is left as written,
-  because it records what the brief said.
+  inside the tunnel is TLS. 6.2's brief in the step table has the
+  same imprecision and is left as written, because it records what
+  the brief said. Finding 3 and decision 3 had it too, and are
+  corrected at their source after the first review of the pull
+  request, as is this phase's row in `docs/plans/index.md`.
 - 2026-10-30 AEDT, step 6.3. The fact check found nothing that
   contradicts `console-sources.md`, but some claims went further
   than the code or Proxmox supports. Corrected:
@@ -368,7 +375,8 @@ head of `proxmox-source-phase-06-use-case-page`:
 - `order.yml` lists `proxmox.md`.
 - `grep -c 'pveum ' docs/use-cases/proxmox.md` is 0, there is no
   field table, and all 8 `console-sources.md` anchors the page links
-  exist.
+  exist: the seven setup and behaviour subsections, and
+  `#example-sourcesyaml`.
 - "four source pages" appears only in this plan, and `ovirt.md`
   no longer mentions the merge queue.
 - `tools/check-backend-tls-claims.py` passes over 12 files. Its 21

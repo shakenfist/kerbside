@@ -52,15 +52,19 @@ CONFIGURED = """- **The WAN leg is encrypted end to end.** Kerbside connects
 # only because of two facts the block states, in words the vocabulary
 # already has: a VM is reached `only` through the proxy, and a tunnel
 # `without` a subject is refused. `tunnel` is not a condition word.
-TUNNEL_CONDITIONAL = """- **The backend leg is TLS and pinned, because there is only one
-  way in.** Kerbside reaches a VM only through the proxy, so every
-  backend connection is a tunnel, dialled once over TLS. A tunnel
-  without a node certificate subject is refused.
+# The checker works per block, so the heading's own `only` is enough
+# to pass this: the test does not protect either body sentence.
+TUNNEL_CONDITIONAL = """- **The backend leg's SPICE session is TLS and pinned, because
+  there is only one way in.** Kerbside reaches a VM only through
+  the proxy, so every backend connection is a tunnel: a plaintext
+  CONNECT to the proxy, then a SPICE session that is TLS inside it.
+  A tunnel without a node certificate subject is refused.
 """
 
 # The same bullet with its condition sentences removed.
-TUNNEL_UNCONDITIONAL = """- **The backend leg is TLS and pinned.** Every backend connection
-  is a tunnel, dialled once over TLS, and the tunnel pins the
+TUNNEL_UNCONDITIONAL = """- **The backend leg's SPICE session is TLS and pinned.** Every
+  backend connection is a tunnel: a plaintext CONNECT to the proxy,
+  then a SPICE session that is TLS inside it, and the tunnel pins the
   certificate subject of the node.
 """
 
