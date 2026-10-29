@@ -308,7 +308,8 @@ integrated broker today, so the options are:
 ## Status and limitations
 
 Kerbside is experimental overall; the oVirt source specifically
-is exercised end to end on every merge-queue entry, which covers
+is exercised end to end by the nightly-tier `ovirt_matrix` lane,
+and on demand through `workflow_dispatch`, which covers
 discovery against a live engine, the CA equality check, ticket
 acquisition, the TLS escalation with subject pinning, a real
 relayed SPICE session, and API-driven termination.
@@ -335,7 +336,8 @@ Not covered, and worth knowing before you deploy:
   firewall, the connection state machine, and the relay
 - [Testing](../testing.md) — the CI lanes, including the oVirt
   end-to-end lane described above
-- [Kerbside for Shaken Fist](shakenfist.md),
+- [Kerbside for Proxmox VE](proxmox.md),
+  [Kerbside for Shaken Fist](shakenfist.md),
   [Kerbside for OpenStack](openstack.md) and
   [Kerbside standalone](standalone.md) — the sibling
   deployment guides

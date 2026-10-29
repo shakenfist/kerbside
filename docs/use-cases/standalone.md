@@ -10,13 +10,14 @@ deployments get.
 
 ## Value proposition
 
-The [Shaken Fist](shakenfist.md), [OpenStack](openstack.md) and
-[oVirt](ovirt.md) console sources put Kerbside in front of a platform that
-already knows where its consoles are. Here there is none — a lab
-bench, a CI job, a rack of appliance VMs no API will ever
-enumerate — and the `static` driver is how you get the proxy's
-session model, its audit trail and its SPICE firewall without
-standing anything else up first.
+The [Shaken Fist](shakenfist.md), [OpenStack](openstack.md),
+[oVirt](ovirt.md) and [Proxmox VE](proxmox.md) console sources
+put Kerbside in front of a platform that already knows where its
+consoles are. Here there is none — a lab bench, a CI job, a
+rack of appliance VMs no API will ever enumerate — and the
+`static` driver is how you get the proxy's session model, its
+audit trail and its SPICE firewall without standing anything
+else up first.
 
 - **There is nothing to stand up and nothing to authenticate
   to.** The driver makes no external call at all. There is no
@@ -48,11 +49,11 @@ standing anything else up first.
   a bench qemu as in front of a cloud, because qemu itself
   offers none of it.
 - **It composes with the clouds.** A static entry sits in the
-  same file as oVirt, Shaken Fist and OpenStack entries, which
-  is how a target no platform knows about — an appliance, a bare
-  qemu, something mid-migration — joins the same console list as
-  everything else. One thing comes with that; see
-  [User interaction model](#user-interaction-model).
+  same file as oVirt, Proxmox VE, Shaken Fist and OpenStack
+  entries, which is how a target no platform knows about — an
+  appliance, a bare qemu, something mid-migration — joins the
+  same console list as everything else. One thing comes with
+  that; see [User interaction model](#user-interaction-model).
 
 In return, users get the SPICE features a serial console or an HTML5
 wrapper cannot offer: high-resolution and multi-monitor
@@ -313,6 +314,7 @@ Not covered, and worth knowing before you deploy:
 - [The direct-qemu harness](../direct-qemu-harness.md) — the
   daemon-less local harness for driving the proxy against qemu
 - [Kerbside for oVirt](ovirt.md),
+  [Kerbside for Proxmox VE](proxmox.md),
   [Kerbside for Shaken Fist](shakenfist.md) and
   [Kerbside for OpenStack](openstack.md) — the sibling
   deployment guides

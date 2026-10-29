@@ -93,10 +93,10 @@ it differs by source.
   scrapes the cluster can therefore serve any of the cluster's
   tokens, so an office instance needs no coordination with the
   others.
-- **oVirt and static.** The user authenticates to a Kerbside
-  directly and each instance scrapes or reads its sources
-  independently, so the same holds: an office instance is
-  self-contained.
+- **oVirt, Proxmox VE and static.** The user authenticates to a
+  Kerbside directly and each instance scrapes or reads its
+  sources independently, so the same holds: an office instance
+  is self-contained.
 - **OpenStack.** This one does not work that way. Nova is
   configured with a single Kerbside URL by
   [kerbside-patches](https://github.com/shakenfist/kerbside-patches),
@@ -180,6 +180,7 @@ Not covered, and worth knowing before you deploy:
   firewall, the connection state machine, the relay, and the
   distributed-deployment constraint
 - [Kerbside for oVirt](ovirt.md),
+  [Kerbside for Proxmox VE](proxmox.md),
   [Kerbside for Shaken Fist](shakenfist.md),
   [Kerbside for OpenStack](openstack.md) and
   [Kerbside standalone](standalone.md) — the source pages, one

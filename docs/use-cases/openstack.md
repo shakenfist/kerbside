@@ -557,6 +557,7 @@ Not covered, and worth knowing before you deploy:
   — the CI lanes, including the Kolla-Ansible lane described
   above
 - [Kerbside for oVirt](ovirt.md),
+  [Kerbside for Proxmox VE](proxmox.md),
   [Kerbside for Shaken Fist](shakenfist.md) and
   [Kerbside standalone](standalone.md) — the sibling
   deployment guides
