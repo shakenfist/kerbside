@@ -463,6 +463,14 @@ Order:
   run so far sent H.264 that ryll did not decode (ryll#398).
   Step 4 states this, as phase 3 did, rather than presenting
   `all`'s figures as a decoded client's.
+  - *Corrected by step 4:* spice-server sent MJPEG (codec 1),
+    not H.264, in all 28 of step 4's `all` repeats, with the same
+    ryll (0d140b3) and an unchanged proxy, and ryll decoded the
+    16 of each repeat's 21 streams it accepted. andris sent H.264
+    (codec 3) in all 14 helper repeats, which ryll decoded. Why
+    spice-server's codec differed from the earlier pages was not
+    established; it is a master plan Future work item, and those
+    pages are left as written.
 - **The spice-server 0.15.2 connect crash** kills qemu on `all`
   runs. The rig already delays guest activity past the connect.
   Step 4 records any recurrence.
@@ -521,7 +529,9 @@ Order:
   reported separately.
 - 2026-10-29 (AEDT): step 1 landed on andris's
   `qemu-dbus-platform` branch as 9fb1d14, and the management
-  session passed its gate.
+  session passed its gate. (The branch was rebased onto andris
+  develop before it was pushed, so the same patch is c808297 in
+  the merged history.)
   - **Promptness.** virtio-gpu 2D flush-to-listener was 0.20 ms
     at p50 and 0.25 to 0.28 ms at p99, idle and busy, against a
     5 ms limit. The host was not idle (load average 5 to 21 on
@@ -552,6 +562,49 @@ Order:
   - **Crate pin.** Step 1 pinned qemu-display at git 6ffedb9
     rather than crates.io 0.2.1. The 0.2.1 release links the
     system's libusbredirhost and libusb unconditionally.
+  - Step 1's remaining numbers, from its trace: copying a
+    full-plane update into the helper's screen cost 0.65 to
+    0.73 ms at p50. On a flipping guest the `ScanoutMap` call
+    reached the helper 0.22 ms after qemu's update at p50
+    (0.52 ms at p99), the helper took 0.93 ms (1.46 ms) to handle
+    it, and flush-to-listener p99 rose to 5.2 ms.
+- 2026-10-29 (AEDT): step 2 landed as shakenfist/andris#56,
+  merged as 9a997a3. Its branch commits were c808297 (display
+  and damage), 440b782 (input and cursor), 957453a (deny.toml
+  ignores for zbus 5's unmaintained advisories,
+  RUSTSEC-2026-0370/0371/0372), f450a3d (review round 1: copy
+  the shared screen through raw pointers, row by row) and
+  89dc839 (review round 2: the advisories mirrored into
+  `.cargo/audit.toml`, EINTR retried and zero-byte sends refused
+  in the QMP sendmsg).
+  - The automated review ran two rounds and stopped: 3 fix,
+    1 document and 5 consider, then 2 fix and 8 consider, both
+    fix items aimed at code round 1 added. CI passed on 89dc839.
+  - The push audit, in the PR body: style passed, nothing
+    blocking. Its medium finding, holding QMP for andris's
+    lifetime, was fixed in the second commit. Declined: sharing
+    the counted input queue with X11; that qemu does not seal
+    its memfds against shrinking, which only qemu itself could
+    exploit; a CI test driving a real qemu, since CI has no KVM.
+- 2026-10-29 (AEDT): step 3 landed as 177fb7e and step 4 as
+  8882314. Step 4 measured andris 440b782, before the review
+  rounds; the merged per-update row copy out of shared memory
+  (f450a3d) was not measured.
+- 2026-10-29 (AEDT): step 5 wrote
+  `docs/performance/dbus-display-spike.md`. **Verdict: no-go,
+  as measured.**
+  - Latency fails: level or better in 9 of 14 cells, but worse
+    than streaming off in four (80 ms / 10 Mbit heavy, both
+    80 ms / 5 Mbit cells, 150 ms / 2 Mbit busy).
+  - Cost passes: at most 1.27 times the cheaper spice-server
+    config, idle and heavy.
+  - Reachability passes narrowly, on Shaken Fist.
+  - The latency failure is andris's stream heuristic, which
+    counts frames sent and so never fires once the ACK window
+    spaces them over 200 ms, plus its message-counted window. It
+    is not structural to the D-Bus display, and the master plan's
+    Future work records the andris changes and the re-measure
+    that would decide whether the verdict turns.
 
 ## Back brief
 

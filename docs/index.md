@@ -220,6 +220,11 @@ Guides for working on Kerbside itself:
   and without streaming, on links down to 2 Mbit: latency, qemu and
   helper CPU and memory, and image quality
 
+- [A SPICE helper on qemu's D-Bus display: the spike's verdict](performance/dbus-display-spike.md) -
+  Why a D-Bus helper is not being productised yet, why the slow-link
+  latency that decided it is andris's rather than qemu's, which sources
+  could attach one, and what would change the answer
+
 ### Architecture Documentation
 
 Internal design of the Kerbside proxy:
