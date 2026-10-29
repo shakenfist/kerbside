@@ -293,7 +293,18 @@ None yet.
 
 ## Execution notes
 
-None yet.
+- 2026-10-29 AEDT, back brief. Mikal confirmed decision 2 (the page
+  links `console-sources.md` for setup details rather than restating
+  them) and that this session may push the branch and open the pull
+  request once the definition of done passes locally.
+- Steps run in sequence, 6.1 to 6.3: 6.1 and 6.2 both run
+  `pre-commit` in the shared worktree, and 6.3 reads 6.1's page.
+- Step 6.1 also added Proxmox VE to the README's Use Cases link and
+  to `docs/installation.md`'s table of deployment guides, which both
+  enumerate the pages. The README addition is kept. The installation
+  table was gone after the rebase onto deployment options phase 6,
+  which replaced it with a pointer to the Use Cases index, so that
+  addition was dropped. 6.1 left `console-sources.md` unedited.
 
 ## Outcome
 

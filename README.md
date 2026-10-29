@@ -41,7 +41,7 @@ In the [docs/](https://github.com/shakenfist/kerbside/blob/develop/docs/index.md
 directory:
 
 - [Documentation Index](https://github.com/shakenfist/kerbside/blob/develop/docs/index.md) - What Kerbside is, the broker model, and the connection flow
-- [Use Cases](https://github.com/shakenfist/kerbside/blob/develop/docs/index.md#use-cases) - One page per cloud or topology — oVirt, Shaken Fist, OpenStack, standalone, plus the multi-cloud and placement topologies — each covering the value proposition, how it works, and how to set it up
+- [Use Cases](https://github.com/shakenfist/kerbside/blob/develop/docs/index.md#use-cases) - One page per cloud or topology — oVirt, Proxmox VE, Shaken Fist, OpenStack, standalone, plus the multi-cloud and placement topologies — each covering the value proposition, how it works, and how to set it up
 - [Deployment Options](https://github.com/shakenfist/kerbside/blob/develop/docs/index.md#deployment-options) - How to run Kerbside for real: one page per mechanism (by hand, Ansible, Kolla-Ansible, containers), with the sources each configures and what CI tests
 - [Installation](https://github.com/shakenfist/kerbside/blob/develop/docs/installation.md) - From `pip install` to a proxied console: what a running Kerbside needs, the compose demo, and a pointer to the deployment pages: by hand, Ansible, Kolla-Ansible and containers
 - [Configuration](https://github.com/shakenfist/kerbside/blob/develop/docs/configuration.md) - Configuration reference, including the SPICE firewall knobs
