@@ -375,46 +375,46 @@ session runs it and sends each fix back to a sub-agent.
 
 ## Definition of done
 
-- [ ] `proxmox-functional.yml` triggers on `schedule`,
+- [x] `proxmox-functional.yml` triggers on `schedule`,
       `workflow_dispatch` and a path-filtered `pull_request`,
       has no `merge_group` trigger, and is not a required check;
       `tools/check-required-checks.sh` passes.
-- [ ] A lane run on the pull request's final head is green, and
+- [x] A lane run on the pull request's final head is green, and
       is linked in *Outcome*.
-- [ ] In that run, the console list for the source is exactly the
+- [x] In that run, the console list for the source is exactly the
       smoke VM, with uuid `100-<smbios uuid>`, the node as
       `hypervisor`, and the subject `CN=` the node FQDN. VMs 101
       to 103, and 104 if created, are absent, and the daemon log
       names 102.
-- [ ] In that run, PVE's access log shows 0 mints after the scrapes
+- [x] In that run, PVE's access log shows 0 mints after the scrapes
       and after the refused direct `.vv`, 1 after the first
       session connects and after its hold, 2 after the second, and
       3 after the lane's own mint and at the end. The second
       session displaces the first, and still passes frames after
       the lane's own mint.
-- [ ] In that run, the first session survives past 30 seconds and
+- [x] In that run, the first session survives past 30 seconds and
       past `CONSOLE_TOKEN_DURATION`, and the proxy drops the second
       on a REST terminate.
-- [ ] In that run, the token without `VM.Audit` and the token
+- [x] In that run, the token without `VM.Audit` and the token
       without `VM.Console` are refused with 403, and the
       documented token is refused `status/stop`.
-- [ ] The documented token was created by the commands in
+- [x] The documented token was created by the commands in
       `docs/console-sources.md`, extracted by
       `account_commands.py`, which a unit test runs against that
       file.
-- [ ] No artifact of that run contains a token secret or
+- [x] No artifact of that run contains a token secret or
       `pvespiceproxy:`. The lane enforces this. The management
       session also searched that run's step log for
       `pvespiceproxy:` and found nothing.
-- [ ] Every pure oracle in `tools/proxmox-e2e/` has a unit test,
+- [x] Every pure oracle in `tools/proxmox-e2e/` has a unit test,
       and the mutation runs of steps 5.1 and 5.2 were all killed,
       with their scripts' paths recorded in *Execution notes*.
-- [ ] The master plan's open question 4 is marked settled, citing
+- [x] The master plan's open question 4 is marked settled, citing
       the run.
-- [ ] `docs/testing.md` has the lane's section and CI tiers row.
+- [x] `docs/testing.md` has the lane's section and CI tiers row.
       `docs/development.md`'s *Releasing* names the Proxmox
       nightly issue.
-- [ ] `tox -epy3`, `tox -eflake8`, `pre-commit run --all-files`
+- [x] `tox -epy3`, `tox -eflake8`, `pre-commit run --all-files`
       and `tools/check-backend-tls-claims.py` pass.
 - [ ] The master plan's Execution table records this phase's
       merge commit, set by the next phase's close-out.
@@ -524,9 +524,50 @@ None yet.
   than the first. Decisions 5 to 7 and the Definition of done were
   corrected to match.
 
+- 2026-10-29 AEDT, the lane went green on `5f8f92e`
+  ([run 40805221046](https://github.com/shakenfist/kerbside/actions/runs/40805221046)). The four PVE behaviours step
+  5.1 wrote from source or memory all held: the JSON of
+  `pveum user token permissions` with and without `--path`, a
+  diskless guest accepted by `qm template`, a deleted `smbios1`
+  staying deleted across `qm start`, and a 403 for each refused
+  call. The run's step log was searched for `pvespiceproxy:` and
+  holds none. Mutation sets, in the session scratchpad:
+  `step-5.1/mutants.yaml` (25), `step-5.2/mutants.yaml` (35),
+  `codeql-fix/mutants.yaml` (40, superseding step 5.2's scan
+  mutants), `review-r1/mutants.yaml` (9), `review-r2/mutants.yaml`
+  (31), `review-r3/mutants.yaml` (24) and
+  `displace/mutants.yaml` (35), all killed.
+
 ## Outcome
 
-Not yet run.
+The lane went green against a real PVE node on 2026-10-29 (AEDT),
+on `5f8f92e`
+([run 40805221046](https://github.com/shakenfist/kerbside/actions/runs/40805221046), 15m47s).
+In that run:
+
+- the documented `pveum` block created the source's token, which
+  held exactly `VM.Audit` and `VM.Console` on `/vms/100` and
+  nothing outside `/vms`. Tokens lacking either privilege were
+  refused with 403, and the documented token was refused
+  `status/stop`. That settles the master plan's open question 4;
+- discovery listed exactly `100-<smbios uuid>` on `pve1`, pinned to
+  the node's subject. Guests 101 to 104 were skipped, 104 as a
+  template, and the daemon log named 102;
+- PVE's access log counted 0, 0, 1, 1, 2, 3 and 3 mints at the
+  checkpoints. Every backend leg was tunnelled, TLS, and pinned;
+- the first session survived past its ticket and its token, the
+  second displaced it, the second survived the lane's own mint,
+  and a REST terminate dropped it;
+- no uploaded artifact held any of the 14 values scanned for, and
+  the step log contains no `pvespiceproxy:`.
+
+The lane's first contact with PVE found no defect in the phase 4
+driver. It found one wrong expectation in this plan, recorded under
+*Execution notes*: a second session displaces the first. Four
+automated review rounds ran 2, 1, 1 and 0 fix items in code, with
+CodeQL's six false-positive alerts cleared by restructuring rather
+than dismissal. The mutation sets total 164 mutants across the
+steps and rounds, all killed.
 
 ## Back brief
 

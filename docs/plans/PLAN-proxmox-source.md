@@ -141,8 +141,9 @@ because the reasoning is what later phases build on. Question
 [the phase 3b plan](PLAN-proxmox-source-phase-03b-tunnel-transport.md)
 (decision 1), and question 5 by
 [the phase 1b plan](PLAN-proxmox-source-phase-01b-ci-substrate.md).
-Question 4 is answered from source and awaits phase 5's
-proof.
+Question 4 is settled by
+[the phase 5 plan](PLAN-proxmox-source-phase-05-ci-lane.md)'s
+lane.
 
 **1. Where does the CONNECT live — ryll or kerbside?** Either
 `ConnectionConfig` grows an optional proxy, and
@@ -201,12 +202,16 @@ port stays in `secure_port`.
 prototype deployment uses `PVEVMUser` on `/vms` plus
 `PVEAuditor` on `/`, with a `privsep=0` API token. That works;
 it is not proven minimal, and the same honesty the oVirt
-use-case page applies to `SuperUser` applies here. **Answered
-from PVE's source by
-[the phase 4 plan](PLAN-proxmox-source-phase-04-source-driver.md)
-(survey finding 7), not yet proven:** `VM.Audit` and
-`VM.Console` on `/vms` cover every call the driver makes.
-Phase 5's lane proves it with a token holding only those.
+use-case page applies to `SuperUser` applies here. **Settled
+by [phase 5](PLAN-proxmox-source-phase-05-ci-lane.md)'s lane,
+after [phase 4](PLAN-proxmox-source-phase-04-source-driver.md)
+answered it from PVE's source (survey finding 7):** `VM.Audit`
+and `VM.Console` on `/vms` cover every call the driver makes, and
+each is needed. A privilege-separated token holding only those,
+created by the commands in `docs/console-sources.md`, carried a
+proxied session end to end, and tokens lacking either were refused
+with 403
+([run 40805221046](https://github.com/shakenfist/kerbside/actions/runs/40805221046)).
 
 **5. Where does a CI lane get a node?** **Settled by phase
 1b.** A composite action in `shakenfist/actions`,
@@ -502,7 +507,9 @@ In progress. Phases 1, 1b, 2, 3a, 3b and 4 are complete.
   per session, which the oVirt source now uses.
 - kerbside's proxy dials a minted tunnel over TLS only, proven
   against a CONNECT proxy in the direct-qemu lane.
-- kerbside has a `proxmox` source driver, tested against fixtures
-  built from PVE's source but not yet against a real node.
+- kerbside has a `proxmox` source driver.
+- A nightly lane, also run on pull requests that touch the Proxmox
+  path, drives a proxied session through a real node's
+  `spiceproxy` with the documented least-privilege token.
 
 Phase 5, the CI lane, is in progress.
