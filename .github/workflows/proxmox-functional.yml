@@ -128,12 +128,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         timeout-minutes: 10
 
+      # The venv goes on PATH for the wheel build alone, not through
+      # GITHUB_PATH as the oVirt lane does: that lane builds its environment
+      # before this, but here the deploy action runs after, and its Ansible
+      # would discover this venv's python3, which has no shakenfist_client.
       - name: Install maturin and ziglang
         timeout-minutes: 10
         run: |
           python3 -m venv "${RUNNER_TEMP}/wheelvenv"
           "${RUNNER_TEMP}/wheelvenv/bin/pip" install --quiet --upgrade pip maturin ziglang setuptools_scm
-          echo "${RUNNER_TEMP}/wheelvenv/bin" >> "$GITHUB_PATH"
 
       - name: Build the PR's proxy wheel (manylinux, matches the PyPI artifact)
         timeout-minutes: 30
@@ -142,7 +145,7 @@ jobs:
         # zig pins it to glibc 2.28, so it is correct whatever the runner and
         # the target image carry, unlike a host-native build.
         run: |
-          WHEEL_OUT="${GITHUB_WORKSPACE}/kerbside/dist/proxy-wheels" \
+          PATH="${RUNNER_TEMP}/wheelvenv/bin:${PATH}" WHEEL_OUT="${GITHUB_WORKSPACE}/kerbside/dist/proxy-wheels" \
               "${GITHUB_WORKSPACE}/kerbside/tools/build-proxy-wheel.sh" "$(uname -m)"
 
       - name: Build ryll from source
