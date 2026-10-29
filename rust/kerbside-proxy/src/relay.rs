@@ -162,9 +162,11 @@ where
         // the client -- the same teardown as a finishing pump.
         () = cancel.cancelled() => {
             // CI-ORACLE: this message text is load-bearing for
-            // tools/direct-qemu/verify-terminate-live.sh and
-            // tools/ovirt-e2e/drive-console.py; update both if it is
-            // reworded.
+            // tools/direct-qemu/verify-terminate-live.sh,
+            // tools/ovirt-e2e/drive-console.py and
+            // tools/proxmox-e2e/drive-console.py, the last of which also
+            // reads its connection_ref field; update them all if either
+            // changes.
             info!(
                 %connection_ref,
                 channel_type = channel_type.name(),
@@ -178,6 +180,10 @@ where
         observer.finish(connection_ref);
     }
 
+    // CI-ORACLE: both messages start "relay ended", and that text and the
+    // connection_ref field are load-bearing for
+    // tools/proxmox-e2e/drive-console.py, which follows a displaced
+    // session's relays by them; update it if either changes.
     match &result {
         Ok(()) => info!(
             %connection_ref,

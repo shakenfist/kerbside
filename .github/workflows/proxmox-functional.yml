@@ -1,0 +1,311 @@
+name: Proxmox end-to-end functional test
+
+permissions:
+  contents: read
+
+# Deploys a real single-node Proxmox VE 9 through shakenfist/actions'
+# deploy-proxmox-on-shakenfist, deploys the PR's kerbside on the runner
+# against it, and relays a real SPICE session through kerbside's proxy and
+# PVE's spiceproxy. See "The Proxmox end-to-end lane" in docs/testing.md and
+# tools/proxmox-e2e/README.md.
+#
+# Nightly tier, plus an advisory check on pull requests which touch the
+# Proxmox path. It has no merge_group trigger and is deliberately not a
+# required check: the pull_request paths filter below means it does not
+# report on most pull requests, and a required check that never reports
+# blocks a pull request forever. A pull request which breaks it can
+# therefore merge red; the nightly run files a "Nightly proxmox lane
+# failing" issue the next morning, and docs/development.md's "Releasing"
+# makes an open one a release blocker.
+on:
+  pull_request:
+    branches:
+      - develop
+    # Keep in step with the files the lane exercises: the source driver and
+    # what it is built on, the source-type registry which maps type: proxmox
+    # to it, kerbside/config.py, whose CONSOLE_TOKEN_DURATION sets the lane's
+    # hold, the RPC messages and their proto, the proxy's backend leg and the
+    # relay whose log lines the lane's oracles read, the crate pin and the
+    # script which build the proxy wheel, the lane's own scripts and the
+    # direct-qemu ones it reuses, and docs/console-sources.md, whose Proxmox
+    # VE account block the lane runs. kerbside/api.py and kerbside/db.py are
+    # exercised too but deliberately left out: they change on most pull
+    # requests, and would book a PVE node for each. The nightly covers them.
+    # Mirrored in docs/testing.md's lane section.
+    paths:
+      - 'kerbside/sources/proxmox.py'
+      - 'kerbside/sources/base.py'
+      - 'kerbside/sources/minting.py'
+      - 'kerbside/sources/__init__.py'
+      - 'kerbside/config.py'
+      - 'kerbside/rpc/**'
+      - 'rust/kerbside-proxy/src/backend.rs'
+      - 'rust/kerbside-proxy/src/relay.rs'
+      - 'rust/kerbside-proxy/Cargo.toml'
+      - 'rust/kerbside-proxy/Cargo.lock'
+      - 'tools/build-proxy-wheel.sh'
+      - 'docs/console-sources.md'
+      - '.github/workflows/proxmox-functional.yml'
+      - 'tools/proxmox-e2e/**'
+      - 'tools/direct-qemu/start-kerbside.sh'
+      - 'tools/direct-qemu/smoke-client.py'
+      - 'tools/direct-qemu/setup-mariadb.sh'
+      - 'tools/direct-qemu/generate-tls.sh'
+  workflow_dispatch:
+  schedule:
+    # Nightly at 05:30 UTC, clear of sf-e2e (02:30), direct-qemu (03:30) and
+    # the cloud lanes (04:30), which share the l runner pool on sfcbr.
+    - cron: '30 5 * * *'
+
+jobs:
+  proxmox:
+    name: "Proxmox VE end to end"
+    # l: this job builds the Rust proxy wheel, builds ryll from source,
+    # books a nested PVE node, and runs MariaDB plus kerbside on the runner
+    # itself.
+    runs-on: [self-hosted, vm, debian-13, l]
+    timeout-minutes: 120
+    # These runners hold /srv/github/id_ci, the key to every node in the CI
+    # mesh, and this lane creates a Shaken Fist instance with it and logs in
+    # to that instance with it. A fork's workflow must not run it.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    # The runner image exports http_proxy/https_proxy pointing at an
+    # upstream squid cache for apt, github, and the cargo registry.
+    # Loopback traffic to kerbside on 127.0.0.1 must bypass that proxy or
+    # squid returns 503 ERR_CONNECT_FAIL when it cannot route the request
+    # back through itself. The PVE node must bypass it too. The deploy action
+    # appends it to no_proxy through GITHUB_ENV, but this job-level value may
+    # take precedence over that, so the lane's scripts do not rely on it:
+    # deploy-kerbside.sh exports its own no_proxy, and the Python scripts
+    # set their own or pass explicit proxies to requests.
+    env:
+      no_proxy: 127.0.0.1,localhost
+      # The single source of truth for the runner-side kerbside deploy
+      # location. The scripts honour the WORKDIR environment variable, but
+      # WORKDIR is too generic a name to export into every step of this
+      # job -- the deploy action's own scripts could grow a WORKDIR consumer
+      # of their own -- so the lane-specific name is set here and mapped to
+      # WORKDIR only on the steps that run lane scripts. The artifact step
+      # references it directly, so changing it here changes all of them
+      # together.
+      PROXMOX_LANE_WORKDIR: /tmp/kerbside-proxmox-ci
+    # Cancelling is safe: the PVE node lives in this runner's own Shaken Fist
+    # namespace, which is deleted with everything in it when the runner
+    # finishes, so a cancelled or timed-out run leaks nothing and needs no
+    # teardown step. The event is in the key so that a dispatch never
+    # cancels the nightly, or the nightly a dispatch: a nightly it cancelled
+    # would file no issue, since nightly_failure_issue runs only on failure.
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout kerbside
+        uses: actions/checkout@v7
+        timeout-minutes: 10
+        with:
+          path: kerbside
+          fetch-depth: 0
+
+      # Everything below up to the deploy step builds before a node is
+      # booked, so a compile error never spends a PVE node.
+      - name: Install Rust build prerequisites
+        timeout-minutes: 10
+        # build-essential and pkg-config are all the proxy wheel needs, but
+        # this lane also builds ryll, and ryll needs more. Its audiopus_sys
+        # dependency survives --no-default-features; pkg-config does not find
+        # a system Opus on the runner, so the build script falls back to
+        # compiling Opus itself via CMake and hard-fails without cmake on
+        # PATH. The -dev packages come from direct-qemu-functional.yml, which
+        # has been building ryll on this same runner image for a while:
+        # --no-default-features drops the eframe/cpal runtime libraries, but
+        # transitive build scripts still probe for the headers at compile
+        # time. Keep this list in step with that workflow.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake pkg-config libssl-dev \
+            libasound2-dev libxcb1-dev libxkbcommon-dev libwayland-dev libegl1-mesa-dev libgl1-mesa-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libx11-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        timeout-minutes: 10
+
+      # The venv goes on PATH for the wheel build alone, not through
+      # GITHUB_PATH as the oVirt lane does: that lane builds its environment
+      # before this, but here the deploy action runs after, and its Ansible
+      # would discover this venv's python3, which has no shakenfist_client.
+      - name: Install maturin and ziglang
+        timeout-minutes: 10
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/wheelvenv"
+          "${RUNNER_TEMP}/wheelvenv/bin/pip" install --quiet --upgrade pip maturin ziglang setuptools_scm
+
+      - name: Build the PR's proxy wheel (manylinux, matches the PyPI artifact)
+        timeout-minutes: 30
+        # Reuse the release lane's build-proxy-wheel.sh so the CI wheel is the
+        # same portable manylinux_2_28 artifact production pulls from PyPI --
+        # zig pins it to glibc 2.28, so it is correct whatever the runner and
+        # the target image carry, unlike a host-native build.
+        run: |
+          PATH="${RUNNER_TEMP}/wheelvenv/bin:${PATH}" WHEEL_OUT="${GITHUB_WORKSPACE}/kerbside/dist/proxy-wheels" \
+              "${GITHUB_WORKSPACE}/kerbside/tools/build-proxy-wheel.sh" "$(uname -m)"
+
+      - name: Build ryll from source
+        timeout-minutes: 30
+        # The visual-digest feature is only needed for the Uncalibrated
+        # Sextant fixture; this lane drives a cirros guest, so the plain
+        # headless client is enough and the build is cheaper. Uses the Rust
+        # toolchain installed above.
+        run: |
+          git clone --depth 1 https://github.com/shakenfist/ryll.git /tmp/ryll-src
+          cd /tmp/ryll-src
+          cargo build --release --no-default-features -p ryll
+          sudo install -m 755 target/release/ryll /usr/local/bin/ryll
+          ryll --version || true
+
+      # Composite actions cannot carry timeouts of their own, so the step
+      # that uses this one does. The action's outputs are consumed below
+      # through env:, never spliced into a script.
+      - name: Deploy a Proxmox VE node
+        id: deploy
+        timeout-minutes: 60
+        uses: shakenfist/actions/deploy-proxmox-on-shakenfist@main
+
+      # Runs the "Proxmox VE account" block of docs/console-sources.md on
+      # the node, so a documentation edit which breaks it fails the lane,
+      # and makes the two single-privilege tokens. Token secrets go to 0600
+      # files and are masked before anything reads them.
+      - name: Prepare the node
+        id: prepare
+        timeout-minutes: 15
+        working-directory: kerbside
+        env:
+          NODE_ADDRESS: ${{ steps.deploy.outputs.node_address }}
+          VMID: ${{ steps.deploy.outputs.vmid }}
+        run: tools/proxmox-e2e/prepare-node.sh --node-address "$NODE_ADDRESS" --vmid "$VMID" --workdir "$PROXMOX_LANE_WORKDIR"
+
+      # Kerbside is given only the documented token, from the lane file.
+      # The action's token reaches the driver by ID and file path for its own
+      # reads. Runs the same way as the oVirt lane's deploy: the --proxy-wheel
+      # glob is expanded by the script, so it is quoted here.
+      - name: Deploy kerbside on the runner
+        timeout-minutes: 20
+        working-directory: kerbside
+        env:
+          WORKDIR: ${{ env.PROXMOX_LANE_WORKDIR }}
+          API_URL: ${{ steps.deploy.outputs.api_url }}
+          NODE_NAME: ${{ steps.deploy.outputs.node_name }}
+          NODE_FQDN: ${{ steps.deploy.outputs.node_fqdn }}
+          NODE_ADDRESS: ${{ steps.deploy.outputs.node_address }}
+          VMID: ${{ steps.deploy.outputs.vmid }}
+          CA_FILE: ${{ steps.deploy.outputs.ca_file }}
+          ACTION_TOKEN_ID: ${{ steps.deploy.outputs.token_id }}
+          ACTION_TOKEN_FILE: ${{ steps.deploy.outputs.token_file }}
+          LANE_FILE: ${{ steps.prepare.outputs.lane_file }}
+        run: |
+          tools/proxmox-e2e/deploy-kerbside.sh --api-url "$API_URL" --node-name "$NODE_NAME" --node-fqdn "$NODE_FQDN" \
+              --node-address "$NODE_ADDRESS" --vmid "$VMID" --ca-file "$CA_FILE" --action-token-id "$ACTION_TOKEN_ID" \
+              --action-token-file "$ACTION_TOKEN_FILE" --lane-file "$LANE_FILE" --kerbside-src "$GITHUB_WORKSPACE/kerbside" \
+              --proxy-wheel "$GITHUB_WORKSPACE/kerbside/dist/proxy-wheels/*.whl"
+
+      # Runs with the kerbside venv's python, which deploy-kerbside.sh made
+      # and which has requests as a kerbside dependency, so nothing is
+      # installed for it. Its refused requests mint nothing, so running it
+      # after kerbside has started is harmless: the lane counts only the
+      # documented token's successful spiceproxy POSTs, and this makes none.
+      - name: Show each privilege is needed
+        timeout-minutes: 5
+        working-directory: kerbside
+        env:
+          WORKDIR: ${{ env.PROXMOX_LANE_WORKDIR }}
+          API_URL: ${{ steps.deploy.outputs.api_url }}
+          NODE_NAME: ${{ steps.deploy.outputs.node_name }}
+          VMID: ${{ steps.deploy.outputs.vmid }}
+          CA_FILE: ${{ steps.deploy.outputs.ca_file }}
+          LANE_FILE: ${{ steps.prepare.outputs.lane_file }}
+        run: |
+          "$WORKDIR/venv/bin/python3" tools/proxmox-e2e/check-privileges.py --api-url "$API_URL" --node "$NODE_NAME" \
+              --vmid "$VMID" --ca-file "$CA_FILE" --lane-file "$LANE_FILE"
+
+      # The actual gate: relays real SPICE sessions from the PVE node through
+      # kerbside's Rust proxy and spiceproxy, counts mints in PVE's own
+      # access log, and holds a session past its ticket's expiry and
+      # CONSOLE_TOKEN_DURATION, hence the generous timeout. It scans the
+      # files the next steps upload for secrets before it exits.
+      - name: Drive a proxied SPICE console
+        timeout-minutes: 30
+        working-directory: kerbside
+        env:
+          WORKDIR: ${{ env.PROXMOX_LANE_WORKDIR }}
+        run: '"$WORKDIR/venv/bin/python3" tools/proxmox-e2e/drive-console.py'
+
+      # Scans again whatever the drive did, so that a drive cut short by its
+      # step timeout is scanned too: the scan removes any file holding a
+      # token secret or the literal pvespiceproxy: and fails the run. It
+      # needs only the standard library, so the system python3 will do when
+      # a failure came before the venv existed.
+      - name: Scan the artifacts for secrets
+        if: always()
+        timeout-minutes: 5
+        working-directory: kerbside
+        env:
+          WORKDIR: ${{ env.PROXMOX_LANE_WORKDIR }}
+        run: python3 tools/proxmox-e2e/drive-console.py --scan-only
+
+      # The kerbside-side artifacts: the daemon and gunicorn logs, ryll's
+      # stdio, the smoke-client logs, and kerbside.env, which holds paths and
+      # IDs and the well-known loopback MariaDB credential only. These are
+      # world-downloadable for the full retention period, and the list is
+      # UPLOADED_FILES in tools/proxmox-e2e/drive-console.py, which the scan
+      # above reads: change them together, and a unit test checks they
+      # agree. Deliberately excludes sources.yaml (holds the documented
+      # token's secret), any .vv file, the auth seed, every token file, PVE's
+      # access log and ryll's unredacted /tmp/ryll.log; do not add them here.
+      # if-no-files-found is warn rather than error: a failure before the
+      # deploy step legitimately leaves these absent.
+      - name: Upload kerbside artifacts
+        if: always()
+        timeout-minutes: 10
+        uses: actions/upload-artifact@v7
+        continue-on-error: true  # a failed upload must not fail a lane that passed (#403)
+        with:
+          name: kerbside-proxmox-${{ github.run_id }}
+          retention-days: 90
+          if-no-files-found: warn
+          path: |
+            ${{ env.PROXMOX_LANE_WORKDIR }}/kerbside.log
+            ${{ env.PROXMOX_LANE_WORKDIR }}/kerbside.log.gunicorn-access
+            ${{ env.PROXMOX_LANE_WORKDIR }}/kerbside.log.gunicorn-error
+            ${{ env.PROXMOX_LANE_WORKDIR }}/kerbside.env
+            ${{ env.PROXMOX_LANE_WORKDIR }}/ryll-proxmox-1.stdout
+            ${{ env.PROXMOX_LANE_WORKDIR }}/ryll-proxmox-1.stderr
+            ${{ env.PROXMOX_LANE_WORKDIR }}/ryll-proxmox-2.stdout
+            ${{ env.PROXMOX_LANE_WORKDIR }}/ryll-proxmox-2.stderr
+            ${{ env.PROXMOX_LANE_WORKDIR }}/smoke-client-1.log
+            ${{ env.PROXMOX_LANE_WORKDIR }}/smoke-client-1-held.log
+            ${{ env.PROXMOX_LANE_WORKDIR }}/smoke-client-2.log
+            ${{ env.PROXMOX_LANE_WORKDIR }}/smoke-client-2-after-mint.log
+
+  # A red nightly in the Actions tab alerts nobody, and this lane gates
+  # nothing. File or update one tracking issue instead, as the other
+  # nightlies do. A separate job so issues: write is never granted to the
+  # lane job.
+  nightly_failure_issue:
+    name: "File nightly failure issue"
+    needs: [proxmox]
+    if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
+    runs-on: [self-hosted, static]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        timeout-minutes: 5
+      - name: File or update the tracking issue
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: tools/file-nightly-failure-issue.sh proxmox "$RUN_URL"
