@@ -519,6 +519,39 @@ Order:
   and that kernel has the sticky `ignore_damage_clips` bug, so
   the guest may flush the full plane. What the guest flushes is
   reported separately.
+- 2026-10-29 (AEDT): step 1 landed on andris's
+  `qemu-dbus-platform` branch as 9fb1d14, and the management
+  session passed its gate.
+  - **Promptness.** virtio-gpu 2D flush-to-listener was 0.20 ms
+    at p50 and 0.25 to 0.28 ms at p99, idle and busy, against a
+    5 ms limit. The host was not idle (load average 5 to 21 on
+    16 cores).
+  - **Precision.** Every listener rectangle matched the guest's
+    flush (145, 1017 and 1017 of each), so qemu does not alter
+    the flush. The guest itself always flushes the full
+    1280x800 plane, because of the damage-clip bug.
+  - **Memory under a stalled listener.** The third condition
+    tripped on two paths but not on the rig's: qemu's memory was
+    flat during a 10 s stall on the virtio map path without
+    flips.
+    - On std-vga, and on a guest that flips pages, qemu grew by
+      184 to 262 MiB/s and reached 2.0 to 2.8 GiB.
+    - A stalled `ScanoutMap` froze a flipping guest for 1 s and
+      left that listener on full-frame `Scanout` for good.
+    - The helper can shed by dropping and re-registering its
+      listener, which frees qemu's queue at once. The gate
+      required that no way to shed exist, so it passes.
+  - **What the remaining steps carry.** The std-vga row is for
+    information only. A productised helper needs a lag
+    watchdog, which the write-up states.
+  - **The libvirt answer** (decision 4): libvirt owns QMP, so a
+    helper there needs either an inherited-fd attach mode
+    (`p2p=yes`, through `virDomainOpenGraphicsFD`) or a
+    bus-address mode (non-p2p). libvirt launches only qemu-rdp,
+    not an arbitrary helper.
+  - **Crate pin.** Step 1 pinned qemu-display at git 6ffedb9
+    rather than crates.io 0.2.1. The 0.2.1 release links the
+    system's libusbredirhost and libusb unconditionally.
 
 ## Back brief
 
