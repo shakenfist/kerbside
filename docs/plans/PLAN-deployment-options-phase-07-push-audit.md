@@ -191,33 +191,123 @@ and reads `docs/plans/` only for what the brief asks about.
 
 ## Definition of done
 
-- [ ] 7a ran `wave1.sh` seven times, once per merge in the *Audit
+- [x] 7a ran `wave1.sh` seven times, once per merge in the *Audit
       range* table. The execution notes give each exit code.
-- [ ] 7c ran `wave2-mechanical.sh` seven times, likewise.
-- [ ] *Outcome* lists every finding from 7a to 7f, each with a
+- [x] 7c ran `wave2-mechanical.sh` seven times, likewise.
+- [x] *Outcome* lists every finding from 7a to 7f, each with a
       verdict: fixed in the follow-up, declined (with the reason),
       or filed (with the issue). If there are none, it says so in
       one sentence.
-- [ ] Every finding *Outcome* accepts was reproduced against the
+- [x] Every finding *Outcome* accepts was reproduced against the
       tree by the management session.
-- [ ] The step 7h issue exists, or the execution notes record that
+- [x] The step 7h issue exists, or the execution notes record that
       Mikal declined it.
-- [ ] The private-data probe over the text this phase adds prints
+- [x] The private-data probe over the text this phase adds prints
       nothing else:
       `git diff origin/develop -- docs/plans/ | grep '^+' | grep -n -E '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}|\b([0-9]{1,3}\.){3}[0-9]{1,3}\b|stillhq|kasm|home\.|BEGIN [A-Z ]*PRIVATE KEY|password *[:=] *[^ <]'`.
       The probe's own line in this plan matches itself and is
       expected. Any other hit is either removed or shown to be a
       public example address.
-- [ ] Phase 7's status in the master plan and `docs/plans/index.md`
+- [x] Phase 7's status in the master plan and `docs/plans/index.md`
       matches decision 4: `In progress` if a follow-up is needed,
       otherwise `Complete` along with the plan.
-- [ ] `pre-commit run --all-files` passes.
+- [x] `pre-commit run --all-files` passes.
 
 ## Outcome
 
-Written by step 7g.
+Audited on 2026-10-30. Wave 1 and wave 2's mechanical script passed
+on all seven merges. The judgment agents raised no critical or high
+finding, and two blocking documentation findings. The management
+session reproduced every finding it accepted below. The follow-up pull
+request fixes the plan's own findings. Six problems that predate the
+plan are filed as issues.
+
+### Wave results
+
+| Check | Result |
+|-------|--------|
+| 7a, `wave1.sh` per merge | Exit 0 on all seven. No advisory output. Its flake8 gate lints `HEAD~1..HEAD` rather than `AUDIT_RANGE`, so it saw no Python in any merge; that is #488, already open. The management session ran flake8 at the project's 120 columns over the plan's four Python files instead, and it is clean. |
+| 7c, `wave2-mechanical.sh` per merge | Exit 0 on all seven. No TODO, `noqa`, broad except, assert, dependency or migration in any merge. |
+| 7d, mutation of the plan's tests | 12 mutants. Every one was killed, except a comment change the units test ignores by design. |
+
+### To fix in the follow-up pull request
+
+| # | Source | Severity | Where | Finding | Introduced by |
+|---|--------|----------|-------|---------|---------------|
+| 1 | 7e | blocking | `docs/deployment/containers.md:15-20` | "Two mechanisms do exist and are documented" omits Ansible, whose page landed after it | 46a03a6, left stale by c1f5938 |
+| 2 | 7e | blocking | `docs/deployment/ansible.md:228` | "The rootless test renders every source type" contradicts the same page's Proxmox row: `tools/ci-test-ansible-role.sh` renders no `proxmox` source | c1f5938 |
+| 3 | 7f | medium | `docs/deployment/ansible.md:69-72`, `:231` | Advises a TLS proxy in front of the API without saying to bind the API to loopback (`kerbside_api_address`) or firewall it; the role binds every address by default, so tokens and Keystone passwords stay reachable in plain HTTP | c1f5938 |
+| 4 | 7f | low | `docs/deployment/containers.md:118-126` | Says any `KERBSIDE_*` variable overrides a setting, without warning that a secret passed that way shows in `docker inspect` and the compose file | 46a03a6 |
+| 5 | 7f | informational | `docs/deployment/manual.md:66` | Gives `/run/kerbside` systemd's default mode; `kerbside/rpc/server.py:47,53` forces 0700 on the directory and 0600 on the socket | b10f2ac |
+| 6 | 7e | advisory | `docs/deployment/manual.md:77-79` | Names the oVirt driver's CA as the only temporary file; the Proxmox driver writes one too (`kerbside/sources/proxmox.py:212`) | b10f2ac, left stale by #618 |
+| 7 | 7e | advisory | `docs/index.md:136-146`, `docs/installation.md:362-370` | Recommend a front-door Kerbside, then list Kolla-Ansible as a peer without saying it is the option that deploys Kerbside inside one cloud (#635's review, item 2). One clause each | 200d6b3, eebb1b2 |
+| 8 | 7d, 7f | advisory | `kerbside/tests/unit/test_check_backend_tls_claims.py:229-230`, `tools/check-backend-tls-claims.py:127-132` | The docstring and the guard's comment still say no deployment page exists. Add a real-tree assertion that `docs/deployment/manual.md` is scanned. The guard's docstring also cites `backend.rs` lines that have moved; that predates the plan, but it is fixed in the same edit | 200d6b3 |
+| 9 | 7c | advisory | `kerbside/tests/unit/test_systemd_units.py:33-36` | Use `jinja2.StrictUndefined`, so a template that starts using a variable from outside `defaults/main.yml` fails clearly instead of rendering it empty | b10f2ac |
+| 10 | 7e | advisory | `docs/plans/PLAN-deployment-options.md`, *Dependencies on other plans* | Stale: shakenfist#4479 merged on 2026-10-18 and `PLAN-kerbside-deployer.md` is complete; v0.8.0 shipped; Shaken Fist's Kerbside lane moved to a weekly run (shakenfist#4653) | 200d6b3 |
+
+### Filed, because they predate the plan
+
+- #639: AGENTS.md says to wrap at 80 columns, but the project lints at
+  120, and the tree does not follow 80 (7b).
+- #640: the example units and the role's unit templates have no
+  sandboxing. `systemd-analyze security` rates both 9.0 (7f). The
+  static units copy templates that predate the plan.
+- #641: `check-backend-tls-claims.py` passes when its globs match no
+  files (7f).
+- #642: the Rust proxy inherits every `kerbside.ini` secret through its
+  environment (7f).
+- #643: `ci-test-ansible-role.sh` calls `multi.json` "one source of
+  every type", but it has no `proxmox` source (7e).
+- #644: `use-cases/multi-cloud.md` cites
+  `tools/sf-e2e/deploy-kerbside.sh`, which #587 deleted (7e).
+
+### Declined, and why
+
+- `tools/mutate-backend-tls-claims.py:32` is 80 columns (7b). The
+  project lints at 120; the disagreement with AGENTS.md is #639.
+- Add `encoding=` to `test_systemd_units.py`'s two `open()` calls (7c).
+  Repository practice is the opposite: 36 test `open()` calls omit it,
+  and 2 pass it.
+- `test_api_binds_loopback` overlaps the overrides pin, and the units
+  test skips outside a checkout (7c). Both are deliberate and
+  documented.
+- The units test never renders the template's IPv6 bracketing (7d). Its
+  job is to hold the example units, which bind loopback over IPv4, to
+  the templates. The bracketing is the role's own logic, which predates
+  the plan.
+- `manual.md`'s SQL puts the database password in the MariaDB client's
+  history (7f). The page shows a `CHANGEME` placeholder in a one-off
+  setup statement. Where an operator's client keeps history is their
+  environment's concern, and the same pattern runs through every
+  MariaDB setup guide.
+- The master plan's *Prompt* names `tools/sf-e2e/deploy-kerbside.sh`,
+  since deleted (7e). The Prompt records what was asked on the day; it
+  is history, not a claim about the tree.
 
 ## Execution notes
+
+- Back brief answered on 2026-10-30 (AEDT). Mikal kept decision 3
+  (2c on opus) and decision 4 (fixes in a follow-up pull request),
+  approved step 7h's issue as worded, and gave this session permission
+  to push and open the pull request once the definition of done
+  passes.
+- Step 7h ran first, beside 7a: #638,
+  https://github.com/shakenfist/kerbside/issues/638
+- 7a found that wave 1's flake8 gate ignores `AUDIT_RANGE`. That is
+  #488, still open, so it is not a new finding. The management session
+  ran flake8 over the plan's Python directly; the *Outcome* records it.
+- 7b to 7f ran in parallel once 7a passed. None of them wrote to the
+  worktree.
+- Definition of done checked on 2026-10-30. The *Execution notes* and
+  the step logs in the session's scratch directory show seven runs each
+  of `wave1.sh` and `wave2-mechanical.sh`. The management session
+  reproduced each of the *Outcome*'s ten items against the tree, and
+  confirmed shakenfist#4479 and #4653 merged with `gh pr view`. The
+  private-data probe matched only its own line in this plan.
+  `pre-commit run --all-files` passed.
+- Phase 7 stays `In progress`. The follow-up pull request fixes the
+  *Outcome*'s ten items, records this phase's merge commit, and marks
+  phase 7 and the plan `Complete`.
 
 ## Back brief
 
