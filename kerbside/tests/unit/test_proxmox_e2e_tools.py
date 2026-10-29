@@ -2,6 +2,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -824,7 +825,9 @@ class FindNeedlesTestCase(testtools.TestCase):
             self.assertIn('needle 2 is too short', str(e))
 
 
-class ScanTestCase(testtools.TestCase):
+class _LaneFilesTestCase(testtools.TestCase):
+    """A work directory with the lane's secret files, its env file and clean uploaded files."""
+
     def setUp(self):
         super().setUp()
         workdir = tempfile.TemporaryDirectory()
@@ -863,6 +866,12 @@ class ScanTestCase(testtools.TestCase):
         with open(os.path.join(self.workdir, name), 'w') as f:
             f.write(text)
 
+    def assertNoValue(self, output):
+        for value in list(_SENTINELS.values()) + ['secret-action-4444', 'seed-5555555555', 'live-ticket-6666']:
+            self.assertNotIn(value, output)
+
+
+class ScanTestCase(_LaneFilesTestCase):
     def scan_only(self):
         out = io.StringIO()
         err = io.StringIO()
@@ -870,10 +879,6 @@ class ScanTestCase(testtools.TestCase):
         with mock.patch.object(sys, 'argv', argv), redirect_stdout(out), mock.patch.object(sys, 'stderr', err):
             rc = drive_console.main()
         return rc, out.getvalue() + err.getvalue()
-
-    def assertNoValue(self, output):
-        for value in list(_SENTINELS.values()) + ['secret-action-4444', 'seed-5555555555', 'live-ticket-6666']:
-            self.assertNotIn(value, output)
 
     def test_clean(self):
         rc, output = self.scan_only()
@@ -1210,3 +1215,172 @@ class ReadAccessLogTestCase(testtools.TestCase):
     def test_a_failed_read_with_no_message(self):
         run, lines, failure = self.read('100\n', returncode=1)
         self.assertIn('exit 1: no message', failure)
+
+
+class RedactTestCase(testtools.TestCase):
+    NEEDLES = ['secret-documented-1111', 'live-ticket-6666']
+
+    def test_each_needle_is_replaced(self):
+        self.assertEqual('a [redacted] b [redacted] c [redacted]', drive_console.redact(
+            'a secret-documented-1111 b live-ticket-6666 c secret-documented-1111', self.NEEDLES))
+
+    def test_a_connect_host_is_replaced_whole(self):
+        self.assertEqual('CONNECT [redacted] HTTP/1.1\nnext [redacted]', drive_console.redact(
+            'CONNECT pvespiceproxy:abc:100:pve1 HTTP/1.1\nnext pvespiceproxy:', []))
+
+    def test_a_needle_split_by_colour(self):
+        self.assertEqual('before [redacted] after', drive_console.redact(
+            'before secret-\x1b[3mdocumented\x1b[0m-1111 after', self.NEEDLES))
+
+    def test_a_connect_host_split_by_colour(self):
+        self.assertEqual('CONNECT [redacted] tail', drive_console.redact(
+            'CONNECT pvespice\x1b[1mproxy:\x1b[0mabc:100 tail', []))
+
+    def test_colour_is_kept_when_nothing_is_split(self):
+        self.assertEqual('\x1b[1mINFO\x1b[0m [redacted]', drive_console.redact(
+            '\x1b[1mINFO\x1b[0m secret-documented-1111', self.NEEDLES))
+
+    def test_a_longer_needle_is_replaced_whole(self):
+        self.assertEqual('x [redacted] y', drive_console.redact('x abcdefgh-longer y', ['abcdefgh', 'abcdefgh-longer']))
+
+    def test_an_empty_needle_is_passed_over(self):
+        self.assertEqual('clean text', drive_console.redact('clean text', ['', None]))
+
+    def test_clean_text_is_unchanged(self):
+        self.assertEqual('\x1b[1mclean\x1b[0m text\n', drive_console.redact('\x1b[1mclean\x1b[0m text\n', self.NEEDLES))
+
+
+# A line holding a file-backed secret of each kind, a held one and a connect host.
+_PLANTED = ('a %s b secret-action-4444 c seed-5555555555 d live-ticket-6666 e CONNECT pvespiceproxy:abc:100:pve1 f\n'
+            % _SENTINELS['documented'])
+_PLANTED_REDACTED = 'a [redacted] b [redacted] c [redacted] d [redacted] e CONNECT [redacted] f\n'
+
+
+class RedactedOutputTestCase(_LaneFilesTestCase):
+    """Every print site for text read from a file or another process prints it redacted."""
+
+    def setUp(self):
+        super().setUp()
+        drive_console._load_env_file(os.path.join(self.workdir, 'kerbside.env'))
+        self.lane = _bare_lane(self.workdir)
+        self.lane.remember('session 1\'s backend ticket', 'live-ticket-6666')
+        patcher = mock.patch.object(drive_console, '_active_lane', self.lane)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def assertRedacted(self, output):
+        self.assertNoValue(output)
+        self.assertNotIn('pvespiceproxy:', output)
+        self.assertIn(_PLANTED_REDACTED, output)
+
+    def test_ryll_diagnostics(self):
+        for name in ('ryll-proxmox-1.stdout', 'ryll-proxmox-1.stderr', 'kerbside.log'):
+            self.write(name, 'earlier\n' + _PLANTED)
+        err = io.StringIO()
+        with mock.patch.object(sys, 'stderr', err):
+            drive_console._dump_ryll_diagnostics(
+                mock.Mock(pid=1, returncode=1, **{'poll.return_value': 1}),
+                *[os.path.join(self.workdir, n) for n in ('ryll-proxmox-1.stdout', 'ryll-proxmox-1.stderr',
+                                                          'kerbside.log')])
+        self.assertRedacted(err.getvalue())
+        self.assertEqual(3, err.getvalue().count(_PLANTED_REDACTED))
+
+    def test_a_tail(self):
+        self.write('kerbside.log', _PLANTED)
+        self.assertEqual(_PLANTED_REDACTED, drive_console._tail(os.path.join(self.workdir, 'kerbside.log'), 60))
+
+    def test_the_smoke_client_output(self):
+        ryll = drive_console.Ryll.__new__(drive_console.Ryll)
+        ryll.lane = self.lane
+        self.lane.smoke_client = 'smoke-client.py'
+        ryll.n = 1
+        ryll.sock = 'ryll.sock'
+        ryll.proc = mock.Mock(**{'poll.return_value': None})
+        err = io.StringIO()
+        with mock.patch.object(subprocess, 'run', return_value=mock.Mock(returncode=1, stdout=_PLANTED)), \
+                mock.patch.object(sys, 'stderr', err):
+            self.assertRaises(SystemExit, ryll.smoke, 'smoke-client-1.log')
+        self.assertRedacted(err.getvalue())
+
+    def test_a_verdict(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            e = self.assertRaises(SystemExit, drive_console._require, drive_console.DEFECT,
+                                  'failed mints audited: ' + _PLANTED)
+        self.assertRedacted(out.getvalue())
+        self.assertRedacted(str(e))
+
+    def test_the_redact_mode(self):
+        out = io.StringIO()
+        stdin = mock.Mock(buffer=io.BytesIO(_PLANTED.encode('utf-8')))
+        argv = ['drive-console.py', '--redact', '--workdir', self.workdir]
+        # Run as from a shell script: no Lane, so only the file-backed values and connect hosts, which it
+        # learns from the env file.
+        for key in ('PROXMOX_LANE_FILE', 'PROXMOX_ACTION_TOKEN_FILE', 'KERBSIDE_SEED_FILE'):
+            del os.environ[key]
+        with mock.patch.object(drive_console, '_active_lane', None), mock.patch.object(sys, 'argv', argv), \
+                mock.patch.object(sys, 'stdin', stdin), redirect_stdout(out), \
+                mock.patch.object(sys, 'stderr', io.StringIO()):
+            self.assertEqual(0, drive_console.main())
+        self.assertEqual(_PLANTED_REDACTED.replace('[redacted] e', 'live-ticket-6666 e'), out.getvalue())
+
+    def test_deploy_kerbside_prints_no_tail_unredacted(self):
+        script = (_TOOLS / 'deploy-kerbside.sh').read_text()
+        tails = [line for line in script.splitlines() if re.search(r'\btail -', line) and
+                 not line.lstrip().startswith('#')]
+        self.assertNotEqual([], tails)
+        for line in tails:
+            self.assertIn('| redact >&2', line)
+        self.assertIn('redact < "${START_STDERR}" >&2', script)
+        self.assertIn('2> "${START_STDERR}"', script)
+
+
+class ReuseWindowTestCase(testtools.TestCase):
+    def test_today_s_window(self):
+        from kerbside.rpc.servicer import REUSE_MARGIN
+        from kerbside.sources.proxmox import TICKET_LIFETIME
+
+        self.assertEqual(15, drive_console.reuse_window(TICKET_LIFETIME, REUSE_MARGIN))
+        self.assertEqual(MintVerdictTestCase.WINDOW, drive_console.reuse_window(TICKET_LIFETIME, REUSE_MARGIN))
+
+    def test_the_smallest_window(self):
+        self.assertEqual(1, drive_console.reuse_window(16, 10))
+
+    def test_no_window_is_refused(self):
+        for lifetime, margin in ((15, 10), (14, 10), (10, 10), (5, 10)):
+            e = self.assertRaises(ValueError, drive_console.reuse_window, lifetime, margin)
+            self.assertIn('leaves no reuse window', str(e))
+
+    def test_a_checkpoint_with_no_window_is_a_harness_fault(self):
+        lane = _bare_lane(tempfile.gettempdir())
+        lane.offset = 0
+        lane.token_id = _IDS['documented']
+        lane.log_path = '/nonexistent'
+        with mock.patch.object(drive_console, '_read_access_log', return_value=[_SCRAPE]), \
+                mock.patch('kerbside.sources.proxmox.TICKET_LIFETIME', 15), \
+                redirect_stdout(io.StringIO()), mock.patch.object(sys, 'stderr', io.StringIO()):
+            e = self.assertRaises(SystemExit, lane.checkpoint, 'test', 0)
+        self.assertTrue(str(e).startswith('HARNESS FAULT: '), str(e))
+        self.assertIn('leaves no reuse window', str(e))
+
+
+class JwtLifetimeTestCase(testtools.TestCase):
+    def test_a_jwt_lasts_jwt_lifetime(self):
+        import jwt as pyjwt
+
+        workdir = tempfile.TemporaryDirectory()
+        self.addCleanup(workdir.cleanup)
+        seed_path = os.path.join(workdir.name, 'seed')
+        with open(seed_path, 'w') as f:
+            f.write('seed-5555555555')
+        claims = pyjwt.decode(drive_console._mint_auth_jwt(seed_path), 'seed-5555555555', algorithms=['HS256'])
+        self.assertEqual(drive_console.JWT_LIFETIME, claims['exp'] - claims['iat'])
+
+    def test_the_lifetime_covers_the_drive_step_and_little_more(self):
+        workflow = yaml.safe_load(_WORKFLOW.read_text())
+        steps = [step for step in workflow['jobs']['proxmox']['steps']
+                 if step.get('name') == 'Drive a proxied SPICE console']
+        self.assertEqual(1, len(steps))
+        timeout = steps[0]['timeout-minutes'] * 60
+        self.assertGreater(drive_console.JWT_LIFETIME, timeout)
+        self.assertLessEqual(drive_console.JWT_LIFETIME, timeout + 600)

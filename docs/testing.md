@@ -791,8 +791,11 @@ It runs nightly, on `workflow_dispatch`, and on pull requests that
 touch any of:
 
 - the Proxmox source: `kerbside/sources/proxmox.py`, `base.py` and
-  `minting.py`;
-- `kerbside/rpc/**`;
+  `minting.py`, and the source-type registry in
+  `kerbside/sources/__init__.py`, which maps `type: proxmox` to it;
+- `kerbside/config.py`, whose `CONSOLE_TOKEN_DURATION` sets how long
+  the lane holds a session;
+- `kerbside/rpc/**`, which includes `kerbside.proto`;
 - the proxy's backend leg and relay, `rust/kerbside-proxy/src/backend.rs`
   and `relay.rs`, its `Cargo.toml` and `Cargo.lock`, which pin the ryll
   crate whose log lines the lane reads, and `tools/build-proxy-wheel.sh`,

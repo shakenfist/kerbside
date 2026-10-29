@@ -22,18 +22,22 @@ on:
     branches:
       - develop
     # Keep in step with the files the lane exercises: the source driver and
-    # what it is built on, the RPC messages, the proxy's backend leg and the
+    # what it is built on, the source-type registry which maps type: proxmox
+    # to it, kerbside/config.py, whose CONSOLE_TOKEN_DURATION sets the lane's
+    # hold, the RPC messages and their proto, the proxy's backend leg and the
     # relay whose log lines the lane's oracles read, the crate pin and the
     # script which build the proxy wheel, the lane's own scripts and the
-    # direct-qemu ones it reuses, and docs/console-sources.md, whose
-    # Proxmox VE account block the lane runs. kerbside/api.py and
-    # kerbside/db.py are exercised too but deliberately left out: they
-    # change on most pull requests, and would book a PVE node for each. The
-    # nightly covers them. Mirrored in docs/testing.md's lane section.
+    # direct-qemu ones it reuses, and docs/console-sources.md, whose Proxmox
+    # VE account block the lane runs. kerbside/api.py and kerbside/db.py are
+    # exercised too but deliberately left out: they change on most pull
+    # requests, and would book a PVE node for each. The nightly covers them.
+    # Mirrored in docs/testing.md's lane section.
     paths:
       - 'kerbside/sources/proxmox.py'
       - 'kerbside/sources/base.py'
       - 'kerbside/sources/minting.py'
+      - 'kerbside/sources/__init__.py'
+      - 'kerbside/config.py'
       - 'kerbside/rpc/**'
       - 'rust/kerbside-proxy/src/backend.rs'
       - 'rust/kerbside-proxy/src/relay.rs'

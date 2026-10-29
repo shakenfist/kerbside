@@ -91,11 +91,22 @@ overridden by the WORKDIR environment variable or --workdir (the argument
 wins).
 
 With --scan-only it does nothing but step 7, without the backend tickets,
-.vv passwords and API JWTs, which it cannot know. Run that before uploading artifacts on every run, so
-that a drive which was cut short is scanned too.
+.vv passwords and API JWTs, which it cannot know. Run that before uploading
+artifacts on every run, so that a drive which was cut short is scanned too.
+A drive killed by its step timeout may not reach its own scan, and then
+those three are searched for by neither: the artifacts are scanned only for
+the file-backed secrets and the literal. The backend tickets expire within
+TICKET_LIFETIME, and the .vv tokens within CONSOLE_TOKEN_DURATION, but the
+API JWTs stay valid for JWT_LIFETIME after they were minted.
+
+With --redact it copies its standard input to its standard output with
+every value the scan looks for, and every connect host, replaced by
+REDACTED, so that a shell script can print a log tail; see redact().
 
 SECURITY: the token secrets, the auth seed, the API JWTs, the .vv bodies,
 the backend tickets and the connect hosts are NEVER printed or logged.
+Anything read from a file or another process for printing, such as a log
+tail for diagnosis, goes through _redacted() first, as does every verdict.
 Each backend ticket is read from the database as soon as it is minted,
 and only its length is reported. It, each .vv's password and each API JWT
 are held in memory to search the artifacts for them. The scan
@@ -238,6 +249,19 @@ MIN_NEEDLE = 8
 # Each request to the PVE API is bounded, as kerbside bounds its own.
 REQUEST_TIMEOUT = 5
 
+# How long the API JWTs the drive mints are valid: the drive step's
+# 30-minute timeout in .github/workflows/proxmox-functional.yml, plus five
+# minutes, so that a killed drive's JWTs do not outlive it by much. A unit
+# test holds it to the step's timeout.
+JWT_LIFETIME = 35 * 60
+
+# What redact() puts in place of each value it removes.
+REDACTED = '[redacted]'
+# A connect host, as spiceproxy hands it out and logs it: the whole
+# whitespace-delimited run from the literal on.
+CONNECT_LITERAL = 'pvespiceproxy:'
+_CONNECT_HOST = re.compile(re.escape(CONNECT_LITERAL) + r'\S*')
+
 # The audit messages the API and AuthorizeConnection write. Keep in step
 # with kerbside/api.py and kerbside/rpc/servicer.py.
 DIRECT_REFUSED_AUDIT_PREFIX = 'Refused direct console for a proxied-only source'
@@ -248,6 +272,47 @@ MINT_FAILED_AUDIT_PREFIX = 'Backend console ticket mint failed'
 def strip_ansi(text):
     """Remove SGR escape sequences from captured tracing output."""
     return _ANSI_RE.sub('', text)
+
+
+def redact(text, needles):
+    """text with each of needles, and each connect host, replaced by REDACTED.
+
+    A connect host is the whole whitespace-delimited run from
+    CONNECT_LITERAL. Longer needles are replaced first, so that one which
+    holds another is replaced whole, and an empty needle is passed over.
+    Like find_needles, it looks at the text as written and with ANSI
+    escapes removed: if a needle or a connect host is still there once the
+    escapes are removed, because they split it, the text is redacted with
+    them removed.
+    """
+    ordered = sorted((n for n in needles if n), key=len, reverse=True)
+
+    def replace(t):
+        t = _CONNECT_HOST.sub(REDACTED, t)
+        for needle in ordered:
+            t = t.replace(needle, REDACTED)
+        return t
+
+    redacted = replace(text)
+    stripped = strip_ansi(redacted)
+    if CONNECT_LITERAL in stripped or any(needle in stripped for needle in ordered):
+        return replace(strip_ansi(text))
+    return redacted
+
+
+def reuse_window(lifetime, margin):
+    """How long after a session's first channel the others may connect and still share its ticket.
+
+    A ticket of lifetime seconds is reused while at least margin of them
+    remain, less CHANNEL_TIME_SLACK for the mint coming before the first
+    channel's connection. Raises ValueError for a window of zero or less,
+    under which every channel but the first would be judged late.
+    """
+    window = lifetime - margin - CHANNEL_TIME_SLACK
+    if window <= 0:
+        raise ValueError('a ticket lifetime of %ds with a reuse margin of %ds and %ds of slack leaves no reuse '
+                         'window' % (lifetime, margin, CHANNEL_TIME_SLACK))
+    return window
 
 
 # ── PVE's access log ─────────────────────────────────────────────────────────
@@ -626,7 +691,11 @@ def _log(msg):
 
 
 def _require(kind, message):
-    """Fail the run unless kind is OK, naming which kind of failure it is."""
+    """Fail the run unless kind is OK, naming which kind of failure it is.
+
+    message is redacted, as it may carry text from a log or an audit event.
+    """
+    message = _redacted(message)
     if kind == OK:
         _log(message)
         return
@@ -654,15 +723,31 @@ def _read_text(path):
 
 
 def _tail(path, lines):
-    """Return the last `lines` lines of a file, or a note if unreadable."""
+    """Return the last `lines` lines of a file, redacted for printing, or a note if unreadable."""
     try:
         with open(path, 'r', errors='replace') as f:
-            return ''.join(f.readlines()[-lines:])
+            return _redacted(''.join(f.readlines()[-lines:]))
     except OSError as exc:
         return '(could not read %s: %s)\n' % (path, exc)
 
 
-def _forbidden_values(extra_descriptions=(), extra_needles=()):
+# The Lane being driven, whose held values _redacted() removes too.
+_active_lane = None
+
+
+def _redacted(text):
+    """text, safe to print: redact() with every value the scan looks for.
+
+    Those are _forbidden_values(), with the held values of the Lane being
+    driven, if there is one.
+    """
+    lane = _active_lane
+    _, needles = _forbidden_values(lane.needle_descriptions if lane else (), lane.needles if lane else (),
+                                   report=False)
+    return redact(text, needles)
+
+
+def _forbidden_values(extra_descriptions=(), extra_needles=(), report=True):
     """(descriptions, needles): what the artifacts must not hold, read from the env file's paths.
 
     The two are parallel lists, sorted by description, so that a
@@ -670,7 +755,8 @@ def _forbidden_values(extra_descriptions=(), extra_needles=()):
     beside its value. A value which cannot be read, or is too short to
     search for, is left out and said so. extra_descriptions and
     extra_needles add, in the same parallel form, values held in memory,
-    such as backend tickets, .vv passwords and API JWTs.
+    such as backend tickets, .vv passwords and API JWTs. With report
+    false, nothing left out is said so.
     """
     paths = []
     path_descriptions = []
@@ -683,7 +769,8 @@ def _forbidden_values(extra_descriptions=(), extra_needles=()):
                 path_descriptions.append('the %s token\'s secret' % name.replace('_', '-'))
                 paths.append(listed[name]['secret_file'])
         except (OSError, ValueError, KeyError, TypeError):
-            _log('could not read the token list in %s; its tokens are not scanned for' % lane_file)
+            if report:
+                _log('could not read the token list in %s; its tokens are not scanned for' % lane_file)
     if os.environ.get('PROXMOX_ACTION_TOKEN_FILE'):
         path_descriptions.append('the action\'s token\'s secret')
         paths.append(os.environ['PROXMOX_ACTION_TOKEN_FILE'])
@@ -691,12 +778,13 @@ def _forbidden_values(extra_descriptions=(), extra_needles=()):
         path_descriptions.append('the auth seed')
         paths.append(os.environ['KERBSIDE_SEED_FILE'])
 
-    descriptions = ['the literal pvespiceproxy:']
-    needles = ['pvespiceproxy:']
+    descriptions = ['the literal %s' % CONNECT_LITERAL]
+    needles = [CONNECT_LITERAL]
     for index, path in enumerate(paths):
         needle = _read_text(path).strip()
         if len(needle) < MIN_NEEDLE:
-            _log('%s could not be read from %s; it is not scanned for' % (path_descriptions[index], path))
+            if report:
+                _log('%s could not be read from %s; it is not scanned for' % (path_descriptions[index], path))
             continue
         descriptions.append(path_descriptions[index])
         needles.append(needle)
@@ -747,7 +835,7 @@ def _mint_auth_jwt(seed_path, admin=False):
         'jti': uuidlib.uuid4().hex,
         'type': 'access',
         'sub': 'proxmox-e2e-driver',
-        'exp': now + 3600,
+        'exp': now + JWT_LIFETIME,
     }
     if admin:
         payload['kerbside_admin'] = True
@@ -832,7 +920,10 @@ class Lane:
 
         count = count_mints(_read_access_log(self.offset, self.token_id), self.token_id)
         times = session_channel_times(proxy_log_facts(_read_text(self.log_path)), sessions)
-        window = TICKET_LIFETIME - REUSE_MARGIN - CHANNEL_TIME_SLACK
+        try:
+            window = reuse_window(TICKET_LIFETIME, REUSE_MARGIN)
+        except ValueError as e:
+            _require(HARNESS, str(e))
         _log('checkpoint "%s": %d mint(s), %d refused, %d request(s) and %d scrape(s) by %s since kerbside started'
              % (name, count.mints, count.refused, count.requests, count.scrapes, self.token_id))
         kind, message = mint_verdict(count, expected, times, window)
@@ -910,7 +1001,7 @@ def _discover(db, lane, timeout=180):
 
 
 def _dump_ryll_diagnostics(proc, stdout_path, stderr_path, log_path):
-    """Dump ryll's state and logs, minus the .vv, which carries a proxy token."""
+    """Dump ryll's state and logs, minus the .vv, which carries a proxy token, each tail redacted."""
     if proc.poll() is None:
         _log('  ryll process %d is still running' % proc.pid)
     else:
@@ -971,7 +1062,7 @@ class Ryll:
         with open(log_file, 'w') as f:
             f.write(result.stdout or '')
         if result.returncode != 0:
-            _log('  smoke-client.py output:\n%s' % (result.stdout or ''))
+            _log('  smoke-client.py output:\n%s' % _redacted(result.stdout or ''))
             raise SystemExit('smoke-client.py failed against ryll %d (exit %d)' % (self.n, result.returncode))
         _log('smoke-client.py passed against ryll %d (output in %s)' % (self.n, log_file))
 
@@ -1206,7 +1297,13 @@ def main():
     parser.add_argument('--workdir', default=None,
                         help='the deploy-kerbside.sh work directory (default: $WORKDIR, or %s)' % DEFAULT_WORKDIR)
     parser.add_argument('--scan-only', action='store_true',
-                        help='only scan the files the lane uploads for secrets, removing any which holds one')
+                        help='only scan the files the lane uploads for secrets, removing any which holds one; '
+                        'it cannot know the backend tickets, .vv passwords and API JWTs a drive held in memory, '
+                        'so after a drive killed by its step timeout those go unscanned, and its API JWTs stay '
+                        'valid for %ds after they were minted' % JWT_LIFETIME)
+    parser.add_argument('--redact', action='store_true',
+                        help='copy standard input to standard output with every value the scan looks for, and '
+                        'every connect host, replaced by %s' % REDACTED)
     args = parser.parse_args()
 
     workdir = args.workdir or os.environ.get('WORKDIR') or DEFAULT_WORKDIR
@@ -1221,12 +1318,24 @@ def main():
             _log('%s does not exist; scanning for the literal pvespiceproxy: only' % env_file)
         return 1 if _scan(workdir) else 0
 
+    if args.redact:
+        # As --scan-only, with no env file only connect hosts are known.
+        if os.path.exists(env_file):
+            _load_env_file(env_file)
+        # Read whole and written only once redacted, so that a failure part
+        # way prints nothing rather than the raw text.
+        text = sys.stdin.buffer.read().decode('utf-8', errors='replace')
+        sys.stdout.write(_redacted(text))
+        return 0
+
     _load_env_file(env_file)
     # The runner's squid proxy 503s loopback traffic, so exempt it before any
     # requests call is made.
     os.environ['no_proxy'] = '127.0.0.1,localhost,' + os.environ.get('no_proxy', '')
 
+    global _active_lane
     lane = Lane(workdir)
+    _active_lane = lane
     leaked = False
     try:
         _drive(lane)

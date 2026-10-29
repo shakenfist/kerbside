@@ -63,7 +63,8 @@
 #
 # SECURITY: never echoes a token secret, the auth seed or key material. The
 # token secret reaches sources.yaml through gen-sources.py, which reads it
-# from prepare-node.sh's 0600 file. Do not add set -x.
+# from prepare-node.sh's 0600 file. Do not add set -x. A log which kerbside
+# or start-kerbside.sh writes is printed only through redact, below.
 
 set +o xtrace
 set -o errexit
@@ -74,6 +75,14 @@ fail() {
     echo "::error title=Proxmox lane::$*"
     echo "deploy-kerbside.sh: $*" >&2
     exit 1
+}
+
+# Copies standard input to standard output with every value the artifact
+# scan looks for, and every connect host, replaced; see drive-console.py's
+# redact(). Prints nothing if it fails, never the raw text. Usable once
+# the venv exists and kerbside.env is written (step 7).
+redact() {
+    "${VENV}/bin/python3" "${KERBSIDE_SRC}/tools/proxmox-e2e/drive-console.py" --redact --workdir "${WORKDIR}"
 }
 
 API_URL=''
@@ -279,13 +288,19 @@ export KERBSIDE_SQL_URL='mysql://kerbside:kerbside@127.0.0.1/kerbside'
 # LEVEL above.
 export RUST_LOG='info,shakenfist_spice_protocol::client=debug'
 
+# start-kerbside.sh prints tails of kerbside's logs on a failure, so its
+# stderr is held in a file, which is not uploaded, and printed redacted.
+START_STDERR="${WORKDIR}/start-kerbside.stderr"
 echo "[proxmox-e2e] Starting kerbside via start-kerbside.sh"
+START_RC=0
 "${KERBSIDE_SRC}/tools/direct-qemu/start-kerbside.sh" \
     --sources-path "${SOURCES_PATH}" \
     --tls-dir "${TLS_DIR}" \
     --log-path "${LOG_PATH}" \
     --pid-file "${PID_FILE}" \
-    --api-port "${API_PORT}"
+    --api-port "${API_PORT}" 2> "${START_STDERR}" || START_RC=$?
+redact < "${START_STDERR}" >&2 || true
+[ "${START_RC}" -eq 0 ] || fail "start-kerbside.sh failed (exit ${START_RC})"
 
 # ── Step 9: Wait for the proxmox source to leave the errored state ───────────
 #
@@ -314,7 +329,7 @@ PYEOF
     fi
     if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
         echo "  kerbside daemon log tail:" >&2
-        tail -60 "${LOG_PATH}" >&2 || true
+        tail -60 "${LOG_PATH}" | redact >&2 || true
         fail "the proxmox source ${SOURCE_NAME} did not become healthy within 180s"
     fi
     sleep 3

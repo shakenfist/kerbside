@@ -91,7 +91,8 @@ The scripts:
   `ca_cert` the contents of the action's `ca_file`. Kerbside is never
   given the action's token. Never prints the secret.
 - `deploy-kerbside.sh` -- installs and starts kerbside on the runner,
-  and writes `kerbside.env` for the driver. Never echoes a secret.
+  and writes `kerbside.env` for the driver. Never echoes a secret, and
+  prints a log tail only through `drive-console.py --redact`.
 - `drive-console.py` -- drives the proxied SPICE sessions and asserts
   the oracles. Never prints a token secret, the auth seed, an API JWT, a
   `.vv` body, a backend ticket or a connect host, and never prints a
@@ -207,6 +208,23 @@ API JWT the drive mints, and the literal `pvespiceproxy:`. The tickets,
 passwords and JWTs are held in memory only. It removes any file holding one and fails
 the run. `--scan-only` does the same without the values held in memory,
 which it cannot know.
+
+So a drive killed by its step timeout, which may not reach its own scan,
+leaves the artifacts scanned only for the file-backed secrets and the
+literal: its backend tickets, `.vv` passwords and API JWTs are searched
+for by neither scan. The tickets expire within 30 seconds and the `.vv`
+tokens within `CONSOLE_TOKEN_DURATION`, but the API JWTs stay valid for
+`JWT_LIFETIME` after they were minted: 35 minutes, the drive step's
+30-minute timeout plus five, which a unit test holds it to.
+
+The job log gets the same care on failure paths. Every log tail, ryll
+and smoke-client output, ssh error and verdict that `drive-console.py`
+prints, and every log tail `deploy-kerbside.sh` prints (including
+`start-kerbside.sh`'s, whose stderr it holds and prints afterwards),
+goes through `redact()` first. That replaces each value the scan looks
+for, including those held in memory, and the whole of every
+`pvespiceproxy:` connect host, with `[redacted]`, and finds a value
+split by ANSI escapes as the scan does.
 
 Never uploaded: `sources.yaml` (it holds the documented token's
 secret), any `.vv` file, the auth seed, any token file, PVE's access
