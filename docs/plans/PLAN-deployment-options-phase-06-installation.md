@@ -187,31 +187,31 @@ The two steps write to the same tree, so they run one after the other.
 
 ## Definition of done
 
-- [ ] `grep -rn -i -E 'go for your cloud|guide for the cloud|guide for yours|deployment permutation|per-deployment and topology|deployed as a component of the cloud' --include=*.md . | grep -v 'docs/plans/'`
+- [x] `grep -rn -i -E 'go for your cloud|guide for the cloud|guide for yours|deployment permutation|per-deployment and topology|deployed as a component of the cloud' --include=*.md . | grep -v 'docs/plans/'`
       prints nothing.
-- [ ] `docs/installation.md` still has a `## Deploying for real`
+- [x] `docs/installation.md` still has a `## Deploying for real`
       heading, and that section has no table:
       `awk '/^## Deploying for real/,/^## Upgrading/' docs/installation.md | grep -c '^|'`
       prints 0.
-- [ ] That section links all four `deployment/*.md` pages,
+- [x] That section links all four `deployment/*.md` pages,
       `index.md#deployment-options` and `index.md#use-cases`.
-- [ ] `docs/index.md` no longer contains "whose name is not a link".
-- [ ] No table row in `docs/index.md` changed:
+- [x] `docs/index.md` no longer contains "whose name is not a link".
+- [x] No table row in `docs/index.md` changed:
       `git diff origin/develop -- docs/index.md | grep '^[-+]|'`
       prints nothing.
-- [ ] `README.md` links `docs/index.md#deployment-options`, and
+- [x] `README.md` links `docs/index.md#deployment-options`, and
       `git diff origin/develop -- README.md` touches only the
       Documentation list.
-- [ ] `AGENTS.md` links `docs/deployment/`. `ARCHITECTURE.md` names
+- [x] `AGENTS.md` links `docs/deployment/`. `ARCHITECTURE.md` names
       `ansible/` and `deployment/` in its trees, and links
       `docs/index.md#deployment-options`.
-- [ ] Every anchor in the changed files resolves. Checked by hand or
+- [x] Every anchor in the changed files resolves. Checked by hand or
       with the anchor script, because the link test strips anchors
       (#490).
-- [ ] `tools/check-backend-tls-claims.py` exits 0, and
+- [x] `tools/check-backend-tls-claims.py` exits 0, and
       `tools/mutate-backend-tls-claims.py` still reports every mutation
       caught.
-- [ ] `tox -epy3`, `tox -eflake8` and `pre-commit run --all-files`
+- [x] `tox -epy3`, `tox -eflake8` and `pre-commit run --all-files`
       pass.
 
 ## Execution notes
@@ -223,6 +223,18 @@ The two steps write to the same tree, so they run one after the other.
 - Step 6a's Installation bullet in the index was tightened in review
   to "a pointer to the deployment pages: by hand, Ansible,
   Kolla-Ansible and containers".
+- Step 6b's README bullet said each mechanism's page covers "what each
+  needs". Review changed it to the sources each configures and what CI
+  tests, which is what the index table says.
+- The Use Cases table's Proxmox row still says no source driver exists.
+  Decision 6 leaves it for `PLAN-proxmox-source.md` phase 6.
+- Definition of done checked on 2026-10-29. The phrase grep prints
+  nothing. The section has one heading, no table lines, and links all
+  four pages and both index anchors. The index diff touches no table
+  row, and the README diff has one hunk, in the Documentation list.
+  All 17 local anchors in the five changed files resolve. `tox -epy3`
+  passed 633 tests, and flake8, pre-commit and the TLS claim guard
+  passed. The mutation tool caught all 12 mutations.
 
 ## Back brief
 
