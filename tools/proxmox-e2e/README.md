@@ -21,7 +21,7 @@ thing.
   runs on the CI runner as plain processes, via
   `tools/direct-qemu/start-kerbside.sh`.
 - ryll runs on the runner too, driving kerbside's proxy over localhost.
-  Two ryll processes run at once while the lane checks supersession.
+  A second ryll connects while the first is held, and displaces it.
 - Kerbside reaches the node by its FQDN only: the API on `8006`, and
   `spiceproxy` on `3128` for every backend connection. It never dials a
   guest's SPICE port itself; `spiceproxy` relays the TLS stream to qemu.
@@ -35,7 +35,7 @@ thing.
 
 ```mermaid
 flowchart TD
-    ryll["ryll --headless<br/>(two at once, for supersession)"]
+    ryll["ryll --headless<br/>(a second displaces the first)"]
     proxy["kerbside proxy (on the runner)<br/>127.0.0.1:5901 (plaintext)<br/>127.0.0.1:5900 (TLS, proxy CA)"]
     api["PVE API, node_fqdn:8006<br/>POST spiceproxy with the documented token,<br/>once per session"]
     spiceproxy["PVE spiceproxy, node_fqdn:3128<br/>HTTP CONNECT to the minted connect host"]
@@ -119,10 +119,27 @@ The scripts:
   `deploy-kerbside.sh` turns on for that module alone with `RUST_LOG`.
 - **The session.** smoke-client sees real surfaces. The first session is
   held until 30 seconds past both its ticket's expiry and its `.vv`
-  token's `CONSOLE_TOKEN_DURATION`, and still passes frames. A second
-  session opens while the first is held, and the first still passes
-  frames after the second has minted. Terminating the first over REST
-  drops its relays and not the second's.
+  token's `CONSOLE_TOKEN_DURATION`, and still passes frames.
+- **The second session.** A second session opens while the first is
+  held, and displaces it. qemu's SPICE server serves one client at a
+  time, and disconnects the client it has when a new client's main
+  channel links, as it does for any SPICE client. So once the second
+  session's channels have connected, the first session's ryll must have
+  exited, and the proxy must have logged each of its backend relays
+  ending (`relay ended`, or `relay ended with error`), while none of the
+  second's ended; the second passes frames. The first session still
+  running with none of its relays ended is a defect, reported as "the
+  first session was not displaced".
+- **A password change keeps a connected client.** While the second
+  session is held, the lane mints one ticket itself: the documented
+  token's `POST .../qemu/<vmid>/spiceproxy`, exactly as kerbside makes
+  it. PVE replaces the guest's SPICE password and sets it to expire,
+  and the second session must still pass frames afterwards. The lane
+  never prints, logs or writes PVE's response; it holds the response's
+  password and connect host for the scan and the redactor, and drops
+  the rest.
+- **Terminate.** Terminating the second session over REST makes the
+  proxy log `session terminated by control plane` for its relays.
 - **Mints, counted by PVE.** See below.
 - **No leaked credential.** See *Security*.
 
@@ -152,7 +169,8 @@ the node otherwise, and it is never uploaded.
 | After the first session's channels have connected | 1 |
 | After holding the first session | 1 |
 | After the second session's channels have connected | 2 |
-| At the end, after the terminate | 2 |
+| After the lane's own mint | 3 |
+| At the end, after the terminate | 3 |
 
 Each checkpoint fails with one of three labels:
 
@@ -173,7 +191,9 @@ Each checkpoint fails with one of three labels:
   re-run before reading anything into it.
 - **defect** -- a field parsed and was wrong. The count is too low, or
   too high with every channel in time. PVE refused a mint. A leg was not
-  tunnelled, not TLS, or pinned to the wrong subject.
+  tunnelled, not TLS, or pinned to the wrong subject. The first session
+  was not displaced, or only in part, or a relay of the second ended
+  with it.
 
 Each session's backend ticket is read for the scan by polling its token
 row every quarter second from the moment the session is known, so it is
@@ -199,23 +219,28 @@ The lane holds four API token secrets (the action's, the documented
 one, and the two single-privilege ones), the auth seed, and, inside
 kerbside, each session's SPICE password and signed connect host. Each
 token secret is in a 0600 file and is masked in the job log before
-anything reads it. The lane never mints itself.
+anything reads it. The lane mints once itself, with the documented
+token, to show a password change keeps a connected client. It holds
+that response's password and connect host in memory only, and never
+prints, logs or writes the response.
 
 Before upload, `drive-console.py` scans every file the workflow uploads
 for each token secret, the auth seed, each session's backend ticket,
 the password in each proxied `.vv` (kerbside's own console token), each
-API JWT the drive mints, and the literal `pvespiceproxy:`. The tickets,
-passwords and JWTs are held in memory only. It removes any file holding one and fails
-the run. `--scan-only` does the same without the values held in memory,
-which it cannot know.
+API JWT the drive mints, the password and connect host of the lane's
+own mint, and the literal `pvespiceproxy:`. The tickets, passwords,
+JWTs and connect host are held in memory only. It removes any file
+holding one and fails the run. `--scan-only` does the same without the
+values held in memory, which it cannot know.
 
 So a drive killed by its step timeout, which may not reach its own scan,
 leaves the artifacts scanned only for the file-backed secrets and the
-literal: its backend tickets, `.vv` passwords and API JWTs are searched
-for by neither scan. The tickets expire within 30 seconds and the `.vv`
-tokens within `CONSOLE_TOKEN_DURATION`, but the API JWTs stay valid for
-`JWT_LIFETIME` after they were minted: 35 minutes, the drive step's
-30-minute timeout plus five, which a unit test holds it to.
+literal: its backend tickets, `.vv` passwords, API JWTs and own mint are
+searched for by neither scan. The tickets and the lane's own mint expire
+within 30 seconds and the `.vv` tokens within `CONSOLE_TOKEN_DURATION`,
+but the API JWTs stay valid for `JWT_LIFETIME` after they were minted:
+35 minutes, the drive step's 30-minute timeout plus five, which a unit
+test holds it to.
 
 The job log gets the same care on failure paths. Every log tail, ryll
 and smoke-client output, ssh error and verdict that `drive-console.py`
@@ -247,8 +272,7 @@ two agree:
 - `${WORKDIR}/smoke-client-1.log`
 - `${WORKDIR}/smoke-client-1-held.log`
 - `${WORKDIR}/smoke-client-2.log`
-- `${WORKDIR}/smoke-client-1-superseded.log`
-- `${WORKDIR}/smoke-client-2-after-terminate.log`
+- `${WORKDIR}/smoke-client-2-after-mint.log`
 <!-- uploaded-files -->
 
 ## Env-file contract
@@ -286,4 +310,6 @@ lines as the proxy writes them, and the `<user>` PVE logs for a token's
 request, both of which the parsers were written from source. It also
 includes the JSON `pveum user token permissions` prints, with and without
 `--path`, which `prepare-node.sh` reads to check that each token holds
-exactly its privileges on the smoke guest and nothing outside `/vms`.
+exactly its privileges on the smoke guest and nothing outside `/vms`,
+and the `password` and `host` fields of `spiceproxy`'s response, which
+the lane's own mint holds for the scan.

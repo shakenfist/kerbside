@@ -285,8 +285,7 @@ jobs:
             ${{ env.PROXMOX_LANE_WORKDIR }}/smoke-client-1.log
             ${{ env.PROXMOX_LANE_WORKDIR }}/smoke-client-1-held.log
             ${{ env.PROXMOX_LANE_WORKDIR }}/smoke-client-2.log
-            ${{ env.PROXMOX_LANE_WORKDIR }}/smoke-client-1-superseded.log
-            ${{ env.PROXMOX_LANE_WORKDIR }}/smoke-client-2-after-terminate.log
+            ${{ env.PROXMOX_LANE_WORKDIR }}/smoke-client-2-after-mint.log
 
   # A red nightly in the Actions tab alerts nobody, and this lane gates
   # nothing. File or update one tracking issue instead, as the other

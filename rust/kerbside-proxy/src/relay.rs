@@ -180,6 +180,10 @@ where
         observer.finish(connection_ref);
     }
 
+    // CI-ORACLE: both messages start "relay ended", and that text and the
+    // connection_ref field are load-bearing for
+    // tools/proxmox-e2e/drive-console.py, which follows a displaced
+    // session's relays by them; update it if either changes.
     match &result {
         Ok(()) => info!(
             %connection_ref,

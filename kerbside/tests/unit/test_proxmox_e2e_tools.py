@@ -612,6 +612,16 @@ def _leg(sessions):
     return '\n'.join(lines) + '\n'
 
 
+def _ended(seconds, ref, error=True):
+    """A relay ended line, with an error as qemu closing the connection gives, or without."""
+    if error:
+        return ('%s  WARN kerbside_proxy::relay: relay ended with error connection_ref=%s channel_type="main" '
+                'error=peer closed connection without sending TLS close_notify: '
+                'https://docs.rs/rustls/latest/rustls/manual/_03_howto/index.html#unexpected-eof'
+                % (_stamp(seconds), ref))
+    return '%s  INFO kerbside_proxy::relay: relay ended connection_ref=%s channel_type="main"' % (_stamp(seconds), ref)
+
+
 class ProxyLogTestCase(testtools.TestCase):
     def test_facts(self):
         text = _leg([('r1', 's1'), ('r2', 's1')]) + '\n'.join([
@@ -621,6 +631,8 @@ class ProxyLogTestCase(testtools.TestCase):
             '%s  INFO kerbside_proxy::backend: hypervisor requires TLS; retrying backend connection over the secure '
             'port connection_ref=r3 hypervisor=pve1 channel_type="main" host_subject=CN=x' % _stamp(9),
             _crate('Connecting to 10.0.2.2:5900 (TLS: false)'),
+            _ended(9, 'r2'),
+            _ended(9, 'r1', error=False),
         ])
         facts = drive_console.proxy_log_facts(text)
         self.assertEqual([
@@ -636,8 +648,31 @@ class ProxyLogTestCase(testtools.TestCase):
         self.assertEqual([_SUBJECT, _SUBJECT], facts['pins'])
         self.assertEqual(1, facts['rejections'])
         self.assertEqual(['r1'], facts['terminated'])
+        self.assertEqual(['r2', 'r1'], facts['ended'])
         self.assertEqual([], facts['unparseable'])
         self.assertEqual({'s1'}, drive_console.terminated_sessions(facts))
+
+    def test_only_a_relay_ending_is_an_ending(self):
+        facts = drive_console.proxy_log_facts('\n'.join([
+            '%s  INFO kerbside_proxy::relay: relay starting connection_ref=r2 channel_type="main"' % _stamp(0),
+            '%s  INFO kerbside_proxy::relay: session terminated by control plane; ending relay connection_ref=r1 '
+            'channel_type="main"' % _stamp(0),
+        ]))
+        self.assertEqual(['r1'], facts['terminated'])
+        self.assertEqual([], facts['ended'])
+        self.assertEqual([], facts['unparseable'])
+
+    def test_a_relay_ended_line_without_a_ref_does_not_parse(self):
+        for broken in (_ended(0, 'r1').replace('connection_ref=', 'ref='),
+                       _ended(0, 'r1', error=False).replace('connection_ref=', 'ref=')):
+            facts = drive_console.proxy_log_facts(broken)
+            self.assertEqual([], facts['ended'])
+            self.assertEqual(['a relay ended line without a connection_ref'], facts['unparseable'])
+
+    def test_a_ref_before_the_relay_ended_message_is_not_read(self):
+        line = '%s  WARN kerbside_proxy::relay: connection_ref=wrong %s' % (
+            _stamp(0), _ended(0, 'r1').split(': ', 1)[1])
+        self.assertEqual(['r1'], drive_console.proxy_log_facts(line)['ended'])
 
     def test_fractional_times(self):
         later = drive_console._line_time(_stamp(1.25) + ' ')
@@ -751,6 +786,68 @@ class BackendLegVerdictTestCase(testtools.TestCase):
     def test_every_session_is_judged(self):
         text = _leg([('r1', 's1')]) + _DIAL + '\n' + _PIN + '\n' + _connected(1, 'r2', 's2', 'false')
         self.assertVerdict(drive_console.DEFECT, 'not tunnelled', text, sessions=('s1',))
+
+
+class DisplacementVerdictTestCase(testtools.TestCase):
+    # Session s1 has two relays, r1 and r2; session s2, which displaces it,
+    # has r3.
+    def text(self, ended=('r1', 'r2'), extra=''):
+        return (_leg([('r1', 's1'), ('r2', 's1'), ('r3', 's2')]) + '\n'.join(_ended(9, ref) for ref in ended) +
+                '\n' + extra)
+
+    def assertVerdict(self, kind, needle, text, exited=True):
+        got, message = drive_console.displacement_verdict(drive_console.proxy_log_facts(text), 's1', 's2', exited)
+        self.assertEqual(kind, got, message)
+        self.assertIn(needle, message)
+
+    def test_displaced(self):
+        self.assertVerdict(drive_console.OK, 'session s2 displaced session s1: all 2 of its backend relay(s) ended',
+                           self.text())
+
+    def test_a_relay_which_ended_cleanly_counts(self):
+        text = _leg([('r1', 's1'), ('r2', 's1'), ('r3', 's2')]) + _ended(9, 'r1') + '\n' + _ended(9, 'r2', False)
+        self.assertVerdict(drive_console.OK, 'all 2', text)
+
+    def test_not_displaced(self):
+        self.assertVerdict(drive_console.DEFECT, 'the first session was not displaced: session s1\'s ryll is still '
+                           'running and none of its 2 backend relay(s) ended once session s2 linked',
+                           self.text(ended=()), exited=False)
+
+    def test_not_displaced_while_another_relay_ended(self):
+        self.assertVerdict(drive_console.DEFECT, 'the first session was not displaced',
+                           self.text(ended=('r9',)), exited=False)
+
+    def test_a_relay_left_behind(self):
+        self.assertVerdict(drive_console.DEFECT, 'displaced only in part: 1 of its 2 backend relay(s) ended, and its '
+                           'ryll exited', self.text(ended=('r1',)))
+
+    def test_a_ryll_left_behind(self):
+        self.assertVerdict(drive_console.DEFECT, 'displaced only in part: 2 of its 2 backend relay(s) ended, and its '
+                           'ryll is still running', self.text(), exited=False)
+
+    def test_part_ended_and_the_ryll_running(self):
+        self.assertVerdict(drive_console.DEFECT, '1 of its 2 backend relay(s) ended, and its ryll is still running',
+                           self.text(ended=('r1',)), exited=False)
+
+    def test_only_other_relays_ended(self):
+        self.assertVerdict(drive_console.DEFECT, '0 of its 2 backend relay(s) ended', self.text(ended=('r9',)))
+
+    def test_no_relay_ended_line_at_all(self):
+        # The ryll exited, so its relays ended; that none is logged means
+        # the message has changed.
+        self.assertVerdict(drive_console.HARNESS, 'no \'relay ended\' line at all', self.text(ended=()))
+
+    def test_a_relay_of_the_displacing_session_ended(self):
+        self.assertVerdict(drive_console.DEFECT, '1 backend relay(s) of session s2, the one which should have '
+                           'displaced session s1, ended too', self.text(ended=('r1', 'r2', 'r3')))
+
+    def test_a_line_which_does_not_parse(self):
+        self.assertVerdict(drive_console.HARNESS, 'cannot see',
+                           self.text(extra=_ended(9, 'r4').replace('connection_ref=', 'ref=')))
+
+    def test_no_connection_for_the_displaced_session(self):
+        text = _leg([('r3', 's2')]) + _ended(9, 'r1')
+        self.assertVerdict(drive_console.HARNESS, 'no %r line for session s1' % drive_console.CONNECTED_ORACLE, text)
 
 
 class DaemonLogTestCase(testtools.TestCase):
@@ -1138,6 +1235,104 @@ class HeldSecretsTestCase(testtools.TestCase):
         self.assertEqual([False, True], [c.get('kerbside_admin', False) for c in claims])
         for token in lane.needles:
             self.assertNotIn(token, err.getvalue())
+
+
+_MINTED = {'password': 'spice-sentinel-8888', 'host': 'pvespiceproxy:6720:100:pve1::sentinel',
+           'proxy': 'http://pve1.example.org:3128', 'tls-port': 61000, 'type': 'spice'}
+
+
+class LaneMintTestCase(testtools.TestCase):
+    def setUp(self):
+        super().setUp()
+        workdir = tempfile.TemporaryDirectory()
+        self.addCleanup(workdir.cleanup)
+        self.lane = _bare_lane(workdir.name)
+        self.lane.node = 'pve1'
+        self.lane.vmid = 100
+        self.lane.token_id = _TOKEN
+        self.lane.documented_file = os.path.join(workdir.name, 'documented')
+        with open(self.lane.documented_file, 'w') as f:
+            f.write('sentinel-documented-1111\n')
+        env = mock.patch.dict(os.environ, {'PROXMOX_API_URL': 'https://pve1.example.org:8006/',
+                                           'PROXMOX_CA_FILE': '/ca.pem'})
+        env.start()
+        self.addCleanup(env.stop)
+
+    def mint(self, response=None, side_effect=None):
+        """Run _lane_mint against a mocked POST; return (the mock, what it printed, the exit or None)."""
+        post = mock.Mock(return_value=response, side_effect=side_effect)
+        out = io.StringIO()
+        err = io.StringIO()
+        exit_ = None
+        with mock.patch.object(requests, 'post', post), redirect_stdout(out), mock.patch.object(sys, 'stderr', err):
+            try:
+                drive_console._lane_mint(self.lane)
+            except SystemExit as e:
+                exit_ = str(e)
+        printed = out.getvalue() + err.getvalue() + (exit_ or '')
+        for value in (_MINTED['password'], _MINTED['host'], 'sentinel-documented-1111'):
+            self.assertNotIn(value, printed)
+        return post, printed, exit_
+
+    def reply(self, data, status=200):
+        return mock.Mock(status_code=status, reason='OK', **{'json.return_value': {'data': data}})
+
+    def test_kerbside_s_request(self):
+        post, _, exit_ = self.mint(self.reply(dict(_MINTED)))
+        self.assertIsNone(exit_)
+        post.assert_called_once_with(
+            'https://pve1.example.org:8006/api2/json/nodes/pve1/qemu/100/spiceproxy',
+            headers={'Authorization': 'PVEAPIToken=kerbside-lane@pve!console=sentinel-documented-1111'},
+            data={'proxy': 'pve1.example.org'}, verify='/ca.pem', timeout=5, proxies={'http': None, 'https': None},
+            allow_redirects=False)
+
+    def test_the_values_are_held(self):
+        _, printed, _ = self.mint(self.reply(dict(_MINTED)))
+        self.assertEqual(['the SPICE password of the lane\'s own mint', 'the connect host of the lane\'s own mint'],
+                         self.lane.needle_descriptions)
+        self.assertEqual([_MINTED['password'], _MINTED['host']], self.lane.needles)
+        self.assertIn('the lane minted a ticket for guest 100 with %s' % _TOKEN, printed)
+
+    def test_a_refusal_is_a_harness_fault_and_holds_nothing(self):
+        response = self.reply(dict(_MINTED), status=403)
+        response.reason = 'Permission check failed'
+        _, printed, exit_ = self.mint(response)
+        self.assertIn('HARNESS FAULT', exit_)
+        self.assertIn('answered 403 Permission check failed', printed)
+        self.assertEqual([], self.lane.needles)
+        response.json.assert_not_called()
+
+    def test_a_failed_request_is_a_harness_fault(self):
+        _, _, exit_ = self.mint(side_effect=requests.exceptions.ConnectionError('refused'))
+        self.assertIn('HARNESS FAULT', exit_)
+        self.assertIn('failed: ConnectionError', exit_)
+
+    def test_a_missing_value_is_a_harness_fault_and_the_other_is_held(self):
+        for missing, kept in (('password', 'host'), ('host', 'password')):
+            self.lane.needles = []
+            data = dict(_MINTED)
+            del data[missing]
+            _, _, exit_ = self.mint(self.reply(data))
+            self.assertIn('HARNESS FAULT', exit_)
+            self.assertIn('without a password and a connect host', exit_)
+            self.assertEqual([_MINTED[kept]], self.lane.needles)
+
+    def test_an_empty_or_odd_value_is_not_held(self):
+        for value in ('', 12345678901, None):
+            self.lane.needles = []
+            data = dict(_MINTED)
+            data['host'] = value
+            _, _, exit_ = self.mint(self.reply(data))
+            self.assertIn('HARNESS FAULT', exit_)
+            self.assertEqual([_MINTED['password']], self.lane.needles)
+
+    def test_a_reply_which_is_not_a_mapping(self):
+        for response in (self.reply(['a', 'list']), self.reply(None),
+                         mock.Mock(status_code=200, reason='OK', **{'json.side_effect': ValueError('not JSON')}),
+                         mock.Mock(status_code=200, reason='OK', **{'json.return_value': ['not', 'a', 'dict']})):
+            _, _, exit_ = self.mint(response)
+            self.assertIn('HARNESS FAULT', exit_)
+            self.assertEqual([], self.lane.needles)
 
 
 class ReadAccessLogTestCase(testtools.TestCase):

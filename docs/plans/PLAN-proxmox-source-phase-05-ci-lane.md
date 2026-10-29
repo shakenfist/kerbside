@@ -239,11 +239,24 @@ line. It is expanded in the planning commit from decisions 1 and
    | After the first scrapes | 0 |
    | After a refused direct `.vv` request (409, audited) | 0 |
    | After the first proxied session's channels have all connected | 1 |
+   | After holding the first session | 1 |
    | After a second session opens while the first is held | 2 |
+   | After the lane's own mint, while the second is held | 3 |
+   | At the end, after terminating the second | 3 |
 
-   The first session must still be passing frames after the
-   second mints. That is supersession, measured on real PVE rather
-   than in the direct-qemu lane. Before relying on the log, step
+   The second session displaces the first. qemu's SPICE server
+   serves one client at a time, and disconnects the client it has
+   when a new client's main channel links, as it does for any
+   SPICE client. So once the second session's channels have
+   connected, the first session's ryll must have exited and the
+   proxy must have logged each of its relays ending, while the
+   second passes frames. The first still running is a defect, "the
+   first session was not displaced". That a password change keeps
+   a connected client is shown instead by the lane minting once
+   itself, with the documented token and kerbside's own request,
+   while the second session is held: the second must still pass
+   frames afterwards. That is measured on real PVE rather than in
+   the direct-qemu lane. Before relying on the log, step
    5.2 confirms its layout from `pve-http-server`'s source, and
    whether it names the token. If it names the token, the count is
    filtered to `kerbside-lane@pve`.
@@ -263,8 +276,9 @@ line. It is expanded in the planning commit from decisions 1 and
    - holds the session past the ticket's 30 seconds and past
      `CONSOLE_TOKEN_DURATION`, and checks that it still passes
      frames;
-   - opens the second session from decision 5;
-   - terminates the first session over REST, and checks that the
+   - opens the second session from decision 5, which displaces
+     the first, and mints once itself while the second is held;
+   - terminates the second session over REST, and checks that the
      proxy dropped it.
 
    New scripts go in `tools/proxmox-e2e/`, built on
@@ -277,8 +291,11 @@ line. It is expanded in the planning commit from decisions 1 and
 
 7. **No live credential reaches an artifact or the log.** Every
    token secret is masked as soon as the runner holds it. The lane
-   itself never mints, so the SPICE passwords and connect hosts
-   exist only inside kerbside. Before upload, the lane scans every
+   mints once itself (decision 5), and never prints, logs or writes
+   that response: its SPICE password and connect host are held in
+   memory for the scan and the redactor, and every other SPICE
+   password and connect host exists only inside kerbside. Before
+   upload, the lane scans every
    artifact for each token secret and the literal
    `pvespiceproxy:`, and fails if it finds any of them. It never
    uploads:
@@ -371,11 +388,13 @@ session runs it and sends each fix back to a sub-agent.
       names 102.
 - [ ] In that run, PVE's access log shows 0 mints after the scrapes
       and after the refused direct `.vv`, 1 after the first
-      session connects, and 2 after the second. The first session
-      still passes frames after the second mint.
-- [ ] In that run, the session survives past 30 seconds and past
-      `CONSOLE_TOKEN_DURATION`, and the proxy drops it on a REST
-      terminate.
+      session connects and after its hold, 2 after the second, and
+      3 after the lane's own mint and at the end. The second
+      session displaces the first, and still passes frames after
+      the lane's own mint.
+- [ ] In that run, the first session survives past 30 seconds and
+      past `CONSOLE_TOKEN_DURATION`, and the proxy drops the second
+      on a REST terminate.
 - [ ] In that run, the token without `VM.Audit` and the token
       without `VM.Console` are refused with 403, and the
       documented token is refused `status/stop`.
@@ -476,6 +495,34 @@ None yet.
   that `deploy-kerbside.sh` makes, which has `requests`, so it runs
   after kerbside has started; its refused calls mint nothing. The
   nightly runs at 05:30 UTC, after the other nightlies.
+- 2026-10-29 AEDT, lane run 40796050420 on a real PVE node. Every
+  check up to the second session passed: discovery listed exactly
+  the smoke guest with its uuid, hypervisor and subject, and the
+  daemon log named guest 102; the direct `.vv` was refused 409 and
+  audited; the first session minted once, its four backend legs
+  were tunnelled, over TLS, and pinned to the node's subject; it
+  passed frames after a hold past its ticket's and its token's
+  expiry; and PVE's access log counted 0, 0, 1, 1 and then 2 mints
+  once the second session had connected. The second session's mint
+  (`set_password` and `expire_password`) landed at 01:15:50.70 UTC
+  and the first session survived it. At 01:15:50.812, while the
+  second session's main channel linked to qemu, between its
+  `main: authenticating...` at .770 and `main: connected
+  successfully` at .818, qemu closed all four of the first
+  session's backend connections (`relay ended with error ... peer
+  closed connection without sending TLS close_notify`), and the
+  first ryll exited. That is spice-server's default single-client
+  behaviour, which disconnects the existing client when a new
+  client's main channel links. It is not a kerbside defect;
+  decision 5's expectation that the first session survives a
+  second was wrong. Mikal decided that the lane expects the
+  displacement, and keeps a real-PVE proof that a password change
+  alone keeps a connected client. So the lane now asserts that the
+  second session displaces the first, then mints once itself with
+  the documented token while the second is held, and asserts that
+  the second still passes frames; it terminates the second rather
+  than the first. Decisions 5 to 7 and the Definition of done were
+  corrected to match.
 
 ## Outcome
 

@@ -831,12 +831,24 @@ What it asserts, in short:
   a `std` display, no SMBIOS UUID or a stopped state, and a template
   when PVE accepts a diskless one;
 - PVE's own access log shows the expected number of `spiceproxy`
-  mints at each checkpoint, so supersession is measured on real PVE;
+  mints at each checkpoint: none after the scrape and the refused
+  direct `.vv`, one once the first session's channels have connected
+  and still one after it is held, two once a second session's have,
+  and three after the lane's own mint and at the end. So a session's
+  channels share one ticket, on real PVE;
 - the backend leg is tunnelled, TLS, and pinned to the node's
   subject, and a session survives past its 30 second ticket and
   `CONSOLE_TOKEN_DURATION`;
-- no token secret, backend ticket, `.vv` password, API JWT or
-  `pvespiceproxy:` reaches an uploaded artifact.
+- the second session displaces the first, because qemu's SPICE
+  server serves one client at a time: the first session's ryll exits
+  and the proxy logs each of its relays ending, while the second
+  passes frames. Then the lane mints one ticket itself, as kerbside
+  does, and the second session still passes frames, which shows on
+  real PVE that a password change keeps a connected client.
+  Terminating the second session over REST drops it;
+- no token secret, backend ticket, `.vv` password, API JWT, value
+  from the lane's own mint or `pvespiceproxy:` reaches an uploaded
+  artifact.
 
 Like the oVirt lane, its oracles keep a harness fault apart from a
 defect (see "Log-derived oracles" above), and the mint count adds a

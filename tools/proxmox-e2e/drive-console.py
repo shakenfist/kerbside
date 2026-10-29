@@ -24,16 +24,25 @@ and registered a "type: proxmox" source against the lane's PVE node. It:
   4. holds the session until 30 seconds past both the backend ticket's 30
      seconds and the .vv token's CONSOLE_TOKEN_DURATION, and asserts it
      still passes frames;
-  5. opens a second session while the first is held, and asserts the first
-     still passes frames after the second has minted: the second mint
-     replaced the guest's SPICE password, which must not disconnect a
-     client already linked;
-  6. terminates the first session over the REST API, and asserts that the
-     proxy dropped its channels and not the second session's;
-  7. scans every file the lane uploads for each token secret, the auth seed,
+  5. opens a second session while the first is held, and asserts that it
+     displaced the first: qemu's SPICE server serves one client at a time,
+     and disconnects the client it has when a new client's main channel
+     links, so the first session's ryll must have exited and the proxy must
+     have logged each of its backend relays ending, while none of the
+     second's ended. The second must pass frames;
+  6. while the second session is held, mints one ticket itself with the
+     documented token, as kerbside does, and asserts the second session
+     still passes frames: a mint replaces the guest's SPICE password, which
+     must not disconnect a client already linked. That is the one thing
+     the lane mints itself, and nothing in PVE's response is printed,
+     logged or written;
+  7. terminates the second session over the REST API, and asserts that the
+     proxy dropped its channels;
+  8. scans every file the lane uploads for each token secret, the auth seed,
      each session's backend ticket, the password in each proxied .vv (kerbside's
-     own console token), each API JWT and the literal "pvespiceproxy:", and
-     removes any file that holds one.
+     own console token), each API JWT, the password and connect host of the
+     lane's own mint and the literal "pvespiceproxy:", and removes any file
+     that holds one.
 
 At each checkpoint it counts mints in PVE's own access log, rather than
 trusting kerbside's account of them:
@@ -43,7 +52,8 @@ trusting kerbside's account of them:
     after the first session's channels have connected     1
     after holding the first session                       1
     after the second session's channels have connected    2
-    at the end, after the terminate                       2
+    after the lane's own mint                             3
+    at the end, after the terminate                       3
 
 PVE'S ACCESS LOG. pveproxy and spiceproxy both write
 /var/log/pveproxy/access.log, through pve-http-server's
@@ -90,27 +100,30 @@ deploy-kerbside.sh. WORKDIR defaults to /tmp/kerbside-proxmox-ci and may be
 overridden by the WORKDIR environment variable or --workdir (the argument
 wins).
 
-With --scan-only it does nothing but step 7, without the backend tickets,
-.vv passwords and API JWTs, which it cannot know. Run that before uploading
+With --scan-only it does nothing but step 8, without the values the drive
+held in memory: the backend tickets, the .vv passwords, the API JWTs and
+the lane's own mint, which it cannot know. Run that before uploading
 artifacts on every run, so that a drive which was cut short is scanned too.
 A drive killed by its step timeout may not reach its own scan, and then
-those three are searched for by neither: the artifacts are scanned only for
-the file-backed secrets and the literal. The backend tickets expire within
-TICKET_LIFETIME, and the .vv tokens within CONSOLE_TOKEN_DURATION, but the
-API JWTs stay valid for JWT_LIFETIME after they were minted.
+those values are searched for by neither: the artifacts are scanned only
+for the file-backed secrets and the literal. The backend tickets and the
+lane's own mint expire within TICKET_LIFETIME, and the .vv tokens within
+CONSOLE_TOKEN_DURATION, but the API JWTs stay valid for JWT_LIFETIME after
+they were minted.
 
 With --redact it copies its standard input to its standard output with
 every value the scan looks for, and every connect host, replaced by
 REDACTED, so that a shell script can print a log tail; see redact().
 
 SECURITY: the token secrets, the auth seed, the API JWTs, the .vv bodies,
-the backend tickets and the connect hosts are NEVER printed or logged.
-Anything read from a file or another process for printing, such as a log
-tail for diagnosis, goes through _redacted() first, as does every verdict.
-Each backend ticket is read from the database as soon as it is minted,
-and only its length is reported. It, each .vv's password and each API JWT
-are held in memory to search the artifacts for them. The scan
-reports file names and what was found in them, never the value.
+the backend tickets, PVE's response to the lane's own mint and the connect
+hosts are NEVER printed or logged. Anything read from a file or another
+process for printing, such as a log tail for diagnosis, goes through
+_redacted() first, as does every verdict. Each backend ticket is read from
+the database as soon as it is minted, and only its length is reported. It,
+each .vv's password, each API JWT and the password and connect host of the
+lane's own mint are held in memory to search the artifacts for them. The
+scan reports file names and what was found in them, never the value.
 Exits non-zero on any failure.
 """
 
@@ -124,6 +137,7 @@ import shlex
 import subprocess
 import sys
 import time
+import urllib.parse
 import uuid as uuidlib
 
 
@@ -145,8 +159,7 @@ UPLOADED_FILES = (
     'smoke-client-1.log',
     'smoke-client-1-held.log',
     'smoke-client-2.log',
-    'smoke-client-1-superseded.log',
-    'smoke-client-2-after-terminate.log',
+    'smoke-client-2-after-mint.log',
 )
 
 # The kinds of verdict an oracle gives. Only OK passes.
@@ -175,14 +188,16 @@ MintCount = collections.namedtuple('MintCount', 'mints refused requests scrapes 
 _TOKEN_ID = re.compile(r'^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+![A-Za-z0-9._-]+$')
 
 # Proxy log oracles, asserted against the kerbside daemon log, which carries
-# the Rust proxy's tracing output. The first three must stay in step with
-# the CI-ORACLE-marked info! sites in rust/kerbside-proxy/src/backend.rs and
+# the Rust proxy's tracing output. The first four must stay in step with
+# the CI-ORACLE-marked sites in rust/kerbside-proxy/src/backend.rs and
 # relay.rs. The connection line carries tunnelled=, session_id= and
 # connection_ref= fields; a tunnelled leg never escalates, so the escalation
-# line must be absent.
+# line must be absent. A relay logs RELAY_ENDED_ORACLE, as "relay ended" or
+# "relay ended with error", with its connection_ref, however it ended.
 CONNECTED_ORACLE = 'hypervisor connection successful; handing off to relay'
 TLS_ESCALATION_ORACLE = 'hypervisor requires TLS; retrying backend connection over the secure port'
 TERMINATE_ORACLE = 'session terminated by control plane'
+RELAY_ENDED_ORACLE = 'relay ended'
 
 # The ryll protocol crate's client, which the proxy dials the backend with,
 # logs these; deploy-kerbside.sh raises that module to debug so that it
@@ -236,6 +251,11 @@ SETTLE = 5
 TICKET_POLL_INTERVAL = 0.25
 TICKET_GRACE = 3
 TICKET_CHANNEL_TIMEOUT = 60
+
+# How long after the second session's channels have settled the first
+# session has to show it was displaced: its ryll exited and each of its
+# relays logged as ended.
+DISPLACE_TIMEOUT = 15
 
 # How far past the later of the backend ticket's and the .vv token's expiry
 # the first session is held, and the longest hold allowed: with the default
@@ -479,11 +499,13 @@ def proxy_log_facts(text):
       pins          the subject of each certificate check against a pin;
       rejections    how many certificates a pin rejected;
       terminated    the connection_ref of each relay the control plane ended;
+      ended         the connection_ref of each relay which ended, however it
+                    did;
       unparseable   a description of each line which carried a needle but not
                     the fields this needs.
     """
     facts = {'connections': [], 'escalations': 0, 'tls_dials': 0, 'other_dials': 0, 'pins': [],
-             'rejections': 0, 'terminated': [], 'unparseable': []}
+             'rejections': 0, 'terminated': [], 'ended': [], 'unparseable': []}
     for line in strip_ansi(text).splitlines():
         offset = line.find(CONNECTED_ORACLE)
         if offset != -1:
@@ -517,6 +539,15 @@ def proxy_log_facts(text):
                 facts['terminated'].append(ref)
             continue
 
+        offset = line.find(RELAY_ENDED_ORACLE)
+        if offset != -1:
+            ref = _field('connection_ref', line[offset + len(RELAY_ENDED_ORACLE):])
+            if ref is None:
+                facts['unparseable'].append('a relay ended line without a connection_ref')
+            else:
+                facts['ended'].append(ref)
+            continue
+
         offset = line.find(CRATE_CLIENT_TARGET)
         if offset == -1:
             continue
@@ -545,6 +576,44 @@ def terminated_sessions(facts):
     """The sessions at least one of whose relays the control plane ended."""
     sessions = {c['connection_ref']: c['session_id'] for c in facts['connections']}
     return {sessions[ref] for ref in facts['terminated'] if ref in sessions}
+
+
+def displacement_verdict(facts, displaced, displacing, exited):
+    """Judge whether session displacing displaced session displaced, once its channels have connected.
+
+    qemu's SPICE server serves one client at a time: when a new client's
+    main channel links, it disconnects the client it had. So every backend
+    relay of displaced must have ended, its ryll must have exited (exited
+    says whether it has), and no relay of displacing may have ended.
+    displaced still running with none of its relays ended is the surprise,
+    reported as a defect. Returns (kind, message).
+    """
+    if facts['unparseable']:
+        return HARNESS, ('%d proxy log line(s) carried an oracle but not the fields it needs (%s); the log format '
+                         'has changed and this check cannot see' % (len(facts['unparseable']),
+                                                                    '; '.join(sorted(set(facts['unparseable'])))))
+    refs = {c['connection_ref'] for c in facts['connections'] if c['session_id'] == displaced}
+    if not refs:
+        return HARNESS, ('the proxy logged no %r line for session %s, so its relays cannot be followed; the '
+                         'message has changed' % (CONNECTED_ORACLE, displaced))
+    ended = set(facts['ended'])
+    taken = [c for c in facts['connections'] if c['session_id'] == displacing and c['connection_ref'] in ended]
+    if taken:
+        return DEFECT, ('%d backend relay(s) of session %s, the one which should have displaced session %s, ended '
+                        'too' % (len(taken), displacing, displaced))
+    gone = len(refs & ended)
+    if not exited and not gone:
+        return DEFECT, ('the first session was not displaced: session %s\'s ryll is still running and none of its '
+                        '%d backend relay(s) ended once session %s linked, although qemu\'s SPICE server serves '
+                        'one client at a time' % (displaced, len(refs), displacing))
+    if not ended:
+        return HARNESS, ('session %s\'s ryll exited but the proxy log holds no %r line at all, so its relays cannot '
+                         'be seen to end; the message has changed' % (displaced, RELAY_ENDED_ORACLE))
+    if gone < len(refs) or not exited:
+        return DEFECT, ('session %s was displaced only in part: %d of its %d backend relay(s) ended, and its ryll '
+                        '%s' % (displaced, gone, len(refs), 'exited' if exited else 'is still running'))
+    return OK, ('session %s displaced session %s: all %d of its backend relay(s) ended and its ryll exited, as '
+                'qemu\'s SPICE server serves one client at a time' % (displacing, displaced, len(refs)))
 
 
 def backend_leg_verdict(facts, session_ids, expected_subject):
@@ -901,6 +970,8 @@ class Lane:
         with open(os.environ['PROXMOX_LANE_FILE']) as f:
             lane = json.load(f)
         self.token_id = lane['tokens']['documented']['token_id']
+        # Read only for the lane's own mint; see _lane_mint().
+        self.documented_file = lane['tokens']['documented']['secret_file']
         self.skipped = {rule: vmid for rule, vmid in lane['skipped_guests'].items() if vmid is not None}
         # The values the drive holds in memory that the scan must look for,
         # and in parallel what each is, so that the two are never held
@@ -947,6 +1018,54 @@ def _api_config(path):
     if r.status_code != 200:
         _require(HARNESS, 'GET %s with the action\'s token returned %d %s' % (path, r.status_code, r.reason))
     return r.json().get('data') or {}
+
+
+def _lane_mint(lane):
+    """Mint one ticket for the smoke guest with the documented token, as kerbside does.
+
+    It makes kerbside's own request: a POST to spiceproxy asking for a
+    CONNECT proxy on the host the API is reached on. PVE replaces the
+    guest's SPICE password and sets it to expire, which is what a connected
+    client must survive. Nothing in the response is printed, logged or
+    written: its password and its connect host are held for the scan and
+    the redactor as soon as it is read, and the response is dropped.
+    """
+    import requests
+
+    api_url = os.environ['PROXMOX_API_URL']
+    with open(lane.documented_file) as f:
+        header = 'PVEAPIToken=%s=%s' % (lane.token_id, f.read().strip())
+    path = '/nodes/%s/qemu/%d/spiceproxy' % (lane.node, lane.vmid)
+    try:
+        r = requests.post(api_url.rstrip('/') + '/api2/json' + path, headers={'Authorization': header},
+                          data={'proxy': urllib.parse.urlsplit(api_url).hostname},
+                          verify=os.environ['PROXMOX_CA_FILE'], timeout=REQUEST_TIMEOUT,
+                          proxies={'http': None, 'https': None}, allow_redirects=False)
+    except requests.exceptions.RequestException as e:
+        _require(HARNESS, 'the lane\'s own POST %s failed: %s' % (path, e.__class__.__name__))
+    del header
+    # The status only: an accepted request's body is a ticket.
+    if r.status_code != 200:
+        _require(HARNESS, 'the lane\'s own POST %s was answered %d %s' % (path, r.status_code, r.reason))
+    try:
+        reply = r.json().get('data')
+    except (ValueError, AttributeError):
+        reply = None
+    del r
+    if not isinstance(reply, dict):
+        reply = {}
+    held = 0
+    for field, description in (('password', 'the SPICE password of the lane\'s own mint'),
+                               ('host', 'the connect host of the lane\'s own mint')):
+        value = reply.get(field)
+        if isinstance(value, str) and value:
+            lane.remember(description, value)
+            held += 1
+    del reply
+    if held != 2:
+        _require(HARNESS, 'the lane\'s own POST %s was answered 200 without a password and a connect host; the '
+                 'response\'s format has changed' % path)
+    _log('the lane minted a ticket for guest %d with %s' % (lane.vmid, lane.token_id))
 
 
 def _discover(db, lane, timeout=180):
@@ -1244,15 +1363,23 @@ def _drive(lane):
         first.smoke('smoke-client-1-held.log')
         lane.checkpoint('after holding the first session', 1, [s1])
 
-        # 5. A second session, while the first is held. Its mint replaces
-        # the guest's SPICE password; the first must not notice.
+        # 5. A second session, while the first is held. qemu's SPICE server
+        # serves one client at a time, so the second displaces the first.
         second, s2 = _open_session(db, lane, headers, 2, {s1})
         _capture_ticket(db, lane, s2, 'session 2\'s backend ticket')
-        second.smoke('smoke-client-2.log')
         _wait_for_channels(lane, s2)
         lane.checkpoint('after the second session\'s channels have connected', 2, [s1, s2])
-        first.smoke('smoke-client-1-superseded.log')
-        _log('session %s still passes frames after session %s minted' % (s1, s2))
+        deadline = time.time() + DISPLACE_TIMEOUT
+        while True:
+            kind, message = displacement_verdict(proxy_log_facts(_read_text(lane.log_path)), s1, s2,
+                                                 first.proc.poll() is not None)
+            if kind == OK or time.time() >= deadline:
+                break
+            time.sleep(1)
+        if kind != OK:
+            _log('  kerbside daemon (proxy) log:\n%s' % _tail(lane.log_path, 60))
+        _require(kind, message)
+        second.smoke('smoke-client-2.log')
         _require(*backend_leg_verdict(proxy_log_facts(_read_text(lane.log_path)), {s1, s2}, expected_subject))
 
         audited = [e for e in db.get_audit_events(lane.source, lane.console_uuid, limit=500)
@@ -1260,32 +1387,36 @@ def _drive(lane):
         if len(audited) != 2:
             _require(DEFECT, 'kerbside audited %d mints for the two sessions, where PVE logged 2' % len(audited))
 
-        # 6. Terminate the first session while ryll is connected.
-        _log('terminating session %s via the kerbside REST API' % s1)
-        resp = requests.post('%s/session/%s/terminate' % (lane.api, s1), headers=headers, timeout=15)
+        # 6. A mint by the lane itself, while the second session is held. It
+        # replaces the guest's SPICE password; the second must not notice.
+        _lane_mint(lane)
+        lane.checkpoint('after the lane\'s own mint', 3, [s1, s2])
+        second.smoke('smoke-client-2-after-mint.log')
+        _log('session %s still passes frames after the lane minted' % s2)
+
+        # 7. Terminate the second session while ryll is connected.
+        _log('terminating session %s via the kerbside REST API' % s2)
+        resp = requests.post('%s/session/%s/terminate' % (lane.api, s2), headers=headers, timeout=15)
         if resp.status_code != 200:
-            _require(DEFECT, 'terminating session %s returned HTTP %d' % (s1, resp.status_code))
+            _require(DEFECT, 'terminating session %s returned HTTP %d' % (s2, resp.status_code))
         # The daemon polls for terminations every ~2s.
         deadline = time.time() + 30
-        while s1 not in terminated_sessions(proxy_log_facts(_read_text(lane.log_path))):
+        while s2 not in terminated_sessions(proxy_log_facts(_read_text(lane.log_path))):
             if time.time() >= deadline:
                 _log('  kerbside daemon (proxy) log:\n%s' % _tail(lane.log_path, 60))
                 _require(DEFECT, 'the proxy did not log %r for session %s within 30s of the terminate'
-                         % (TERMINATE_ORACLE, s1))
+                         % (TERMINATE_ORACLE, s2))
             time.sleep(1)
-        if s2 in terminated_sessions(proxy_log_facts(_read_text(lane.log_path))):
-            _require(DEFECT, 'terminating session %s also ended session %s' % (s1, s2))
-        _log('the proxy dropped session %s and not session %s' % (s1, s2))
+        _log('the proxy dropped session %s' % s2)
         try:
-            first.proc.wait(timeout=15)
-            _log('ryll 1 exited as its channels closed (code %s)' % first.proc.returncode)
+            second.proc.wait(timeout=15)
+            _log('ryll 2 exited as its channels closed (code %s)' % second.proc.returncode)
         except subprocess.TimeoutExpired:
-            _log('ryll 1 still running 15s after the drop; proceeding on the log oracle alone')
-        second.smoke('smoke-client-2-after-terminate.log')
-        if db.get_token_by_session_id(s1) is not None:
-            _require(DEFECT, 'session %s still has a token after the terminate' % s1)
+            _log('ryll 2 still running 15s after the drop; proceeding on the log oracle alone')
+        if db.get_token_by_session_id(s2) is not None:
+            _require(DEFECT, 'session %s still has a token after the terminate' % s2)
 
-        lane.checkpoint('at the end', 2, [s1, s2])
+        lane.checkpoint('at the end', 3, [s1, s2])
     finally:
         first.stop()
         if second is not None:
@@ -1300,9 +1431,9 @@ def main():
                         help='the deploy-kerbside.sh work directory (default: $WORKDIR, or %s)' % DEFAULT_WORKDIR)
     parser.add_argument('--scan-only', action='store_true',
                         help='only scan the files the lane uploads for secrets, removing any which holds one; '
-                        'it cannot know the backend tickets, .vv passwords and API JWTs a drive held in memory, '
-                        'so after a drive killed by its step timeout those go unscanned, and its API JWTs stay '
-                        'valid for %ds after they were minted' % JWT_LIFETIME)
+                        'it cannot know the backend tickets, .vv passwords, API JWTs and lane\'s own mint a drive '
+                        'held in memory, so after a drive killed by its step timeout those go unscanned, and its '
+                        'API JWTs stay valid for %ds after they were minted' % JWT_LIFETIME)
     parser.add_argument('--redact', action='store_true',
                         help='copy standard input to standard output with every value the scan looks for, and '
                         'every connect host, replaced by %s' % REDACTED)
