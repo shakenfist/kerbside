@@ -215,6 +215,11 @@ Guides for working on Kerbside itself:
   Why the transcoder is not being productised, what it costs per
   session, and what would change the answer
 
+- [A SPICE helper on qemu's D-Bus display, on a shaped link](performance/dbus-helper-measurements.md) -
+  andris on qemu's D-Bus display against qemu's own spice-server, with
+  and without streaming, on links down to 2 Mbit: latency, qemu and
+  helper CPU and memory, and image quality
+
 ### Architecture Documentation
 
 Internal design of the Kerbside proxy:
