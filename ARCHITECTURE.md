@@ -414,6 +414,8 @@ rust/kerbside-proxy/   # The Rust SPICE proxy (binary crate)
   src/                 # listeners, TLS, handshake, backend leg, relay,
                        #   firewall (policy.rs/allowlist.rs), gRPC client
 etc/                   # Configuration examples
+ansible/               # The shakenfist.kerbside collection and its
+                       #   kerbside role
 demo/                  # Three-container compose demo: MariaDB, a
                        #   disk-less qemu SPICE target, and kerbside
                        #   running both processes. The worked example
@@ -467,7 +469,8 @@ loadtests/             # Load testing tools
   latency/             # Latency loadtest (orchestrator.py + Dockerfile)
 docs/                  # Operator, developer, and protocol documentation
   spice/               # SPICE protocol reference
-  use-cases/           # Per-deployment and topology guides
+  deployment/          # One page per deployment mechanism
+  use-cases/           # Per-cloud and topology guides
   plans/               # Point-in-time plan records, not living docs
 ```
 
@@ -501,4 +504,5 @@ For detailed SPICE protocol documentation, see the
 - [Capabilities](docs/spice/capabilities.md) - Feature negotiation
 - [Proxy Architecture](docs/proxy-architecture.md) - Internal proxy design details
 - [Network Ports](docs/network-ports.md) - Every port Kerbside listens on or dials, and why
-- [Use Cases](docs/index.md#use-cases) - Per-deployment and topology guides
+- [Use Cases](docs/index.md#use-cases) - Per-cloud and topology guides
+- [Deployment Options](docs/index.md#deployment-options) - One page per deployment mechanism: by hand, Ansible, Kolla-Ansible, containers
