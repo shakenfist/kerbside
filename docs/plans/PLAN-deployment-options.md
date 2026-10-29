@@ -259,7 +259,7 @@ would creep back in. **Recommendation: yes.** Extend
 | 3. OpenStack: Kolla-Ansible, and Kerbside in front of OpenStack | [PLAN-deployment-options-phase-03-openstack.md](PLAN-deployment-options-phase-03-openstack.md) | Complete | d159d17 |
 | 4. Containers: compose beyond the demo, and Kubernetes | [PLAN-deployment-options-phase-04-containers.md](PLAN-deployment-options-phase-04-containers.md) | Complete | 46a03a6 |
 | 5. Ansible: the `kerbside` role | [PLAN-deployment-options-phase-05-ansible.md](PLAN-deployment-options-phase-05-ansible.md) | Complete | c1f5938 |
-| 6. Installation hand-off and closeout | [PLAN-deployment-options-phase-06-installation.md](PLAN-deployment-options-phase-06-installation.md) | In progress | |
+| 6. Installation hand-off and closeout | [PLAN-deployment-options-phase-06-installation.md](PLAN-deployment-options-phase-06-installation.md) | Complete | eebb1b2 |
 | 7. Push audit | | Not started | |
 
 **Phase 1: survey, matrix and scaffolding.** Re-check the
