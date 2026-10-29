@@ -148,6 +148,8 @@ these.
      from fa49784, 2026-09-26).
    - The transcoding pages after fa49784 still report H.264,
      which argues against the proxy. Step 1 settles it.
+   - *Settled by step 1:* the proxy is not the cause. Ryll's own
+     preference order changed (see Execution notes).
 7. **The patched library can be swapped under Debian's qemu.**
    qemu's spice support is a module, `ui-spice-core.so`, linked
    against `libspice-server.so.1`. A wrapper script that sets
@@ -462,7 +464,55 @@ Report in at most 400 words.
 
 ## Execution notes
 
-None yet.
+**Back brief, 2026-10-30 (AEDT).** Mikal answered all three
+points as recommended:
+- the re-scope stands;
+- the series is `disposition: submit`, and he sends it;
+- this session may push and open both pull requests, the
+  kerbside-patches one and this one.
+
+The kerbside-patches work is in the worktree
+`kerbside-patches-wt-spice`, on the branch `spice-server-series`.
+
+**Step 1, 2026-10-30.**
+- **`upstream/spice/rig/build-spice.sh` builds v0.15.2 and master
+  (adeb620a04).** `meson test` passes 25 of 25 on each.
+  - The meson options and compiler flags are Debian's.
+  - The `-D` features are named explicitly, so a missing
+    dependency fails the build.
+  - master needs spice-protocol 0.14.5, newer than trixie's
+    0.14.3, so the script builds that into a private prefix.
+- **The swap is neutral.** At 80 ms / 10 Mbit, busy, `all`, four
+  repeats, the system library measured 101.0 / 114.5 ms (p50 /
+  p95) and the v0.15.2 build 100.8 / 114.8 ms. Per-repeat p50s
+  ranged from 99.1 to 103.7 ms, so the difference is well inside
+  the spread. `/proc/<pid>/maps` confirmed which library each
+  qemu loaded.
+- **The review made the script refuse to remove a non-empty
+  `OUTPUT_DIR`** that is not one of its own earlier builds.
+- **Survey finding 6 was wrong about the cause.** The proxy
+  relays the client's codec preference correctly. Ryll changed
+  the order it asks for:
+  - ryll 50a9cc0 (2026-09-24), which the streaming re-baseline
+    used, asked for H.264 and then MJPEG;
+  - 24a80c0 (2026-10-11) stopped offering H.264;
+  - 15cd776 (2026-10-16), contained in the 0d140b3 that every
+    later page used, asks for MJPEG first.
+
+  The ack-window, transcoding-measurement and transcoding-spike
+  pages repeated the re-baseline's H.264 caveat, but their own
+  raw runs sent only MJPEG: 252 and 2887 MJPEG `stream_create`s,
+  and no H.264. Step 5 corrects those pages at their source.
+- **Decision 8 needs no direct connection.** With
+  `RYLL_ARGS=--experimental-h264`, spice-server logs H.264 as
+  the preferred codec and builds 21 x264enc pipelines through
+  the proxy. ryll#398 still holds, so Ryll does not decode those
+  streams: the encoder rows measure latency and whether the
+  hardware encoder engages, not rendered video.
+- The shared rig artefacts (proxy built from dd4f56f, ryll
+  0d140b3 with the rect patch, the guest, and the spice builds)
+  are in the session scratchpad's `p5rig/`. Its `env.sh` names
+  every commit.
 
 ## Back brief
 
