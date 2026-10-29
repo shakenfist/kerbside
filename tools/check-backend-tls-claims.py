@@ -3,17 +3,34 @@
 """Fail when documentation claims the backend leg is TLS'd or pinned
 without naming the condition under which that is true.
 
-The Kerbside-to-hypervisor ("backend") leg is conditional in three
-ways, all in rust/kerbside-proxy/src/backend.rs. The proxy dials the
+The Kerbside-to-hypervisor ("backend") leg has two shapes, both
+built in rust/kerbside-proxy/src/backend.rs, and `dial` (:213-219)
+picks between them on whether the target carries a tunnel.
+
+A direct target is conditional in three ways. The proxy dials the
 insecure port first and escalates to TLS only inside
-`if is_need_secured(&first_err) && target.secure_port != 0` (:85-115),
-so TLS happens when the hypervisor rejects plaintext by asking for a
-secure connection and there is a secure port to escalate to. An empty
-host_subject maps to None (:206), so the subject is pinned only when
-the source supplied one -- an empty one silently disables
-verification. An empty ca_cert maps to None too, which leaves the
-target checked against the public web trust store that an internal
-certificate will not satisfy.
+`if !is_need_secured(&first_err) || target.secure_port == 0 { return
+Err(first_err); }` (:294, in `connect_direct`, :284-318), so TLS
+happens when the hypervisor rejects plaintext by asking for a secure
+connection and there is a secure port to escalate to. An empty
+host_subject maps to None (:356-360), so the subject is pinned only
+when the source supplied one -- an empty one silently disables
+verification. An empty ca_cert maps to None too (:346-350), which
+leaves the target checked against the public web trust store that an
+internal certificate will not satisfy.
+
+A tunnelled target has no plaintext SPICE attempt to escalate from.
+It is dialled once (`connect_once`, called at :216): a plaintext HTTP
+CONNECT to its proxy, then a SPICE session that is TLS only inside
+it. A tunnel without a host_subject is refused rather than relayed
+unpinned (the refusal is SpiceClient::new's, noted at :367-368). The
+ca_cert mapping above still applies.
+
+`tunnel` and `tunnelled` are deliberately not condition words. On a
+page about a tunnel-only source nearly every block names the tunnel,
+so the word would exempt the whole page. Such a page states the real
+condition in the existing vocabulary instead: a tunnel `without` a
+subject is refused, and a VM is reached `only` through the proxy.
 
 Five consecutive phases of PLAN-use-case-docs.md stated that leg more
 strongly than the code supports, and three of the five were caught by

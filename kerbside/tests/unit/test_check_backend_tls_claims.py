@@ -48,6 +48,22 @@ CONFIGURED = """- **The WAN leg is encrypted end to end.** Kerbside connects
   subject it was given, so the long hop is always protected.
 """
 
+# A tunnel-only source's bullet. The strong claim is true there, but
+# only because of two facts the block states, in words the vocabulary
+# already has: a VM is reached `only` through the proxy, and a tunnel
+# `without` a subject is refused. `tunnel` is not a condition word.
+TUNNEL_CONDITIONAL = """- **The backend leg is TLS and pinned, because there is only one
+  way in.** Kerbside reaches a VM only through the proxy, so every
+  backend connection is a tunnel, dialled once over TLS. A tunnel
+  without a node certificate subject is refused.
+"""
+
+# The same bullet with its condition sentences removed.
+TUNNEL_UNCONDITIONAL = """- **The backend leg is TLS and pinned.** Every backend connection
+  is a tunnel, dialled once over TLS, and the tunnel pins the
+  certificate subject of the node.
+"""
+
 
 def _claims(markdown):
     """Run the check over a temporary file and return its findings."""
@@ -71,6 +87,21 @@ class ClaimDetectionTestCase(testtools.TestCase):
 
     def test_naming_the_condition_passes(self):
         self.assertEqual([], _claims(CONDITIONAL))
+
+    def test_a_tunnel_page_naming_its_condition_passes(self):
+        """A tunnel-only page states its condition with `only`/`without`."""
+        self.assertEqual([], _claims(TUNNEL_CONDITIONAL))
+
+    def test_naming_the_tunnel_is_not_naming_a_condition(self):
+        """`tunnel` is not a condition word.
+
+        Nearly every block on a tunnel-only page names the tunnel, so
+        the word would exempt the whole page.
+        """
+        found = _claims(TUNNEL_UNCONDITIONAL)
+
+        self.assertEqual(1, len(found))
+        self.assertIn('TLS and pinned', found[0][1])
 
     def test_configured_alone_does_not_exempt_a_block(self):
         """`configured` is a noun modifier, not a condition marker.
