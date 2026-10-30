@@ -303,43 +303,43 @@ reports names and counts only.
 
 ## Definition of done
 
-- [ ] 6a ran `wave1.sh` four times, once per merge carrying Python or
+- [x] 6a ran `wave1.sh` four times, once per merge carrying Python or
       shell. The execution notes give each exit code and the
       per-merge flake8 result.
-- [ ] 6a recorded `rust.yml`'s conclusion and run ID for 5204616,
+- [x] 6a recorded `rust.yml`'s conclusion and run ID for 5204616,
       eab2c57, 9d1b64d, bba7115 and 7919ead, and for the newest
       `develop` run with its transcode steps, or the result of the
       Docker run that replaced a missing one.
-- [ ] 6c ran `wave2-mechanical.sh` seven times, likewise.
-- [ ] 6g either cited an existing ryll audit covering `fdb5ead5b4`, or
+- [x] 6c ran `wave2-mechanical.sh` seven times, likewise.
+- [x] 6g either cited an existing ryll audit covering `fdb5ead5b4`, or
       ran ryll's wave 1 over it and recorded the exit code.
-- [ ] 6h recorded a verdict on each of the floor checklist's five items
+- [x] 6h recorded a verdict on each of the floor checklist's five items
       for kerbside-patches, and the `pre-commit` result per hook.
-- [ ] *Outcome* lists every finding from 6a to 6i, each with a
+- [x] *Outcome* lists every finding from 6a to 6i, each with a
       verdict: fixed in a named repository's follow-up, declined (with
       the reason), or filed (with the issue). If there are none, it
       says so in one sentence.
-- [ ] Every finding *Outcome* accepts was reproduced against the tree
+- [x] Every finding *Outcome* accepts was reproduced against the tree
       by the management session.
-- [ ] *Outcome* gives a verdict on each floor item for kerbside (items
+- [x] *Outcome* gives a verdict on each floor item for kerbside (items
       2 to 5) and for kerbside-patches (items 1 to 5).
-- [ ] `git rev-parse` resolves every SHA in the master plan's phase 1
+- [x] `git rev-parse` resolves every SHA in the master plan's phase 1
       to 5 `Merged` cells, in the repository each names. Checked with:
       `grep -o '[0-9a-f]\{7,\}' <(grep '^| [1-5]\.' docs/plans/PLAN-spice-performance.md | cut -d'|' -f5)`,
       each SHA tried against kerbside, kerbside-patches, ryll and
       andris.
-- [ ] The private-data probe over the text this phase adds prints
+- [x] The private-data probe over the text this phase adds prints
       nothing else:
       `git diff origin/develop -- docs/plans/ | grep '^+' | grep -n -E '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}|\b([0-9]{1,3}\.){3}[0-9]{1,3}\b|stillhq|kasm|home\.|/tmp/claude|BEGIN [A-Z ]*PRIVATE KEY|password *[:=] *[^ <]'`.
       The probe's own line in this plan matches itself and is
       expected. Any other hit is removed, or shown to be a public
       example address.
-- [ ] `git status --short` is empty in this worktree, and every
+- [x] `git status --short` is empty in this worktree, and every
       detached worktree the agents created has been removed
       (`git worktree list` in kerbside, kerbside-patches and ryll).
-- [ ] Phase 6's status in the master plan and `docs/plans/index.md`
+- [x] Phase 6's status in the master plan and `docs/plans/index.md`
       matches decision 7, and the plan's status stays `In progress`.
-- [ ] `pre-commit run --all-files` passes.
+- [x] `pre-commit run --all-files` passes.
 
 ## Bugs fixed during this work
 
@@ -351,11 +351,209 @@ None yet.
 
 ## Execution notes
 
-None yet.
+- 2026-10-31 AEDT, back brief. Mikal kept decision 6 (the audit runs
+  with phase 2's kernel submission outstanding), decisions 4 and 5 (6i
+  reviews the carried qemu series, 6g audits ryll #406), and decision 7
+  (fixes in follow-up pull requests, one per repository). He gave this
+  session permission to push and open the pull request once the
+  definition of done passes, and to file the 6j issues after showing
+  him their wording.
+- 6a, 6g, 6h and 6i started together; 6b to 6f started once 6a passed.
+  No agent wrote to this worktree, and every detached worktree an agent
+  created in kerbside, kerbside-patches and ryll was removed.
+- 6a ran `wave1.sh` on 5204616, bba7115, 7919ead and a90f17f: exit 0 on
+  all four. Direct flake8 at 120 columns
+  (`.tox/shared/bin/flake8`) over each merge's added or changed Python
+  was clean.
+- 6a could not find `rust.yml`'s push runs for 5204616, eab2c57,
+  9d1b64d and bba7115: `ci-status` returns at most the newest 100 runs,
+  which reach back only to 2026-10-28. For those four, `make lint` and
+  `make test` ran in Docker against a detached worktree of each merge,
+  and all passed. `rust.yml` passed on 7919ead (run 40754407510), and
+  the newest `develop` run (40845903771) passed both `--features
+  transcode` steps. The Docker runs built the default features only, so
+  bba7115's transcoder is covered by today's run, not its own.
+- 6c ran `wave2-mechanical.sh` on all seven merges: exit 0 on each.
+- 6d ran 14 mutants on a copy of the tree, 6 Python and 8 Rust, and 12
+  were killed. The survivors are kerbside follow-up items 9 and 10.
+  6g ran 2 mutants on a copy of ryll at fdb5ead5b4. Both were killed,
+  one only by the 900 s timeout (ryll#672, item 1).
+- 6g confirmed survey finding 3: no ryll audit range contains
+  fdb5ead5b4. kerbside pins ryll b33dea44, where two of #406's
+  functions have since changed, so 6g audited the pinned code.
+- Departures from the plan:
+  - 6g's findings went to ryll as issues (#671, #672) rather than a
+    ryll follow-up pull request. Decision 5 allowed either. All are
+    advisory, and one predates #406.
+  - 6i's high finding is filed (kerbside-patches#2032), not fixed in the
+    follow-up. A fix means a v3 series, a qemu build and a re-run of the
+    rig, and the series is in no image. The kerbside-patches follow-up
+    adds a warning that v2 must not be built into one until it is fixed.
+  - The master plan's *Future work* entries owned by kerbside are left
+    there, not filed. While the plan is `In progress` that section is a
+    live record. The entries owned by ryll, andris and kerbside-patches
+    were filed in those repositories, and the master plan now cites the
+    issues.
+- 6j filed, with the wording Mikal was shown, on 2026-10-31 AEDT:
+  kerbside#667, kerbside-patches#2032 and #2033, ryll#671, #672 and
+  #673, and andris#62.
 
 ## Outcome
 
-Not yet audited.
+Audited on 2026-10-31. Wave 1 and wave 2's mechanical checks passed on
+every kerbside merge, and on ryll #406. The judgment agents raised no
+critical or medium finding in kerbside, kerbside-patches or ryll. The
+one high finding is in the carried qemu v2 series, which is in no
+image. The management session reproduced every accepted finding
+against the tree. Fourteen kerbside items and six kerbside-patches
+items go to follow-up pull requests. Seven issues are filed. Phase 6
+stays `In progress` until the follow-ups land, and the plan stays `In
+progress` until phase 2 is done.
+
+### Wave results
+
+| Check | Result |
+|-------|--------|
+| 6a, `wave1.sh` per merge carrying Python or shell | exit 0 on 5204616, bba7115, 7919ead and a90f17f; flake8 clean on each |
+| 6a, Rust | `make lint` and `make test` passed in Docker on 5204616, eab2c57, 9d1b64d and bba7115; `rust.yml` passed on 7919ead (40754407510) and on today's `develop` with the transcode steps (40845903771) |
+| 6c, `wave2-mechanical.sh` per merge | exit 0 on all seven; one justified `noqa: E402` (`tools/shaped-link/test_quality.py`); no TODO, assert, broad except or new dependency |
+| 6d, mutation | 14 mutants, 12 killed; survivors are follow-up items 9 and 10 |
+| 6g, ryll `wave1.sh` at fdb5ead5b4 | exit 0: pre-commit, rustfmt, clippy `-D warnings`, cargo test, wave 1b |
+| 6h, kerbside-patches `pre-commit` over the two merges' files | exit 0; shellcheck, skillsaw and the line-reference check passed; nothing lints `upstream/**/*.py` or `*.c` (kerbside-patches item 6) |
+
+### Floor checklist: kerbside
+
+- **Item 1, landings:** every phase landing in this repository is a
+  merge commit read against its first parent. The plan-only merges are
+  listed in *Audit range*. andris #56 is cited; ryll #406 and the two
+  kerbside-patches merges were audited here.
+- **Item 2, unattended work:** met. The only addition is two steps in
+  `rust.yml`, which run on push and fail the run. Nothing else runs
+  unattended.
+- **Item 3, secrets and addresses:** pass. The added lines hold only
+  loopback addresses, an RFC 1918 address in a pre-existing test mock,
+  and RFC 1918 addresses on the rig's namespace-only veth pair. Ticket
+  values are dummy rig constants. All five images were viewed: test
+  patterns, a qemu version in a title bar, and no metadata.
+- **Item 4, removed or renamed:** no consumer is left. #494 and #505
+  removed or renamed nothing public; the `rpc.rs` changes are to the
+  test mock. Greps over this repository, ryll and kerbside-patches at
+  `origin/develop` for `MockService`, `spawn_mock`, `caps::`,
+  `ackwindow`, `--transcode`, `notsent` and `backend_rcvbuf` found no
+  outside consumer.
+- **Item 5, publishing:** fails closed. The transcoder cannot reach a
+  published wheel: `default = []`, `tools/build-proxy-wheel.sh` passes
+  no features, and both wheel workflows build only through it. Without
+  the feature, `--transcode-display` is an unknown argument and the
+  proxy refuses to start. Nothing asserts that a wheel was built
+  without it (kerbside item 12).
+
+### Floor checklist: kerbside-patches
+
+- **Item 1:** pass. #1748 and #2024 are two-parent merges, read against
+  their first parents.
+- **Item 2:** does not apply. Nothing added runs unattended; the rigs
+  are run by hand.
+- **Item 3:** pass. No secret, private hostname, or address outside
+  loopback and documentation ranges. The emails are public patch
+  authors, mailing lists and attribution trailers.
+- **Item 4:** pass. Both merges only add files, widen two hook
+  patterns and add `.gitignore` entries.
+- **Item 5:** pass. `upstream/` publishes nothing, and image tags hash
+  only the directories `functional-tests.yml` names, which exclude
+  `upstream/`.
+- **Decision 3's questions:** the OpenStack tooling cannot discover an
+  `upstream/` project (`_build/assemble-source.sh`, `imagebuild.sh`,
+  `bump-source-shas.sh`, `test-patches-for-ci.sh`,
+  `rebase-with-claude.sh` and `repush-openstack.sh` checked). No rig
+  depends on a scratchpad or home path. The rig code is original apart
+  from one function in `bench.c` (kerbside-patches item 2).
+  `build-spice.sh` removes only an empty directory or its own output.
+
+### To fix in the kerbside follow-up pull request
+
+| # | Source | Severity | Where | Finding | Introduced by |
+|---|--------|----------|-------|---------|---------------|
+| 1 | 6e | blocking | `docs/performance/dbus-helper-measurements.md`, the stream-coverage bullet | Says the earlier pages report H.264 and that why spice-server chose MJPEG "was not established". `spice-server-patches.md` established it: Ryll's own preference. #654 corrected the sibling pages and missed this one | a90f17f |
+| 2 | 6e | blocking | `docs/performance/streaming-rebaseline.md`, first caveat | Says spice-server chose H.264 because Kerbside advertised Ryll's capabilities (#477). The client was Ryll, which asked for H.264 first; the proxy relayed correctly | 5204616 |
+| 3 | 6e | advisory | `docs/performance/transcoding-spike.md` (summary and the crash paragraph), `transcoding-measurements.md` | Describe the connect crash as 0.15.2's, triggered by any connect. Only a client that sends its codec preference early triggers it, and 0.16.0 and master crash too. The "every switch" claims hold, because the transcoder's backend dial always sends a preference | 7919ead |
+| 4 | 6e | advisory | `docs/performance/proxy-backpressure.md`, the side finding | Its bold lead still says the ACK window caps throughput, corrected only further down. `ack-window.md` is right | 5204616 |
+| 5 | 6e | advisory | `docs/performance/spice-server-patches.md`, the rate-control item | Says "stream frames" where the measurement and the page's own results say display messages. The master plan's entry is corrected in this phase's record | 46c3e98 |
+| 6 | 6f | low | `rust/kerbside-proxy/src/caps.rs`; `backend.rs`, the client channel caps | The client's channel caps reach the backend verbatim, so the reply mask limits nothing: a client can enable spice-server features Kerbside never offered. Say in `caps.rs` that the reply mask is not a security boundary, and test what the allowlist does with a server message that only an unoffered capability enables. If that message is relayed, mask the forwarded caps to the reply set plus the codec bits | eab2c57 |
+| 7 | 6f | low | `tools/shaped-link/quality.sh`, `QUALITY_VENV` | Defaults to a fixed path under `/tmp`, and runs that venv's python if it exists, so another local user can plant one. Default under `${XDG_CACHE_HOME:-$HOME/.cache}`, or refuse a venv the user does not own | 7919ead |
+| 8 | 6f | advisory | `kerbside/config.py`, the two socket options; the proxy's matching flags in `main.rs` | Bounded at 2^32-1, but the kernel takes a signed int, so values above 2^31-1 are silently reinterpreted. Cap both at 2^31-1, in config and in clap | 5204616 |
+| 9 | 6d, 6f | advisory | `rust/kerbside-proxy/src/ackwindow.rs`, the ACK arm | `in_flight -= window` is unchecked; use `saturating_sub`. The documented over-ACK behaviour, and a window of 0, are untested: a mutant clamping in-flight at 0 survived | bba7115 |
+| 10 | 6d | advisory | `kerbside/tests/unit/test_config.py`, `test_negative_values_are_rejected` | Covers only `PROXY_BACKEND_RCVBUF_BYTES`; a mutant dropping `ge=0` on `PROXY_CLIENT_NOTSENT_LOWAT_BYTES` survived. Test both | 5204616 |
+| 11 | 6g | advisory | `rust/kerbside-proxy/src/backend.rs`, `BACKEND_CONNECT_TIMEOUT`'s comment | Says the crate's connect has no timeout of its own; at the pinned rev it wraps link and auth in one. Reword, keeping the per-attempt budget's reason | bba7115 (the ryll pin bump) |
+| 12 | 6f | advisory | `tools/build-proxy-wheel.sh` | Nothing asserts a wheel is built without the `transcode` feature. Refuse non-empty default features or `[tool.maturin]` features | bba7115 |
+| 13 | 6c | advisory | `relay.rs` and `transcode/mod.rs`, the control-plane termination log | The same literal, which CI matches on, is written twice. Share one constant | bba7115 |
+| 14 | 6b | advisory | `kerbside/config.py`, `PROXY_CLIENT_NOTSENT_LOWAT_BYTES`'s description | The string is split mid-phrase (`'... in '`, `'bytes: ...'`). Rejoin it | 5204616 |
+
+### To fix in the kerbside-patches follow-up pull request
+
+| # | Source | Severity | Where | Finding | Introduced by |
+|---|--------|----------|-------|---------|---------------|
+| 1 | 6i | high, filed | `upstream/qemu/README.md`; `docs/plans/upstream-series.md` *Unresolved* | The v2 series' diff helpers can read out of bounds when the guest writes its framebuffer mid-diff (kerbside-patches#2032). Say in both places that v2 must not be built into an image until that issue is fixed | b53aa39c7e |
+| 2 | 6h | advisory | `upstream/qemu/rig/bench/bench.c`; `upstream/README.md` | `bench.c` reproduces qemu's `qemu_spice_create_update()`, which is GPL, with no notice, and `upstream/README.md` never states the licence of what `upstream/` carries. Add both | b53aa39c7e |
+| 3 | 6h | advisory | `upstream/linux/series/v1/0001-*.patch` | Its trailer is `Assisted-by: LLM`. Use the form the kernel's `coding-assistants.rst` documents before the patch is sent; check the current text, which this audit did not | b53aa39c7e |
+| 4 | 6e | advisory | `upstream/spice/series/v1/0000-cover-letter.patch` | Says "stream frames" where the results say display messages, as kerbside item 5 | 2d7b626422 |
+| 5 | 6h | advisory | `docs/plans/upstream-series.md`, Status | Phase 1 reads `In progress` though #1748 merged, and the table has no `Merged` column. Record b53aa39c7e, and cite this audit for its phase 5 | b53aa39c7e |
+| 6 | 6h | advisory | `.pre-commit-config.yaml` | Nothing lints `upstream/**/*.py`. Widen the flake8 hook to it | b53aa39c7e |
+
+### Filed
+
+- kerbside#667: `docs/spice/spice-link-protocol.md` contradicts itself
+  on whether a token is single-use; the code makes it reusable until
+  expiry. Predates the plan.
+- kerbside-patches#2032: the qemu v2 diff helpers' unbounded loops
+  (high), a zero-width box, a timer spin above 1000 Hz and deep
+  recursion (6i).
+- kerbside-patches#2033: the sysroot `build.sh` cannot extract what it
+  downloads (found in phase 5).
+- ryll#671: link errors other than `MissingRequiredCaps` are untyped
+  strings, which kerbside string-matches. Predates #406.
+- ryll#672: #406's follow-ups: an oversized-reply test that hangs
+  instead of failing, a check kerbside has to re-implement, two files
+  past the size mark, and ryll's wave 2 test counting.
+- ryll#673: the ryll items in the master plan's *Future work*, plus
+  ryll's `streaming-video` recommendation, which the measurements
+  contradict (6e).
+- andris#62: the five andris items in the master plan's *Future work*.
+
+### Declined, and why
+
+- **The transcoder's size and comment proportion**: `transcode/mod.rs`
+  is 1,120 lines, and `geometry.rs` and `tests.rs` are past 800 (6c,
+  advisory). The transcoder is an experiment the phase 3 verdict
+  declined, behind a feature no wheel enables; splitting it is work on
+  code nobody is changing. The same holds for 6c's low-confidence note
+  that the backend task is detached rather than aborted if the outer
+  future is dropped.
+- **`relay.rs`, `backend.rs` and `session.rs` past 800 lines** (6c,
+  advisory). Each crossed the mark by a little, in a merge that added
+  coherent code. A split is its own change, along seams the next change
+  to those files will show.
+- **Type hints on `config.py`'s validator** (6c). No function in the
+  file has them; adding them is a whole-file change.
+- **`tools/shaped-link/test_quality.py` is run by nothing, and
+  `summarise.py` has no tests** (6d, survey finding 7). The rig is not
+  shipped, the measurement phases are over, and each verdict's raw
+  results and summary tables are published, so a wrong exclusion is
+  recoverable from the data. Wiring numpy into CI for a finished rig
+  costs more than it protects.
+- **`BUFFER_BDP` is undocumented outside the plans** (6c). It is a rig
+  knob, described in `run-matrix.sh` where it is read.
+- **The client's capability words are logged before authentication**
+  (6b, 6f). ryll caps them at 16 words of integers, so the volume is
+  bounded and nothing is injectable.
+- **The rig's ticket is visible in the process list** (6f). It is a
+  constant dummy value for a throwaway guest.
+- **"scratchpad" in kerbside-patches prose, and `build-spice.sh`'s
+  forgeable output marker** (6h). The first names no path. The second
+  guards a directory the operator chose.
+- **`switch.rs` has no refuse-to-switch code** (6d). That is the
+  design: the client leg never carries GLZ, and the first transcoded
+  frame clears streams. The mutant removing that guard was killed.
 
 ## Back brief
 

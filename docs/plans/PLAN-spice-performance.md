@@ -1167,7 +1167,7 @@ Other deferred items:
 - Upstream the rig's small Ryll patch, which adds a `rect` to the
   control socket's `surface_drawn` event
   (`tools/shaped-link/ryll-surface-drawn-rect.patch`). Until
-  then the rig carries it as a patch.
+  then the rig carries it as a patch. Filed in ryll#673.
 - *Answered by phase 5 (2026-10-30).* Report spice-server 0.15.2's
   crash when a client connects while streams already exist, once it has been reproduced
   against spice-server's current master. Since phase 3's no-go
@@ -1203,10 +1203,11 @@ Other deferred items:
   `self.last_ack = self.message_count.saturating_sub(1);` in the
   `SET_ACK` handler, was confirmed on ryll 0d140b3; display and
   cursor channels both need it. It belongs in a ryll pull
-  request.
+  request. Filed in ryll#673.
 - **Ryll: the display-socket stall.** In 18 of 184 phase 3
   repeats Ryll stopped reading its display socket, relay and
-  transcode alike. The cause is not established.
+  transcode alike. The cause is not established. Filed in
+  ryll#673.
 - **Andris: socket pacing and the JPEG fringe.** Phase 3 found
   socket pacing beating an ACK window of 40 by up to two times
   where the link was the limit (andris paces on a window of 20),
@@ -1215,7 +1216,8 @@ Other deferred items:
   Phase 4 adds a second reason for socket pacing: with no
   stream, andris's message-counted window held seconds of JPEG
   tiles on slow links (3263 ms p50 at 80 ms / 5 Mbit busy,
-  against 371 ms for spice-server with streaming off).
+  against 371 ms for spice-server with streaming off). Filed,
+  with the other andris items below, as andris#62.
 - *Answered by phase 5 (2026-10-30).* **Find out which codec
   spice-server chooses for `streaming-video=all`, and why.** Phase 4's 28 `all` repeats
   sent MJPEG (codec 1); the re-baseline, ACK-window,
@@ -1278,15 +1280,15 @@ Other deferred items:
   arrive before the init message is handled, which Ryll's link-up
   send does. Waiting until after it would keep Ryll users safe on
   every released spice-server while the fix goes upstream. It
-  belongs in a ryll pull request.
+  belongs in a ryll pull request. Filed in ryll#673.
 - **kerbside-patches: `upstream/qemu/rig/sysroot/build.sh` cannot
   extract what it downloads** (found in phase 5). `apt-get download`
   writes to the current directory and ignores
   `Dir::Cache::archives`, so the `.deb` files never reach `$WORK`.
-  An issue is to be filed in kerbside-patches.
+  Filed as kerbside-patches#2033 (2026-10-31).
 - **A faster bitrate ramp in spice-server** (item 4, deferred by
   phase 5). The lead: spice-server rate control holds delivered
-  stream frames to 4 to 12 per second on these links whatever the
+  display messages to 4 to 12 per second on these links whatever the
   frame-rate ceiling (phase 5's 60 fps measurement). Whether a
   faster ramp would raise that, and at what cost on the slow
   links, needs a client that decodes the codec measured.
