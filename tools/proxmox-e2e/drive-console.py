@@ -127,6 +127,7 @@ scan reports file names and what was found in them, never the value.
 Exits non-zero on any failure.
 """
 
+# audit-allow-print: a CI command-line tool, whose ::error annotations and progress lines are its report.
 import argparse
 import collections
 import datetime

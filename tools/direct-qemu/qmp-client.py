@@ -32,6 +32,7 @@ Usage:
     python3 qmp-client.py --socket /path/to/qmp.sock spice-channels
 """
 
+# audit-allow-print: a CI command-line tool, whose output is the step log and its exit status.
 import argparse
 import json
 import socket
