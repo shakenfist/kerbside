@@ -313,6 +313,31 @@ class TestConstruction(_ProxmoxTestCase):
                            project_name=None, user_domain_id=None, project_domain_id=None)
         self.assertFalse(src.errored)
 
+    def test_mints_through_mint_with_deadline(self):
+        # The path a session's first channel takes: a driver built on a
+        # worker from the source's database row, minting, then closed.
+        self._fake()
+        row = {'name': 'test-proxmox', 'type': 'proxmox', 'url': URL,
+               'username': TOKEN_ID, 'password': SECRET, 'ca_cert': CA_CERT,
+               'errored': False, 'deleted': False, 'project_name': None,
+               'user_domain_id': None, 'project_domain_id': None}
+        made = []
+        real_init = proxmox.ProxmoxSource.__init__
+
+        def recording_init(instance, **kwargs):
+            made.append(instance)
+            real_init(instance, **kwargs)
+
+        with mock.patch.object(proxmox.ProxmoxSource, '__init__', recording_init):
+            minted = minting.mint_with_deadline(
+                proxmox.ProxmoxSource, row, proxmox.console_uuid(100, SMBIOS), 90, minting.MINT_DEADLINE)
+
+        self.assertEqual(PASSWORD, minted.ticket)
+        self.assertEqual(base.Tunnel('http://pve1.example:3128', CONNECT_HOST, 61000), minted.tunnel)
+        self.assertEqual(1, len(made))
+        self.assertEqual('test-proxmox', made[0].args['source'])
+        self.assertIsNone(made[0].ca_tempfile)
+
     def test_missing_fields_mark_the_source_errored(self):
         for field in ('url', 'username', 'password', 'ca_cert'):
             records = self._capture_logs()
