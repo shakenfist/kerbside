@@ -266,7 +266,8 @@ class RepositoryTestCase(testtools.TestCase):
         built tree with one, and the guard's root pointed at it, shows
         that a claim there fails the check.
         """
-        self.assertIn('docs/deployment/manual.md', check_backend_tls_claims.default_paths())
+        self.assertIn('docs/deployment/manual.md',
+                      check_backend_tls_claims.default_paths())
 
         with tempfile.TemporaryDirectory() as root:
             os.makedirs(os.path.join(root, 'docs', 'deployment'))

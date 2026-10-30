@@ -70,8 +70,9 @@ What it leaves to you:
   address in plain HTTP. The API carries bearer tokens and console
   files, so put a TLS-terminating reverse proxy in front of it, and
   set `kerbside_api_address` to `127.0.0.1` so that the proxy is the
-  only way in. If the proxy is on another host, firewall port 13002
-  to it instead. Kerbside ships no proxy configuration.
+  only way in. If the proxy is on another host, firewall the API port
+  (`kerbside_api_port`, 13002 by default) to it instead. Kerbside
+  ships no proxy configuration.
 - **Client libraries for other sources.** The role installs
   `shakenfist-client` and no other client library
   ([#602](https://github.com/shakenfist/kerbside/issues/602)).
