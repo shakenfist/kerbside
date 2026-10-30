@@ -134,7 +134,8 @@ The use cases say what Kerbside sits in front of; this section says how
 it is installed and run. The default worth reaching for is a Kerbside
 deployed in front of the clouds rather than by one of them, because
 [multi-cloud aggregation](use-cases/multi-cloud.md) and
-[placement](use-cases/placement.md) both assume one.
+[placement](use-cases/placement.md) both assume one. Kolla-Ansible is
+the exception: it deploys Kerbside inside one OpenStack cloud.
 
 | Mechanism | Description | Sources it configures | Tested in Kerbside CI |
 |-----------|-------------|-----------------------|-----------------------|

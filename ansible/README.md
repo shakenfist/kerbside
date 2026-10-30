@@ -176,7 +176,7 @@ is missing `kerbside.sources` and `kerbside.migrations`
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `kerbside_api_address` | `0.0.0.0` | The address the API (gunicorn) binds. An IPv6 address may be given bare. |
+| `kerbside_api_address` | `0.0.0.0` | The address the API (gunicorn) binds. An IPv6 address may be given bare. The API is plain HTTP carrying bearer tokens, so behind a TLS-terminating proxy on the same host, set this to `127.0.0.1`. |
 | `kerbside_api_port` | `13002` | The API port. |
 | `kerbside_api_workers` | `2` | The number of gunicorn workers. |
 | `kerbside_vdi_secure_port` | `5900` | The TLS SPICE port. |

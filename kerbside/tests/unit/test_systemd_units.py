@@ -30,8 +30,10 @@ def _render(name, overrides):
     with open(os.path.join(_ROLE, 'defaults', 'main.yml')) as f:
         variables = yaml.safe_load(f)
     variables.update(overrides)
+    # A variable from outside defaults/main.yml, such as one the role sets
+    # in a task, fails the render here rather than rendering empty.
     env = jinja2.Environment(
-        keep_trailing_newline=True,
+        keep_trailing_newline=True, undefined=jinja2.StrictUndefined,
         loader=jinja2.FileSystemLoader(os.path.join(_ROLE, 'templates')))
     return env.get_template(name).render(variables)
 

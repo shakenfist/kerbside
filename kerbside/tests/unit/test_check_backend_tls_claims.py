@@ -261,12 +261,14 @@ class RepositoryTestCase(testtools.TestCase):
         """A page under docs/deployment/ is checked like a use case.
 
         Those pages describe TLS material, so they are where an
-        unconditional claim would reappear. None exists in the
-        repository yet, so build a tree that has one and point the
-        guard's root at it; the glob matching nothing in the real tree
-        would otherwise make this untestable and a dropped pattern
-        invisible.
+        unconditional claim would reappear. The real tree shows the
+        pattern is in scope. The real pages make no such claim, so a
+        built tree with one, and the guard's root pointed at it, shows
+        that a claim there fails the check.
         """
+        self.assertIn('docs/deployment/manual.md',
+                      check_backend_tls_claims.default_paths())
+
         with tempfile.TemporaryDirectory() as root:
             os.makedirs(os.path.join(root, 'docs', 'deployment'))
             with open(os.path.join(root, 'docs', 'deployment', 'x.md'),
