@@ -10,7 +10,7 @@ picks between them on whether the target carries a tunnel.
 A direct target is conditional in three ways. The proxy dials the
 insecure port first and escalates to TLS only inside
 `if !is_need_secured(&first_err) || target.secure_port == 0 { return
-Err(first_err); }` (:294, in `connect_direct`, :284-318), so TLS
+Err(first_err); }` (:294, in `connect_direct`, :284-317), so TLS
 happens when the hypervisor rejects plaintext by asking for a secure
 connection and there is a secure port to escalate to. An empty
 host_subject maps to None (:356-360), so the subject is pinned only
@@ -143,9 +143,7 @@ SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
 #
 # The deployment pages under docs/deployment/ are in scope because they
 # describe TLS material, which is where an unconditional backend-TLS
-# claim would reappear. That directory may not exist yet; a glob over
-# it matches nothing, which is intended, so the guard is in place before
-# the first page lands.
+# claim would reappear.
 DOC_PATHS = ('docs/use-cases/*.md', 'docs/deployment/*.md', 'docs/index.md')
 
 
