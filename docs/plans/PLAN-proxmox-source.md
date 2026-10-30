@@ -515,6 +515,7 @@ Complete. Every phase, the push audit included, is complete.
   the other use-case pages, linking `console-sources.md` for setup.
 
 Phase 7's push audit found no critical, high or medium issue. A
-follow-up pull request fixed its twelve findings, and the issues it
-filed (#656 to #661, ryll #665 and #666, actions #216) carry the
-plan's remaining future work.
+follow-up pull request fixed eleven of its twelve findings and
+declined one in writing. The issues the audit filed (#656 to #661,
+ryll #665 and #666, actions #216) carry the plan's remaining future
+work.

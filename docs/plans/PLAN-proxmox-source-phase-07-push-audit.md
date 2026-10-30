@@ -342,8 +342,8 @@ medium finding. Four low security findings and nine advisory ones are
 in the plan's own diff, and go to the follow-up pull request. The
 management session reproduced every accepted finding against the tree.
 Eight *Future work* entries that no issue tracked, and four problems
-that predate the plan, are filed. The follow-up pull request fixed all
-twelve, and the plan is complete (*Resolution*).
+that predate the plan, are filed. The follow-up pull request fixed
+eleven and declined one, and the plan is complete (*Resolution*).
 
 ### Wave results
 
@@ -397,9 +397,9 @@ twelve, and the plan is complete (*Resolution*).
 
 ### Resolution
 
-The follow-up pull request, `proxmox-source-phase-07-fixes`, fixed all
-twelve findings, one commit each, except findings 1 and 2, which share
-files and so share one commit. Each fix has a test, except the
+The follow-up pull request, `proxmox-source-phase-07-fixes`, fixed
+eleven of the twelve findings, one commit each, except findings 1 and
+2, which share files and so share one commit. It declined finding 10. Each fix has a test, except the
 documentation fixes 6 to 9 and the markers in finding 5. Each new test
 fails on a copy of the tree with its fix removed.
 
@@ -413,7 +413,7 @@ fails on a copy of the tree with its fix removed.
 | 7 | Say how the minting sequence differs on Proxmox. |
 | 8 | Trim the Proxmox source row in ARCHITECTURE.md. |
 | 9 | Say the backend ticket columns reach backups. |
-| 10 | Mask the Proxmox lane's held values in the job log. |
+| 10 | Declined; see below. |
 | 11 | Check the session ticket row is locked in a unit test. |
 | 12 | Mint a Proxmox ticket through mint_with_deadline. |
 
@@ -426,10 +426,17 @@ Three things the fixes found:
   word in the checker's condition vocabulary stripped from the
   page's bullet, the checker now fails, and before the fix it
   passed.
-- **Finding 10's scope.** Its first version broke five existing tests
-  whenever `GITHUB_ACTIONS` was `true`, as it is in CI, so the
-  environment is read once, into the `Lane`. Its scope also turned out
-  narrower than the table first said, and the row is corrected.
+- **Finding 10 is declined.** The fix was made and then reverted on
+  the same branch. Emitting `::add-mask::` prints the value to stdout
+  for the runner to read, and CodeQL's clear-text logging rule flagged
+  that print as a high-severity alert, following the data from the
+  `.vv` password. The flag is accurate about the data flow, whatever
+  the intent. Masking also covered less than first claimed: it cannot
+  hide output printed before a value is learned. The held values stay
+  protected by the redaction every log tail passes through, and by
+  Kerbside never logging a ticket, which 7f1 checked. A defence in
+  depth that leaves a standing high-severity alert, or needs one
+  dismissed, costs more than it adds.
 
 7d's surviving mutant, the row lock, is now caught by finding 11's
 unit test.
