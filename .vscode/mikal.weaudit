@@ -348,10 +348,6 @@
       "author": "mikal"
     },
     {
-      "path": "docs/performance/streaming-rebaseline.md",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/export-repo-config.yml",
       "author": "mikal"
     },
