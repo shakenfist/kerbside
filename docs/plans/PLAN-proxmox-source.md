@@ -478,7 +478,7 @@ and cited from phase 2's *Outcome*.
 | 3b. Tunnel transport | [PLAN-proxmox-source-phase-03b-tunnel-transport.md](PLAN-proxmox-source-phase-03b-tunnel-transport.md) | Complete | c435ea3 |
 | 4. The source driver | [PLAN-proxmox-source-phase-04-source-driver.md](PLAN-proxmox-source-phase-04-source-driver.md) | Complete | 6519c3b |
 | 5. CI lane | [PLAN-proxmox-source-phase-05-ci-lane.md](PLAN-proxmox-source-phase-05-ci-lane.md) | Complete | c4b4011 |
-| 6. Docs | [PLAN-proxmox-source-phase-06-use-case-page.md](PLAN-proxmox-source-phase-06-use-case-page.md) | In progress | |
+| 6. Docs | [PLAN-proxmox-source-phase-06-use-case-page.md](PLAN-proxmox-source-phase-06-use-case-page.md) | Complete | 746c7ef |
 | 7. Push audit | | Not started | |
 
 ## Relationship to other plans
@@ -498,17 +498,20 @@ and cited from phase 2's *Outcome*.
 
 ## Status
 
-In progress. Phases 1, 1b, 2, 3a, 3b, 4 and 5 are complete.
+In progress. Phases 1, 1b, 2, 3a, 3b, 4, 5 and 6 are complete.
 - CI can build a Proxmox VE node on demand.
 - ryll tunnels through `spiceproxy`, proven against a real node
   on every ryll pull request that touches the tunnel.
 - kerbside mints console tickets when a channel connects, one
   per session, which the oVirt source now uses.
-- kerbside's proxy dials a minted tunnel over TLS only, proven
-  against a CONNECT proxy in the direct-qemu lane.
+- kerbside's proxy dials a minted tunnel, a plaintext HTTP
+  CONNECT and then a SPICE session that is TLS only inside it,
+  proven against a CONNECT proxy in the direct-qemu lane.
 - kerbside has a `proxmox` source driver.
 - A nightly lane, also run on pull requests that touch the Proxmox
   path, drives a proxied session through a real node's
   `spiceproxy` with the documented least-privilege token.
+- `docs/use-cases/proxmox.md` documents the source in the shape of
+  the other use-case pages, linking `console-sources.md` for setup.
 
-Phase 6, the use-case page, is in progress.
+Phase 7, the push audit, is next.
