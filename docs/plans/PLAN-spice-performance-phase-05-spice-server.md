@@ -69,7 +69,9 @@ these.
    commits since 2026-02-09 carry `Co-Authored-By: Claude`.
    Marc-André Lureau, the maintainer, wrote 54 of them. One is
    from an outside contributor (Mark Junker, 9d6be696). There is
-   no written policy in the tree either way. The barrier that
+   no written policy in the tree either way. *(Recounted in step
+   5: 56, not 55. 4ff6e95f spells the trailer
+   `Co-authored-by`.)* The barrier that
    stopped the qemu series (master plan, phase 2) does not apply.
    A series here is `submit`, not `carry`.
 2. **Master is very active.** About 40 commits since 2026-10-02,
@@ -565,6 +567,78 @@ Stock qemu stays the display for 0002 and for the 0.15.2-to-master
 question. Plain master is not measured separately: with
 `ACTIVITY_DELAY` avoiding the crash, master with 0001 is the
 baseline for every patch.
+
+**Step 4, 2026-10-30 to 31.** Five interleaved runs over 8 hours:
+- stock qemu with MJPEG, plus an idle run, for 0002 and the upgrade
+  question;
+- the carried series with H.264, for 0004;
+- the carried series at `max-refresh-rate=60`, once with H.264 and
+  once with MJPEG, for 0003. The H.264 run was the agent's
+  addition, because the built-in MJPEG encoder keeps its own 25 fps
+  cap.
+
+No qemu died. The saturated 150 ms / 2 Mbit heavy `filter` cell
+completed too few repeats to judge.
+
+A difference counted only when the repeats separated and the gap
+exceeded both their spread and a floor: 2 ms, 0.02 cores or 8 MiB.
+A null comparison flagged 1 of 15 cells.
+- **0002 had no measurable effect.** Stream creation was identical
+  on every build.
+- **0003 had no measurable effect.** Streams start at 60 fps, but
+  rate control holds delivered messages at 4 to 12 per second.
+- **0004 is kept.** vah264enc engaged on all 54 H.264 pipelines.
+  qemu CPU went from 0.15 to 0.13 cores, and at 80 ms / 10 Mbit
+  heavy p50 went from 186 to 107 ms and p95 from 1262 to 275 ms.
+  It costs +56 to 64 MiB RSS, but only once an encoder is built;
+  that is the conditional case decision 5 allows.
+- **Upgrading 0.15.2 to master helps** in 9 of 15 cells, with two
+  marginal regressions.
+
+Step 4 also found that kerbside-patches'
+`upstream/qemu/rig/sysroot/build.sh` cannot extract what it
+downloads. That predates this phase. Filing the issue was denied by
+this session's permission check, so the text is in the session
+scratchpad's `p5step4/issue/`, and the master plan's Future work
+records it.
+
+**Step 5, 2026-10-31.**
+- **Series v1.** It is 0001 plus 0004, which split cleanly into a
+  software-fallback patch and an any-GPU probe. Each patch passes
+  `meson test` in order. The assembled series produces the tree
+  step 4 measured (2d5a2dc1).
+  - Smoke runs: vah264enc engaged; with `/dev/dri` hidden, and
+    again with an unopenable render node, encoding fell back to
+    x264enc; the crash reproducer gave 0 deaths in 5.
+  - 0002 and 0003 are kept under `upstream/spice/dropped/`.
+- **spice-gtk does not trigger the crash, so remote-viewer does
+  not.** `spice_display_channel_up()` sends only `DISPLAY_INIT`,
+  and a codec preference goes out only when the application asks
+  for one; virt-viewer never does.
+  - Nothing else in spice-server stops streams in that window.
+    The display worker is blocked in the wait for init.
+  - The crash therefore needs a client like Ryll. The review added
+    a Future work item for Ryll to send its preference after
+    `DISPLAY_INIT`, and narrowed the re-baseline's and the master
+    plan's "any reconnect crashes" claims at source.
+- **spice-server's README names the spice-devel list for patches.**
+  Its CI also runs `make syntax-check`, which the rig did not run.
+- **The review removed the maintainer's name** from
+  kerbside-patches' `upstream/README.md`.
+
+**Definition of done, 2026-10-31.**
+
+| Item | Result | How it was checked |
+|---|---|---|
+| Build script and neutrality | passed | step 1's run: 100.8 against 101.0 ms p50, inside the spread |
+| Codec cause stated with evidence | passed | spice-server log lines and Ryll's commits, in the write-up; not a kerbside bug, so no issue |
+| Crash counts and fix | passed | 20 of 20 crashes on 0.15.2, 0.16.0 and master; 0 of 20 patched |
+| Verdict per patch from a generated table | passed | `upstream/spice/results/patch-matrix.md` |
+| Series applies cleanly to `base_sha` | passed | management session re-ran `git am`, giving tree 2d5a2dc1 |
+| Depth-2 `config.yaml` set unchanged | passed | 37 files, the same as HEAD |
+| No patch carries a `Signed-off-by` | passed | `grep -c` gives 0 for each file |
+| No Kerbside product code changed | passed | `git diff origin/develop...HEAD --stat -- kerbside rust` is empty |
+| Merged cell records the kerbside-patches merge | not yet checkable | filled once that pull request merges |
 
 ## Back brief
 
