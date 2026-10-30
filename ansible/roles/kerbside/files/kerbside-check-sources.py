@@ -29,7 +29,8 @@ driver for its type (docs/console-sources.md):
   text when they are present, since Kerbside refuses the whole file otherwise;
 * each type's required fields are present and non-empty text. A Shaken Fist
   source's username is system, since Kerbside scrapes the whole cluster with
-  that credential and accepts no other;
+  that credential and accepts no other. A Proxmox VE source's url is https,
+  since its driver refuses anything else;
 * a static source has a consoles list, each of whose entries carries the
   fields the static driver requires, as text or port numbers.
 
@@ -42,6 +43,7 @@ Exits 0 when the file is good, and 1 with the reasons on stderr when it is not.
 
 import json
 import sys
+import urllib.parse
 
 import yaml
 
@@ -188,6 +190,12 @@ def _check_source(index, source):
                 'source %d (shakenfist): username is not %s, but Kerbside '
                 'scrapes a Shaken Fist cluster only with its %s credential'
                 % (index, SHAKENFIST_USERNAME, SHAKENFIST_USERNAME))
+
+    if kind == 'proxmox':
+        url = source.get('url')
+        if _is_filled(url) and urllib.parse.urlsplit(url).scheme != 'https':
+            errors.append('source %d (proxmox): url is not https, which '
+                          'Kerbside refuses for Proxmox VE' % index)
 
     if kind == 'static':
         consoles = source.get('consoles')
