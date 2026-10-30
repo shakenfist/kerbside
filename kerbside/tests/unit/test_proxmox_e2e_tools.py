@@ -1192,6 +1192,8 @@ def _bare_lane(workdir, seed_path=None):
     lane.seed_path = seed_path
     lane.needle_descriptions = []
     lane.needles = []
+    # Whatever runs the tests, a held value is never printed.
+    lane.mask_in_job_log = False
     return lane
 
 
@@ -1215,6 +1217,32 @@ class HeldSecretsTestCase(testtools.TestCase):
         self.assertEqual(['the password in .vv 1'], lane.needle_descriptions)
         self.assertEqual(['vv-password-7777'], lane.needles)
         self.assertNotIn('vv-password-7777', err.getvalue())
+
+    def test_a_held_value_is_masked_under_github_actions(self):
+        lane = _bare_lane(self.workdir)
+        lane.mask_in_job_log = True
+        out = io.StringIO()
+        with mock.patch.object(sys, 'stdout', out):
+            lane.remember('a value', 'held-value-3131')
+            lane.remember('an empty value', '')
+        self.assertEqual('::add-mask::held-value-3131\n', out.getvalue())
+
+    def test_a_held_value_is_never_printed_elsewhere(self):
+        # With no runner to read the mask line, printing it would print the
+        # value.
+        lane = _bare_lane(self.workdir)
+        out = io.StringIO()
+        with mock.patch.object(sys, 'stdout', out):
+            lane.remember('a value', 'held-value-3131')
+        self.assertEqual('', out.getvalue())
+        self.assertEqual(['held-value-3131'], lane.needles)
+
+    def test_only_github_actions_reads_workflow_commands(self):
+        for value, expected in (('true', True), ('false', False), ('', False)):
+            with mock.patch.dict(os.environ, {'GITHUB_ACTIONS': value}):
+                self.assertEqual(expected, drive_console.in_github_actions(), value)
+        with mock.patch.dict(os.environ, clear=True):
+            self.assertFalse(drive_console.in_github_actions())
 
     def test_the_api_jwts_are_held(self):
         import jwt as pyjwt

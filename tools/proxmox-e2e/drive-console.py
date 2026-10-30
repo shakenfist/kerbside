@@ -950,6 +950,11 @@ def _read_access_log(offset, token_id):
     return rest.splitlines()
 
 
+def in_github_actions():
+    """Whether a runner reads this process's output for workflow commands."""
+    return os.environ.get('GITHUB_ACTIONS') == 'true'
+
+
 class Lane:
     """The lane's configuration, and the checks which need it."""
 
@@ -979,11 +984,20 @@ class Lane:
         # together.
         self.needle_descriptions = []
         self.needles = []
+        self.mask_in_job_log = in_github_actions()
 
     def remember(self, description, needle):
-        """Hold a value the drive learned, so the scan searches for it. Never printed."""
+        """Hold a value the drive learned, so the scan searches for it.
+
+        Under GitHub Actions it is also masked in the job log, which covers
+        output after this point that does not pass through the redaction,
+        such as an exception's text. Elsewhere it is never printed: with no
+        runner to read the mask line, printing it would print the value.
+        """
         self.needle_descriptions.append(description)
         self.needles.append(needle)
+        if self.mask_in_job_log and needle:
+            print('::add-mask::%s' % needle, flush=True)
 
     def checkpoint(self, name, expected, sessions=()):
         """Count mints in PVE's access log, and fail unless they are as expected."""
