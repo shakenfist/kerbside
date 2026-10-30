@@ -312,10 +312,10 @@ first phase.
 |-------|------|--------|--------|
 | 1. Proxy backpressure and a WAN baseline | [PLAN-spice-performance-phase-01-proxy-backpressure.md](PLAN-spice-performance-phase-01-proxy-backpressure.md) | Complete | 52046167f8 (#478) |
 | 2. qemu damage path: prototype and measure; carry qemu, submit the kernel fix | | In progress | kerbside-patches b53aa39c7e (#1748) |
-| 3. Display transcoding in Kerbside: feasibility spike (verdict: no-go) | [PLAN-spice-performance-phase-03-transcoding.md](PLAN-spice-performance-phase-03-transcoding.md) | Complete | 2e19d737aa (#489), ryll fdb5ead5b4 (#406), eab2c572cf (#494), 9d1b64d6 (#505), 13e9e2eb (#581), bba71155 (#616), 7919eadf73 (#630) |
+| 3. Display transcoding in Kerbside: feasibility spike (verdict: no-go) | [PLAN-spice-performance-phase-03-transcoding.md](PLAN-spice-performance-phase-03-transcoding.md) | Complete | 2e19d737aa (#489), ryll fdb5ead5b4 (#406), eab2c572cf (#494), 9d1b64deae (#505), 13e9e2eb (#581), bba71155 (#616), 7919eadf73 (#630) |
 | 4. Son of SPICE: D-Bus display feasibility spike (verdict: no-go, as measured) | [PLAN-spice-performance-phase-04-dbus-spike.md](PLAN-spice-performance-phase-04-dbus-spike.md) | Complete | andris 9a997a3 (#56), a90f17ff90 (#637) |
 | 5. spice-server patches, measured: codec choice, the connect crash, trace ring, 60 fps, hardware probing | [PLAN-spice-performance-phase-05-spice-server.md](PLAN-spice-performance-phase-05-spice-server.md) | Complete | 46c3e9857c (#654), kerbside-patches 2d7b626422 (#2024) |
-| 6. Push audit of phases 1-5 (kerbside and kerbside-patches) | | Not started | |
+| 6. Push audit of phases 1-5 (kerbside, kerbside-patches and ryll #406) | [PLAN-spice-performance-phase-06-push-audit.md](PLAN-spice-performance-phase-06-push-audit.md) | In progress | |
 | 7. QUIC client leg: experiments | | Not started | |
 | 8. QUIC client leg: implementation, if phase 7 says go | | Not started | |
 | 9. Push audit of phases 7-8 (kerbside and ryll) | | Not started | |
@@ -344,9 +344,14 @@ qemu is carried downstream, not submitted (below).
 
 Its `Merged` cell records `kerbside-patches <sha> (#pr)` for the
 import, and `linux <sha>` once the kernel fix lands. The push
-audit cites kerbside-patches' own audit for the import and the
-dri-devel review for the kernel fix. The carried qemu series
-has no upstream review, so its audit is kerbside-patches' own.
+audit cites the dri-devel review for the kernel fix. The carried
+qemu series has no upstream review, so its audit is
+kerbside-patches' own.
+  - *Corrected 2026-10-31 by phase 6's survey:* kerbside-patches
+    has no `PUSH-AUDIT.md`, and its upstream-series push audit
+    has not run, so there is no audit of the import to cite.
+    Phase 6 applies the shared block's floor checklist to it
+    instead, and reviews the carried qemu series itself.
 
 Both have now reported, and each upstream has its own
 contribution rule.
@@ -886,8 +891,16 @@ kerbside-patches' `upstream/spice/`:
 phases 1-5, run before the QUIC work starts so that the two
 bodies of work are audited separately. It follows the shared
 block below over the ranges recorded in phases 1-5's `Merged`
-cells, and cites kerbside-patches' own audits for the work
-that landed there.
+cells.
+- *Corrected 2026-10-31 by its survey:* there are no
+  kerbside-patches audits to cite. That repository has no
+  `PUSH-AUDIT.md`, so phase 6 applies the block's floor
+  checklist to #1748 and #2024 itself. ryll #406 was never
+  audited either, so phase 6 runs ryll's runbook over it.
+  andris #56 carries its own audit, which phase 6 cites. The
+  phase plan
+  ([PLAN-spice-performance-phase-06-push-audit.md](PLAN-spice-performance-phase-06-push-audit.md))
+  has the full survey.
 
 **Phases 7 and 8** (added 2026-09-27) put the ryll-to-Kerbside
 client leg on QUIC, so that one UDP connection carries every
@@ -971,7 +984,7 @@ rather than re-auditing work that has already been audited.
 Work that lands in ryll is audited under ryll's own push
 audit, and phase 9 cites it.
 
-<!-- shared-block: plan-push-audit-phase v3 -->
+<!-- shared-block: plan-push-audit-phase v4 -->
 Push audit phase (shared block; do not edit -- the canonical
 copy lives in shakenfist/development at
 `templates/shared-blocks/plan-push-audit-phase.md`):
@@ -1036,7 +1049,32 @@ copy lives in shakenfist/development at
 - A repository with no `PUSH-AUDIT.md` still carries the phase, and
   the phase says that the runbook does not exist yet and what was
   done instead. Silently omitting it is what let the audit go
-  untriggered for as long as it did.
+  untriggered for as long as it did. What is done instead is at
+  least the checklist below, applied to the recorded ranges: it is
+  a floor, not a substitute for a runbook, and a plan adds the
+  questions its own repository's blast radius raises. Each item
+  gets a verdict, or a sentence saying why it does not apply.
+  Do not borrow another repository's runbook instead: a runbook is
+  written for one repository's blast radius.
+  1. Every recorded landing takes one of the forms above: a merge
+     commit with two parents, whose diff is read against its first
+     parent; every commit of a direct landing, or its `first..last`
+     range; a landing in another repository, whose own audit is
+     cited; or a statement that no range is recoverable, naming the
+     paths the audit read.
+  2. Anything the diff added that runs unattended -- cron, a timer,
+     a scheduled workflow, a self-update -- reports its own failure
+     somewhere a human sees, or is named as not doing so.
+  3. No secret or token entered any repository, and no private
+     hostname or IP address entered a repository more public than
+     the one it came from.
+  4. Anything the diff removed or renamed has no consumer left,
+     checked by grep across every repository that could consume it
+     rather than by assumption, with the greps stated.
+  5. Where the repository publishes something -- an image, a
+     release, a package -- a broken change fails closed: one that
+     publishes nothing is recoverable, one that publishes something
+     wrong is not.
 <!-- shared-block-end -->
 
 ## Agent guidance
