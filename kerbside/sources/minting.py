@@ -160,7 +160,14 @@ def mint_with_deadline(driver, source, uuid, lifetime, deadline):
         raise MintDeadlineExceeded(
             'no console ticket for %s within %s seconds' % (uuid, deadline))
 
-    thread.start()
+    # A thread that never started would never unregister itself, and every
+    # later mint for the console would fail to join it.
+    try:
+        thread.start()
+    except Exception:
+        with _workers_lock:
+            del _workers[key]
+        raise
     try:
         minted, error = outcome.get(timeout=remaining)
     except queue.Empty:
