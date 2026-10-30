@@ -244,32 +244,32 @@ counts only.
 
 ## Definition of done
 
-- [ ] 7a ran `wave1.sh` five times, once per code merge. The execution
+- [x] 7a ran `wave1.sh` five times, once per code merge. The execution
       notes give each exit code and the per-merge flake8 result.
-- [ ] 7a recorded `rust.yml`'s conclusion and run ID for c435ea3 and
+- [x] 7a recorded `rust.yml`'s conclusion and run ID for c435ea3 and
       c4b4011, or the result of the Docker cargo run that replaced a
       missing one.
-- [ ] 7c ran `wave2-mechanical.sh` five times, likewise.
-- [ ] *Outcome* lists every finding from 7a to 7f2, each with a
+- [x] 7c ran `wave2-mechanical.sh` five times, likewise.
+- [x] *Outcome* lists every finding from 7a to 7f2, each with a
       verdict: fixed in the follow-up, declined (with the reason), or
       filed (with the issue). If there are none, it says so in one
       sentence.
-- [ ] Every finding *Outcome* accepts was reproduced against the tree
+- [x] Every finding *Outcome* accepts was reproduced against the tree
       by the management session.
-- [ ] *Outcome* gives a verdict on each of the floor checklist's items
+- [x] *Outcome* gives a verdict on each of the floor checklist's items
       2 to 5, and on survey finding 5.
-- [ ] The private-data probe over the text this phase adds prints
+- [x] The private-data probe over the text this phase adds prints
       nothing else:
       `git diff origin/develop -- docs/plans/ | grep '^+' | grep -n -E '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}|\b([0-9]{1,3}\.){3}[0-9]{1,3}\b|stillhq|kasm|home\.|pvespiceproxy:|PVEAPIToken=|BEGIN [A-Z ]*PRIVATE KEY|password *[:=] *[^ <]'`.
       The probe's own line in this plan matches itself and is
       expected. Any other hit is removed, or shown to be a public
       example address.
-- [ ] `git status --short` in the worktree is empty after every agent
+- [x] `git status --short` in the worktree is empty after every agent
       has finished.
-- [ ] Phase 7's status in the master plan and `docs/plans/index.md`
+- [x] Phase 7's status in the master plan and `docs/plans/index.md`
       matches decision 5: `In progress` if a follow-up is needed,
       otherwise `Complete` along with the plan.
-- [ ] `pre-commit run --all-files` passes.
+- [x] `pre-commit run --all-files` passes.
 
 ## Bugs fixed during this work
 
@@ -281,11 +281,193 @@ None yet.
 
 ## Execution notes
 
-None yet.
+- 2026-10-30 AEDT, back brief. Mikal kept decision 3 (2d split into two
+  opus agents at high effort, and 2c on opus) and decision 5 (fixes in a
+  follow-up pull request). He gave this session permission to push and
+  open the pull request once the definition of done passes, and to file
+  the issues for findings that predate the plan after showing him their
+  wording.
+- 7a ran alone. `wave1.sh` exited 3 on 696f5aa, 6519c3b and c4b4011,
+  and 0 on c435ea3 and 746c7ef. The cause is the same everywhere:
+  `print()` in seven files that carry no `audit-allow-print` marker.
+  Those files are `tools/direct-qemu/qmp-client.py`, the migrations
+  `d019b0e3c87a` and `dabe2f66e369`, and four `tools/proxmox-e2e/`
+  scripts. Every one of these prints is deliberate output: CLI tools,
+  or migrations telling the operator what they changed. None is
+  service code bypassing logging. `PUSH-AUDIT.md` says to fix a wave 1
+  failure before wave 2, but decision 5 puts fixes in the follow-up.
+  So the management session reproduced the cause, recorded it as
+  finding 5 below, and started wave 2 rather than blocking on it.
+  Because the script stops at that check, wave 1's advisory long-line
+  and whitespace checks did not run on those three merges. flake8 at
+  120 columns, run directly over each merge's Python, is clean, and
+  pre-commit enforces whitespace.
+- 7a's per-merge flake8 used `.tox/shared/bin/flake8`, because the
+  flake8 environment has no binary of its own here. The generated
+  `kerbside_pb2*.py` stubs were excluded.
+- `rust.yml` passed on both merges that touched Rust: run 40628778333
+  on c435ea3 and run 40842114830 on c4b4011 (fmt, clippy with
+  `-D warnings`, test and build). The Docker fallback was not needed.
+- 7b to 7f2 ran in parallel once 7a was done. None wrote to the
+  worktree, and `git status --short` was empty after every one.
+- 7c ran `wave2-mechanical.sh` once per code merge, and all five
+  exited 0.
+- 7d ran 28 mutants on a copy of the tree, and 27 were killed. The
+  survivor removes the session ticket's `FOR UPDATE`, which SQLite
+  ignores. The only guard is `test_session_ticket_lock.py` on MariaDB,
+  which the direct-qemu lane runs through
+  `tools/direct-qemu/run-ticket-lock-test.sh`. This host has no
+  MariaDB, so it was not run here.
+- 7f2 found no Proxmox nightly run at 07:28 UTC. The management session
+  checked the workflow's run list: its eight runs are all pull request
+  runs. Every scheduled workflow in this repository fires about six
+  hours after its cron time. The 04:30 functional run started at 10:58
+  on 2026-10-29. So the first nightly, due 05:30 UTC on 2026-10-30, had
+  not yet fired. The follow-up pull request confirms that it ran.
+- 7g filed the issues Mikal approved, with the wording he was shown, on
+  2026-10-30 AEDT:
+  - shakenfist/kerbside #656, #657, #658, #659, #660 and #661;
+  - a comment on #138;
+  - shakenfist/ryll #665 and #666;
+  - shakenfist/actions #216.
 
 ## Outcome
 
-Not yet run.
+Audited on 2026-10-30. The judgment agents raised no critical, high or
+medium finding. Four low security findings and nine advisory ones are
+in the plan's own diff, and go to the follow-up pull request. The
+management session reproduced every accepted finding against the tree.
+Eight *Future work* entries that no issue tracked, and four problems
+that predate the plan, are filed. Phase 7 stays `In progress` until the
+follow-up lands.
+
+### Wave results
+
+| Check | Result |
+|-------|--------|
+| 7a, `wave1.sh` per code merge | Exit 3 on 696f5aa, 6519c3b and c4b4011, all from finding 5; exit 0 on c435ea3 and 746c7ef. flake8 and the unit suite pass on all five |
+| 7a, Rust | `rust.yml` passed on c435ea3 (40628778333) and c4b4011 (40842114830) |
+| 7c, `wave2-mechanical.sh` per code merge | Exit 0 on all five. No new TODO, `noqa`, assert or dependency. Three migrations, each with upgrade and downgrade. Eight broad excepts in 696f5aa, each of which logs a class name and re-raises or records the error |
+| 7d, mutation | 28 mutants, 27 killed. The survivor is the row lock, which only the MariaDB test in the direct-qemu lane guards (finding 11) |
+
+### Floor checklist
+
+- **Item 1, landings:** every phase is a merge commit read against its
+  first parent. Phases 1b and 2 cite their audits in actions and ryll.
+  Phase 1 changed no code.
+- **Item 2, unattended work:** met. The nightly lane files or updates a
+  `Nightly proxmox lane failing` issue when it fails, and the issue
+  carries only the run URL (`proxmox-functional.yml`'s issue job). A
+  cancelled or never-started run files nothing, as for every other
+  lane. Its first scheduled run had not fired at audit time (*Execution
+  notes*).
+- **Item 3, secrets and addresses:** pass. The credential-shaped test
+  fixtures are short sentinels with `example.org` hosts. The only
+  addresses are loopback, or the public action's RFC 1918 default.
+- **Item 4, removed or renamed:** no consumer is left. 3a stopped
+  writing the oVirt ticket to the `Console` row and removed
+  `store_console_ticket` and `acquire_ticket`. 3b changed `Target`.
+  Greps over this repository, ryll at e49ddce and kerbside-patches at
+  b81cd62bd found no remaining caller outside `docs/plans/`.
+- **Item 5, publishing:** fails closed. A daemon and proxy built
+  against different `kerbside.proto` contracts refuse to start
+  (`proxy_supervisor.check_contract`). Even with that check skipped, an
+  old proxy ignores the tunnel field and dials port 0, which fails.
+
+### To fix in the follow-up pull request
+
+| # | Source | Severity | Where | Finding | Introduced by |
+|---|--------|----------|-------|---------|---------------|
+| 1 | 7f2 | low | `kerbside/sources/proxmox.py`, url handling; `ansible/roles/kerbside/files/kerbside-check-sources.py` | An `http://` url is accepted, so the API token travels in cleartext and the CA check never runs. Refuse any scheme but `https`, in the driver and the role's checker, and say so in `console-sources.md`'s table | 6519c3b |
+| 2 | 7f2 | low | `kerbside/sources/proxmox.py`, the mint's return | The tunnel's proxy URI comes from `spiceproxy`'s reply unchecked, and the connect host is then sent to it in plaintext. Require its host to equal the source's API host. `console-sources.md` should also say that the 3128 leg carries the connect host in the clear, as the use-case page does | 6519c3b |
+| 3 | 7f1 | low | `kerbside/sources/minting.py`, worker registration | The worker is registered before `thread.start()`. If the start raises, an unstarted thread stays registered, and every later mint for that console fails to join it for `MINT_STUCK_AFTER` (300 s). Unregister it, under the lock, if `start()` raises | 696f5aa |
+| 4 | 7e | advisory | `tools/check-backend-tls-claims.py` `BACKEND`; `docs/use-cases/proxmox.md` value bullet | The checker does not read the page's heading, "The SPICE session to qemu is TLS and pinned", as a claim, so removing the bullet's conditions would pass. Add `qemu` to `BACKEND`, with a test. The real docs still pass with it (checked on a copy). Overlaps deployment options' follow-up item 8 and #641, so whichever opens second rebases | 746c7ef |
+| 5 | 7a | advisory | the seven files in *Execution notes* | Deliberate output without the `audit-allow-print` marker that `tools/check-pypi-storage.py` and the other reporting CLIs carry. Add the marker | 696f5aa, 6519c3b, c4b4011 |
+| 6 | 7e | advisory | `docs/network-ports.md`, the firewall summary | Lists "every hypervisor's plaintext and TLS SPICE ports" for Kerbside's outbound traffic, without the Proxmox API host's 3128, which the same page's table and the use-case page both require | 6519c3b |
+| 7 | 7e | advisory | `docs/proxy-architecture.md`, the minting sequence | Widened to "oVirt and Proxmox VE", but step 1's requested lifetime is ignored by Proxmox, and step 3's abandoned-worker risk is narrowed for Proxmox by `MINT_POST_CUTOFF`, which no doc mentions | 6519c3b |
+| 8 | 7e | advisory | `ARCHITECTURE.md`, the Proxmox VE source row | Restates the 30-second lifetime and the 409 refusal, which `console-sources.md` owns. Cut to a summary and the link (`llm-doc-discipline`) | 6519c3b |
+| 9 | 7f1 | advisory | `docs/schema.md`, the session token's backend columns | Add one sentence: these columns hold live, short-lived credentials, which therefore also reach binlogs, replicas and backups | 696f5aa, c435ea3 |
+| 10 | 7f2 | advisory | `tools/proxmox-e2e/drive-console.py`, `Lane.remember` | Also emit `::add-mask::` for each remembered value under Actions. This covers the window before the session's ticket is captured, when a daemon log tail can print | c4b4011 |
+| 11 | 7d | advisory | `kerbside/tests/unit/test_db.py` | A unit-level backstop for the row lock: compile `session_ticket`'s query for MariaDB and assert it holds `FOR UPDATE`. The MariaDB test stays the real guard | 696f5aa |
+| 12 | 7d | advisory | `kerbside/tests/unit/test_sources_proxmox.py` | One test that mints through `minting.mint_with_deadline` with a Proxmox source row, so the driver's construction from the database is exercised beside the generic fakes | 6519c3b |
+
+### Filed: future work no issue tracked
+
+- #656: the Proxmox mint cutoff counts from the driver's start, not the
+  caller's deadline (phase 4).
+- A comment on #138: the tunnel fields and the direct path's `as u16`
+  port casts (phase 3b).
+- #657: share the e2e lane helpers between `ovirt-e2e` and
+  `proxmox-e2e` (phase 5). 7c measured the overlap at about 150 to 200
+  lines.
+- #658: re-read the node subject when a VM live-migrates, and test it
+  on two nodes (phases 4 and 5).
+- ryll #666: seven tunnel and lane follow-ups (phases 1b and 2). The
+  fork guards were already ryll #470.
+- actions #216: create the documented least-privilege account, plus
+  four substrate follow-ups (phases 1b and 5).
+
+Every other *Future work* entry is done, or is documented as a
+limitation where an operator reads it. Two are on the use-case page:
+ACME on the API, and a load balancer needing port 3128. One is in
+`proxy-architecture.md`: serialising mints across daemons.
+
+### Filed, because they predate the plan
+
+- #659: the checker's `CRYPTO` pattern does not match a bare "is TLS"
+  (7e).
+- #660: the scrape loop logs a source exception's text (7f2).
+- #661: the `.vv` `title=` line is not escaped (7f2).
+- ryll #665: `ConnectionConfig`'s derived `Debug` would print the
+  password and host (7f1).
+
+### Declined, and why
+
+- **SSH host-key checking is off in the lane** (7f2, low). The oVirt
+  and Shaken Fist lanes do the same against their ephemeral nodes. The
+  key is public-key only, with no agent forwarding, so a
+  man-in-the-middle could only feed the lane false results. Pinning
+  needs the action to publish the node's host key. That is a change
+  for every lane, not one this plan made.
+- **The node's address reaches the uploaded `kerbside.env` and the
+  step log** (7f2, informational). The node is ephemeral, its address
+  is RFC 1918, and the deploy action prints the same values.
+- **`tools/proxmox-e2e/drive-console.py` (1,484 lines) and
+  `test_proxmox_e2e_tools.py` (1,581 lines)** (7c, advisory). Both are
+  past the size block's marks. The test file's 25 test classes are
+  grouped by the script they test, so a split by script is a clean
+  seam. But the scripts it would follow are the ones #657 restructures
+  into shared helpers. Both splits are deferred to that work, so the
+  test files are cut along the seam the code ends up with, not a cut by
+  line count made now.
+- **The `dabe2f66e369` downgrade deletes rows whose names are too long
+  for the old width** (7b). This is deliberate and warned about: a
+  narrower column cannot hold them.
+- **The driver's request timeouts are constants, not configuration**
+  (7b). They match `ovirt.py`'s, and each one's comment gives its
+  reason.
+- **The 7f1 informational items** are already documented in
+  `proxy-architecture.md` and the use-case page:
+  - cross-daemon mints;
+  - gRPC pool starvation;
+  - the plaintext CONNECT;
+  - a connect failure's message naming the proxy's host and port, which
+    is not a credential;
+  - the host-subject refusal living in ryll, which the direct-qemu
+    lane's no-subject mode guards.
+- **`tools/direct-qemu/run-tunnel-checks.sh` uses a predictable `/tmp`
+  work directory** (7f1). This follows the harness's existing pattern
+  on ephemeral runners.
+- **Three `TODO(mikal)` lines in `api.py`, `db.py` and `main.py`**
+  (7c). The mechanical script lists them only because the plan changed
+  those files. No merge added them.
+- **Double quotes in `tools/proxmox-e2e/account_commands.py`'s module
+  docstring and in the generated `kerbside_pb2.py`** (7b). The first is
+  a docstring, where the rule asks for double quotes. The second is
+  generated.
+- **`AGENTS.md`'s add-a-source procedure** (7e, mostly predates). The
+  plan added one step, which names the hook. The procedure's home is a
+  question for the whole file, not for this plan.
 
 ## Back brief
 
