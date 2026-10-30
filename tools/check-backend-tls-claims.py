@@ -76,7 +76,9 @@ import sys
 
 # A sentence makes a claim when it is about the backend side of
 # Kerbside, asserts something, and that something is pinning or
-# transport security. All three are needed: "both the plaintext and TLS
+# transport security. `qemu` counts as the backend side: a tunnel-only
+# page names the far end of the leg as qemu rather than as a node or
+# hypervisor, as in "the SPICE session to qemu is TLS and pinned". All three are needed: "both the plaintext and TLS
 # ports" is reachability rather than a claim, and matches neither PIN
 # nor CRYPTO.
 #
@@ -90,7 +92,7 @@ import sys
 # an unconditional claim survived two lines from the page that had
 # just qualified it.
 BACKEND = re.compile(
-    r'\b(?:backend|hypervisor|hypervisors|node|nodes|target|targets)\b',
+    r'\b(?:backend|hypervisor|hypervisors|node|nodes|target|targets|qemu)\b',
     re.I)
 ASSERTS = re.compile(
     r'\b(?:is|are|was|were|be|been|does|do|did|will|can|must|has|have|'
