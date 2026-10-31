@@ -193,9 +193,18 @@ class ProxmoxSource(base.BaseSource):
         # reached on, as PVE recommends, so that kerbside dials a host it
         # already reaches rather than each node's FQDN. PVE brackets an
         # IPv6 address itself.
-        self.proxy_host = urllib.parse.urlsplit(self.args['url']).hostname
+        url = urllib.parse.urlsplit(self.args['url'])
+        self.proxy_host = url.hostname
         if not self.proxy_host:
             LOG.warning('Ignoring source %s as its url names no host'
+                        % self.args.get('source'))
+            self.errored = True
+            return
+
+        # Over http the token travels in the clear and requests never checks
+        # the CA, so nothing but https is accepted.
+        if url.scheme != 'https':
+            LOG.warning('Ignoring source %s as its url is not https'
                         % self.args.get('source'))
             self.errored = True
             return
@@ -411,8 +420,15 @@ class ProxmoxSource(base.BaseSource):
         try:
             tunnel = base.Tunnel(minted['proxy'], minted['host'], int(minted['tls-port']))
             password = minted['password']
-        except (KeyError, TypeError, ValueError):
+            proxy_host = urllib.parse.urlsplit(tunnel.proxy_uri).hostname
+        except (KeyError, TypeError, ValueError, AttributeError):
             raise self._unavailable(vmid, 'spiceproxy returned an incomplete ticket')
         if not password:
             raise self._unavailable(vmid, 'spiceproxy returned an incomplete ticket')
+
+        # The connect host crosses the CONNECT in plaintext, so it is only
+        # ever sent to the proxy this mint asked for: the API's own host.
+        # urlsplit() lowercases both hostnames.
+        if proxy_host != self.proxy_host:
+            raise self._unavailable(vmid, 'spiceproxy named a proxy other than the API host')
         return base.MintedTicket(password, now + TICKET_LIFETIME, tunnel)

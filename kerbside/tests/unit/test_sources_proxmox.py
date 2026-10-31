@@ -313,6 +313,31 @@ class TestConstruction(_ProxmoxTestCase):
                            project_name=None, user_domain_id=None, project_domain_id=None)
         self.assertFalse(src.errored)
 
+    def test_mints_through_mint_with_deadline(self):
+        # The path a session's first channel takes: a driver built on a
+        # worker from the source's database row, minting, then closed.
+        self._fake()
+        row = {'name': 'test-proxmox', 'type': 'proxmox', 'url': URL,
+               'username': TOKEN_ID, 'password': SECRET, 'ca_cert': CA_CERT,
+               'errored': False, 'deleted': False, 'project_name': None,
+               'user_domain_id': None, 'project_domain_id': None}
+        made = []
+        real_init = proxmox.ProxmoxSource.__init__
+
+        def recording_init(instance, **kwargs):
+            made.append(instance)
+            real_init(instance, **kwargs)
+
+        with mock.patch.object(proxmox.ProxmoxSource, '__init__', recording_init):
+            minted = minting.mint_with_deadline(
+                proxmox.ProxmoxSource, row, proxmox.console_uuid(100, SMBIOS), 90, minting.MINT_DEADLINE)
+
+        self.assertEqual(PASSWORD, minted.ticket)
+        self.assertEqual(base.Tunnel('http://pve1.example:3128', CONNECT_HOST, 61000), minted.tunnel)
+        self.assertEqual(1, len(made))
+        self.assertEqual('test-proxmox', made[0].args['source'])
+        self.assertIsNone(made[0].ca_tempfile)
+
     def test_missing_fields_mark_the_source_errored(self):
         for field in ('url', 'username', 'password', 'ca_cert'):
             records = self._capture_logs()
@@ -323,6 +348,16 @@ class TestConstruction(_ProxmoxTestCase):
 
     def test_url_with_no_host_marks_the_source_errored(self):
         self.assertTrue(self._source(url='pve1.example:8006').errored)
+
+    def test_url_other_than_https_marks_the_source_errored(self):
+        # Over http the token would cross the network in the clear, with no
+        # CA check at all.
+        for url in ('http://pve1.example:8006', 'ftp://pve1.example'):
+            records = self._capture_logs()
+            src = self._source(url=url)
+            self.assertTrue(src.errored, url)
+            self.assertIsNone(src.ca_tempfile, url)
+            self.assertNotIn(SECRET, '\n'.join(records))
 
     def test_api_base_tolerates_a_trailing_slash(self):
         self.assertEqual(API, self._source(url=URL + '/').api)
@@ -546,15 +581,26 @@ class TestMinting(_ProxmoxTestCase):
         self.assertEqual(30, proxmox.TICKET_LIFETIME)
 
     def test_proxy_is_the_host_of_the_source_url(self):
-        for url, host in ((URL, 'pve1.example'),
-                          (URL + '/', 'pve1.example'),
-                          ('https://PVE1.example', 'pve1.example'),
-                          ('https://[fd00::1]:8006', 'fd00::1')):
+        for url, host, proxy in ((URL, 'pve1.example', 'http://pve1.example:3128'),
+                                 (URL + '/', 'pve1.example', 'http://pve1.example:3128'),
+                                 ('https://PVE1.example', 'pve1.example', 'http://pve1.example:3128'),
+                                 ('https://[fd00::1]:8006', 'fd00::1', 'http://[fd00::1]:3128')):
             base_url = url.rstrip('/') + '/api2/json'
             answers = {(method, base_url + path[len(API):]): answer
-                       for (method, path), answer in _answers().items()}
+                       for (method, path), answer in _answers(spiceproxy=_spiceproxy(proxy=proxy)).items()}
             minted, fake = self._mint(answers=answers, src=self._source(url=url))
             self.assertEqual({'proxy': host}, fake.calls[-1][2]['data'], url)
+
+    def test_a_proxy_other_than_the_api_host_is_refused(self):
+        # The connect host is sent to the proxy in plaintext, so a reply
+        # naming any other host is not trusted with it.
+        for proxy in ('http://elsewhere.example:3128', 'http://pve2.example:3128',
+                      'http://:3128', 'not a uri'):
+            self._refused(answers=_answers(spiceproxy=_spiceproxy(proxy=proxy)))
+
+    def test_the_api_host_matches_its_proxy_whatever_the_case(self):
+        minted, _ = self._mint(answers=_answers(spiceproxy=_spiceproxy(proxy='http://PVE1.Example:3128')))
+        self.assertEqual('http://PVE1.Example:3128', minted.tunnel.proxy_uri)
 
     def test_tls_port_as_a_string_is_an_integer(self):
         minted, _ = self._mint(answers=_answers(spiceproxy=_spiceproxy(**{'tls-port': '61000'})))

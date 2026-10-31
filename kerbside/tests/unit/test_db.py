@@ -4,6 +4,7 @@ import time
 
 from sqlalchemy import create_engine
 from sqlalchemy import event
+from sqlalchemy.dialects import mysql
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 import testtools
@@ -638,6 +639,25 @@ class SessionBackendTicketTestCase(testtools.TestCase):
         db.add_token('client-token', 'sess', 'engine', 'vm-1',
                      self.now, self.now + 60)
         self.minted = []
+
+    def test_the_token_row_is_selected_for_update(self):
+        # SQLite drops FOR UPDATE when it compiles, so the statement is
+        # compiled for MariaDB here. Only the MariaDB test shows that the
+        # lock makes racing channels mint once; this catches the lock
+        # being dropped without one.
+        selects = []
+
+        def capture(state):
+            if state.is_select:
+                selects.append(str(state.statement.compile(dialect=mysql.dialect())))
+        event.listen(Session, 'do_orm_execute', capture)
+        self.addCleanup(event.remove, Session, 'do_orm_execute', capture)
+
+        db.session_ticket('sess', self._mint, 90, 10)
+
+        token_selects = [sql for sql in selects if 'FROM consoletokens' in sql]
+        self.assertEqual(1, len(token_selects))
+        self.assertTrue(token_selects[0].rstrip().endswith('FOR UPDATE'), token_selects[0])
 
     def _mint(self, lifetime):
         self.minted.append(lifetime)

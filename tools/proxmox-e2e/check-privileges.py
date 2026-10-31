@@ -36,6 +36,7 @@ python3 of the venv tools/proxmox-e2e/deploy-kerbside.sh makes, which has
 requests as a kerbside dependency.
 """
 
+# audit-allow-print: a CI command-line tool, whose PASS and FAIL lines and ::error annotations are its report.
 import argparse
 import json
 import sys

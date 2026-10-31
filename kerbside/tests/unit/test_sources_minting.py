@@ -146,6 +146,17 @@ class MintWithDeadlineTestCase(testtools.TestCase):
         self._mint()
         self.assertEqual({}, minting._workers)
 
+    def test_a_worker_which_cannot_start_is_not_left_registered(self):
+        # Starting a thread can fail, for one when the process is at its
+        # thread limit. The next mint for the console must not then wait
+        # on a thread which never ran.
+        with mock.patch.object(threading.Thread, 'start',
+                               side_effect=RuntimeError('cannot start')):
+            self.assertRaises(RuntimeError, self._mint)
+        self.assertEqual({}, minting._workers)
+
+        self.assertEqual(base.MintedTicket('a-ticket', 1090), self._mint())
+
     def test_a_mint_waits_for_an_abandoned_worker_on_its_console(self):
         # An abandoned worker which finishes later sets the console's
         # password. A newer mint must set its own after that, or the
