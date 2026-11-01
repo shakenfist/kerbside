@@ -203,12 +203,20 @@ class CheckSourcesScriptTestCase(testtools.TestCase):
 
     def test_a_complete_proxmox_source_passes(self):
         self.assertEqual([], self._check(
-            '- {source: a, type: proxmox, url: u, username: "k@pve!t",\n'
+            '- {source: a, type: proxmox, url: "https://u:8006", username: "k@pve!t",\n'
             '   password: s3cret, ca_cert: c}\n'))
+
+    def test_a_proxmox_source_needs_an_https_url(self):
+        for url in ('http://u:8006', 'u:8006'):
+            errors = self._check(
+                '- {source: a, type: proxmox, url: "%s", username: "k@pve!t",\n'
+                '   password: s3cret, ca_cert: c}\n' % url)
+            self.assertEqual(['source 0 (proxmox): url is not https, which Kerbside '
+                              'refuses for Proxmox VE'], errors, url)
 
     def test_a_proxmox_source_needs_a_ca_cert(self):
         errors = self._check(
-            '- {source: a, type: proxmox, url: u, username: "k@pve!t",\n'
+            '- {source: a, type: proxmox, url: "https://u:8006", username: "k@pve!t",\n'
             '   password: s3cret}\n')
         self.assertEqual(['source 0 (proxmox): ca_cert is missing'], errors)
         self.assertNotIn('s3cret', ' '.join(errors))

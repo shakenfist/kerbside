@@ -40,6 +40,7 @@ Prints one command per line, or with --token-id the ID of the token the
 block creates. A refused block prints why to stderr and exits 1.
 """
 
+# audit-allow-print: a CI command-line tool, whose stdout is the token ID and commands the lane runs.
 import argparse
 import re
 import shlex

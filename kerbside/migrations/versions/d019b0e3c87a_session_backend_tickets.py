@@ -4,6 +4,7 @@ Revision ID: d019b0e3c87a
 Revises: 3b8d5f1a6c92
 
 """
+# audit-allow-print: alembic runs this from the command line, and it tells the operator which stored tickets it cleared.
 from alembic import context
 from alembic import op
 import sqlalchemy as sa

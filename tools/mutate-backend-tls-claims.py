@@ -41,6 +41,8 @@ MUTATIONS = [
      r'unpinned|untested)', r'unpinned|untested|should)'),
     ('none back in the conditional vocabulary',
      r'unpinned|untested)', r'unpinned|untested|none)'),
+    ('qemu dropped from the backend vocabulary',
+     r'target|targets|qemu)', r'target|targets)'),
     ('pinned dropped from the assertion vocabulary',
      r'retries|checks|pinned)', r'retries|checks)'),
     ('underscore emphasis stripped again',

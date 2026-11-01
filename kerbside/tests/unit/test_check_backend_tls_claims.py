@@ -61,6 +61,12 @@ TUNNEL_CONDITIONAL = """- **The backend leg's SPICE session is TLS and pinned, b
   A tunnel without a node certificate subject is refused.
 """
 
+# A tunnel-only page's heading names the far end of the leg as qemu,
+# not as a node or a hypervisor.
+QEMU_UNCONDITIONAL = """- **The SPICE session to qemu is TLS and pinned.** Every connection
+  is a tunnel to the proxy.
+"""
+
 # The same bullet with its condition sentences removed.
 TUNNEL_UNCONDITIONAL = """- **The backend leg's SPICE session is TLS and pinned.** Every
   backend connection is a tunnel: a plaintext CONNECT to the proxy,
@@ -106,6 +112,12 @@ class ClaimDetectionTestCase(testtools.TestCase):
 
         self.assertEqual(1, len(found))
         self.assertIn('TLS and pinned', found[0][1])
+
+    def test_naming_qemu_is_naming_the_backend(self):
+        found = _claims(QEMU_UNCONDITIONAL)
+
+        self.assertEqual(1, len(found))
+        self.assertIn('qemu is TLS and pinned', found[0][1])
 
     def test_configured_alone_does_not_exempt_a_block(self):
         """`configured` is a noun modifier, not a condition marker.

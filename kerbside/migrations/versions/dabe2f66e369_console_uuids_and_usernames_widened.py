@@ -4,6 +4,7 @@ Revision ID: dabe2f66e369
 Revises: cfdafafd3044
 
 """
+# audit-allow-print: alembic runs this from the command line, and the downgrade tells the operator which rows it drops.
 from alembic import context
 from alembic import op
 import sqlalchemy as sa

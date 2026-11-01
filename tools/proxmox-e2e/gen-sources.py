@@ -32,6 +32,7 @@ Usage:
         --lane-file PATH --ca-file PATH [--source-name proxmox]
 """
 
+# audit-allow-print: a CI command-line tool, reporting what it wrote to the step log.
 import argparse
 import json
 import os
