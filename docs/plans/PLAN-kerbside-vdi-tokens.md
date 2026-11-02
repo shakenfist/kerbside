@@ -65,7 +65,7 @@ as a whole is not:
   carries a node UUID, `type=` carries an SF-internal enum
   value that virt-viewer rejects, and no `host-subject` is
   emitted. The last of those is worth noting here: the
-  host_subject work in phase 6 and `PLAN-host-subject.md` gave
+  host_subject work in phase 6 and [`PLAN-host-subject.md`](https://github.com/shakenfist/kerbside/blob/cc17cc987f28855bc56700f64e46bdc92f6b1f3c/docs/plans/PLAN-host-subject.md) gave
   kerbside-sourced consoles subject pinning, and the direct
   path never picked it up, so it is the weaker of the two
   paths on exactly the property that work set out to fix.

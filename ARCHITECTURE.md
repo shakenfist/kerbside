@@ -347,7 +347,8 @@ worked example in `etc/kerbside.conf.example`.
    `host_subject`, it is also enforced: the certificate's subject must match
    under spice-common semantics (same attribute count, types, and order;
    values compared case-insensitively with whitespace folded), substituting
-   for hostname verification. See `docs/plans/PLAN-host-subject.md`.
+   for hostname verification. See
+   [docs/proxy-architecture.md](docs/proxy-architecture.md#backend-host-subject-pinning).
 5. **Offline Shaken Fist token verification**: Shaken Fist consoles are
    accessed by exchanging a short-lived Ed25519-signed JWT at
    `/sf-console.vv`. Kerbside verifies the signature, `aud`, and `exp`

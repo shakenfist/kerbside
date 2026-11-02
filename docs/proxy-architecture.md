@@ -116,6 +116,47 @@ is then relayed without host-subject enforcement rather than refused
 which is only correct on the stock `cn=hostname` PKI and so is off by
 default. See [Console Sources](console-sources.md#shaken-fist).
 
+### Backend host subject pinning
+
+The matching is done by the TLS verifier in ryll's
+`shakenfist-spice-protocol` crate, whose `host_subject.rs` module comment
+states the grammar and comparison rules. The proxy only passes the
+console's `host_subject` through (`build_config` in `backend.rs`). Its shape
+has these reasons:
+
+- **The rules are spice-common's, not the earlier Python proxy's.** They
+  replicate `subject_to_x509_name` and `verify_subject` in spice-common's
+  `common/ssl_verify.c`, which spice-gtk and virt-viewer apply to a `.vv`
+  file's `host-subject`, so one subject string is accepted or refused the
+  same way by virt-viewer, ryll and this proxy. The Python proxy rebuilt a
+  string from only the `C`, `O` and `CN` attributes and compared it
+  exactly, so a certificate carrying any other attribute could never match.
+  Two differences from OpenSSL are deliberate: values are compared with
+  ASCII case folding only, and the attributes of a multi-valued RDN are
+  compared in the order the certificate holds them rather than sorted.
+  Either can refuse a certificate OpenSSL would accept, never the reverse.
+- **It fails closed.** An unknown attribute key, a malformed string, a
+  value encoding the matcher cannot decode (TeletexString, BMPString) and
+  a mismatch all refuse the backend. A malformed pin is rejected when the
+  ryll client is constructed rather than at the handshake, so it fails even
+  where the plaintext attempt would have succeeded, and never quietly
+  becomes an unpinned connection.
+- **A pin replaces hostname verification**, as it does in spice-gtk,
+  because SPICE server certificates usually carry no subjectAltName.
+- **A refusal is audited as an ordinary failed connect.** The audit event
+  is `Hypervisor connection failed:` followed by the error chain, which for
+  a mismatch ends `invalid peer certificate: NotValidForName`; the proxy's
+  log line `TLS: rejecting certificate: pinned host_subject ...` names both
+  subjects. There is no separate audit event type, as there was none in
+  the Python proxy.
+- **oVirt's subjects need no normalisation.** The oVirt API reports
+  `host.certificate.subject` already in the spice-common form
+  (`O=local,CN=ovirt.local` from the oVirt CI engine, 2026-07-17), so the
+  oVirt source stores it as reported.
+
+The direct-qemu lane proves both outcomes against a real TLS backend; see
+[Backend host subject checks](testing.md#backend-host-subject-checks).
+
 ## Connection State Machine
 
 Each accepted connection runs this sequence (`session.rs`, `backend.rs`,

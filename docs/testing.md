@@ -666,6 +666,33 @@ because spice-server drops its current client when a new one links.
 The new password lives only in an owner-only file in the lane's
 working directory; it is never on a command line or in a log.
 
+### Backend host subject checks
+
+`run-host-subject-checks.sh` runs on the Rust leg after the main lane is
+torn down, since it reuses the same ports. It drives the standalone
+harness `verify-rust-proxy.sh` with `BACKEND_TLS=1`: qemu gets a SPICE TLS
+listener with a server certificate minted by `generate-tls.sh` (subject
+`C=US,O=Kerbside CI,CN=qemu-hv`, with no subjectAltName, as real SPICE
+certificates usually have none) and `tls-channel=default`, which is QEMU's
+spelling for TLS required on every channel. The plaintext port therefore
+answers `need_secured`, and the proxy reaches the TLS port through its
+real retry path. Two modes each run in their own working directory, with
+ryll headless as the client:
+
+- `match`: the mock control plane pins the correct `host_subject`. The
+  session must be authorized and relay bytes in both directions, and the
+  mock's audit log must hold no `Hypervisor connection failed` event. This
+  mode is also the gate on the firewall allowlist (`assert-firewall`; see
+  the [direct-qemu harness](direct-qemu-harness.md)).
+- `mismatch`: the mock pins `CN=not-the-hypervisor`. The session must be
+  authorized, since authorization comes before the backend connect, but
+  relay nothing; the mock's audit log must hold a `Hypervisor connection
+  failed` event naming `NotValidForName`, and the proxy's log its `pinned
+  host_subject` refusal line.
+
+The rules being tested are described in
+[Backend host subject pinning](proxy-architecture.md#backend-host-subject-pinning).
+
 ### Tunnelled backend connections
 
 `run-tunnel-checks.sh` runs on the Rust leg after the host-subject

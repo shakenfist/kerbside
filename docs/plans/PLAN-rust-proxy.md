@@ -658,7 +658,7 @@ implemented because the following statements will be true:
   verification to the ryll crate's verifier (so ryll benefits too)
   and having the proxy pass the console's `host_subject`. Tracked
   here so it is not lost. **Done**: implemented via
-  `PLAN-host-subject.md` (ryll PR #166 + kerbside adoption),
+  [`PLAN-host-subject.md`](https://github.com/shakenfist/kerbside/blob/cc17cc987f28855bc56700f64e46bdc92f6b1f3c/docs/plans/PLAN-host-subject.md) (ryll PR #166 + kerbside adoption),
   2026-07-17.
 * **Per-source / per-console firewall policy profiles**
   in the database, with API and web UI surface.
