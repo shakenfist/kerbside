@@ -590,6 +590,38 @@ The direct-qemu lane publishes a `Can enqueue: direct-qemu` gate job,
 which is a required status check; see
 [Gate jobs and required checks](#gate-jobs-and-required-checks).
 
+### How the lane is put together
+
+The lane runs qemu, Kerbside and ryll as plain processes on the runner
+rather than in containers: the self-hosted runner is itself a
+throwaway VM, which is already the isolation boundary, and passing
+`/dev/kvm` into a container would add privileged-container setup
+without adding isolation. The Uncalibrated Sextant guest is committed
+as `tests/fixtures/uncalibrated-sextant.qcow2` (it is well under a
+megabyte, so plain git rather than LFS), which keeps the lane hermetic
+and makes a change of guest visible in a pull request's diff;
+`tools/direct-qemu/rebuild-sextant-qcow2.sh` refreshes it. TLS
+material is minted fresh by `generate-tls.sh` on every run, so no key
+is committed and no certificate can expire under the lane.
+
+Sextant is a bare UEFI application, which constrains the qemu
+command line in `start-qemu.sh`. It needs `-vga qxl`, without which
+spice-server offers no display channel; its disk must be on the q35
+machine's default AHCI controller, since a bare UEFI application has
+no virtio block driver, which in turn rules out `-nodefaults`; and
+the lane prefers the 4M OVMF build, the one Sextant's own release
+check boots.
+
+Ryll is built from its default branch on every run, so the lane's
+clients check only the control socket's major protocol version: a
+check on the exact minor version failed every run the day ryll's
+protocol moved from 1.0 to 1.1. The [Sextant scenario
+test](#sextant-scenario-test-direct-qemu-lane) provisions nothing
+itself: the lane boots the guest and starts Kerbside and ryll, and the
+test only reads the control socket and serial log paths it is given,
+so a lane on another platform can run the same test by providing the
+same two things.
+
 ### The proxy wheel is installed the way a deployment installs it
 
 The direct-qemu Rust leg builds and installs the `kerbside-proxy`
@@ -1029,9 +1061,10 @@ binary as a test target and drives Ryll (the upstream Rust SPICE
 client) in headless mode against an OpenStack-provisioned instance. A
 Python orchestrator at `loadtests/latency/orchestrator.py` connects to
 Ryll via its control socket, sends spacebar keypresses every two
-seconds, collects SPICE PING/PONG round-trip latency samples, and
-writes them to a CSV (one float per line, seconds). See the
-[Ryll section](#ryll) above for a note on the metric definition.
+seconds, and writes keypress-to-screen latency samples (each keypress
+timed against the first `surface_drawn` event after it) to a CSV, one
+float per line, in seconds. See the [Ryll section](#ryll) above for the
+metric definition.
 
 To build this OCI image, do this:
 
