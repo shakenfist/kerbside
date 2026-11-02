@@ -768,6 +768,18 @@ Kerbside unit journals and the ryll, SF daemon and libvirt logs,
 redacted before upload; the README's Security section lists what is
 collected.
 
+The exchange needs a real cluster because it cannot be faked in the
+cloud-free direct-qemu lane. Only a `type: shakenfist` source's keys
+can verify a token, and the exchange then requires the console to
+belong to that source; a console seeded into the database by hand is
+removed by the daemon's next scrape, which reaps every console the
+source did not report; and Shaken Fist reads `KERBSIDE_URL` when its
+API starts, so the setting has to be in place at deploy time. Kerbside
+runs on the cluster's own node and reaches the API on `localhost`, so the
+lane need not expose the cluster's API beyond the node. The offline
+verification itself is covered case by case by the unit tests in
+`kerbside/tests/unit/test_sf_token.py` and `test_api.py`.
+
 ## The oVirt end-to-end kerbside lane
 
 The `ovirt_matrix` job in `.github/workflows/functional-tests.yml`
