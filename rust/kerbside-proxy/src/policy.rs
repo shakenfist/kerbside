@@ -294,11 +294,12 @@ impl PermittedChannels {
 /// This equals the relay's absolute [`MAX_MESSAGE_SIZE`](crate::relay) resource
 /// guard on purpose: the bulk directions (display server especially, which
 /// carries image/surface payloads) have no meaningful per-message policy cap
-/// below the absolute guard *yet*. It is deliberately conservative to avoid
-/// false positives before the step-4f capture validation observes real peak
-/// sizes and tightens it. Until then the absolute guard is the effective bound
-/// for these directions, and the `size_cap` rule only fires on the tight
-/// directions below.
+/// below the absolute guard. It is deliberately conservative to avoid false
+/// positives: a captured remote-viewer session approached no cap, so nothing
+/// has yet justified a tighter value (see the SPICE Firewall section of
+/// `docs/proxy-architecture.md`). The absolute guard is therefore the
+/// effective bound for these directions, and the `size_cap` rule only fires
+/// on the tight directions below.
 const GENEROUS_SIZE_CAP: u32 = 16 * 1024 * 1024;
 
 /// The tight L0 policy size cap for the input-event client directions
@@ -310,8 +311,8 @@ const INPUT_CLIENT_SIZE_CAP: u32 = 4 * 1024;
 
 /// A coarse per-direction rate/throughput ceiling.
 ///
-/// DISABLED by default (`FirewallPolicy::rate_limit == None`): picking real
-/// values needs the step-4f captures, and a wrong default would false-positive
+/// DISABLED by default (`FirewallPolicy::rate_limit == None`): no measured
+/// traffic has yet justified a value, and a wrong default would false-positive
 /// on legitimate bursts (e.g. a display refresh storm). The mechanism ships so
 /// a deployment can opt in once tuned; the counter is a simple fixed window
 /// per relay direction (see [`EnforcingPolicy`]).
