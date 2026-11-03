@@ -34,6 +34,7 @@ import testtools
 import yaml
 
 from kerbside import config
+from kerbside import db
 
 
 # The repository root. The role and the fixture are repository data,
@@ -183,6 +184,65 @@ class RoleDefaultsTestCase(testtools.TestCase):
             [], drifted,
             'argument_specs.yml documents a default other than '
             'defaults/main.yml sets: %s' % ', '.join(drifted))
+
+
+class SourcesArgumentSpecTestCase(testtools.TestCase):
+    """kerbside_sources' argument spec masks exactly Kerbside's secrets.
+
+    ansible-core 2.22 redacts every value of a no_log option from all of
+    its output, so the spec declares each source and console field and
+    marks only the credentials no_log (#687). A key it does not declare
+    is refused, so it must declare every field the check knows.
+    """
+
+    def setUp(self):
+        super().setUp()
+        with open(_ARGUMENT_SPECS) as f:
+            specs = yaml.safe_load(f)
+        self.sources = specs['argument_specs']['main']['options'][
+            'kerbside_sources']
+        self.source_options = self.sources['options']
+        self.console_options = self.source_options['consoles']['options']
+
+    def _no_log(self, options):
+        return sorted(name for name, option in options.items()
+                      if option.get('no_log'))
+
+    def test_the_list_itself_is_not_no_log(self):
+        self.assertFalse(self.sources.get('no_log', False))
+        self.assertFalse(
+            self.source_options['consoles'].get('no_log', False))
+
+    def test_only_kerbside_secret_fields_are_no_log(self):
+        self.assertEqual(
+            sorted(db.SOURCE_SECRET_FIELDS),
+            self._no_log(self.source_options))
+        self.assertEqual(
+            sorted(db.CONSOLE_SECRET_FIELDS),
+            self._no_log(self.console_options))
+
+    def test_every_field_the_check_knows_is_declared(self):
+        source_fields = set(
+            check_sources.COMMON_REQUIRED + check_sources.COMMON_TEXT)
+        for fields in check_sources.TYPE_REQUIRED.values():
+            source_fields.update(fields)
+        console_fields = set(
+            check_sources.CONSOLE_REQUIRED + check_sources.CONSOLE_PORTS
+            + check_sources.CONSOLE_OPTIONAL_TEXT)
+        self.assertEqual(
+            [], sorted(source_fields - set(self.source_options)))
+        self.assertEqual(
+            [], sorted(console_fields - set(self.console_options)))
+
+    def test_values_are_passed_on_unconverted(self):
+        # validate's check must see an unquoted numeric password as the
+        # number it is, so no field may be converted on the way.
+        options = dict(self.source_options)
+        options.pop('consoles')
+        options.update(self.console_options)
+        self.assertEqual(
+            [], sorted(name for name, option in options.items()
+                       if option.get('type') != 'raw'))
 
 
 class CheckSourcesScriptTestCase(testtools.TestCase):
