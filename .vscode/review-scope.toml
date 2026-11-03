@@ -66,6 +66,12 @@
 # - tests/fixtures/*.qcow2 -- disk images. Spelled by extension and
 #   not as tests/fixtures/*, which would also drop the README beside
 #   them, and that is prose somebody wrote.
+# - docs/performance/*.png and *.jpg -- screenshots captured during
+#   the performance runs: evidence, not prose, and nothing in them
+#   can be re-read line by line. The summary.md beside each set,
+#   which says what they show, stays in scope. Scoped to
+#   docs/performance/ so that an image arriving anywhere else, such
+#   as a web UI asset, still fails the audit until weighed.
 # - AUTHORS and LICENSE -- not authored here.
 include = [
     # Executable artifacts.
@@ -116,6 +122,8 @@ exclude = [
     '.github/exported-config/*',
     'rust/kerbside-proxy/Cargo.lock',
     'tests/fixtures/*.qcow2',
+    'docs/performance/*.png',
+    'docs/performance/*.jpg',
     'AUTHORS',
     'LICENSE',
 ]

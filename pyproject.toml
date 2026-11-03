@@ -74,6 +74,14 @@ dependencies = [
     "requests==2.34.2",                 # apache2
     "urllib3==2.8.0",                   # mit
 
+    # Jinja2 is imported directly only by the test suite
+    # (kerbside/tests/unit/test_systemd_units.py), which renders the
+    # Ansible role's unit templates with jinja2 itself to compare them
+    # with etc/systemd/. Flask requires it too, so an ordinary install
+    # carries it either way; it is declared here for the same reasons as
+    # packaging and urllib3 above.
+    "Jinja2==3.1.6",                    # bsd
+
     # These must move as a set. pydantic-core is deliberately NOT pinned
     # here: each pydantic release exact-pins its matching pydantic-core, so
     # a pin of our own is either redundant or conflicting (see PR #198).
@@ -119,7 +127,6 @@ dependencies = [
     "charset-normalizer==3.5.2",
     "idna==3.20",
     "itsdangerous==2.2.0",
-    "Jinja2==3.1.6",
     "Mako==1.4.3",
     "MarkupSafe==3.0.4",
     "marshmallow==4.3.1",
