@@ -386,13 +386,21 @@ jobs:
       # which has no business in the tox venv. ansible-core comes in with
       # ansible-lint, and brings the cryptography and PyYAML the role's
       # helper scripts need when the role test runs them.
+      #
+      # All three are pinned, and Renovate proposes each release as its
+      # own pull request (see renovate.json). Unpinned, a new release
+      # fails whichever pull request runs next, whatever it changed:
+      # ansible-core 2.22.0 began masking no_log argument values in
+      # output, and first failed a docs-only pull request (#686, fixed by
+      # #688). release.yml pins ansible-core to the same version, so the
+      # collection is built and published with what it was tested on.
       - name: Install the Ansible tools
         timeout-minutes: 5
         run: |
           python3 -mvenv /tmp/venv-ansible
           /tmp/venv-ansible/bin/pip3 install uv
           /tmp/venv-ansible/bin/uv pip install --python /tmp/venv-ansible/bin/python \
-              ansible-core ansible-lint galaxy-importer
+              ansible-core==2.22.0 ansible-lint==26.10.1 galaxy-importer==0.4.44
 
       # Rootless test of the kerbside role's validate, bootstrap (against
       # a stub virtualenv), config and register entry points. register

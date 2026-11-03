@@ -129,12 +129,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # ansible-core is pinned to the version sanity_checks tests the
+      # collection with, here and in the publish job below; Renovate
+      # moves all three pins together (see renovate.json).
       - name: Install build dependencies
         run: |
           rm -rf collection-venv
           python3 -m venv collection-venv
           collection-venv/bin/pip3 install --upgrade pip
-          collection-venv/bin/pip3 install ansible-core
+          collection-venv/bin/pip3 install ansible-core==2.22.0
 
       # The version is the one the Python packages are built with. A
       # workflow_dispatch build has no tag and is never published, so it
@@ -420,7 +423,7 @@ jobs:
           rm -rf publish-venv
           python3 -m venv publish-venv
           publish-venv/bin/pip3 install --upgrade pip
-          publish-venv/bin/pip3 install ansible-core
+          publish-venv/bin/pip3 install ansible-core==2.22.0
 
       # The token reaches ansible-galaxy as its server configuration,
       # through env: alone. Interpolating it into the script would write
