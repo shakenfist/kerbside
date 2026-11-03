@@ -84,8 +84,8 @@ printed. `kerbside_sql_url` and `kerbside_auth_secret_seed` are marked
 `no_log` in the argument specs, so ansible-core 2.22 and later also mask them
 wherever they appear. `kerbside_sources` is not, since ansible-core would mask
 every string in it, the source names and types included, out of every
-message: its credentials are seen only by `no_log` tasks, and other tasks
-read only the source names.
+message: only its `password` and `ticket` fields are, as described under
+console sources below, and other tasks read only the source names.
 
 ### Required to deploy
 
@@ -95,7 +95,7 @@ read only the source names.
 | `kerbside_public_fqdn` | `""` | The name SPICE clients use to reach the proxy. Also what a proxy certificate should be issued for. |
 | `kerbside_sql_url` | `""` | The SQLAlchemy URL of Kerbside's database, for example `mysql://kerbside:PASSWORD@db.example.com/kerbside`. A secret. |
 | `kerbside_auth_secret_seed` | `""` | Seeds Kerbside's API token signing. A secret of at least 32 characters, and never Kerbside's placeholder `~~unconfigured~~`. |
-| `kerbside_sources` | `[]` | Kerbside's console sources. A secret. See below. |
+| `kerbside_sources` | `[]` | Kerbside's console sources. Each source's `password` and each static console's `ticket` are secrets. See below. |
 | `kerbside_url` | `""` | Kerbside's base URL, rendered as the console token audience. Required when a source is of type `shakenfist`, where it must equal the cluster's `KERBSIDE_URL` byte for byte. Otherwise optional. |
 
 ### Console sources
@@ -107,6 +107,17 @@ describes. Each source has a unique `source` name and a `type` of
 its own required fields. `validate` checks them on the control node, by
 position and key and never by value, and `config` checks the rendered file
 again before it replaces the running one.
+
+The argument specs declare every field a source or a static console can
+have, and mark only `password` and `ticket` `no_log`. A key they do not
+declare is refused. This is new: earlier releases of the role passed any key
+through to `sources.yaml`, so a source carrying a misspelt or unused key that
+deployed before now fails validation, and the key must be removed.
+ansible-core 2.22 and later redact a `no_log` value everywhere it appears in
+their output, so this keeps a source's name, URL and type readable while its
+credentials stay hidden. It also means a credential
+short or common enough to occur in ordinary text, such as `p`, is redacted
+wherever that text appears.
 
 A Shaken Fist cluster. The username must be `system`, and the password is the
 cluster's `kerbside` key:

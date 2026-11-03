@@ -62,21 +62,24 @@ argument_specs:
         type: list
         elements: dict
         default: []
-        # Not no_log, although the sources carry credentials. From
-        # ansible-core 2.22 a no_log argument registers every string in it
-        # as a secret, masked wherever it appears in any output whatever its
-        # length, so the source names, types and usernames in it (sf,
-        # shakenfist, kerbside) would be masked out of every message. Only
-        # no_log tasks see the credentials instead (tasks/validate.yml and
-        # tasks/config_file.yml), and the role only ever prints source
-        # names, positions and keys.
         description:
           - >-
-            Kerbside's console sources (a secret, since they carry each
-            source's credentials), written to sources.yaml as given: a list of
-            mappings in the form docs/console-sources.md in the Kerbside
-            repository describes. Required, and non-empty, when kerbside_hosts
-            is not empty.
+            Kerbside's console sources, written to sources.yaml as given: a
+            list of mappings in the form docs/console-sources.md in the
+            Kerbside repository describes. Required, and non-empty, when
+            kerbside_hosts is not empty.
+          - >-
+            Only each source's password and each static console's ticket are
+            secrets, and only they are no_log. ansible-core 2.22 and later
+            redact a no_log value wherever it appears in their output, so a
+            no_log on the whole list would redact every source's name, url
+            and type, and with it the word shakenfist everywhere (#687).
+            The other fields are declared so that those two can be, and a
+            key declared nowhere below is refused: a field Kerbside gains
+            belongs in the options below, with no_log if it is a
+            credential. Every option is raw, so that validation passes each
+            value on unconverted, for validate's check to judge as Kerbside
+            would.
           - >-
             Every source needs a unique source name and a type, one of
             shakenfist, ovirt, openstack, proxmox and static, and each type
@@ -95,6 +98,79 @@ argument_specs:
             For every source of type shakenfist, bootstrap installs
             kerbside_client_package, and register waits for Kerbside to fetch
             that cluster's console token signing keys.
+        options:
+          source:
+            type: raw
+            description: The source's name.
+          type:
+            type: raw
+            description: shakenfist, ovirt, openstack, proxmox or static.
+          url:
+            type: raw
+            description: The cloud's API URL.
+          username:
+            type: raw
+            description: The user, or Proxmox API token ID, Kerbside uses.
+          password:
+            type: raw
+            no_log: true
+            description: That user's password or token secret (a secret).
+          ca_cert:
+            type: raw
+            description: Inline PEM text of a CA certificate.
+          ca_file:
+            type: raw
+            description: >-
+              The path, on each Kerbside host, of an oVirt source's CA
+              certificate, used in place of a temporary copy of ca_cert.
+          project_name:
+            type: raw
+            description: An openstack source's Keystone project.
+          user_domain_id:
+            type: raw
+            description: An openstack source's user domain.
+          project_domain_id:
+            type: raw
+            description: An openstack source's project domain.
+          verify:
+            type: raw
+            description: How an openstack source verifies its Keystone TLS.
+          interface:
+            type: raw
+            description: The Keystone interface an openstack source uses.
+          synthesize_host_subject:
+            type: raw
+            description: Whether a shakenfist source synthesizes subjects.
+          consoles:
+            type: list
+            elements: dict
+            description: A static source's consoles.
+            options:
+              uuid:
+                type: raw
+                description: The console's identifier within its source.
+              name:
+                type: raw
+                description: The console's display name.
+              hypervisor:
+                type: raw
+                description: The hypervisor's name.
+              hypervisor_ip:
+                type: raw
+                description: The hypervisor's address.
+              insecure_port:
+                type: raw
+                description: The SPICE plain port.
+              secure_port:
+                type: raw
+                description: The SPICE TLS port.
+              host_subject:
+                type: raw
+                description: The hypervisor certificate's subject.
+              ticket:
+                type: raw
+                no_log: true
+                description: The SPICE ticket (a secret).
       kerbside_hosts:
         type: list
         elements: str

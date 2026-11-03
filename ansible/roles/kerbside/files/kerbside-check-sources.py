@@ -54,6 +54,14 @@ COMMON_REQUIRED = ('source', 'type')
 COMMON_TEXT = ('url', 'username', 'password', 'project_name',
                'user_domain_id', 'project_domain_id', 'ca_cert')
 
+# The optional fields only a driver or Kerbside's API reads, which this does
+# not check: an oVirt source's ca_file, a Shaken Fist source's
+# synthesize_host_subject, and an OpenStack source's verify and interface. The
+# role's argument specs declare these too, and its unit tests find every field
+# Kerbside reads, so a field it gains fails them until it is added here.
+DRIVER_OPTIONAL = ('ca_file', 'synthesize_host_subject', 'verify',
+                   'interface')
+
 # Each source type Kerbside knows, and the fields its driver cannot do without.
 # A static source's one required field, consoles, is checked on its own.
 TYPE_REQUIRED = {

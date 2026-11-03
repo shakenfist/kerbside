@@ -198,7 +198,8 @@ hkjOPQQDAjAvMRQwEgYDVQQKDAtTaGFrZW4gRmlzdDEXMBUGA1UEAwwORXF1aXZh
 #     host co-located with a Shaken Fist node sees it, with one Shaken Fist
 #     source, using the loopback API, and Shaken Fist's reserved ports.
 #   * multi.json: one source of every type, and a second Shaken Fist source,
-#     each carrying a secret.
+#     each carrying a secret, and between them every optional field a driver
+#     or Kerbside's API reads, so that validate is seen to accept each one.
 #   * no-sf.json: an oVirt and a static source, and no kerbside_url.
 #   * shakenfist.json: Shaken Fist's deployment with the fixed CA.
 URL="${URL}" FQDN="${FQDN}" SYSTEM_KEY="${SYSTEM_KEY}" SF2_KEY="${SF2_KEY}" \
@@ -232,12 +233,14 @@ ovirt = {
     'url': 'https://engine.example.com/ovirt-engine',
     'username': 'admin@ovirt@internalsso',
     'password': env['OVIRT_PASSWORD'], 'ca_cert': ovirt_ca,
+    'ca_file': env['OVIRT_CA_FILE'],
 }
 openstack = {
     'source': 'kolla', 'type': 'openstack',
     'url': 'http://keystone.example.com:5000', 'username': 'kerbside',
     'password': env['OPENSTACK_PASSWORD'], 'project_name': 'service',
     'user_domain_id': 'default', 'project_domain_id': 'default',
+    'verify': False, 'interface': 'public',
 }
 static = {
     'source': 'lab', 'type': 'static',
@@ -274,8 +277,9 @@ files = {
             sf_source('sf', 'http://localhost:13000', env['SYSTEM_KEY'],
                       sf_ca),
             ovirt, openstack, static,
-            sf_source('sf2', 'https://sf2.example.com:13000',
-                      env['SF2_KEY'], sf_ca),
+            dict(sf_source('sf2', 'https://sf2.example.com:13000',
+                           env['SF2_KEY'], sf_ca),
+                 synthesize_host_subject=True),
         ],
     },
     'no-sf.json': {
@@ -464,6 +468,16 @@ case_2_valid() {
 
     CURRENT_CASE='case 2: validate passes one source of every type, and two Shaken Fist sources'
     VERBOSITY=-vvv validate_passes "${MULTI_VARS}"
+    # ansible-core 2.22 and later redact a no_log value wherever it appears
+    # (#687). Only a source's password and a console's ticket are no_log, so
+    # a source's type, shakenfist, still reads as itself in the task names
+    # after the argument specs have been validated.
+    assert_output_has 'TASK [shakenfist.kerbside.kerbside : Refuse a kerbside_sources Kerbside could not use]'
+
+    CURRENT_CASE='case 2: validate refuses a kerbside_sources key the role does not declare'
+    validate_fails 'kerbside_sources\.surprise\. Supported parameters include' \
+        "$(write_vars sources-undeclared-key '{"kerbside_sources": [
+          {"source": "s", "type": "static", "surprise": "x", "consoles": []}]}')"
 
     CURRENT_CASE='case 2: validate passes no kerbside_url without a Shaken Fist source'
     VERBOSITY=-vvv validate_passes "${NO_SF_VARS}"
@@ -591,23 +605,36 @@ case_7_sources() {
         'source 0 (openstack): project_domain_id is missing'
 
     CURRENT_CASE="case 7a: validate refuses a static source's missing fields"
+    # Secrets in these cases are long enough to appear in no message:
+    # ansible-core 2.22 redacts a no_log value wherever it appears (#687).
     sources_refused static-fields '[
       {"source": "a", "type": "static"},
-      {"source": "b", "type": "static", "consoles": {"uuid": "x"}},
       {"source": "c", "type": "static", "consoles": [
-        "not-a-mapping",
         {"uuid": "x"},
         {"uuid": "x", "name": "n", "hypervisor": "h", "hypervisor_ip": ["i"],
-         "insecure_port": 70000, "secure_port": "abc", "ticket": "t"}]}]' \
+         "insecure_port": 70000, "secure_port": "abc", "ticket": "tkt-7a-static"}]}]' \
         'source 0 (static): consoles is missing; write consoles: [] for a source with none' \
-        'source 1 (static): consoles is not a list' \
-        'source 2 console 0 is not a mapping' \
-        'source 2 console 1: name is missing' 'source 2 console 1: hypervisor is missing' \
-        'source 2 console 1: hypervisor_ip is missing' \
-        'source 2 console 1: insecure_port is missing' 'source 2 console 1: ticket is missing' \
-        'source 2 console 2: hypervisor_ip is not text' \
-        'source 2 console 2: insecure_port is not a port from 1 to 65535' \
-        'source 2 console 2: secure_port is not a port from 1 to 65535'
+        'source 1 console 0: name is missing' 'source 1 console 0: hypervisor is missing' \
+        'source 1 console 0: hypervisor_ip is missing' \
+        'source 1 console 0: insecure_port is missing' 'source 1 console 0: ticket is missing' \
+        'source 1 console 1: hypervisor_ip is not text' \
+        'source 1 console 1: insecure_port is not a port from 1 to 65535' \
+        'source 1 console 1: secure_port is not a port from 1 to 65535'
+
+    # The argument specs declare consoles a list of mappings, so that a
+    # ticket can be no_log alone, and refuse any other shape before the
+    # checker sees it, without printing it (case 18).
+    CURRENT_CASE="case 7a: validate refuses a static source's consoles which is not a list"
+    VERBOSITY=-vvv validate_fails "argument 'consoles' is of type dict found in 'kerbside_sources'" \
+        "$(write_vars consoles-mapping "{\"kerbside_sources\": [{\"source\": \"b\",
+          \"type\": \"static\", \"consoles\": {\"ticket\": \"${STATIC_TICKET}\"}}]}")"
+    assert_validate_refused
+
+    CURRENT_CASE="case 7a: validate refuses a static console which is not a mapping"
+    VERBOSITY=-vvv validate_fails "Elements value for option 'consoles' found in 'kerbside_sources' is of type str" \
+        "$(write_vars console-not-mapping "{\"kerbside_sources\": [{\"source\": \"b\",
+          \"type\": \"static\", \"consoles\": [\"ticket ${STATIC_TICKET}\"]}]}")"
+    assert_validate_refused
 
     CURRENT_CASE='case 7a: validate passes a static source with no consoles'
     validate_passes "$(write_vars static-empty \
@@ -638,12 +665,12 @@ case_7_sources() {
 
     CURRENT_CASE="case 7e: validate refuses a Shaken Fist source whose username is not system"
     sources_refused username '[{"source": "a", "type": "shakenfist", "url": "u",
-      "username": "kerbside", "password": "p", "ca_cert": "c"}]' \
+      "username": "kerbside", "password": "pw-7e-username", "ca_cert": "c"}]' \
         'source 0 (shakenfist): username is not system, but Kerbside scrapes'
 
     CURRENT_CASE='case 7f: validate refuses a shared field which is not text'
     sources_refused not-text '[{"source": "a", "type": "openstack", "url": "u",
-      "username": "n", "password": ["p"], "project_name": "s",
+      "username": "n", "password": ["pw-7f-not-text"], "project_name": "s",
       "user_domain_id": true, "project_domain_id": "d"}]' \
         'source 0: password is not text' 'source 0: user_domain_id is not text'
 
