@@ -24,7 +24,7 @@ for how this works, including how to verify the attestations.
 | .github/workflows/pin-indirect-dependencies.yml | mikal | 2026-10-05 | 94e1e3a47510 | - |
 | .github/workflows/pr-re-review.yml | mikal | 2026-10-05 | 68425cd38444 | - |
 | .github/workflows/pr-retest.yml | mikal | 2026-10-05 | dab99349ea18 | - |
-| .github/workflows/prune-reviews.yml | mikal | 2026-10-16 | 91ff1783e658 | development@09606ce904a2 |
+| .github/workflows/prune-reviews.yml | mikal | 2026-11-01 | 0c0cfe362b24 | development@d8055a5e1696 |
 | .github/workflows/pypi-storage-check.yml | mikal | 2026-08-24 | b4ea2a75e61a | - |
 | .skillsaw.yaml | mikal | 2026-09-26 | 7f2245e1fb83 | - |
 | .stestr.conf | mikal | 2026-09-26 | 6c68d8e253a3 | - |
@@ -78,7 +78,7 @@ for how this works, including how to verify the attestations.
 | tempest-plugin/kerbside_tempest_plugin/tests/scenario/__init__.py | mikal | 2026-08-18 | e69de29bb2d1 | - |
 | tools/check-pypi-storage.py | mikal | 2026-09-18 | 0b9338af4956 | - |
 | tools/check-required-checks.sh | mikal | 2026-08-15 | dc86bff62d2d | - |
-| tools/ci-prune-reviews.sh | mikal | 2026-10-16 | b4ce5b64c79a | development@09606ce904a2 |
+| tools/ci-prune-reviews.sh | mikal | 2026-11-01 | 3c00a9489c0b | development@d8055a5e1696 |
 | tools/create-ovirt-vnc-vm.py | mikal | 2026-08-15 | ab5640046d9d | - |
 | tools/direct-qemu/generate-tls.sh | mikal | 2026-08-15 | b271b8113594 | - |
 | tools/direct-qemu/install-proxy-wheel.sh | mikal | 2026-08-18 | 9266fc276c75 | - |
