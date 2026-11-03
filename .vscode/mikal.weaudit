@@ -104,10 +104,6 @@
       "author": "mikal"
     },
     {
-      "path": "rust/kerbside-proxy/src/policy.rs",
-      "author": "mikal"
-    },
-    {
       "path": "tools/direct-qemu/generate-tls.sh",
       "author": "mikal"
     },

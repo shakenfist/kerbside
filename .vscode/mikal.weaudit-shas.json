@@ -193,10 +193,6 @@
       "sha": "986a0e57e486d95869634f76d307579210f6d31e",
       "date": "2026-08-18"
     },
-    "rust/kerbside-proxy/src/policy.rs": {
-      "sha": "e5ec82cc156bc9e03561fafe554fcfe55107fd9a",
-      "date": "2026-08-15"
-    },
     "rust/kerbside-proxy/src/tls.rs": {
       "sha": "e2be3c864a08747f987880b5205d719f33a15f78",
       "date": "2026-08-05"
