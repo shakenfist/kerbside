@@ -118,6 +118,11 @@ argument_specs:
           ca_cert:
             type: raw
             description: Inline PEM text of a CA certificate.
+          ca_file:
+            type: raw
+            description: >-
+              The path, on each Kerbside host, of an oVirt source's CA
+              certificate, used in place of a temporary copy of ca_cert.
           project_name:
             type: raw
             description: An openstack source's Keystone project.

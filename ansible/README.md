@@ -110,9 +110,12 @@ again before it replaces the running one.
 
 The argument specs declare every field a source or a static console can
 have, and mark only `password` and `ticket` `no_log`. A key they do not
-declare is refused. ansible-core 2.22 and later redact a `no_log` value
-everywhere it appears in their output, so this keeps a source's name, URL and
-type readable while its credentials stay hidden. It also means a credential
+declare is refused. This is new: earlier releases of the role passed any key
+through to `sources.yaml`, so a source carrying a misspelt or unused key that
+deployed before now fails validation, and the key must be removed.
+ansible-core 2.22 and later redact a `no_log` value everywhere it appears in
+their output, so this keeps a source's name, URL and type readable while its
+credentials stay hidden. It also means a credential
 short or common enough to occur in ordinary text, such as `p`, is redacted
 wherever that text appears.
 

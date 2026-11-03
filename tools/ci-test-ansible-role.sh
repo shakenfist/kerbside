@@ -198,7 +198,8 @@ hkjOPQQDAjAvMRQwEgYDVQQKDAtTaGFrZW4gRmlzdDEXMBUGA1UEAwwORXF1aXZh
 #     host co-located with a Shaken Fist node sees it, with one Shaken Fist
 #     source, using the loopback API, and Shaken Fist's reserved ports.
 #   * multi.json: one source of every type, and a second Shaken Fist source,
-#     each carrying a secret.
+#     each carrying a secret, and between them every optional field a driver
+#     or Kerbside's API reads, so that validate is seen to accept each one.
 #   * no-sf.json: an oVirt and a static source, and no kerbside_url.
 #   * shakenfist.json: Shaken Fist's deployment with the fixed CA.
 URL="${URL}" FQDN="${FQDN}" SYSTEM_KEY="${SYSTEM_KEY}" SF2_KEY="${SF2_KEY}" \
@@ -232,12 +233,14 @@ ovirt = {
     'url': 'https://engine.example.com/ovirt-engine',
     'username': 'admin@ovirt@internalsso',
     'password': env['OVIRT_PASSWORD'], 'ca_cert': ovirt_ca,
+    'ca_file': env['OVIRT_CA_FILE'],
 }
 openstack = {
     'source': 'kolla', 'type': 'openstack',
     'url': 'http://keystone.example.com:5000', 'username': 'kerbside',
     'password': env['OPENSTACK_PASSWORD'], 'project_name': 'service',
     'user_domain_id': 'default', 'project_domain_id': 'default',
+    'verify': False, 'interface': 'public',
 }
 static = {
     'source': 'lab', 'type': 'static',
@@ -274,8 +277,9 @@ files = {
             sf_source('sf', 'http://localhost:13000', env['SYSTEM_KEY'],
                       sf_ca),
             ovirt, openstack, static,
-            sf_source('sf2', 'https://sf2.example.com:13000',
-                      env['SF2_KEY'], sf_ca),
+            dict(sf_source('sf2', 'https://sf2.example.com:13000',
+                           env['SF2_KEY'], sf_ca),
+                 synthesize_host_subject=True),
         ],
     },
     'no-sf.json': {

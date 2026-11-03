@@ -18,6 +18,7 @@ sources.yaml, and the one register polls for readiness, which reports
 several Shaken Fist sources as one.
 """
 
+import ast
 import datetime
 import importlib.util
 import io
@@ -35,6 +36,7 @@ import yaml
 
 from kerbside import config
 from kerbside import db
+from kerbside.sources import static
 
 
 # The repository root. The role and the fixture are repository data,
@@ -42,6 +44,7 @@ from kerbside import db
 # tests find them from this file instead.
 _ROOT = Path(__file__).resolve().parents[3]
 _ROLE = _ROOT / 'ansible' / 'roles' / 'kerbside'
+_KERBSIDE = _ROOT / 'kerbside'
 _DEFAULTS = _ROLE / 'defaults' / 'main.yml'
 _ARGUMENT_SPECS = _ROLE / 'meta' / 'argument_specs.yml'
 _FIXTURE = _ROOT / 'tests' / 'fixtures' / 'host-subject-renderings.json'
@@ -186,6 +189,45 @@ class RoleDefaultsTestCase(testtools.TestCase):
             'defaults/main.yml sets: %s' % ', '.join(drifted))
 
 
+def _source_fields():
+    """Every source field validate's check knows, checked or not."""
+    fields = set(check_sources.COMMON_REQUIRED + check_sources.COMMON_TEXT
+                 + check_sources.DRIVER_OPTIONAL + ('consoles',))
+    for required in check_sources.TYPE_REQUIRED.values():
+        fields.update(required)
+    return fields
+
+
+def _console_fields():
+    """Every static console field validate's check knows."""
+    return set(check_sources.CONSOLE_REQUIRED + check_sources.CONSOLE_PORTS
+               + check_sources.CONSOLE_OPTIONAL_TEXT)
+
+
+def _keys_read(path, name):
+    """The constant keys a module reads from the mapping spelled name.
+
+    That is name['key'], name.get('key') and 'key' in name.
+    """
+    keys = set()
+    for node in ast.walk(ast.parse(path.read_text())):
+        mapping = key = None
+        if isinstance(node, ast.Subscript):
+            mapping, key = node.value, node.slice
+        elif (isinstance(node, ast.Call)
+              and isinstance(node.func, ast.Attribute)
+              and node.func.attr == 'get' and node.args):
+            mapping, key = node.func.value, node.args[0]
+        elif (isinstance(node, ast.Compare) and len(node.ops) == 1
+              and isinstance(node.ops[0], (ast.In, ast.NotIn))):
+            mapping, key = node.comparators[0], node.left
+        if (mapping is not None and ast.unparse(mapping) == name
+                and isinstance(key, ast.Constant)
+                and isinstance(key.value, str)):
+            keys.add(key.value)
+    return keys
+
+
 class SourcesArgumentSpecTestCase(testtools.TestCase):
     """kerbside_sources' argument spec masks exactly Kerbside's secrets.
 
@@ -221,18 +263,33 @@ class SourcesArgumentSpecTestCase(testtools.TestCase):
             sorted(db.CONSOLE_SECRET_FIELDS),
             self._no_log(self.console_options))
 
-    def test_every_field_the_check_knows_is_declared(self):
-        source_fields = set(
-            check_sources.COMMON_REQUIRED + check_sources.COMMON_TEXT)
-        for fields in check_sources.TYPE_REQUIRED.values():
-            source_fields.update(fields)
-        console_fields = set(
-            check_sources.CONSOLE_REQUIRED + check_sources.CONSOLE_PORTS
-            + check_sources.CONSOLE_OPTIONAL_TEXT)
+    def test_declared_fields_are_those_the_check_knows(self):
+        # Both ways: a field the check knows and the specs do not declare is
+        # refused before the check sees it, and one the specs declare and
+        # nothing knows is stale.
         self.assertEqual(
-            [], sorted(source_fields - set(self.source_options)))
+            sorted(_source_fields()), sorted(self.source_options))
         self.assertEqual(
-            [], sorted(console_fields - set(self.console_options)))
+            sorted(_console_fields()), sorted(self.console_options))
+
+    def test_console_fields_are_those_the_static_driver_reads(self):
+        self.assertEqual(
+            sorted(_console_fields()),
+            sorted(static._REQUIRED_FIELDS + tuple(static._OPTIONAL_FIELDS)))
+
+    def test_every_source_field_kerbside_reads_is_known(self):
+        # A source's fields are read by its driver, as self.args, and by the
+        # API's OpenStack lookup, as source. The specs refuse a field they do
+        # not declare, so one Kerbside starts reading must be added there.
+        read = set()
+        for path in sorted((_KERBSIDE / 'sources').glob('*.py')):
+            read |= _keys_read(path, 'self.args')
+        read |= _keys_read(_KERBSIDE / 'api.py', 'source')
+        self.assertEqual([], sorted(read - _source_fields()))
+        # And the scan still sees the readers of the fields only they read,
+        # so that it cannot pass by finding nothing.
+        self.assertEqual(
+            [], sorted(set(check_sources.DRIVER_OPTIONAL) - read))
 
     def test_values_are_passed_on_unconverted(self):
         # validate's check must see an unquoted numeric password as the
