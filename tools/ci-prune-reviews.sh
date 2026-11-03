@@ -26,21 +26,29 @@ GITSIGN_SHA256='69213a8a0813a151e5a47d0060862952ff833a845d57309dff76f7ba6600abae
 # The token, out of the environment, so that nothing this script runs
 # inherits it: not curl, not gitsign, and not the review tracking
 # script from the development clone. Only push_review_state hands it
-# on, to the one git push.
+# on, to the one git push. unset changes only what children inherit:
+# this script's own /proc/<pid>/environ is fixed at exec and still
+# holds PUSH_TOKEN for the whole run.
 take_push_token() {
     push_token="${PUSH_TOKEN}"
     unset PUSH_TOKEN
 }
 
-# Isolate git and gitsign from state left on the runner. The static
-# runners are long-lived, share one home directory across jobs and
-# repositories, and run pull request code, so ~/.gitconfig and
-# ~/.sigstore are writable by any earlier job. A url.<x>.insteadOf
-# there could swap the development clone, whose script this job runs,
-# for another; a poisoned TUF cache could change which Fulcio roots
-# and Rekor keys gitsign trusts, or, through its remote.json, which
-# mirror it updates them from. The workspace's own .git is reused
-# state too, which is why nothing here runs git in it (clone_target).
+# Isolate git and gitsign from state left on the runner. This script
+# assumes the runner may be long-lived, share one home directory and
+# one workspace across jobs and repositories, and run pull request
+# code, as the static runners do, so that anything an earlier job
+# could write there is hostile. The workflow runs it on an ephemeral
+# vm runner, a fresh machine per job, where none of that holds; the
+# isolation is kept as defence in depth, and because the runner is one
+# line of the workflow, not a property of this script. On a
+# long-lived, shared runner ~/.gitconfig and ~/.sigstore are writable
+# by any earlier job: a url.<x>.insteadOf there could swap the
+# development clone, whose script this job runs, for another; a
+# poisoned TUF cache could change which Fulcio roots and Rekor keys
+# gitsign trusts, or, through its remote.json, which mirror it updates
+# them from. A reused workspace's own .git is such state too, which is
+# why nothing here runs git in it (clone_target).
 #
 # GIT_CONFIG_GLOBAL=/dev/null replaces both ~/.gitconfig and
 # $XDG_CONFIG_HOME/git/config, and GIT_CONFIG_NOSYSTEM skips the
@@ -75,8 +83,10 @@ isolate_from_runner() {
     mkdir -p "${TUF_ROOT}"
 }
 
-# Download the pinned gitsign and put it first on PATH. The static
-# runners do not carry gitsign, and without it import imports nothing.
+# Download the pinned gitsign and put it first on PATH, because
+# without it import imports nothing, and no runner image is relied on
+# to carry it (see isolate_from_runner on what this script assumes of
+# the runner).
 # The download is checked twice: the release's checksums.txt must list
 # the pinned digest for the binary, which catches a version bumped
 # without its digest, and the binary must hash to it, which is what
@@ -128,12 +138,13 @@ clone_development() {
 }
 
 # Clone the repository being landed on into RUNNER_TEMP, and work
-# there rather than in the runner's workspace. A static runner reuses
-# its workspace, .git included: hooks an earlier pull request job left
-# in .git/hooks would run on this job's fetch, reset and commit, and
-# keys it left in .git/config -- core.fsmonitor, an include.path, a
-# pushurl or url.<x>.insteadOf -- would run commands or redirect the
-# push. A fresh clone has neither. The workflow fetches this script
+# there rather than in the runner's workspace, which this script
+# treats as reused, .git included (see isolate_from_runner). Hooks an
+# earlier pull request job left in .git/hooks would run on this job's
+# fetch, reset and commit, and keys it left in .git/config --
+# core.fsmonitor, an include.path, a pushurl or url.<x>.insteadOf --
+# would run commands or redirect the push. A fresh clone has neither
+# hooks nor such keys. The workflow fetches this script
 # the same way, so nothing in the job reads the workspace at all. The
 # URL comes from GITHUB_REPOSITORY, which the runner sets for every
 # job; like the development clone's, nothing an earlier job could
@@ -311,9 +322,11 @@ Automated commit by the prune-reviews workflow.'
 # http.extraheader for github.com, through GIT_CONFIG_COUNT and friends
 # on this command alone: never in argv, where any process on the runner
 # could read it, and never in .git/config, where it would outlive the
-# push. The environment of git push and its git-remote-https child is
-# still readable, through /proc/<pid>/environ, by any process running
-# as the runner's own user while the push runs; what bounds that is the
+# push. The push's environment, and this script's own and its parent
+# step shell's (see take_push_token), is still readable through
+# /proc/<pid>/environ by any process running as the runner's own user,
+# for the whole run and not only while the push runs. Only a runner
+# user of the job's own would close that; what bounds it here is the
 # runner killing a job's orphaned processes when the job ends, and the
 # fresh clone, whose empty hooks directory gives an earlier job's code
 # no way to start one inside this job. printf is a builtin, so the
