@@ -89,7 +89,7 @@ jobs:
       - name: Install Renovate
         env:
           # renovate: datasource=npm depName=renovate
-          PINNED_RENOVATE_VERSION: 44.198.0
+          PINNED_RENOVATE_VERSION: 44.198.3
         run: |
           rm -rf "${RUNNER_TEMP}/renovate-bin"
           npm install --prefix "${RUNNER_TEMP}/renovate-bin" --ignore-scripts --no-audit --no-fund \
