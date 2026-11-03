@@ -79,8 +79,13 @@ the override paths at your own) between `bootstrap` and `config` if you split
 
 ## Variables
 
-Nothing is deployed unless `kerbside_hosts` is non-empty. Secrets are marked
-`no_log` in the argument specs and are never printed.
+Nothing is deployed unless `kerbside_hosts` is non-empty. Secrets are never
+printed. `kerbside_sql_url` and `kerbside_auth_secret_seed` are marked
+`no_log` in the argument specs, so ansible-core 2.22 and later also mask them
+wherever they appear. `kerbside_sources` is not, since ansible-core would mask
+every string in it, the source names and types included, out of every
+message: its credentials are seen only by `no_log` tasks, and other tasks
+read only the source names.
 
 ### Required to deploy
 

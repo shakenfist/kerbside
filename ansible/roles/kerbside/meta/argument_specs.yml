@@ -62,7 +62,14 @@ argument_specs:
         type: list
         elements: dict
         default: []
-        no_log: true
+        # Not no_log, although the sources carry credentials. From
+        # ansible-core 2.22 a no_log argument registers every string in it
+        # as a secret, masked wherever it appears in any output whatever its
+        # length, so the source names, types and usernames in it (sf,
+        # shakenfist, kerbside) would be masked out of every message. Only
+        # no_log tasks see the credentials instead (tasks/validate.yml and
+        # tasks/config_file.yml), and the role only ever prints source
+        # names, positions and keys.
         description:
           - >-
             Kerbside's console sources (a secret, since they carry each
