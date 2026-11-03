@@ -135,36 +135,19 @@ if the child dies unexpectedly.
 
 **Session termination drops in-flight connections.** Terminating a
 session via the API drops the client's live SPICE channels, not just its
-ability to make *new* connections. Kerbside can run distributed — the REST
-API and proxy nodes may be on different machines, and a load balancer can
-spread one session's channels across several proxy nodes — so the API
-cannot signal a specific proxy directly; the shared MariaDB is the only bus
-every component can reach. Termination is therefore threaded through the
-database as an explicit intent:
-
-1. `ConsolesTerminate`/`SessionTerminate` (`api.py`) keep the existing
-   token expire/remove and additionally insert a `session_terminations`
-   row (`session_id`, `requested_at`, `reason`) via `db.py`'s
-   `request_session_termination`.
-2. Each proxy node's daemon, in its local `ProxyControl` stream handler
-   (`servicer.py`), polls `get_terminations_for_node(NODE_NAME)` — the
-   sessions that are BOTH marked for termination AND have a live
-   `proxychannels` row on this node — and pushes a `TerminateSession`
-   event for each one not already sent on this stream, interleaved with
-   heartbeats. A session only live on another node is that node's job; a
-   merely-expired (not explicitly terminated) token is never pushed.
-3. The Rust proxy's `SessionRegistry` (`session.rs`) maps `session_id ->
-   CancellationToken`, refcounted across that session's channels. On
-   `TerminateSession` (`rpc.rs::run_proxy_control`), the registry cancels
-   the token; the relay's `select!` (`relay.rs`) has a third arm on
-   `token.cancelled()` alongside the two pumps, so every channel of the
-   session tears down cleanly and the client is disconnected. Cancelling
-   an unregistered/already-gone session is a harmless no-op, so a late or
-   duplicate event (a node that pushed the same id twice, or one that
-   arrives after the session already ended) is safe.
-4. A TTL reaper in the maintenance loop (`reap_session_terminations`,
-   5-minute default) deletes aged intent rows once every node has had time
-   to poll and act.
+ability to make *new* connections. Because the API and proxy nodes may be
+on different machines, with one session's channels spread across several
+proxy nodes by a load balancer, the API cannot signal a proxy directly:
+the shared MariaDB is the only bus every component can reach. So
+`ConsolesTerminate`/`SessionTerminate` (`api.py`) write a
+`session_terminations` intent row; each node's daemon polls for the
+terminated sessions that have a live `proxychannels` row *on that node*
+and pushes a `TerminateSession` event down its local `ProxyControl`
+stream; and the proxy's `SessionRegistry` (`session.rs`) cancels that
+session's token, which tears down every one of its channels. A late or
+duplicate event is a harmless no-op, and a maintenance-loop reaper deletes
+aged intent rows. The design, and the simpler ones it replaced, are in
+[Session termination](docs/proxy-architecture.md#session-termination-dropping-in-flight-connections).
 
 **Graceful drain on shutdown.** On SIGTERM,
 `shutdown_signal` stops the proxy's listeners from accepting new
@@ -475,26 +458,6 @@ docs/                  # Operator, developer, and protocol documentation
   plans/               # Point-in-time plan records, not living docs
 ```
 
-## Sextant Scenario Test
-
-The tempest plugin contains an end-to-end scenario test
-(`tests/scenario/test_sextant_scenario.py`) that drives the Uncalibrated
-Sextant UEFI guest through the full Awaiting → Booting → bootloader-ignore →
-paste → Parked → shutdown sequence. It connects to Ryll's control socket
-(protocol v1.1), sends keypresses and a paste payload, and asserts two
-independent oracles: the live `digest_updated` QR event stream and the
-post-mortem serial drain. The test requires Ryll built with
-`--features digest-decode`; the direct-qemu workflow enables that feature.
-
-The test skips when `CONF.kerbside.control_socket_path` is unset, keeping the
-plugin drop-in safe on the OpenStack lane. On the direct-qemu lane
-`tools/direct-qemu/run-scenario.sh` sets all four `[kerbside]` tempest
-options (`control_socket_path`, `serial_log_path`, `scenario_artifact_dir`,
-`scenario_step_timeout`) and runs the test as the final lane step. The final
-keypress causes Sextant to drain its event ring to serial and ACPI-shutdown,
-which terminates qemu and unlinks the control socket — nothing in the lane
-is usable afterwards.
-
 ## Related Documentation
 
 For detailed SPICE protocol documentation, see the
@@ -504,6 +467,8 @@ For detailed SPICE protocol documentation, see the
 - [Channel Protocols](docs/spice/channel-protocols.md) - Per-channel message formats
 - [Capabilities](docs/spice/capabilities.md) - Feature negotiation
 - [Proxy Architecture](docs/proxy-architecture.md) - Internal proxy design details
+- [Testing](docs/testing.md) - Every CI lane, including the direct-qemu
+  lane's end-to-end [Sextant scenario test](docs/testing.md#sextant-scenario-test-direct-qemu-lane)
 - [Network Ports](docs/network-ports.md) - Every port Kerbside listens on or dials, and why
 - [Use Cases](docs/index.md#use-cases) - Per-cloud and topology guides
 - [Deployment Options](docs/index.md#deployment-options) - One page per deployment mechanism: by hand, Ansible, Kolla-Ansible, containers
