@@ -501,7 +501,8 @@ against the relay:
   because its colour depends on how many presses arrived.
 - **The venv.** `quality.py` needs numpy and Pillow, which nothing else
   in Kerbside does, so `quality.sh` keeps them in a venv of their own at
-  `QUALITY_VENV` (default `${TMPDIR:-/tmp}/kerbside-shaped-link-venv`),
+  `QUALITY_VENV` (default
+  `${XDG_CACHE_HOME:-$HOME/.cache}/kerbside/shaped-link-venv`),
   made on first use and safe to delete. `quality.sh test` runs
   `test_quality.py`.
 

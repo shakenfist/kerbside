@@ -138,7 +138,7 @@ struct Args {
     /// ACK window, not the proxy, bounds the backlog. It does cut the kernel
     /// memory the proxy holds per session. See
     /// docs/performance/proxy-backpressure.md.
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 0, value_parser = sockopt_bytes)]
     client_notsent_lowat_bytes: u32,
 
     /// `SO_RCVBUF` for each backend-leg (hypervisor) socket, in bytes. Caps the
@@ -146,7 +146,7 @@ struct Args {
     /// Linux clamps it to `net.core.rmem_max` and doubles it. Off (0) by
     /// default, leaving the kernel's receive autotuning alone, for the same
     /// reason as `--client-notsent-lowat-bytes`.
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 0, value_parser = sockopt_bytes)]
     backend_rcvbuf_bytes: u32,
 
     /// The transcoding display channel's flags, in builds with the
@@ -162,6 +162,28 @@ struct Args {
     /// Print the embedded gRPC contract hash and exit.
     #[arg(long)]
     contract_hash: bool,
+}
+
+/// The largest byte count accepted for `TCP_NOTSENT_LOWAT` and `SO_RCVBUF`.
+///
+/// Both reach the kernel through `setsockopt` as a signed `int`, so a value
+/// above `i32::MAX` is reinterpreted as negative instead of being refused.
+/// Refuse it here, where the flag's name is attached to the error.
+/// `kerbside/config.py` caps the matching settings at the same value, so a
+/// bad value is rejected by whichever layer the operator set it through.
+const MAX_SOCKOPT_BYTES: u32 = i32::MAX as u32;
+
+/// Parse a socket-option byte count, refusing anything the kernel would
+/// reinterpret as negative.
+fn sockopt_bytes(value: &str) -> Result<u32, String> {
+    let parsed: u32 = value.parse().map_err(|e| format!("{e}"))?;
+    if parsed > MAX_SOCKOPT_BYTES {
+        return Err(format!(
+            "{parsed} is above the maximum of {MAX_SOCKOPT_BYTES}: the kernel takes this \
+             socket option as a signed int"
+        ));
+    }
+    Ok(parsed)
 }
 
 #[tokio::main]
@@ -425,7 +447,7 @@ fn shared_state(args: &Args) -> session::SharedState {
 
 #[cfg(test)]
 mod tests {
-    use super::{shared_state, Args};
+    use super::{shared_state, Args, MAX_SOCKOPT_BYTES};
     use clap::Parser;
 
     /// Both socket-tuning flags default to 0 (off) and parse from the command
@@ -451,20 +473,28 @@ mod tests {
         assert_eq!(shared_state(&args).backend_rcvbuf_bytes, 212_992);
     }
 
-    /// Both flags are u32, the bound `kerbside/config.py` validates against,
-    /// so a value the daemon's config accepts is never one clap rejects.
+    /// Both flags cap at `i32::MAX`, the bound `kerbside/config.py` validates
+    /// against, so a value the daemon's config accepts is never one clap
+    /// rejects. The cap is the kernel's: `setsockopt` takes both options as a
+    /// signed `int`, so a larger value would be reinterpreted as negative
+    /// rather than refused.
     #[test]
     fn socket_tuning_flags_share_the_config_bound() {
         for flag in ["--client-notsent-lowat-bytes", "--backend-rcvbuf-bytes"] {
             assert!(
-                Args::try_parse_from(["kerbside-proxy", flag, "4294967295"]).is_ok(),
-                "{flag} rejected u32::MAX"
+                Args::try_parse_from(["kerbside-proxy", flag, "2147483647"]).is_ok(),
+                "{flag} rejected i32::MAX"
             );
             assert!(
-                Args::try_parse_from(["kerbside-proxy", flag, "4294967296"]).is_err(),
-                "{flag} accepted u32::MAX + 1"
+                Args::try_parse_from(["kerbside-proxy", flag, "2147483648"]).is_err(),
+                "{flag} accepted i32::MAX + 1"
+            );
+            assert!(
+                Args::try_parse_from(["kerbside-proxy", flag, "-1"]).is_err(),
+                "{flag} accepted a negative value"
             );
         }
+        assert_eq!(MAX_SOCKOPT_BYTES, 2_147_483_647);
     }
 
     /// The transcoder is off unless asked for, its defaults are andris's,

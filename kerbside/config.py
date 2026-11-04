@@ -223,26 +223,29 @@ class Config(BaseSettings):
     # SPICE proxy socket tuning. Both are passed to the Rust proxy only when
     # set, so that a newer daemon can still launch an older proxy binary that
     # predates the flags. Unset (None) means "use the proxy's own default";
-    # 0 turns the option off entirely. The upper bound is the proxy's: both
-    # flags are u32, so a larger value would fail its argument parsing at
-    # startup rather than here, with the setting's name attached.
+    # 0 turns the option off entirely. The upper bound is 2**31 - 1 because
+    # both options reach the kernel through setsockopt as a signed int, so a
+    # larger value is reinterpreted as negative rather than refused. The
+    # proxy's own argument parser caps the matching flags at the same value,
+    # so whichever layer the operator sets this through rejects a bad value
+    # with the setting's name attached.
     PROXY_CLIENT_NOTSENT_LOWAT_BYTES: int | None = Field(
         None,
         ge=0,
-        le=2**32 - 1,
+        le=2**31 - 1,
         description=('TCP_NOTSENT_LOWAT for each accepted TLS client-leg '
-                     'SPICE socket, in '
-                     'bytes: the most unsent data the kernel queues before '
-                     'the proxy stops relaying from the hypervisor. Moves '
-                     'the display backlog on a slow link from the proxy to '
-                     'spice-server; measured not to reduce latency. Unset '
-                     'uses the proxy default (0, off).'))
+                     'SPICE socket, in bytes: the most unsent data the '
+                     'kernel queues before the proxy stops relaying from '
+                     'the hypervisor. Moves the display backlog on a slow '
+                     'link from the proxy to spice-server; measured not to '
+                     'reduce latency. Unset uses the proxy default '
+                     '(0, off).'))
     PROXY_BACKEND_RCVBUF_BYTES: int | None = Field(
         None,
         ge=0,
-        le=2**32 - 1,
-        description=('SO_RCVBUF for each hypervisor-leg SPICE socket, in '
-                     'bytes, capping the backlog the proxy accepts from '
+        le=2**31 - 1,
+        description=('SO_RCVBUF for each hypervisor-leg SPICE socket, in bytes, '
+                     'capping the backlog the proxy accepts from '
                      'spice-server while a client is slow. Linux clamps it '
                      'to net.core.rmem_max. Unset uses the proxy default '
                      '(0, off: kernel receive autotuning).'))

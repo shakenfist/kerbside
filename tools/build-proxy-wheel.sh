@@ -64,6 +64,24 @@ command -v maturin >/dev/null || { echo "ERROR: maturin not found on PATH" >&2; 
 mkdir -p "${wheel_out}"
 cd "${crate_dir}"
 
+# The published wheel must carry no cargo features. In particular `transcode`
+# builds openh264 from source, and the phase 3 verdict left the transcoder an
+# experiment that no wheel enables. maturin can turn a feature on two ways --
+# the crate's own `default` list, and a `features` key under [tool.maturin] --
+# and neither shows up in the wheel's name, so nothing downstream would notice.
+# Assert both are empty here instead of trusting that nobody adds one; a
+# deliberate change has to edit this check too.
+if ! grep -qx 'default = \[\]' Cargo.toml; then
+    echo "ERROR: Cargo.toml does not declare an empty 'default = []' feature list." >&2
+    echo "ERROR: a default feature would be compiled into the published wheel." >&2
+    exit 1
+fi
+if grep -qE '^[[:space:]]*features[[:space:]]*=' pyproject.toml; then
+    echo "ERROR: pyproject.toml sets a maturin 'features' key." >&2
+    echo "ERROR: the published wheel must be built with no cargo features." >&2
+    exit 1
+fi
+
 # If the tree is unstamped (pyproject.toml still declares a dynamic version,
 # which maturin resolves from Cargo.toml's 0.1.0 placeholder), stamp the
 # setuptools_scm version first. kerbside's committed dependency floor

@@ -51,9 +51,16 @@ use crate::session::SharedState;
 
 /// Upper bound on a single backend connect attempt (TCP connect + SPICE link +
 /// auth handshake). Without this, a hypervisor that accepts TCP but stalls the
-/// SPICE handshake would pin the connection's concurrency permit indefinitely
-/// (the session `HANDSHAKE_TIMEOUT` deliberately covers only the client leg,
-/// and the crate's `connect_channel` has no timeout of its own). Applied per
+/// SPICE handshake would pin the connection's concurrency permit far longer
+/// than the proxy should hold it; the session `HANDSHAKE_TIMEOUT` deliberately
+/// covers only the client leg.
+///
+/// The crate does bound its own stages, but not the attempt as a whole: at the
+/// pinned rev `connect_channel` applies `DIAL_TIMEOUT` to the dial and
+/// `HANDSHAKE_TIMEOUT` separately to each of the TLS handshake, the link
+/// exchange and ticket authentication, 15 s apiece. A backend that stalls each
+/// stage just short of its limit can therefore take about a minute. This is
+/// the whole-attempt budget over the top of those, and it is applied per
 /// attempt, so the insecure-then-secure retry gets a fresh budget each time.
 const BACKEND_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -142,6 +149,12 @@ pub async fn run(
         client_caps.channel.clone()
     };
     #[cfg(not(feature = "transcode"))]
+    // Verbatim, and deliberately not masked to what the client-leg reply
+    // offered: a capability is effective only if both ends advertise it, so
+    // this is what lets spice-server encode for the real client
+    // (kerbside#477). It does mean the client can negotiate a feature
+    // Kerbside never offered. See `crate::caps`, "The reply mask is not a
+    // security boundary", for why that is safe and why clamping it is not.
     let channel_caps = client_caps.channel.clone();
     let link = BackendLink {
         connection_id,

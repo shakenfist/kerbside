@@ -456,13 +456,11 @@ where
             ),
         },
         () = cancel.cancelled() => {
-            // CI-ORACLE: the same text as the relay's, which
-            // tools/direct-qemu/verify-terminate-live.sh and
-            // tools/ovirt-e2e/drive-console.py look for.
             info!(
                 %connection_ref,
                 channel_type = ChannelType::Display.name(),
-                "session terminated by control plane; ending relay"
+                "{}",
+                crate::relay::TERMINATED_BY_CONTROL_PLANE
             );
             (Ok(()), Ended::Closed)
         }

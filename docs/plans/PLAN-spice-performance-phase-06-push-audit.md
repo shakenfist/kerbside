@@ -555,6 +555,71 @@ progress` until phase 2 is done.
   design: the client leg never carries GLZ, and the first transcoded
   frame clears streams. The mutant removing that guard was killed.
 
+### Follow-up outcome (2026-11-05)
+
+Decision 7's kerbside follow-up. It records #668's merge commit,
+2a34fe7ea9, in the master plan's Execution table and sets phase 6 to
+`Complete`. The plan itself stays `In progress`: phase 2's dri-devel
+submission is still outstanding, as decision 6 anticipated, and phases 7
+to 9 have not started.
+
+Every kerbside item above is fixed as written, except item 6, which is
+fixed in part and declined in part:
+
+| # | Outcome |
+|---|---------|
+| 1 | Fixed. The bullet now says the earlier pages were wrong, that only the re-baseline saw H.264, and that MJPEG was the client's own choice, citing `spice-server-patches.md`. |
+| 2 | Fixed. The caveat now attributes H.264 to Ryll 50a9cc0's codec order, and says #477 was a real bug but not what chose the codec. |
+| 3 | Fixed in five places across both pages: the crash is no longer 0.15.2's alone, and no longer triggered by any connect. The "every switch" claim is kept, with the reason (the transcoder's backend dial always sends a preference). The *Weighing them* paragraph no longer says the crash still needs reproducing, which #654 had already overtaken. |
+| 4 | Fixed. The bold lead now reads "A side finding, since refuted", so the correction is not only further down. |
+| 5 | Fixed. "stream frames" to "display messages", matching the page's own line 198. |
+| 6 | **Fixed as documentation and a test; the masking change is declined.** See below. |
+| 7 | Fixed. `QUALITY_VENV` defaults under `${XDG_CACHE_HOME:-$HOME/.cache}`, and a venv or interpreter this user does not own is refused rather than executed, which also covers a `QUALITY_VENV` pointed by hand at a shared path. `docs/testing.md` follows. |
+| 8 | Fixed. Both settings cap at 2^31-1 in `config.py`, and a `sockopt_bytes` parser caps the matching clap flags, with `MAX_SOCKOPT_BYTES` naming the reason. The flag test moved to the new bound and now also rejects a negative value. |
+| 9 | Fixed. `saturating_sub`, with a comment that saturation rules out an i64 underflow and deliberately does *not* clamp at zero, because a negative count is the documented behaviour. Two tests added: over-ACK drives the count negative, and a zero window credits nothing. The clamp-at-zero mutant the audit found surviving is now killed by the first of them (verified). |
+| 10 | Fixed. Both settings are tested for negative rejection, not just `PROXY_BACKEND_RCVBUF_BYTES`. |
+| 11 | Fixed. The comment no longer claims the crate has no timeout. At the pinned rev the crate bounds the dial and each handshake stage at 15 s *separately*, so a staged stall reaches about a minute; Kerbside's 30 s whole-attempt budget is what binds, and the comment now says so. |
+| 12 | Fixed. `tools/build-proxy-wheel.sh` refuses a non-empty cargo `default` feature list and any maturin `features` key, with the reason that neither shows in the wheel's name. |
+| 13 | Fixed. `relay::TERMINATED_BY_CONTROL_PLANE` is the one definition; the transcoder formats it. A test pins the exact text and the prefix the three CI tools grep for. |
+| 14 | Fixed. The description is rejoined. |
+
+**Item 6: why the forwarded caps are not masked.** The item asked to
+document that the reply mask is not a security boundary, to test what the
+allowlist does with a server message only an unoffered capability enables,
+and *if that message is relayed*, to mask the forwarded caps to the reply
+set plus the codec bits. The first two are done: `caps.rs` now has a
+"The reply mask is not a security boundary" section, and
+`unoffered_client_cap_still_admits_its_server_message` pins the case.
+
+The test's answer is that the message **is** relayed:
+`DISPLAY_SIZED_STREAM` is absent from `DISPLAY_CAPS`, and
+`classify(Display, ServerToClient, STREAM_DATA_SIZED)` is `Allowed`. The
+masking change is still declined, on two grounds found while checking it:
+
+- **It would regress every client.** A SPICE capability is effective only
+  where both ends advertise it, which is why #477 forwards the client's
+  set. ryll's own `DEFAULT_DISPLAY` asks for `COMPOSITE`, `A8_SURFACE`,
+  `LZ4_COMPRESSION` and `SIZED_STREAM`, none of which this reply table
+  offers. ryll's own comment on that constant records what losing two of
+  them costs: without `COMPOSITE` the guest QXL driver "falls back to a
+  software path that produces far fewer display updates", and
+  `LZ4_COMPRESSION` is what lets the server pick LZ4 over Zlib for static
+  regions. Masking would take both away from every session.
+- **It would buy no enforcement.** The L1 allowlist classifies by opcode
+  and never consults the negotiated capability set, and it is fail-closed:
+  an unmodeled opcode is `Disallowed`, which the firewall observes or
+  terminates on. A capability cannot talk a message past it. Message
+  bodies are unchecked, but that is L2 (kerbside#682), and the reply mask
+  does not bear on it either way.
+
+So the defect was the claim, not the behaviour, and it is fixed where the
+claim was made: the `caps.rs` module docs and the forwarding site in
+`backend.rs`. This reverses the item's conditional instruction, which was
+written before the cost of masking was measured, so it is the part of this
+follow-up most worth arguing with.
+
+The kerbside-patches follow-up carries that repository's six items.
+
 ## Back brief
 
 Before executing any step of this plan, back brief the operator on

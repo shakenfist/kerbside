@@ -208,8 +208,8 @@ row).
 - **No throughput cost.** Each profile runs at the same delivered rate
   in every configuration. In particular, `small`'s 32 KiB low-water
   mark still fills a 50 Mbit link at 80 ms RTT.
-- **A side finding: the ACK window also caps throughput on
-  high-BDP links.** At 80 ms / 50 Mbit the compressible (busy)
+- **A side finding, since refuted: the ACK window looked like it also
+  capped throughput on high-BDP links.** At 80 ms / 50 Mbit the compressible (busy)
   activity delivers only 17.9 Mbit/s. At 20 ms / 50 Mbit the same
   activity fills the link. About 200 KiB is in flight per RTT, which
   is roughly the ACK window's worth of these messages. The link is

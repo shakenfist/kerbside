@@ -22,6 +22,33 @@
 //!
 //! Every opcode the offered channel capabilities enable is admitted by
 //! the L1 allowlist (`allowlist.rs`), which a test below checks.
+//!
+//! **The reply mask is not a security boundary.** It bounds only what
+//! Kerbside advertises as a server to the client; it does not bound what
+//! the session can carry. The client's own channel capabilities go to the
+//! backend verbatim, so a client may negotiate a spice-server feature
+//! Kerbside never offered, and spice-server will then send the messages
+//! that feature enables. `unoffered_client_cap_still_admits_its_server_message`
+//! below pins one such case: Kerbside never offers DISPLAY_SIZED_STREAM,
+//! yet the allowlist admits `STREAM_DATA_SIZED`, which only that
+//! capability enables.
+//!
+//! That is intended, and masking the forwarded caps down to the reply set
+//! would be wrong on both counts:
+//!
+//! - **It would break real clients.** A capability is effective only when
+//!   both ends advertise it, so forwarding the client's set is what lets
+//!   spice-server encode for the client actually connected
+//!   (kerbside#477). ryll's own `DEFAULT_DISPLAY` asks for COMPOSITE,
+//!   A8_SURFACE, LZ4_COMPRESSION and SIZED_STREAM, none of which this
+//!   reply table offers; clamping them would drop the guest to a slower
+//!   software render path and give up LZ4 on static regions.
+//! - **It would buy no enforcement.** The L1 allowlist classifies by
+//!   opcode, never by the negotiated capability set, and it is
+//!   fail-closed: an opcode it does not model is `Disallowed`, which the
+//!   firewall observes or terminates on. A capability cannot talk a
+//!   message past it. Message *bodies* are unchecked, but that is L2
+//!   (kerbside#682) and the reply mask would not change it either way.
 
 use shakenfist_spice_protocol::constants::capabilities;
 use shakenfist_spice_protocol::ChannelType;
@@ -387,6 +414,46 @@ mod tests {
         assert_eq!(
             classify(ChannelType::Record, ClientToServer, 101),
             MsgClass::ChannelUnmodeled
+        );
+    }
+
+    /// The reply mask bounds what Kerbside offers, not what the session
+    /// carries: the client's channel caps reach the backend verbatim, so
+    /// a capability Kerbside never offered can still be negotiated and
+    /// its server messages still relayed. Pinned here so that the module
+    /// docs' claim is checked rather than asserted, and so that a future
+    /// decision to mask the forwarded caps has to change a test.
+    ///
+    /// DISPLAY_SIZED_STREAM (bit 0) is the case: absent from
+    /// `DISPLAY_CAPS`, present in ryll's `DEFAULT_DISPLAY`, and the only
+    /// capability gating `SPICE_MSG_DISPLAY_STREAM_DATA_SIZED`.
+    #[test]
+    fn unoffered_client_cap_still_admits_its_server_message() {
+        use shakenfist_spice_protocol::constants::display_server;
+        use Direction::ServerToClient;
+
+        assert_eq!(
+            reply_channel_caps(ChannelType::Display)[0] & capabilities::DISPLAY_SIZED_STREAM,
+            0,
+            "DISPLAY_CAPS is expected not to offer SIZED_STREAM"
+        );
+        // A client that advertises it has it forwarded untouched: nothing
+        // between `ClientCaps.channel` and the backend link masks it.
+        let client = ClientCaps {
+            common: vec![capabilities::AUTH_SELECTION | capabilities::MINI_HEADER],
+            channel: vec![capabilities::DISPLAY_SIZED_STREAM],
+        };
+        assert_eq!(client.channel, vec![capabilities::DISPLAY_SIZED_STREAM]);
+        // And the message that capability enables is admitted, not
+        // flagged, so the firewall does not fight a negotiation the
+        // client and spice-server agreed on.
+        assert_eq!(
+            classify(
+                ChannelType::Display,
+                ServerToClient,
+                display_server::STREAM_DATA_SIZED
+            ),
+            MsgClass::Allowed
         );
     }
 
