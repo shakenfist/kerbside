@@ -243,10 +243,10 @@ to forcing it.
 |-------|------|--------|--------|
 | 1. Shared blocks, vendor stamp and settings closeout | [PLAN-consistency-audit-phase-01-blocks-and-stamp.md](PLAN-consistency-audit-phase-01-blocks-and-stamp.md) | Complete | cbca9b1 |
 | 2. Retire the comment addresser | [PLAN-consistency-audit-phase-02-retire-addresser.md](PLAN-consistency-audit-phase-02-retire-addresser.md) | Complete | 5f3c80c |
-| 3. Skillsaw CI detection, upstream | [PLAN-consistency-audit-phase-03-skillsaw-detection.md](PLAN-consistency-audit-phase-03-skillsaw-detection.md) | Complete | 16e6173 |
+| 3. Skillsaw CI detection, upstream | [PLAN-consistency-audit-phase-03-skillsaw-detection.md](PLAN-consistency-audit-phase-03-skillsaw-detection.md) | Complete | development 223373f (#73); kerbside 16e6173 (plan only) |
 | 4. Review scope and session scaffolding | [PLAN-consistency-audit-phase-04-review-coverage.md](PLAN-consistency-audit-phase-04-review-coverage.md) | Complete | ade2788 |
 | 5. Diagram discipline and mermaid linting | [PLAN-consistency-audit-phase-05-diagram-discipline.md](PLAN-consistency-audit-phase-05-diagram-discipline.md) | Complete | 54e8d08 |
-| 6. Push audit | PLAN-consistency-audit-phase-06-push-audit.md | Not started | |
+| 6. Push audit | [PLAN-consistency-audit-phase-06-push-audit.md](PLAN-consistency-audit-phase-06-push-audit.md) | In progress | |
 
 Phase sketches (to be expanded into per-phase plans):
 
@@ -389,15 +389,25 @@ on a pull request it skips and blocks it forever. The new
 workflow.
 
 **Phase 6 -- push audit.** Work through `PUSH-AUDIT.md` over
-the accumulated diff of phases 1, 2 and 4 against `develop`
--- phase 3 lands in another repository and is audited there,
-as part of the pull request that lands it. Name the commit
-range explicitly, from the `Merged` column above, and
-substitute it wherever `PUSH-AUDIT.md` says `git diff
-develop...HEAD`. Note the ordering hazard: phase 1 adds
-three criteria to `PUSH-AUDIT.md`, so this phase runs a
-checklist that phase 1 changed, and must be run from the
-version of the file that phase 1 produced.
+the accumulated work of phases 1, 2, 4 and 5 against
+`develop`. Phase 3's code lands in another repository, so it
+is audited there; its kerbside merge `16e6173` is plan-only
+and carries no shipped change. Name the commit range
+explicitly, from the `Merged` column above, and substitute it
+wherever `PUSH-AUDIT.md` says `git diff develop...HEAD`.
+
+Two corrections to this sketch, made by the phase 6 survey on
+2026-11-04 and set out in full in that phase's plan. The
+sketch was written when the plan had five phases, so it
+omitted phase 5 -- which has the largest shipped surface of
+any phase and the range's only security finding. And the
+ordering hazard it names resolves the other way round: phase
+1 does add three criteria to `PUSH-AUDIT.md`, but phase 5
+later added a fourth block to the same file, and the
+`plan-push-audit-phase` block in `PLAN-TEMPLATE.md` has since
+moved to v4. The audit therefore runs from the copy on
+`develop` today, a strict superset of the one phase 1
+produced, rather than from phase 1's.
 
 ### Phase status
 
@@ -565,7 +575,12 @@ passes a repository running no linter at all is worse than
 the false negative it fixes. Phase 4 was planned at high effort,
 because the scope configuration it writes is load-bearing
 for an audit and expensive to redo once reading has started
-against it. Phase 5 follows `PUSH-AUDIT.md`.
+against it. Phase 5 was planned at medium effort: a template
+adoption whose correctness is a byte-for-byte comparison.
+Phase 6 follows `PUSH-AUDIT.md`, and was planned at high
+effort, because deciding the audit range and proving it
+against the tree is the judgment-heavy part of a push audit
+and a wrong range makes the whole audit worthless.
 
 ### Step-level guidance
 
