@@ -240,16 +240,18 @@ jobs:
       - name: Check outcomes
         run: "[ $ALL_SUCCESS == true ]"
 
-  # The nightly schedule is load-bearing: it bounds the accepted
-  # two-tier CI risk that the merge queue never re-runs this lane
-  # against the merged tree (and catches SF-at-develop-HEAD drift),
-  # and a red entry in the Actions tab alerts nobody. File or update a
-  # tracking issue instead. A separate job so issues: write is never
-  # granted to the lane job.
+  # The nightly run is load-bearing: it bounds the accepted two-tier
+  # CI risk that the merge queue never re-runs this lane against the
+  # merged tree (and catches SF-at-develop-HEAD drift), and a red entry
+  # in the Actions tab alerts nobody. File or update a tracking issue
+  # instead. The Shaken Fist conductor's periodic tier dispatches this
+  # lane as well as the cron, so both triggers have to file; a pull
+  # request does not, as its red is already visible there. A separate
+  # job so issues: write is never granted to the lane job.
   nightly_failure_issue:
     name: "File nightly failure issue"
     needs: [sf-e2e]
-    if: failure() && github.event_name == 'schedule'
+    if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
       issues: write
