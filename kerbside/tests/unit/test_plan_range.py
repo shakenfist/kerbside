@@ -661,6 +661,28 @@ class Wave1StyleCheckTestCase(testtools.TestCase):
         self.assertIn('suppressed', result.stdout)
         self.assertIn('kerbside/mod.py', result.stdout)
 
+    def test_a_test_file_naming_the_marker_grants_no_exemption(self):
+        """Documenting the marker must not disable the gate.
+
+        The candidate list for the marker grep carried no exclusions,
+        so a test file that merely mentioned `audit-allow-print` by
+        name suppressed the print check for the whole diff -- and a
+        print in a test file cannot trip the check at all, so such a
+        file can never need the exemption.
+        """
+        self._git('checkout', '-q', '-b', 'feature')
+        self._write(
+            'kerbside/tests/unit/test_x.py',
+            '# the marker is audit-allow-print\nx = 1\n')
+        self._write('kerbside/mod.py', 'import os\nprint("boom")\n')
+        self._commit('mention the marker in a test and add a print')
+
+        result = self._run_wave1()
+
+        self.assertEqual(3, result.returncode, result.stdout + result.stderr)
+        self.assertIn('raw print() added', result.stdout)
+        self.assertNotIn('suppressed', result.stdout)
+
     def test_a_print_in_a_non_ascii_filename_is_still_caught(self):
         """The helpers round-trip a filename back into a pathspec.
 

@@ -72,8 +72,12 @@ inspect **only lines added** relative to `AUDIT_RANGE`
 prints — the config and logging bootstrap, the `kerbside`
 CLI — do not trip them. A `print()` may still be added
 deliberately if its file carries the marker comment
-`audit-allow-print`. Every other style check is advisory
-and does not change the exit code.
+`audit-allow-print`, and the marker is read only from the
+files the check itself inspects: a test file naming it,
+including this one's own tests, grants no exemption, since
+a `print()` in a test cannot trip the check and so can
+never need one. Every other style check is advisory and
+does not change the exit code.
 
 Because those checks are diff-based, a branch whose work
 has already merged to `develop` gets an empty diff and a

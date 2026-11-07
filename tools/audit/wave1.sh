@@ -237,8 +237,16 @@ if [[ "$have_base" == "1" ]]; then
     #    carries the `audit-allow-print` marker.
     PRINT_HITS=$(printf '%s\n' "$ADDED" | grep -E '^\+[[:space:]]*print\(' || true)
     if [[ -n "$PRINT_HITS" ]]; then
-        # Only fatal if no changed file opted in via the marker.
-        MARKED=$(audit_paths_for '\.py$' \
+        # Only fatal if no changed file opted in via the marker. The
+        # candidate list carries the same exclusions as ADDED above,
+        # which it did not until a test file that merely mentioned the
+        # marker by name was found suppressing the check for a whole
+        # diff. A print in an excluded file cannot trip the check in the
+        # first place, so such a file can never need the exemption, and
+        # letting it grant one turns documenting the marker into
+        # disabling the gate.
+        MARKED=$(audit_paths_for '\.py$' ':!*/tests/*' ':!*_pb2*' \
+                ':!*_pb2_grpc*' \
             | xargs -r grep -l 'audit-allow-print' 2>/dev/null || true)
         if [[ -z "$MARKED" ]]; then
             red "FAIL: raw print() added in non-test source:"

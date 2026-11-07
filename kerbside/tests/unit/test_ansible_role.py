@@ -403,6 +403,64 @@ class ReadyScriptTestCase(testtools.TestCase):
         self.assertEqual(2, rc)
         self.assertIn('usage', json.loads(stdout.getvalue())['error'])
 
+    def test_no_role_helper_writes_with_a_raw_print(self):
+        """The push audit fails any range that adds one to this tree.
+
+        kerbside-ready.py's one JSON object on stdout is its contract,
+        and it used print() for it, so every audit range touching the
+        file exited 3 at "raw print() added" and never reached the
+        bare-except check (#623). The alternative, wave 1's opt-in
+        marker comment, suppresses the print check for the whole diff
+        rather than for the file carrying it, so these scripts write to
+        stdout instead -- and that is worth a test here rather than
+        only in a gate nobody runs before pushing.
+        """
+        offenders = []
+        for path in sorted((_ROLE / 'files').glob('*.py')):
+            text = path.read_text(encoding='utf-8')
+            if 'audit-allow-print' in text:
+                continue
+            for node in ast.walk(ast.parse(text)):
+                if (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Name)
+                        and node.func.id == 'print'):
+                    offenders.append('%s:%d' % (path.name, node.lineno))
+
+        self.assertEqual([], offenders)
+
+    def test_the_output_matches_the_patterns_register_parses_it_with(self):
+        """One JSON object on one line, as kerbside_ready_pattern reads it.
+
+        register's readiness wait matches stdout against that pattern
+        before from_json, because from_json on anything else fails the
+        task rather than counting as not ready -- so a change to how
+        this script writes its object is a change to whether the deploy
+        can see readiness at all. Nothing asserted the two agreed, so
+        the pattern is read out of the role rather than restated here.
+        """
+        with open(_ROLE / 'vars' / 'main.yml', encoding='utf-8') as f:
+            pattern = yaml.safe_load(f)['kerbside_ready_pattern']
+
+        cases = (
+            {'errored': False, 'fetched_at': 150.0},
+            {'errored': None, 'fetched_at': None},
+            {'errored': True, 'fetched_at': 1791234567.123},
+            {'errored': None, 'fetched_at': None,
+             'error': 'usage: kerbside-ready.py SOURCE_NAME...'},
+        )
+        for case in cases:
+            stdout = io.StringIO()
+            with mock.patch('sys.stdout', stdout):
+                ready.report(**case)
+            written = stdout.getvalue()
+
+            self.assertTrue(
+                written.endswith('\n'), 'no trailing newline: %r' % written)
+            self.assertEqual(
+                1, len(written.splitlines()), 'not one line: %r' % written)
+            self.assertRegex(written.strip(), pattern)
+            self.assertEqual(case, json.loads(written))
+
 
 class CheckIniScriptTestCase(testtools.TestCase):
     def _check(self, text):
