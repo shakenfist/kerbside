@@ -12,10 +12,11 @@
 # AUDIT_RANGE and AUDIT_PATHS may be set in the environment to audit
 # an accumulated range instead of a live branch -- a branch whose
 # work has already merged to develop otherwise diffs empty and every
-# report below prints "(none)". tools/audit/plan-range.sh derives
-# both from a plan's merge commits. Defaults, unset:
-# AUDIT_RANGE=develop...HEAD, AUDIT_PATHS='' (no path restriction) --
-# today's behaviour exactly.
+# report below prints "(none)". AUDIT_RANGE holds one range or several
+# separated by whitespace, and every report below covers the union of
+# them; tools/audit/plan-range.sh derives both, one range per merge a
+# plan landed. Defaults, unset: AUDIT_RANGE=develop...HEAD,
+# AUDIT_PATHS='' (no path restriction) -- today's behaviour exactly.
 
 set -u
 
@@ -40,6 +41,22 @@ if [ -z "${AUDIT_RANGE:-}" ]; then
     fi
 fi
 AUDIT_PATHS="${AUDIT_PATHS:-}"
+
+# AUDIT_RANGE holds one range, or several separated by whitespace, and
+# every diff below is the union of what each one covers. A plan's work
+# is what its merges landed, not everything in the span between the
+# first and the last: a single contiguous range also contains every
+# other commit that touched a file the plan touched, and path scoping
+# cannot exclude those, because they are changes to the very paths it
+# scopes to. plan-range.sh emits one range per merge for that reason.
+#
+# Word-split with globbing off, as AUDIT_PATHS is below: a range can
+# contain no whitespace, so splitting is the whole of the parsing, but
+# `HEAD^{/fix}` must not be expanded against the working tree.
+set -f
+# shellcheck disable=SC2206  # deliberate split, globbing off
+AUDIT_RANGES=($AUDIT_RANGE)
+set +f
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 
 # Git unions positive pathspecs rather than intersecting them, so a
@@ -76,9 +93,11 @@ audit_paths_for() {
         scope=($AUDIT_PATHS)
         set +f
     fi
-    git -c core.quotePath=false diff --name-only "$AUDIT_RANGE" \
-            -- "${scope[@]}" "$@" \
-        | grep -E "$pattern" || true
+    local range
+    for range in "${AUDIT_RANGES[@]}"; do
+        git -c core.quotePath=false diff --name-only "$range" \
+            -- "${scope[@]}" "$@"
+    done | sort -u | grep -E "$pattern" || true
 }
 
 # audit_diff_for <filename-ere> [exclusion pathspec...]
@@ -88,18 +107,34 @@ audit_diff_for() {
     local -a files=()
     mapfile -t files < <(audit_paths_for "$pattern" "$@")
     [ "${#files[@]}" -gt 0 ] || return 0
-    git -c core.quotePath=false diff "$AUDIT_RANGE" -- "${files[@]}"
+    local range
+    for range in "${AUDIT_RANGES[@]}"; do
+        git -c core.quotePath=false diff "$range" -- "${files[@]}"
+    done
 }
 
-# See wave1.sh for why both ends are validated and why the base is
-# split at '..' rather than at the first '.'.
-if ! git rev-parse --verify "${AUDIT_RANGE%%..*}" >/dev/null 2>&1 \
-        || ! git rev-parse --verify "${AUDIT_RANGE##*..}" >/dev/null 2>&1; then
+# See wave1.sh for why both ends of every range are validated, why an
+# empty list counts as unresolvable, and why the base is split at '..'
+# rather than at the first '.'.
+unresolved=""
+if [ "${#AUDIT_RANGES[@]}" -eq 0 ]; then
+    unresolved="$AUDIT_RANGE"
+else
+    for range in "${AUDIT_RANGES[@]}"; do
+        if ! git rev-parse --verify "${range%%..*}" >/dev/null 2>&1 \
+                || ! git rev-parse --verify "${range##*..}" >/dev/null 2>&1; then
+            unresolved="$range"
+            break
+        fi
+    done
+fi
+
+if [ -n "$unresolved" ]; then
     if [ "$AUDIT_RANGE_EXPLICIT" = "1" ]; then
-        echo "FAIL: AUDIT_RANGE '$AUDIT_RANGE' does not resolve" >&2
+        echo "FAIL: AUDIT_RANGE '$unresolved' does not resolve" >&2
         exit 1
     fi
-    echo "cannot resolve '$AUDIT_RANGE'; nothing to diff"
+    echo "cannot resolve '$unresolved'; nothing to diff"
     exit 0
 fi
 

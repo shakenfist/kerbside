@@ -8,7 +8,18 @@
 # develop (where a plain diff against develop is empty and a
 # vacuous pass). For each SHA given, this unions the files touched by
 # that merge (git diff --name-only "$sha^1..$sha") into a path set,
-# and spans the range from the first SHA's parent to the last SHA.
+# and emits one range per merge, "$sha^1..$sha".
+#
+# One range per merge rather than a single span from the first merge's
+# parent to the last. A plan's work is what its merges landed, and the
+# span between them is not that: it also holds every other commit that
+# touched a file the plan touched, and the path set cannot exclude
+# those, because they are changes to the very paths it scopes to. The
+# audit of PLAN-use-case-docs.md credited the plan with 991 added
+# Python lines against the 758 its merges landed, 233 of them issue
+# #132's secret-redaction tests, which three judgment agents then
+# reviewed as the plan's own work. "$sha^1..$sha" is exactly what one
+# merge landed, so the union over the merges is exactly the plan's.
 #
 # Prints exactly two lines to stdout, each an `export` statement, so
 # the caller can do:
@@ -113,11 +124,17 @@ first_sha="$1"
 # shellcheck disable=SC2124
 last_sha="${@: -1}"
 
-# The SHAs must be given oldest-first. Reversed, the derived range
-# diffs backwards -- the phases' additions appear as deletions, so the
-# '^\+' style checks inspect reverted content and pass on work they
-# never saw -- while the path set still looks entirely correct, which
-# is what makes the mistake hard to spot in the output.
+# The SHAs must be given oldest-first. Each range is now "$sha^1..$sha"
+# and so diffs forwards whatever order they arrive in, which retires
+# the hazard this guard was written for: a reversed single span diffed
+# backwards, the phases' additions appeared as deletions, and the '^\+'
+# style checks inspected reverted content and passed on work they never
+# saw, while the path set still looked entirely correct.
+#
+# It stays because the ranges are audited and reported in the order
+# given, and a reader following a plan's phases through the output
+# needs them in landing order. It is also the one check that a list
+# assembled from the wrong end of a plan's phase table is wrong.
 if ! git merge-base --is-ancestor "${first_sha}" "${last_sha}" 2>/dev/null; then
     echo "plan-range.sh: '${first_sha}' is not an ancestor of" >&2
     echo "  '${last_sha}'; give the merge SHAs oldest-first." >&2
@@ -164,5 +181,15 @@ done <<< "${paths}"
 audit_paths=$(printf '%s\n' "${paths}" | tr '\n' ' ')
 audit_paths="${audit_paths% }"
 
-echo "export AUDIT_RANGE='${first_sha}^1..${last_sha}'"
+# One range per merge, in the order given. The path set is emitted as
+# well, so a hand-set AUDIT_RANGE still has something to scope it and
+# the wave scripts keep one contract; against these ranges it is
+# belt-and-braces, since each merge's own diff touches only paths the
+# union already holds.
+audit_ranges=""
+for sha in "$@"; do
+    audit_ranges="${audit_ranges}${audit_ranges:+ }${sha}^1..${sha}"
+done
+
+echo "export AUDIT_RANGE='${audit_ranges}'"
 echo "export AUDIT_PATHS='${audit_paths}'"
