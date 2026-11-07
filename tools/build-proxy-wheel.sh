@@ -66,14 +66,23 @@ cd "${crate_dir}"
 
 # The published wheel must carry no cargo features. In particular `transcode`
 # builds openh264 from source, and the phase 3 verdict left the transcoder an
-# experiment that no wheel enables. maturin can turn a feature on two ways --
-# the crate's own `default` list, and a `features` key under [tool.maturin] --
-# and neither shows up in the wheel's name, so nothing downstream would notice.
-# Assert both are empty here instead of trusting that nobody adds one; a
-# deliberate change has to edit this check too. The tables are parsed rather
-# than grepped: a line match also fired on `default = []` anywhere in the
-# manifest, missed a reformatted `default=[]`, and refused a manifest that
-# simply omits `default`, which cargo reads as empty.
+# experiment that no wheel enables. None of the ways to turn a feature on shows
+# up in the wheel's name, so nothing downstream would notice.
+#
+# Two checks. The crate's own `default` list must be empty. And [tool.maturin]
+# must carry nothing but the keys named below: `features`, `all-features` and
+# `cargo-extra-args` all select features, and an earlier version of this check
+# enumerated only the first, which is precisely how a wheel could have carried
+# `transcode` while passing. maturin's full schema cannot be enumerated from
+# here, so the table is deny-by-default: adding any key -- feature-selecting or
+# not -- has to edit this allowlist, which is the intended tradeoff, and the
+# happy path runs on every wheel build in rust.yml, release.yml,
+# dev-proxy-wheel.yml and the three functional lanes.
+#
+# The tables are parsed rather than grepped: a line match also fired on
+# `default = []` anywhere in the manifest, missed a reformatted `default=[]`,
+# and refused a manifest that simply omits `default`, which cargo reads as
+# empty.
 if ! python3 -I - Cargo.toml pyproject.toml <<'FEATURE_CHECK'
 import sys, tomllib
 
@@ -83,11 +92,22 @@ if default:
     sys.exit("ERROR: Cargo.toml's [features] default is %r, not empty: a default "
              'feature would be compiled into the published wheel.' % (default,))
 
+# Keys [tool.maturin] may carry. Anything else, including any future
+# feature-selecting key, is refused rather than assumed harmless.
+ALLOWED = {'bindings'}
+FEATURE_SELECTING = {'features', 'all-features', 'cargo-extra-args'}
+
 with open(sys.argv[2], 'rb') as f:
     maturin = tomllib.load(f).get('tool', {}).get('maturin', {})
-if 'features' in maturin:
-    sys.exit('ERROR: pyproject.toml sets [tool.maturin] features = %r: the published '
-             'wheel must be built with no cargo features.' % (maturin['features'],))
+unexpected = sorted(set(maturin) - ALLOWED)
+if unexpected:
+    if FEATURE_SELECTING.intersection(unexpected):
+        why = 'Those select cargo features, and the published wheel must carry none.'
+    else:
+        why = ('Unrecognised here; if a key cannot enable a cargo feature, add it to '
+               'ALLOWED in this check.')
+    sys.exit('ERROR: pyproject.toml sets [tool.maturin] %s. %s Allowed: %s.'
+             % (', '.join(unexpected), why, ', '.join(sorted(ALLOWED))))
 FEATURE_CHECK
 then
     exit 1

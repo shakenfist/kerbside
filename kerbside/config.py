@@ -224,9 +224,14 @@ class Config(BaseSettings):
     # set, so that a newer daemon can still launch an older proxy binary that
     # predates the flags. Unset (None) means "use the proxy's own default";
     # 0 turns the option off entirely. The upper bound is 2**31 - 1 because
-    # both options reach the kernel through setsockopt as a signed int, so a
-    # larger value is reinterpreted as negative rather than refused. The
-    # proxy's own argument parser caps the matching flags at the same value,
+    # both options reach the kernel through setsockopt as a signed int, so what
+    # a larger value means is left to each option's own handling of the sign
+    # bit: TCP_NOTSENT_LOWAT stores it into an unsigned field, where 4294967295
+    # lands as the sysctl's own "unlimited" default, while SO_RCVBUF clamps
+    # through an unsigned comparison against rmem_max. Refusing them keeps one
+    # well-defined meaning per setting, and 0 is the supported way to turn an
+    # option off. The proxy's argument parser caps the matching flags at the
+    # same value,
     # so whichever layer the operator sets this through rejects a bad value
     # with the setting's name attached.
     PROXY_CLIENT_NOTSENT_LOWAT_BYTES: int | None = Field(

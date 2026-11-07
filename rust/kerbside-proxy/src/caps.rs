@@ -50,6 +50,20 @@
 //!   firewall observes or terminates on. A capability cannot talk a
 //!   message past it. Message *bodies* are unchecked, but that is L2
 //!   (kerbside#682) and the reply mask would not change it either way.
+//!
+//! The risk runs the other way instead, and this is the load-bearing
+//! fact: because the client's caps reach the backend unmasked,
+//! spice-server may send an opcode gated behind a capability Kerbside
+//! never offered, and fail-closed means an opcode `allowlist.rs` does not
+//! model terminates a *legitimate* session. That is safe only because the
+//! L1 table is derived from ryll's complete per-channel message-type
+//! tables, not from [`reply_channel_caps`], so the opcodes an unoffered
+//! capability can enable are already modelled --
+//! `unoffered_client_cap_still_admits_its_server_message` shows one. If
+//! one ever is not, the fix is to model the opcode in the table. It is
+//! *not* to widen a verdict so the traffic passes, which `AGENTS.md`
+//! forbids, and not to clamp the forwarded caps, which would break the
+//! clients above.
 
 use shakenfist_spice_protocol::constants::capabilities;
 use shakenfist_spice_protocol::ChannelType;
@@ -480,6 +494,30 @@ mod tests {
                 display_server::STREAM_DATA_SIZED
             ),
             MsgClass::Allowed
+        );
+    }
+
+    /// The claim in [`backend_channel_caps`] and in the module docs is that
+    /// both of `backend.rs`'s build arms take the relayed channel caps from
+    /// that function, so masking them cannot be added without failing a test.
+    /// Reading the source is the only way to pin it: an inlined
+    /// `client_caps.channel.clone()` in either arm would compile, behave
+    /// identically today, and leave the seam's own test green. Same mechanism
+    /// as `relay::tests::terminate_message_is_the_ci_oracle_text`.
+    #[test]
+    fn both_backend_arms_take_the_relayed_caps_from_the_seam() {
+        const BACKEND: &str = include_str!("backend.rs");
+        const SEAM_CALL: &str = "caps::backend_channel_caps(&client_caps.channel)";
+
+        assert_eq!(
+            BACKEND.matches(SEAM_CALL).count(),
+            2,
+            "backend.rs should call the seam once per build arm, transcode and not"
+        );
+        assert!(
+            !BACKEND.contains("client_caps.channel.clone()"),
+            "an arm of backend.rs clones the client's channel caps directly, which \
+             bypasses caps::backend_channel_caps and the test that guards it"
         );
     }
 

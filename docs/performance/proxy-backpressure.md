@@ -212,10 +212,11 @@ row).
   also capped throughput on high-BDP links.** At 80 ms / 50 Mbit
   the compressible (busy) activity delivers only 17.9 Mbit/s. At
   20 ms / 50 Mbit the same activity fills the link. About 200 KiB
-  is in flight per RTT, which is roughly the ACK window's worth of
-  these messages. The link is idle-limited, not
-  congestion-limited. *Corrected 2026-10-28:* observing the window
-  from the relay showed this is not what limits that case.
+  appeared to be in flight per RTT, which looked like roughly the
+  ACK window's worth of these messages, and so looked idle-limited
+  rather than congestion-limited. *Corrected 2026-10-28:*
+  observing the window from the relay showed this is not what
+  limits that case.
   The busy activity delivers about 93% of the messages the guest
   offers there, and the channel is at the window's limit only about a
   third of the time. Throughput is low because, on an 80 ms link,

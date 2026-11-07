@@ -166,15 +166,20 @@ struct Args {
 
 /// The largest byte count accepted for `TCP_NOTSENT_LOWAT` and `SO_RCVBUF`.
 ///
-/// Both reach the kernel through `setsockopt` as a signed `int`, so a value
-/// above `i32::MAX` is reinterpreted as negative instead of being refused.
-/// Refuse it here, where the flag's name is attached to the error.
+/// Both reach the kernel through `setsockopt` as a signed `int`, so what a
+/// value above `i32::MAX` means is left to each option's own handling of the
+/// sign bit rather than refused: `TCP_NOTSENT_LOWAT` stores it into an
+/// unsigned field, where `u32::MAX` lands as the sysctl's "unlimited"
+/// default, and `SO_RCVBUF` clamps through an unsigned comparison against
+/// `rmem_max`. Refuse it here instead, where the flag's name is attached to
+/// the error, so each setting keeps one well-defined meaning (and 0 is how
+/// an option is turned off).
 /// `kerbside/config.py` caps the matching settings at the same value, so a
 /// bad value is rejected by whichever layer the operator set it through.
 pub(crate) const MAX_SOCKOPT_BYTES: u32 = i32::MAX as u32;
 
-/// Parse a socket-option byte count, refusing anything the kernel would
-/// reinterpret as negative.
+/// Parse a socket-option byte count, refusing anything above the signed
+/// `int` that `setsockopt` takes.
 pub(crate) fn sockopt_bytes(value: &str) -> Result<u32, String> {
     let parsed: u32 = value.parse().map_err(|e| format!("{e}"))?;
     if parsed > MAX_SOCKOPT_BYTES {
@@ -447,7 +452,7 @@ fn shared_state(args: &Args) -> session::SharedState {
 
 #[cfg(test)]
 mod tests {
-    use super::{shared_state, Args, MAX_SOCKOPT_BYTES};
+    use super::{shared_state, sockopt_bytes, Args, MAX_SOCKOPT_BYTES};
     use clap::Parser;
 
     /// Both socket-tuning flags default to 0 (off) and parse from the command
@@ -476,8 +481,8 @@ mod tests {
     /// Both flags cap at `i32::MAX`, the bound `kerbside/config.py` validates
     /// against, so a value the daemon's config accepts is never one clap
     /// rejects. The cap is the kernel's: `setsockopt` takes both options as a
-    /// signed `int`, so a larger value would be reinterpreted as negative
-    /// rather than refused.
+    /// signed `int`, and what a larger value would mean is per-option rather
+    /// than refused, so one bound is imposed here instead.
     #[test]
     fn socket_tuning_flags_share_the_config_bound() {
         for flag in ["--client-notsent-lowat-bytes", "--backend-rcvbuf-bytes"] {
@@ -495,6 +500,24 @@ mod tests {
             );
         }
         assert_eq!(MAX_SOCKOPT_BYTES, 2_147_483_647);
+    }
+
+    /// The parser itself, not the command line. `Args::try_parse_from` with
+    /// `-1` is refused by clap's own lexer, before `sockopt_bytes` ever sees
+    /// the string, so the end-to-end assertion above would keep passing even
+    /// if the parser started accepting negatives. This is what pins that.
+    #[test]
+    fn sockopt_bytes_refuses_what_the_kernel_would_misread() {
+        assert_eq!(sockopt_bytes("0"), Ok(0));
+        assert_eq!(sockopt_bytes("2147483647"), Ok(2_147_483_647));
+        assert!(sockopt_bytes("-1").is_err(), "a negative value parsed");
+        assert!(sockopt_bytes("2147483648").is_err(), "i32::MAX + 1 parsed");
+        assert!(
+            sockopt_bytes("4294967295").is_err(),
+            "the old u32 bound parsed"
+        );
+        assert!(sockopt_bytes("").is_err());
+        assert!(sockopt_bytes("twelve").is_err());
     }
 
     /// The transcoder's low-water flag reaches the same `setsockopt`, so it

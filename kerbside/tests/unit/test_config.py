@@ -60,8 +60,9 @@ class ProxySocketTuningConfigTestCase(testtools.TestCase):
 
     def test_values_beyond_the_kernels_signed_int_are_rejected(self):
         # Both options reach the kernel through setsockopt as a signed int,
-        # so anything above 2**31 - 1 would be reinterpreted as negative.
-        # The proxy's own flag parser caps them at the same value.
+        # so what anything above 2**31 - 1 means is left to each option's own
+        # handling of the sign bit. One bound is imposed instead, and the
+        # proxy's own flag parser caps them at the same value.
         for name in ('PROXY_CLIENT_NOTSENT_LOWAT_BYTES',
                      'PROXY_BACKEND_RCVBUF_BYTES'):
             self.assertEqual(
