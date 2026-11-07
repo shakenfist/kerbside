@@ -135,31 +135,6 @@ audit_diff_for() {
     done
 }
 
-# AUDIT_SKIP_TOX=1 runs wave 1b alone. The two fatal style checks
-# below had never inspected a line for six weeks because nothing
-# exercised them; they are only cheaply testable if they can be
-# reached without a full tox cycle first. It is also the fast path
-# for re-running the mechanical checks while fixing one of them.
-if [[ "${AUDIT_SKIP_TOX:-0}" != "1" ]]; then
-    bold "=== wave 1a: flake8 (tox -eflake8) ==="
-    if ! tox -eflake8; then
-        red "FAIL: flake8"
-        exit 1
-    fi
-    green "PASS: flake8"
-    echo
-
-    bold "=== wave 1a: unit tests (tox -epy3) ==="
-    if ! tox -epy3; then
-        red "FAIL: py3 tests"
-        exit 2
-    fi
-    green "PASS: py3 tests"
-    echo
-fi
-
-bold "=== wave 1b: mechanical style checks ==="
-
 # Validate both ends of the range, not just the base. A range whose tip
 # does not resolve makes every git diff below emit "fatal: bad
 # revision" to stderr and produce nothing, so every check reports clean
@@ -202,6 +177,52 @@ if [[ "$have_base" != "1" ]]; then
     fi
     echo "ADVISORY: cannot resolve '$unresolved'; skipping diff-based style checks"
 fi
+
+# AUDIT_SKIP_TOX=1 runs wave 1b alone. The two fatal style checks
+# below had never inspected a line for six weeks because nothing
+# exercised them; they are only cheaply testable if they can be
+# reached without a full tox cycle first. It is also the fast path
+# for re-running the mechanical checks while fixing one of them.
+#
+# The range is resolved above rather than below this block, so a typo'd
+# AUDIT_RANGE fails before a tox cycle is spent on it, and so the lint
+# gate can be pointed at the audited range.
+if [[ "${AUDIT_SKIP_TOX:-0}" != "1" ]]; then
+    bold "=== wave 1a: flake8 (tox -eflake8) ==="
+    # `tox -eflake8` alone runs flake8wrap.sh with -HEAD, which selects
+    # files with `git diff --name-only HEAD~1` and so inspects the last
+    # commit of whatever is checked out, whatever AUDIT_RANGE says. In a
+    # fresh worktree cut from develop to audit an already-merged plan
+    # that is the previous unrelated merge, and the gate reported
+    #
+    #     No python files in change.
+    #       flake8: OK
+    #     PASS: flake8
+    #
+    # over a range holding six Python files and some 970 added lines
+    # (#488). It read like a clean result, which is the worst way for a
+    # gate to be wrong. Hand it the audited ranges instead.
+    flake8_args=(-HEAD)
+    if [[ "$have_base" == "1" ]]; then
+        flake8_args=(-RANGE "${AUDIT_RANGES[@]}")
+    fi
+    if ! tox -eflake8 -- "${flake8_args[@]}"; then
+        red "FAIL: flake8"
+        exit 1
+    fi
+    green "PASS: flake8"
+    echo
+
+    bold "=== wave 1a: unit tests (tox -epy3) ==="
+    if ! tox -epy3; then
+        red "FAIL: py3 tests"
+        exit 2
+    fi
+    green "PASS: py3 tests"
+    echo
+fi
+
+bold "=== wave 1b: mechanical style checks ==="
 
 if [[ "$have_base" == "1" ]]; then
     # Added .py lines in the diff, excluding tests and generated stubs.

@@ -734,6 +734,72 @@ class Wave1StyleCheckTestCase(testtools.TestCase):
         self.assertEqual(6, result.returncode, result.stdout + result.stderr)
         self.assertNotIn('all mechanical checks passed', result.stdout)
 
+    def test_the_lint_gate_is_given_the_audited_ranges(self):
+        """The gate selected files with `git diff --name-only HEAD~1`.
+
+        Whatever AUDIT_RANGE said, `tox -eflake8` ran flake8wrap.sh
+        with -HEAD, so in a fresh worktree cut from develop to audit an
+        already-merged plan the lint gate inspected the previous
+        unrelated merge and reported "No python files in change" as a
+        pass (#488). tox is stubbed here: what the gate was told is the
+        whole of the behaviour under test.
+        """
+        recorded = Path(self.repo) / 'tox-args'
+        stub = Path(self.repo) / 'bin' / 'tox'
+        stub.parent.mkdir(parents=True, exist_ok=True)
+        stub.write_text(
+            '#!/bin/sh\nfor a in "$@"; do echo "$a"; done >> %s\nexit 0\n'
+            % recorded)
+        stub.chmod(0o755)
+
+        self._git('checkout', '-q', '-b', 'feature')
+        self._write('kerbside/mod.py', 'import os\nimport sys\n')
+        self._commit('add an import')
+
+        env = dict(self.env)
+        del env['AUDIT_SKIP_TOX']
+        env['PATH'] = '%s:%s' % (stub.parent, env['PATH'])
+        # Two ranges, so that handing the gate only the first is
+        # distinguishable from handing it all of them.
+        env['AUDIT_RANGE'] = 'develop..HEAD HEAD~1..HEAD'
+        result = subprocess.run(
+            ['bash', 'tools/audit/wave1.sh'], cwd=self.repo,
+            capture_output=True, text=True, env=env)
+
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        args = recorded.read_text().split()
+        self.assertIn('-RANGE', args)
+        self.assertIn('develop..HEAD', args)
+        self.assertIn('HEAD~1..HEAD', args)
+        self.assertNotIn('-HEAD', args)
+
+    def test_the_lint_gate_falls_back_to_head_for_an_unresolved_default(self):
+        """No develop, no explicit range: today's behaviour is kept."""
+        recorded = Path(self.repo) / 'tox-args'
+        stub = Path(self.repo) / 'bin' / 'tox'
+        stub.parent.mkdir(parents=True, exist_ok=True)
+        stub.write_text(
+            '#!/bin/sh\nfor a in "$@"; do echo "$a"; done >> %s\nexit 0\n'
+            % recorded)
+        stub.chmod(0o755)
+
+        self._git('checkout', '-q', '-b', 'feature')
+        self._write('kerbside/mod.py', 'import os\nimport sys\n')
+        self._commit('add an import')
+        self._git('branch', '-q', '-D', 'develop')
+
+        env = dict(self.env)
+        del env['AUDIT_SKIP_TOX']
+        env['PATH'] = '%s:%s' % (stub.parent, env['PATH'])
+        result = subprocess.run(
+            ['bash', 'tools/audit/wave1.sh'], cwd=self.repo,
+            capture_output=True, text=True, env=env)
+
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        args = recorded.read_text().split()
+        self.assertIn('-HEAD', args)
+        self.assertNotIn('-RANGE', args)
+
     def _land_as_merge(self, branch, path, content, message):
         """Land one commit on develop as a merge, and return the merge."""
         self._git('checkout', '-q', '-b', branch)

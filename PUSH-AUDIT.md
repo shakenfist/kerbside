@@ -39,7 +39,13 @@ tools/audit/wave1.sh
 
 It performs (and exits non-zero on any failure):
 
-- `tox -eflake8` (the project's lint gate, also run by CI)
+- `tox -eflake8` (the project's lint gate, also run by CI),
+  over the python files in `AUDIT_RANGE` rather than over
+  the last commit of whatever is checked out. The bare
+  `tox -eflake8` CI gate still lints `HEAD~1..HEAD`; the
+  audit passes `-RANGE` with the ranges it is auditing,
+  and falls back to `-HEAD` only when the default range
+  cannot be resolved
 - `tox -epy3` (the unit test suite via stestr)
 - Mechanical style checks: no raw `print()` in non-test
   source (logging only), no bare `except:` clauses, no
