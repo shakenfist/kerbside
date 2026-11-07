@@ -84,6 +84,12 @@ MUTATIONS = [
      '        if unmatched:',
      '        unmatched = []\n'
      '        if unmatched:'),
+    ('a bare predicative TLS claim unreadable again',
+     r"|\b(?:is|are|was|were|be|been)\s+TLS\b",
+     ''),
+    ('TLS read as a claim wherever it appears',
+     r"|\b(?:is|are|was|were|be|been)\s+TLS\b",
+     r'|\bTLS\b'),
     ('one empty pattern tolerated among several',
      '    return [pattern for pattern in DOC_PATHS\n'
      '            if not glob.glob(os.path.join(root, pattern))]',

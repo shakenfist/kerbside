@@ -99,8 +99,31 @@ ASSERTS = re.compile(
     r'pins|verifies|escalates|relays|refuses|fails|happens|enforces|'
     r'encrypts|terminates|dials|connects|retries|checks|pinned)\b', re.I)
 PIN = re.compile(r'\bpin(?:s|ned|ning)?\b', re.I)
+
+# TLS as a predicate -- "the SPICE session to qemu is TLS" -- is the
+# plainest way to make this claim and was the one way of making it this
+# pattern did not read (#659): it matched "over TLS" and "TLS'd" but not
+# "is TLS", so a sentence like "The backend connection is TLS and
+# checked." passed with no condition attached.
+#
+# A bare \bTLS\b is not the fix, because it also matches reachability --
+# "both the plaintext and TLS ports" is not a claim about transport
+# security, and the docstring above says so -- which is why the copula
+# is required.
+#
+# The copulas here are exactly those ASSERTS already carries, so that
+# no alternative is dead: a sentence has to satisfy both conjuncts, and
+# one matched only here would never be reported. `stays`, `remains` and
+# `becomes` were tried and withdrawn. Adding them to ASSERTS to go with
+# them made the ovirt.md table row describing which field "becomes the
+# pin" into a finding, which is a false positive in the corpus bought
+# for a sentence shape these pages do not use -- and silencing false
+# positives by tuning these patterns is how a guard stops catching
+# anything.
 CRYPTO = re.compile(
-    r"\b(?:escalat\w+|encrypt\w+|verif\w+)\b|\bTLS'd\b|\bover TLS\b", re.I)
+    r"\b(?:escalat\w+|encrypt\w+|verif\w+)\b|\bTLS'd\b|\bover TLS\b"
+    r'|\b(?:is|are|was|were|be|been)\s+TLS\b',
+    re.I)
 
 # Words which name a condition. Any one of them in the block the
 # sentence belongs to is enough, which is why the list is short: see

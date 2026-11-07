@@ -119,6 +119,60 @@ class ClaimDetectionTestCase(testtools.TestCase):
         self.assertEqual(1, len(found))
         self.assertIn('qemu is TLS and pinned', found[0][1])
 
+    def test_a_bare_predicative_tls_claim_is_caught(self):
+        """"is TLS" was the one way of claiming it the guard could not
+        read: the pattern had "over TLS" and "TLS'd" but no copula, so
+        a sentence asserting it in the plainest words passed with no
+        condition attached (#659)."""
+        found = _claims('The backend connection is TLS and checked.\n')
+
+        self.assertEqual(1, len(found))
+        self.assertIn('is TLS', found[0][1])
+
+    def test_other_copulas_are_read_the_same_way(self):
+        for sentence in ('The node connections are TLS.\n',
+                         'The hypervisor leg was TLS.\n',
+                         'The backend leg will be TLS.\n',
+                         'The leg to the node has been TLS since v0.5.\n'):
+            self.assertEqual(1, len(_claims(sentence)), sentence)
+
+    def test_the_copulas_match_the_assertion_vocabulary(self):
+        """Neither pattern may carry an alternative the other lacks.
+
+        A claim must satisfy both conjuncts, so a copula in CRYPTO that
+        ASSERTS does not have is dead: it can never be reported. The
+        reverse, adding `stays`, `remains` and `becomes` to ASSERTS to
+        match, turned the ovirt.md row describing which field "becomes
+        the pin" into a false positive, so both lists stay as they are.
+        """
+        for copula in ('is', 'are', 'was', 'were', 'be', 'been'):
+            self.assertTrue(
+                check_backend_tls_claims.CRYPTO.search('it %s TLS' % copula),
+                copula)
+            self.assertTrue(
+                check_backend_tls_claims.ASSERTS.search('it %s TLS' % copula),
+                copula)
+        for copula in ('stays', 'remains', 'becomes'):
+            self.assertIsNone(
+                check_backend_tls_claims.CRYPTO.search('it %s TLS' % copula),
+                copula)
+
+    def test_tls_as_reachability_is_not_a_claim(self):
+        """A bare \\bTLS\\b would have been the wrong fix.
+
+        Naming a port is not asserting transport security, and these
+        pages name both ports constantly. The copula is what separates
+        the two.
+        """
+        self.assertEqual([], _claims(
+            'The proxy dials both the plaintext and TLS ports of the '
+            'node.\n'))
+
+    def test_a_predicative_claim_naming_its_condition_passes(self):
+        self.assertEqual([], _claims(
+            'The backend connection is TLS only when the hypervisor '
+            'rejects plaintext.\n'))
+
     def test_configured_alone_does_not_exempt_a_block(self):
         """`configured` is a noun modifier, not a condition marker.
 
