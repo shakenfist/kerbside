@@ -68,11 +68,28 @@ MUTATIONS = [
      '            continue',
      "        if stripped.startswith('#'):\n"
      "            stripped = ''"),
-    ('paths resolved against the working directory again',
-     'glob.glob(os.path.join(root, pattern))', 'glob.glob(pattern)'),
+    # Two functions glob DOC_PATHS now, so each mutation names the
+    # call site it means rather than the shared expression.
+    ('scanned paths resolved against the working directory again',
+     'paths.extend(glob.glob(os.path.join(root, pattern)))',
+     'paths.extend(glob.glob(pattern))'),
+    ('emptiness checked against the working directory',
+     '            if not glob.glob(os.path.join(root, pattern))]',
+     '            if not glob.glob(pattern)]'),
     ('findings no longer deduplicated per block',
      '                yield number, sentence\n                break',
      '                yield number, sentence'),
+    ('a tree with no documentation passing again',
+     '        unmatched = unmatched_doc_patterns()\n'
+     '        if unmatched:',
+     '        unmatched = []\n'
+     '        if unmatched:'),
+    ('one empty pattern tolerated among several',
+     '    return [pattern for pattern in DOC_PATHS\n'
+     '            if not glob.glob(os.path.join(root, pattern))]',
+     '    return [] if any(\n'
+     '        glob.glob(os.path.join(root, pattern))\n'
+     '        for pattern in DOC_PATHS) else list(DOC_PATHS)'),
 ]
 
 

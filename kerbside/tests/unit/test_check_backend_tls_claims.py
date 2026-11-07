@@ -281,11 +281,19 @@ class RepositoryTestCase(testtools.TestCase):
         self.assertIn('docs/deployment/manual.md',
                       check_backend_tls_claims.default_paths())
 
+        # Every pattern in DOC_PATHS has to match something, or the
+        # check refuses to report at all, so the built tree carries an
+        # innocuous file for the other two patterns.
         with tempfile.TemporaryDirectory() as root:
             os.makedirs(os.path.join(root, 'docs', 'deployment'))
-            with open(os.path.join(root, 'docs', 'deployment', 'x.md'),
-                      'w', encoding='utf-8') as f:
-                f.write(UNCONDITIONAL)
+            os.makedirs(os.path.join(root, 'docs', 'use-cases'))
+            for relative, content in (
+                    (('docs', 'deployment', 'x.md'), UNCONDITIONAL),
+                    (('docs', 'use-cases', 'y.md'), 'Nothing to see.\n'),
+                    (('docs', 'index.md'), 'Nothing to see.\n')):
+                with open(os.path.join(root, *relative), 'w',
+                          encoding='utf-8') as f:
+                    f.write(content)
 
             with mock.patch.object(
                     check_backend_tls_claims, 'repository_root',
@@ -294,13 +302,60 @@ class RepositoryTestCase(testtools.TestCase):
                 with mock.patch('sys.stderr', new=io.StringIO()):
                     verdict = check_backend_tls_claims.main()
 
-        self.assertEqual(['docs/deployment/x.md'], paths)
+        self.assertIn('docs/deployment/x.md', paths)
         self.assertEqual(1, verdict)
 
     def test_the_documentation_passes(self):
         self.assertEqual(
             0, check_backend_tls_claims.main(), 'documentation has an '
             'unconditional backend TLS or pinning claim')
+
+    def test_every_doc_pattern_matches_something_in_this_tree(self):
+        """A pattern that matches nothing is the guard gone blind."""
+        self.assertEqual([], check_backend_tls_claims.unmatched_doc_patterns())
+
+    def test_a_tree_with_no_documentation_fails_rather_than_passing(self):
+        """CI runs this bare, so a renamed docs/ must not read as clean.
+
+        It reported "No unconditional backend TLS or pinning claims in
+        0 documentation files" and exited 0 (#641).
+        """
+        with tempfile.TemporaryDirectory() as root:
+            with mock.patch.object(
+                    check_backend_tls_claims, 'repository_root',
+                    return_value=root):
+                stderr = io.StringIO()
+                with mock.patch('sys.stderr', new=stderr):
+                    verdict = check_backend_tls_claims.main()
+
+        self.assertEqual(2, verdict)
+        self.assertIn('no documentation matched', stderr.getvalue())
+
+    def test_one_pattern_matching_nothing_is_enough_to_fail(self):
+        """The failure the real-tree assertions could not have caught.
+
+        A total collapse would break the assertions on docs/index.md
+        above. One of three patterns going empty would not.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, 'docs', 'use-cases'))
+            for relative in (('docs', 'use-cases', 'y.md'),
+                             ('docs', 'index.md')):
+                with open(os.path.join(root, *relative), 'w',
+                          encoding='utf-8') as f:
+                    f.write('Nothing to see.\n')
+
+            with mock.patch.object(
+                    check_backend_tls_claims, 'repository_root',
+                    return_value=root):
+                unmatched = check_backend_tls_claims.unmatched_doc_patterns()
+                stderr = io.StringIO()
+                with mock.patch('sys.stderr', new=stderr):
+                    verdict = check_backend_tls_claims.main()
+
+        self.assertEqual(['docs/deployment/*.md'], unmatched)
+        self.assertEqual(2, verdict)
+        self.assertIn('docs/deployment/*.md', stderr.getvalue())
 
     def test_it_reports_rather_than_crashing_without_utf8(self):
         """The pages are full of em dashes.
