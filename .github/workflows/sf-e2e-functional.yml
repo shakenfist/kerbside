@@ -240,18 +240,35 @@ jobs:
       - name: Check outcomes
         run: "[ $ALL_SUCCESS == true ]"
 
-  # The nightly run is load-bearing: it bounds the accepted two-tier
-  # CI risk that the merge queue never re-runs this lane against the
-  # merged tree (and catches SF-at-develop-HEAD drift), and a red entry
-  # in the Actions tab alerts nobody. File or update a tracking issue
-  # instead. The Shaken Fist conductor's periodic tier dispatches this
-  # lane as well as the cron, so both triggers have to file; a pull
-  # request does not, as its red is already visible there. A separate
-  # job so issues: write is never granted to the lane job.
+  # A run against develop is load-bearing: it bounds the accepted
+  # two-tier CI risk that the merge queue never re-runs this lane
+  # against the merged tree (and catches SF-at-develop-HEAD drift),
+  # and a red entry in the Actions tab alerts nobody. File or update a
+  # tracking issue instead. A separate job so issues: write is never
+  # granted to the lane job.
+  #
+  # The gate is the ref, not the trigger, because the issue tracks
+  # develop's coverage and nothing else. Two things run this lane
+  # against develop: the 02:30 cron, and the Shaken Fist conductor's
+  # periodic tier, which dispatches it on develop and sends no
+  # inputs. Both are unattended, so both must file. A dispatch on any
+  # other ref is the interactive debugging case the retention input
+  # exists for: it says nothing about develop's coverage and files
+  # nothing. Nor does a pull request, whose red is already visible
+  # there.
+  #
+  # sf-e2e is the only lane in this repository the conductor
+  # dispatches, so the sibling jobs in direct-qemu-functional.yml,
+  # proxmox-functional.yml and functional-tests.yml are cron-only on
+  # purpose rather than by oversight.
   nightly_failure_issue:
     name: "File nightly failure issue"
     needs: [sf-e2e]
-    if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    if: >-
+      failure()
+      && (github.event_name == 'schedule'
+          || (github.event_name == 'workflow_dispatch'
+              && github.ref == 'refs/heads/develop'))
     permissions:
       contents: read
       issues: write
