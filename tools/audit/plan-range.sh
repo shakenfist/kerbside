@@ -15,6 +15,10 @@
 #
 #   eval "$(tools/audit/plan-range.sh 14b54f3 2e1fd43)"
 #
+# Where both `develop` and `origin/develop` resolve, the newer of the
+# two is the base branch: a stale local ref rejects a merge that has
+# landed, and says so in terms of the SHA rather than the ref.
+#
 # Fails loudly (exit 1, message to stderr) if fewer than one SHA is
 # given, if neither `develop` nor `origin/develop` resolves, if any
 # SHA is not a commit, if any SHA is not an ancestor of the base
@@ -37,13 +41,47 @@ fi
 # unresolvable ref used to surface as git's own "Not a valid object
 # name develop" followed by this script blaming ancestry, which sends
 # the reader after the wrong problem entirely.
+#
+# Where both resolve, take the newer -- whichever contains the other.
+# The base ref exists only to answer "did this merge land on the
+# project's mainline", so a ref that is too new cannot produce a wrong
+# answer while a stale one can: a worktree whose main clone has an old
+# `develop` checked out cannot fast-forward it from here (another
+# worktree holds it), and the ancestry check below then rejects a
+# current merge commit while naming the SHA rather than the stale ref.
+local_base=""
+remote_base=""
+git rev-parse --verify 'develop^{commit}' >/dev/null 2>&1 \
+    && local_base="develop"
+git rev-parse --verify 'origin/develop^{commit}' >/dev/null 2>&1 \
+    && remote_base="origin/develop"
+
 base_ref=""
-for candidate in develop origin/develop; do
-    if git rev-parse --verify "${candidate}^{commit}" >/dev/null 2>&1; then
-        base_ref="${candidate}"
-        break
+if [ -n "${local_base}" ] && [ -n "${remote_base}" ]; then
+    if git merge-base --is-ancestor develop origin/develop 2>/dev/null; then
+        # Equal refs take this arm; say nothing in that case, which is
+        # the common one, and name the staleness only when there is
+        # some.
+        base_ref="${remote_base}"
+        if ! git merge-base --is-ancestor origin/develop develop \
+                2>/dev/null; then
+            echo "plan-range.sh: local 'develop' is behind" >&2
+            echo "  'origin/develop'; using 'origin/develop'." >&2
+        fi
+    elif git merge-base --is-ancestor origin/develop develop 2>/dev/null; then
+        base_ref="${local_base}"
+    else
+        # Neither contains the other. origin/develop is the authority
+        # on what landed, so a diverged local develop is not evidence
+        # of anything; use the remote and say which one was used,
+        # rather than failing a run that has a perfectly good base.
+        base_ref="${remote_base}"
+        echo "plan-range.sh: local 'develop' has diverged from" >&2
+        echo "  'origin/develop'; using 'origin/develop'." >&2
     fi
-done
+else
+    base_ref="${local_base}${remote_base}"
+fi
 
 if [ -z "${base_ref}" ]; then
     echo "plan-range.sh: cannot resolve 'develop' or 'origin/develop';" >&2

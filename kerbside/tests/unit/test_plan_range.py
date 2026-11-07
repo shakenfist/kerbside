@@ -282,6 +282,89 @@ class PlanRangeTestCase(testtools.TestCase):
         # git's own 'Not a valid object name' must not reach the reader.
         self.assertNotIn('Not a valid object name', result.stderr)
 
+    def clone_with_stale_develop(self, stale_at):
+        """A clone whose local develop sits behind origin/develop.
+
+        The shape a git worktree is in when the main clone has an old
+        `develop` checked out: the local ref cannot be fast-forwarded
+        from the worktree, because another worktree holds it.
+        """
+        clone = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, clone, ignore_errors=True)
+        subprocess.run(
+            ['git', 'clone', '-q', '--no-local', self.repo, clone],
+            check=True, capture_output=True, env=self.env)
+        subprocess.run(
+            ['git', 'reset', '-q', '--hard', stale_at], cwd=clone, check=True,
+            capture_output=True, env=self.env)
+        return clone
+
+    def test_prefers_origin_develop_when_the_local_develop_is_stale(self):
+        """A stale ref must not decide whether a merge is on develop.
+
+        Resolving `develop` first made the script reject a merge that
+        had landed, blaming the SHA for a ref the reader had not
+        thought about.
+        """
+        clone = self.clone_with_stale_develop(self.first)
+
+        result = self.run_script(self.first, self.last, cwd=clone)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn('is not an ancestor', result.stderr)
+        # ... and it says which ref it used, so a reader who expected
+        # the local one is not left guessing.
+        self.assertIn("local 'develop' is behind", result.stderr)
+        exports = self.exports(result)
+        self.assertEqual(
+            '%s^1..%s' % (self.first, self.last), exports['AUDIT_RANGE'])
+
+    def test_prefers_the_local_develop_when_it_is_ahead(self):
+        """A merge landed locally but not yet pushed is still auditable."""
+        clone = self.clone_with_stale_develop(self.first)
+        subprocess.run(
+            ['git', 'merge', '-q', '--ff-only', self.last], cwd=clone,
+            check=True, capture_output=True, env=self.env)
+        subprocess.run(
+            ['git', 'update-ref', 'refs/remotes/origin/develop', self.first],
+            cwd=clone, check=True, capture_output=True, env=self.env)
+
+        result = self.run_script(self.first, self.last, cwd=clone)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn('is not an ancestor', result.stderr)
+        self.assertNotIn('is behind', result.stderr)
+
+    def test_uses_origin_develop_when_the_local_develop_has_diverged(self):
+        """Neither contains the other: the remote is the authority."""
+        clone = self.clone_with_stale_develop(self.first)
+        (Path(clone) / 'local-only.txt').write_text('local\n')
+        subprocess.run(
+            ['git', 'add', '--', 'local-only.txt'], cwd=clone, check=True,
+            capture_output=True, env=self.env)
+        subprocess.run(
+            ['git', 'commit', '-q', '-m', 'local only'], cwd=clone,
+            check=True, capture_output=True, env=self.env)
+
+        result = self.run_script(self.first, self.last, cwd=clone)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn('has diverged', result.stderr)
+        self.assertNotIn('is not an ancestor', result.stderr)
+
+    def test_says_nothing_about_staleness_when_the_refs_agree(self):
+        """The common case stays silent; stdout is an eval contract."""
+        clone = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, clone, ignore_errors=True)
+        subprocess.run(
+            ['git', 'clone', '-q', '--no-local', self.repo, clone],
+            check=True, capture_output=True, env=self.env)
+
+        result = self.run_script(self.first, self.last, cwd=clone)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual('', result.stderr)
+
     def test_reports_an_unresolvable_base_branch_as_such(self):
         """Neither develop nor origin/develop: say that, not 'ancestry'."""
         self.git('checkout', '-q', '--detach', 'HEAD')
