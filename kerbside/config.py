@@ -244,8 +244,8 @@ class Config(BaseSettings):
         None,
         ge=0,
         le=2**31 - 1,
-        description=('SO_RCVBUF for each hypervisor-leg SPICE socket, in bytes, '
-                     'capping the backlog the proxy accepts from '
+        description=('SO_RCVBUF for each hypervisor-leg SPICE socket, in '
+                     'bytes, capping the backlog the proxy accepts from '
                      'spice-server while a client is slow. Linux clamps it '
                      'to net.core.rmem_max. Unset uses the proxy default '
                      '(0, off: kernel receive autotuning).'))

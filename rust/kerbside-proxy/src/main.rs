@@ -171,11 +171,11 @@ struct Args {
 /// Refuse it here, where the flag's name is attached to the error.
 /// `kerbside/config.py` caps the matching settings at the same value, so a
 /// bad value is rejected by whichever layer the operator set it through.
-const MAX_SOCKOPT_BYTES: u32 = i32::MAX as u32;
+pub(crate) const MAX_SOCKOPT_BYTES: u32 = i32::MAX as u32;
 
 /// Parse a socket-option byte count, refusing anything the kernel would
 /// reinterpret as negative.
-fn sockopt_bytes(value: &str) -> Result<u32, String> {
+pub(crate) fn sockopt_bytes(value: &str) -> Result<u32, String> {
     let parsed: u32 = value.parse().map_err(|e| format!("{e}"))?;
     if parsed > MAX_SOCKOPT_BYTES {
         return Err(format!(
@@ -495,6 +495,30 @@ mod tests {
             );
         }
         assert_eq!(MAX_SOCKOPT_BYTES, 2_147_483_647);
+    }
+
+    /// The transcoder's low-water flag reaches the same `setsockopt`, so it
+    /// shares the bound. It keeps its own floor of 1.
+    #[cfg(feature = "transcode")]
+    #[test]
+    fn transcode_lowat_flag_shares_the_sockopt_bound() {
+        let flag = "--transcode-notsent-lowat-bytes";
+        assert!(
+            Args::try_parse_from(["kerbside-proxy", flag, "2147483647"]).is_ok(),
+            "{flag} rejected i32::MAX"
+        );
+        assert!(
+            Args::try_parse_from(["kerbside-proxy", flag, "2147483648"]).is_err(),
+            "{flag} accepted i32::MAX + 1"
+        );
+        assert!(
+            Args::try_parse_from(["kerbside-proxy", flag, "0"]).is_err(),
+            "{flag} accepted 0"
+        );
+        assert!(
+            Args::try_parse_from(["kerbside-proxy", flag, "-1"]).is_err(),
+            "{flag} accepted a negative value"
+        );
     }
 
     /// The transcoder is off unless asked for, its defaults are andris's,

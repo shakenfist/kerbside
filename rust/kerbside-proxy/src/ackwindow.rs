@@ -470,9 +470,16 @@ mod tests {
         assert_eq!(t.in_flight(), Some(-58));
     }
 
-    /// A window of zero is what spice-server sends to disable acknowledgement
-    /// on a channel. The threshold is then zero, so the SET_ACK's own count of
-    /// one is already past it, and an ACK credits nothing.
+    /// A boundary case of [`AckTracker::threshold`]: if a server ever sent a
+    /// window of zero, the threshold would be zero too, so the SET_ACK's own
+    /// count of one is already past it and an ACK credits nothing. Pinned as
+    /// a boundary, not as observed spice-server behaviour -- the rest of this
+    /// module cites `server/red-channel-client.cpp` for what the server
+    /// actually sends, and nothing there sends a window of zero.
+    ///
+    /// Note what the tracker then reports: a channel nothing is blocking
+    /// looks permanently stalled, so `stalls` and `stalled_total` would grow
+    /// for the life of the session.
     #[test]
     fn a_zero_window_credits_nothing_and_stalls_immediately() {
         let t0 = Instant::now();

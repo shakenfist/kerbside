@@ -70,15 +70,26 @@ cd "${crate_dir}"
 # the crate's own `default` list, and a `features` key under [tool.maturin] --
 # and neither shows up in the wheel's name, so nothing downstream would notice.
 # Assert both are empty here instead of trusting that nobody adds one; a
-# deliberate change has to edit this check too.
-if ! grep -qx 'default = \[\]' Cargo.toml; then
-    echo "ERROR: Cargo.toml does not declare an empty 'default = []' feature list." >&2
-    echo "ERROR: a default feature would be compiled into the published wheel." >&2
-    exit 1
-fi
-if grep -qE '^[[:space:]]*features[[:space:]]*=' pyproject.toml; then
-    echo "ERROR: pyproject.toml sets a maturin 'features' key." >&2
-    echo "ERROR: the published wheel must be built with no cargo features." >&2
+# deliberate change has to edit this check too. The tables are parsed rather
+# than grepped: a line match also fired on `default = []` anywhere in the
+# manifest, missed a reformatted `default=[]`, and refused a manifest that
+# simply omits `default`, which cargo reads as empty.
+if ! python3 -I - Cargo.toml pyproject.toml <<'FEATURE_CHECK'
+import sys, tomllib
+
+with open(sys.argv[1], 'rb') as f:
+    default = tomllib.load(f).get('features', {}).get('default', [])
+if default:
+    sys.exit("ERROR: Cargo.toml's [features] default is %r, not empty: a default "
+             'feature would be compiled into the published wheel.' % (default,))
+
+with open(sys.argv[2], 'rb') as f:
+    maturin = tomllib.load(f).get('tool', {}).get('maturin', {})
+if 'features' in maturin:
+    sys.exit('ERROR: pyproject.toml sets [tool.maturin] features = %r: the published '
+             'wheel must be built with no cargo features.' % (maturin['features'],))
+FEATURE_CHECK
+then
     exit 1
 fi
 

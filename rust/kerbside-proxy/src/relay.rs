@@ -671,19 +671,43 @@ mod tests {
     }
 
     /// The termination message is a CI oracle: three tools grep the proxy's
-    /// log for it. Pinned here so that editing the constant without editing
-    /// those tools fails in unit tests rather than in an end-to-end lane.
-    /// The tools match on the prefix, which is what this asserts.
+    /// log for it. Each tool's source is read in here, so editing the
+    /// constant without editing the tools fails in unit tests rather than in
+    /// an end-to-end lane -- which asserting the constant against a literal
+    /// copy of itself would not catch.
+    ///
+    /// The tools match on the prefix, so the prefix is what has to appear in
+    /// them. `include_str!` is inside `#[cfg(test)]`, so only `cargo test`
+    /// needs `tools/` in the build context; a wheel or Docker build does not.
     #[test]
     fn terminate_message_is_the_ci_oracle_text() {
-        assert_eq!(
-            TERMINATED_BY_CONTROL_PLANE,
-            "session terminated by control plane; ending relay"
+        const ORACLE_PREFIX: &str = "session terminated by control plane";
+        assert!(
+            TERMINATED_BY_CONTROL_PLANE.starts_with(ORACLE_PREFIX),
+            "the log message no longer starts with the prefix the lanes grep for"
         );
-        // tools/direct-qemu/verify-terminate-live.sh,
-        // tools/ovirt-e2e/drive-console.py and
-        // tools/proxmox-e2e/drive-console.py all search for this prefix.
-        assert!(TERMINATED_BY_CONTROL_PLANE.starts_with("session terminated by control plane"));
+
+        const TOOLS: [(&str, &str); 3] = [
+            (
+                "tools/direct-qemu/verify-terminate-live.sh",
+                include_str!("../../../tools/direct-qemu/verify-terminate-live.sh"),
+            ),
+            (
+                "tools/ovirt-e2e/drive-console.py",
+                include_str!("../../../tools/ovirt-e2e/drive-console.py"),
+            ),
+            (
+                "tools/proxmox-e2e/drive-console.py",
+                include_str!("../../../tools/proxmox-e2e/drive-console.py"),
+            ),
+        ];
+        for (name, source) in TOOLS {
+            assert!(
+                source.contains(ORACLE_PREFIX),
+                "{name} does not search for {ORACLE_PREFIX:?}; the CI oracle and the \
+                 proxy's log message have diverged"
+            );
+        }
     }
 
     #[tokio::test]

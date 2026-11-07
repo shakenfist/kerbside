@@ -76,9 +76,10 @@
 #   SAMPLES        key presses per case (default 40)
 #   ACTIVITY_DELAY seconds after guest boot before the activity starts
 #                  (default 0). Set it when a display streams, because
-#                  spice-server 0.15.2 segfaults when a client connects
-#                  while streams exist; about 8 s puts the start after
-#                  ryll has connected
+#                  spice-server segfaults when a client states a codec
+#                  preference at connect while streams exist, as ryll
+#                  does -- every released version and master; about 8 s
+#                  puts the start after ryll has connected
 #   WARMUP         seconds between ryll connecting and the first key
 #                  press (default 5); keep it past ACTIVITY_DELAY
 #   BUFFER_BDP     bottleneck queue per direction in BDPs (default 1)

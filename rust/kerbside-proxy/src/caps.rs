@@ -9,8 +9,9 @@
 //! what Kerbside relays.
 //!
 //! In the other direction, the client's own capabilities are forwarded to
-//! the backend ([`backend_common_caps`] and the client's channel caps
-//! verbatim), so spice-server encodes for the client actually connected
+//! the backend ([`backend_common_caps`] and, for a relayed channel,
+//! [`backend_channel_caps`] verbatim), so spice-server encodes for the
+//! client actually connected
 //! rather than for whatever the proxy's own SPICE client would advertise
 //! (kerbside#477).
 //!
@@ -177,6 +178,25 @@ pub fn backend_common_caps(client_common_caps: &[u32]) -> Vec<u32> {
     }
     caps[0] = (caps[0] & !capabilities::AUTH_SASL) | capabilities::AUTH_SPICE;
     caps
+}
+
+/// The channel capabilities to advertise to the backend for a relayed
+/// channel: the client's own, verbatim.
+///
+/// Deliberately not masked to what the client-leg reply offered. A
+/// capability is effective only where both ends advertise it, so
+/// forwarding the client's set is what lets spice-server encode for the
+/// client actually connected (kerbside#477). It does mean the client can
+/// negotiate a feature Kerbside never offered; see "The reply mask is not
+/// a security boundary" in this module's documentation for why that is
+/// safe, and why clamping it would break real clients and buy no
+/// enforcement.
+///
+/// This is the seam the whole argument rests on: masking the forwarded set
+/// means editing this function, which
+/// `unoffered_client_cap_still_admits_its_server_message` pins.
+pub fn backend_channel_caps(client_channel_caps: &[u32]) -> Vec<u32> {
+    client_channel_caps.to_vec()
 }
 
 /// Capability bit numbers set in `offered` but not in `granted`.
@@ -437,13 +457,19 @@ mod tests {
             0,
             "DISPLAY_CAPS is expected not to offer SIZED_STREAM"
         );
-        // A client that advertises it has it forwarded untouched: nothing
-        // between `ClientCaps.channel` and the backend link masks it.
+        // A client that advertises it has it forwarded untouched: this is
+        // the function both of `backend.rs`'s build arms take the relayed
+        // channel caps from, so masking cannot be added without failing
+        // here.
         let client = ClientCaps {
             common: vec![capabilities::AUTH_SELECTION | capabilities::MINI_HEADER],
             channel: vec![capabilities::DISPLAY_SIZED_STREAM],
         };
-        assert_eq!(client.channel, vec![capabilities::DISPLAY_SIZED_STREAM]);
+        assert_eq!(
+            backend_channel_caps(&client.channel),
+            vec![capabilities::DISPLAY_SIZED_STREAM],
+            "the relayed channel caps must reach the backend unmasked"
+        );
         // And the message that capability enables is admitted, not
         // flagged, so the firewall does not fight a negotiation the
         // client and spice-server agreed on.

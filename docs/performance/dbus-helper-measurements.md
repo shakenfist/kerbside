@@ -68,8 +68,9 @@ link profiles, so the tables line up with that page's. Measured on
   22 to 30 ms slower where andris streamed, and like it, it was seconds
   behind at 80 ms / 10 Mbit heavy (4400 ms p50, one repeat of two).
 - **No server crashed.** No qemu or andris exited in any of the 108
-  matrix repeats or the 10 reference repeats, and spice-server 0.15.2's
-  crash on connecting while streams exist did not recur. The 13 repeats
+  matrix repeats or the 10 reference repeats, and the spice-server crash
+  on stating a codec preference at connect while streams exist (0.15.2
+  here, but every released version) did not recur. The 13 repeats
   lost were all first key presses that took over 15 s. See
   [Caveats](#caveats).
 
@@ -429,10 +430,11 @@ p50, 29 ms behind the virtio-gpu helper.
   with streaming off at a p50 of 13.6 s on that cell, so its first press
   is near the limit. The same happened in one std-vga repeat at
   80 ms / 10 Mbit heavy, at load 22.
-- **No crashes.** No qemu or andris exited during a case. spice-server
-  0.15.2's crash on connecting while streams exist did not recur in any
-  `all` repeat, with the activity delayed 8 s, or 12 s on the second
-  150 ms / 2 Mbit run.
+- **No crashes.** No qemu or andris exited during a case. The
+  spice-server crash on stating a codec preference at connect while
+  streams exist (0.15.2 here, but every released version) did not recur
+  in any `all` repeat, with the activity delayed 8 s, or 12 s on the
+  second 150 ms / 2 Mbit run.
 - **Repeat counts are small.** Two repeats of 40 presses per cell, four at
   150 ms / 2 Mbit.
 - **The helper's listener has no lag watchdog.** If andris stopped reading,

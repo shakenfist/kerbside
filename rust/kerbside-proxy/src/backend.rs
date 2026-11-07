@@ -146,16 +146,13 @@ pub async fn run(
         );
         crate::transcode::BACKEND_DISPLAY_CAPS.to_vec()
     } else {
-        client_caps.channel.clone()
+        caps::backend_channel_caps(&client_caps.channel)
     };
+    // A relayed channel forwards the client's channel caps verbatim; see
+    // `caps::backend_channel_caps` for why they are not masked to the
+    // client-leg reply set.
     #[cfg(not(feature = "transcode"))]
-    // Verbatim, and deliberately not masked to what the client-leg reply
-    // offered: a capability is effective only if both ends advertise it, so
-    // this is what lets spice-server encode for the real client
-    // (kerbside#477). It does mean the client can negotiate a feature
-    // Kerbside never offered. See `crate::caps`, "The reply mask is not a
-    // security boundary", for why that is safe and why clamping it is not.
-    let channel_caps = client_caps.channel.clone();
+    let channel_caps = caps::backend_channel_caps(&client_caps.channel);
     let link = BackendLink {
         connection_id,
         channel_type,

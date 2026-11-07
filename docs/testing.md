@@ -503,7 +503,11 @@ against the relay:
   in Kerbside does, so `quality.sh` keeps them in a venv of their own at
   `QUALITY_VENV` (default
   `${XDG_CACHE_HOME:-$HOME/.cache}/kerbside/shaped-link-venv`),
-  made on first use and safe to delete. `quality.sh test` runs
+  made on first use and safe to delete. Because the script executes that
+  venv's python, it refuses one whose directory or interpreter this user
+  does not own, and creates a new one mode 700 and only under a parent
+  directory no other local user can write -- so a `QUALITY_VENV` set by
+  hand needs to be a path you own. `quality.sh test` runs
   `test_quality.py`.
 
 The rig can also put a SPICE server other than qemu's own in front of
