@@ -21,10 +21,12 @@
  *   kd.h=H      activity height (default 480)
  *   kd.noise=B  low bits of per-pixel noise, 0..8 (default 3)
  *   kd.delay=S  seconds after boot before the activity starts
- *               (default 0). spice-server 0.15.2 segfaults if a client
- *               connects while video streams already exist, so a run
- *               that lets spice-server stream the activity starts it
- *               only after the client has connected.
+ *               (default 0). spice-server segfaults if a client states
+ *               a codec preference at connect while video streams
+ *               already exist, as ryll does -- every released version
+ *               and master -- so a run that lets spice-server stream
+ *               the activity starts it only after the client has
+ *               connected.
  *   kd.frames=N stop the activity after frame N, leaving frame N on the
  *               screen (0, the default, never stops). Pressing F12 stops
  *               it at once, drawing frame N in place of whichever frame

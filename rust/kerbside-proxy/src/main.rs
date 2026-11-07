@@ -138,7 +138,7 @@ struct Args {
     /// ACK window, not the proxy, bounds the backlog. It does cut the kernel
     /// memory the proxy holds per session. See
     /// docs/performance/proxy-backpressure.md.
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 0, value_parser = sockopt_bytes)]
     client_notsent_lowat_bytes: u32,
 
     /// `SO_RCVBUF` for each backend-leg (hypervisor) socket, in bytes. Caps the
@@ -146,7 +146,7 @@ struct Args {
     /// Linux clamps it to `net.core.rmem_max` and doubles it. Off (0) by
     /// default, leaving the kernel's receive autotuning alone, for the same
     /// reason as `--client-notsent-lowat-bytes`.
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 0, value_parser = sockopt_bytes)]
     backend_rcvbuf_bytes: u32,
 
     /// The transcoding display channel's flags, in builds with the
@@ -162,6 +162,33 @@ struct Args {
     /// Print the embedded gRPC contract hash and exit.
     #[arg(long)]
     contract_hash: bool,
+}
+
+/// The largest byte count accepted for `TCP_NOTSENT_LOWAT` and `SO_RCVBUF`.
+///
+/// Both reach the kernel through `setsockopt` as a signed `int`, so what a
+/// value above `i32::MAX` means is left to each option's own handling of the
+/// sign bit rather than refused: `TCP_NOTSENT_LOWAT` stores it into an
+/// unsigned field, where `u32::MAX` lands as the sysctl's "unlimited"
+/// default, and `SO_RCVBUF` clamps through an unsigned comparison against
+/// `rmem_max`. Refuse it here instead, where the flag's name is attached to
+/// the error, so each setting keeps one well-defined meaning (and 0 is how
+/// an option is turned off).
+/// `kerbside/config.py` caps the matching settings at the same value, so a
+/// bad value is rejected by whichever layer the operator set it through.
+pub(crate) const MAX_SOCKOPT_BYTES: u32 = i32::MAX as u32;
+
+/// Parse a socket-option byte count, refusing anything above the signed
+/// `int` that `setsockopt` takes.
+pub(crate) fn sockopt_bytes(value: &str) -> Result<u32, String> {
+    let parsed: u32 = value.parse().map_err(|e| format!("{e}"))?;
+    if parsed > MAX_SOCKOPT_BYTES {
+        return Err(format!(
+            "{parsed} is above the maximum of {MAX_SOCKOPT_BYTES}: the kernel takes this \
+             socket option as a signed int"
+        ));
+    }
+    Ok(parsed)
 }
 
 #[tokio::main]
@@ -425,7 +452,7 @@ fn shared_state(args: &Args) -> session::SharedState {
 
 #[cfg(test)]
 mod tests {
-    use super::{shared_state, Args};
+    use super::{shared_state, sockopt_bytes, Args, MAX_SOCKOPT_BYTES};
     use clap::Parser;
 
     /// Both socket-tuning flags default to 0 (off) and parse from the command
@@ -451,20 +478,70 @@ mod tests {
         assert_eq!(shared_state(&args).backend_rcvbuf_bytes, 212_992);
     }
 
-    /// Both flags are u32, the bound `kerbside/config.py` validates against,
-    /// so a value the daemon's config accepts is never one clap rejects.
+    /// Both flags cap at `i32::MAX`, the bound `kerbside/config.py` validates
+    /// against, so a value the daemon's config accepts is never one clap
+    /// rejects. The cap is the kernel's: `setsockopt` takes both options as a
+    /// signed `int`, and what a larger value would mean is per-option rather
+    /// than refused, so one bound is imposed here instead.
     #[test]
     fn socket_tuning_flags_share_the_config_bound() {
         for flag in ["--client-notsent-lowat-bytes", "--backend-rcvbuf-bytes"] {
             assert!(
-                Args::try_parse_from(["kerbside-proxy", flag, "4294967295"]).is_ok(),
-                "{flag} rejected u32::MAX"
+                Args::try_parse_from(["kerbside-proxy", flag, "2147483647"]).is_ok(),
+                "{flag} rejected i32::MAX"
             );
             assert!(
-                Args::try_parse_from(["kerbside-proxy", flag, "4294967296"]).is_err(),
-                "{flag} accepted u32::MAX + 1"
+                Args::try_parse_from(["kerbside-proxy", flag, "2147483648"]).is_err(),
+                "{flag} accepted i32::MAX + 1"
+            );
+            assert!(
+                Args::try_parse_from(["kerbside-proxy", flag, "-1"]).is_err(),
+                "{flag} accepted a negative value"
             );
         }
+        assert_eq!(MAX_SOCKOPT_BYTES, 2_147_483_647);
+    }
+
+    /// The parser itself, not the command line. `Args::try_parse_from` with
+    /// `-1` is refused by clap's own lexer, before `sockopt_bytes` ever sees
+    /// the string, so the end-to-end assertion above would keep passing even
+    /// if the parser started accepting negatives. This is what pins that.
+    #[test]
+    fn sockopt_bytes_refuses_what_the_kernel_would_misread() {
+        assert_eq!(sockopt_bytes("0"), Ok(0));
+        assert_eq!(sockopt_bytes("2147483647"), Ok(2_147_483_647));
+        assert!(sockopt_bytes("-1").is_err(), "a negative value parsed");
+        assert!(sockopt_bytes("2147483648").is_err(), "i32::MAX + 1 parsed");
+        assert!(
+            sockopt_bytes("4294967295").is_err(),
+            "the old u32 bound parsed"
+        );
+        assert!(sockopt_bytes("").is_err());
+        assert!(sockopt_bytes("twelve").is_err());
+    }
+
+    /// The transcoder's low-water flag reaches the same `setsockopt`, so it
+    /// shares the bound. It keeps its own floor of 1.
+    #[cfg(feature = "transcode")]
+    #[test]
+    fn transcode_lowat_flag_shares_the_sockopt_bound() {
+        let flag = "--transcode-notsent-lowat-bytes";
+        assert!(
+            Args::try_parse_from(["kerbside-proxy", flag, "2147483647"]).is_ok(),
+            "{flag} rejected i32::MAX"
+        );
+        assert!(
+            Args::try_parse_from(["kerbside-proxy", flag, "2147483648"]).is_err(),
+            "{flag} accepted i32::MAX + 1"
+        );
+        assert!(
+            Args::try_parse_from(["kerbside-proxy", flag, "0"]).is_err(),
+            "{flag} accepted 0"
+        );
+        assert!(
+            Args::try_parse_from(["kerbside-proxy", flag, "-1"]).is_err(),
+            "{flag} accepted a negative value"
+        );
     }
 
     /// The transcoder is off unless asked for, its defaults are andris's,

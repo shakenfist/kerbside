@@ -29,6 +29,18 @@ use crate::pb;
 use crate::policy::{Direction, EnforcingPolicy, FirewallPolicy, Policy, Verdict, VerdictTally};
 use crate::session::SharedState;
 
+/// The log message written when the control plane terminates a session,
+/// shared by the relay and the transcoding display channel so the two can
+/// never drift apart.
+///
+/// CI-ORACLE: this text is load-bearing for
+/// `tools/direct-qemu/verify-terminate-live.sh`,
+/// `tools/ovirt-e2e/drive-console.py` and
+/// `tools/proxmox-e2e/drive-console.py`, the last of which also reads the
+/// event's `connection_ref` field. Update all three if it changes;
+/// `terminate_message_is_the_ci_oracle_text` pins the exact string.
+pub const TERMINATED_BY_CONTROL_PLANE: &str = "session terminated by control plane; ending relay";
+
 /// Sanity cap on a single framed SPICE message's declared body size.
 ///
 /// An unconditional backstop underneath the policy's own L0 caps: a peer that
@@ -161,16 +173,10 @@ where
         // drops both pump futures, closing the stream halves and disconnecting
         // the client -- the same teardown as a finishing pump.
         () = cancel.cancelled() => {
-            // CI-ORACLE: this message text is load-bearing for
-            // tools/direct-qemu/verify-terminate-live.sh,
-            // tools/ovirt-e2e/drive-console.py and
-            // tools/proxmox-e2e/drive-console.py, the last of which also
-            // reads its connection_ref field; update them all if either
-            // changes.
             info!(
                 %connection_ref,
                 channel_type = channel_type.name(),
-                "session terminated by control plane; ending relay"
+                "{TERMINATED_BY_CONTROL_PLANE}"
             );
             Ok(())
         }
@@ -662,6 +668,46 @@ mod tests {
         let (out, result) = run_pump(vec![input], DropPolicy).await;
         result.expect("pump returned an error");
         assert!(out.is_empty(), "dropped messages must not be forwarded");
+    }
+
+    /// The termination message is a CI oracle: three tools grep the proxy's
+    /// log for it. Each tool's source is read in here, so editing the
+    /// constant without editing the tools fails in unit tests rather than in
+    /// an end-to-end lane -- which asserting the constant against a literal
+    /// copy of itself would not catch.
+    ///
+    /// The tools match on the prefix, so the prefix is what has to appear in
+    /// them. `include_str!` is inside `#[cfg(test)]`, so only `cargo test`
+    /// needs `tools/` in the build context; a wheel or Docker build does not.
+    #[test]
+    fn terminate_message_is_the_ci_oracle_text() {
+        const ORACLE_PREFIX: &str = "session terminated by control plane";
+        assert!(
+            TERMINATED_BY_CONTROL_PLANE.starts_with(ORACLE_PREFIX),
+            "the log message no longer starts with the prefix the lanes grep for"
+        );
+
+        const TOOLS: [(&str, &str); 3] = [
+            (
+                "tools/direct-qemu/verify-terminate-live.sh",
+                include_str!("../../../tools/direct-qemu/verify-terminate-live.sh"),
+            ),
+            (
+                "tools/ovirt-e2e/drive-console.py",
+                include_str!("../../../tools/ovirt-e2e/drive-console.py"),
+            ),
+            (
+                "tools/proxmox-e2e/drive-console.py",
+                include_str!("../../../tools/proxmox-e2e/drive-console.py"),
+            ),
+        ];
+        for (name, source) in TOOLS {
+            assert!(
+                source.contains(ORACLE_PREFIX),
+                "{name} does not search for {ORACLE_PREFIX:?}; the CI oracle and the \
+                 proxy's log message have diverged"
+            );
+        }
     }
 
     #[tokio::test]

@@ -51,9 +51,16 @@ use crate::session::SharedState;
 
 /// Upper bound on a single backend connect attempt (TCP connect + SPICE link +
 /// auth handshake). Without this, a hypervisor that accepts TCP but stalls the
-/// SPICE handshake would pin the connection's concurrency permit indefinitely
-/// (the session `HANDSHAKE_TIMEOUT` deliberately covers only the client leg,
-/// and the crate's `connect_channel` has no timeout of its own). Applied per
+/// SPICE handshake would pin the connection's concurrency permit far longer
+/// than the proxy should hold it; the session `HANDSHAKE_TIMEOUT` deliberately
+/// covers only the client leg.
+///
+/// The crate does bound its own stages, but not the attempt as a whole: at the
+/// pinned rev `connect_channel` applies `DIAL_TIMEOUT` to the dial and
+/// `HANDSHAKE_TIMEOUT` separately to each of the TLS handshake, the link
+/// exchange and ticket authentication, 15 s apiece. A backend that stalls each
+/// stage just short of its limit can therefore take about a minute. This is
+/// the whole-attempt budget over the top of those, and it is applied per
 /// attempt, so the insecure-then-secure retry gets a fresh budget each time.
 const BACKEND_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -139,10 +146,13 @@ pub async fn run(
         );
         crate::transcode::BACKEND_DISPLAY_CAPS.to_vec()
     } else {
-        client_caps.channel.clone()
+        caps::backend_channel_caps(&client_caps.channel)
     };
+    // A relayed channel forwards the client's channel caps verbatim; see
+    // `caps::backend_channel_caps` for why they are not masked to the
+    // client-leg reply set.
     #[cfg(not(feature = "transcode"))]
-    let channel_caps = client_caps.channel.clone();
+    let channel_caps = caps::backend_channel_caps(&client_caps.channel);
     let link = BackendLink {
         connection_id,
         channel_type,

@@ -231,7 +231,11 @@ impl AckTracker {
             }
         } else if message_type == display_client::ACK {
             if self.generation.is_some() && self.client_generation == self.generation {
-                self.in_flight -= i64::from(self.window);
+                // Saturating, not clamped at zero: a client that acknowledges
+                // more than it received is meant to show as a negative count
+                // (see `in_flight`), and saturation only rules out an i64
+                // underflow panic on a pathological ACK stream.
+                self.in_flight = self.in_flight.saturating_sub(i64::from(self.window));
                 self.acks += 1;
                 obs.acked = true;
             } else {
@@ -438,6 +442,61 @@ mod tests {
         assert_eq!(t.stalls, 1);
         assert_eq!(t.stalled_total, ms(30));
         assert_eq!(t.max_in_flight, 41);
+    }
+
+    /// A client that acknowledges more than it received drives the count
+    /// negative, which is the documented behaviour: the real server's
+    /// `uint32_t messages_window` would wrap, and showing it signed is how
+    /// the tracker makes that visible instead of hiding it. Pinned so that
+    /// clamping at zero is a test failure rather than a silent change.
+    #[test]
+    fn over_acking_drives_the_count_negative() {
+        let t0 = Instant::now();
+        let mut t = AckTracker::new();
+        t.on_server_message(display_server::SET_ACK, &set_ack(1, 20), t0);
+        t.on_client_message(display_client::ACK_SYNC, &ack_sync(1), t0);
+        // One message in flight (the SET_ACK itself), then three credited
+        // ACKs: 1 - 60.
+        assert_eq!(t.in_flight(), Some(1));
+        for _ in 0..3 {
+            assert!(t.on_client_message(display_client::ACK, b"", t0).acked);
+        }
+        assert_eq!(t.in_flight(), Some(-59));
+        assert!(!t.is_stalled());
+        assert_eq!(t.acks, 3);
+        // The count recovers as the server sends again, rather than being
+        // stuck at a floor.
+        t.on_server_message(DRAW, b"x", t0);
+        assert_eq!(t.in_flight(), Some(-58));
+    }
+
+    /// A boundary case of [`AckTracker::threshold`]: if a server ever sent a
+    /// window of zero, the threshold would be zero too, so the SET_ACK's own
+    /// count of one is already past it and an ACK credits nothing. Pinned as
+    /// a boundary, not as observed spice-server behaviour -- the rest of this
+    /// module cites `server/red-channel-client.cpp` for what the server
+    /// actually sends, and nothing there sends a window of zero.
+    ///
+    /// Note what the tracker then reports: a channel nothing is blocking
+    /// looks permanently stalled, so `stalls` and `stalled_total` would grow
+    /// for the life of the session.
+    #[test]
+    fn a_zero_window_credits_nothing_and_stalls_immediately() {
+        let t0 = Instant::now();
+        let mut t = AckTracker::new();
+        let obs = t.on_server_message(display_server::SET_ACK, &set_ack(1, 0), t0);
+        assert_eq!(obs.set_ack, Some((1, 0)));
+        assert_eq!(t.window(), Some(0));
+        assert_eq!(t.in_flight(), Some(1));
+        assert!(t.is_stalled());
+        t.on_client_message(display_client::ACK_SYNC, &ack_sync(1), t0);
+        // Credited, but worth zero, so the count does not move and the
+        // channel stays at the threshold.
+        let obs = t.on_client_message(display_client::ACK, b"", t0 + ms(5));
+        assert!(obs.acked);
+        assert_eq!(t.in_flight(), Some(1));
+        assert!(t.is_stalled());
+        assert_eq!(obs.stalled_for, ms(5));
     }
 
     #[test]

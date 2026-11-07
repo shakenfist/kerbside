@@ -1240,3 +1240,26 @@ async fn a_relay_stopped_for_a_switch_leaves_the_client_only_whole_messages() {
     .await
     .expect("the test timed out");
 }
+
+/// The low-water parser itself, not the command line: clap refuses a
+/// hyphen-led value for a long option before `lowat_bytes` sees it, so the
+/// flag-level assertions in `main.rs` cannot tell whether the parser still
+/// rejects a negative or an over-large value. This pins the parser.
+#[test]
+fn lowat_bytes_keeps_its_floor_and_the_shared_ceiling() {
+    use super::lowat_bytes;
+
+    assert_eq!(lowat_bytes("1"), Ok(1));
+    assert_eq!(lowat_bytes("65536"), Ok(65536));
+    assert_eq!(lowat_bytes("2147483647"), Ok(2_147_483_647));
+    assert!(
+        lowat_bytes("0").is_err(),
+        "0 parsed, but it means no pacing"
+    );
+    assert!(lowat_bytes("-1").is_err(), "a negative value parsed");
+    assert!(
+        lowat_bytes("2147483648").is_err(),
+        "i32::MAX + 1 parsed, but setsockopt takes a signed int"
+    );
+    assert!(lowat_bytes("").is_err());
+}

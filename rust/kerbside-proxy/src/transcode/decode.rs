@@ -6,9 +6,15 @@
 //! spice-server's `SET_ACK` and `PING` at LAN speed, asks for LZ4 images
 //! (`PREFERRED_COMPRESSION`), and decodes every draw into a
 //! `ChannelEvent`, which it queues for the transcoder to apply to its
-//! surface mirror. Its codec preference message is harmless: the backend
-//! link carries no `CODEC_*` capability, so spice-server creates no video
-//! encoder whatever it says (see [`super::BACKEND_DISPLAY_CAPS`]).
+//! surface mirror. Its codec preference message is harmless as far as
+//! encoding goes: the backend link carries no `CODEC_*` capability, so
+//! spice-server creates no video encoder whatever it says (see
+//! [`super::BACKEND_DISPLAY_CAPS`]). It is not harmless against a
+//! streaming guest -- every released spice-server, and master, crashes
+//! when a client states its codec preference at connect while streams
+//! exist, because the message is handled before `DISPLAY_INIT`
+//! (docs/performance/spice-server-patches.md). That is why a switching
+//! relay cannot carry streams.
 //!
 //! The renderer leaves out what it cannot draw (ROP3, stroke, text and
 //! composite draws, palette, surface and JPEG-with-alpha images, and draws

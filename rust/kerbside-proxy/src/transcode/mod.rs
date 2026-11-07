@@ -171,7 +171,7 @@ pub struct TranscodeArgs {
     /// `TCP_NOTSENT_LOWAT` for a transcoded display channel's client socket, in
     /// bytes: the most unsent data the kernel queues before the transcoder's
     /// writes wait, and so how far ahead of the link it may run.
-    #[arg(long, default_value_t = 65536, value_parser = clap::value_parser!(u32).range(1..))]
+    #[arg(long, default_value_t = 65536, value_parser = lowat_bytes)]
     pub transcode_notsent_lowat_bytes: u32,
 
     /// A measurement option: pace the transcoder on a SPICE ACK window of this
@@ -456,13 +456,11 @@ where
             ),
         },
         () = cancel.cancelled() => {
-            // CI-ORACLE: the same text as the relay's, which
-            // tools/direct-qemu/verify-terminate-live.sh and
-            // tools/ovirt-e2e/drive-console.py look for.
             info!(
                 %connection_ref,
                 channel_type = ChannelType::Display.name(),
-                "session terminated by control plane; ending relay"
+                "{}",
+                crate::relay::TERMINATED_BY_CONTROL_PLANE
             );
             (Ok(()), Ended::Closed)
         }
@@ -500,6 +498,22 @@ where
     )
     .await;
     ended
+}
+
+/// Parse the transcoder's low-water mark: at least one byte, and at most
+/// what the kernel will take.
+///
+/// This reaches the same `setsockopt` as `--client-notsent-lowat-bytes`
+/// (through [`set_client_lowat`]), so it carries the same upper bound and the
+/// same error text, from [`crate::sockopt_bytes`]. Zero is excluded here
+/// rather than there: on this flag it would mean "no pacing at all", and the
+/// transcoder always paces on something.
+fn lowat_bytes(value: &str) -> Result<u32, String> {
+    let parsed = crate::sockopt_bytes(value)?;
+    if parsed == 0 {
+        return Err("must be at least 1 byte: the transcoder always paces on something".into());
+    }
+    Ok(parsed)
 }
 
 /// Set `TCP_NOTSENT_LOWAT` on the client socket, so that the kernel takes

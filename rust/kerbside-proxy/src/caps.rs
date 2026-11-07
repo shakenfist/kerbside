@@ -9,8 +9,9 @@
 //! what Kerbside relays.
 //!
 //! In the other direction, the client's own capabilities are forwarded to
-//! the backend ([`backend_common_caps`] and the client's channel caps
-//! verbatim), so spice-server encodes for the client actually connected
+//! the backend ([`backend_common_caps`] and, for a relayed channel,
+//! [`backend_channel_caps`] verbatim), so spice-server encodes for the
+//! client actually connected
 //! rather than for whatever the proxy's own SPICE client would advertise
 //! (kerbside#477).
 //!
@@ -22,6 +23,47 @@
 //!
 //! Every opcode the offered channel capabilities enable is admitted by
 //! the L1 allowlist (`allowlist.rs`), which a test below checks.
+//!
+//! **The reply mask is not a security boundary.** It bounds only what
+//! Kerbside advertises as a server to the client; it does not bound what
+//! the session can carry. The client's own channel capabilities go to the
+//! backend verbatim, so a client may negotiate a spice-server feature
+//! Kerbside never offered, and spice-server will then send the messages
+//! that feature enables. `unoffered_client_cap_still_admits_its_server_message`
+//! below pins one such case: Kerbside never offers DISPLAY_SIZED_STREAM,
+//! yet the allowlist admits `STREAM_DATA_SIZED`, which only that
+//! capability enables.
+//!
+//! That is intended, and masking the forwarded caps down to the reply set
+//! would be wrong on both counts:
+//!
+//! - **It would break real clients.** A capability is effective only when
+//!   both ends advertise it, so forwarding the client's set is what lets
+//!   spice-server encode for the client actually connected
+//!   (kerbside#477). ryll's own `DEFAULT_DISPLAY` asks for COMPOSITE,
+//!   A8_SURFACE, LZ4_COMPRESSION and SIZED_STREAM, none of which this
+//!   reply table offers; clamping them would drop the guest to a slower
+//!   software render path and give up LZ4 on static regions.
+//! - **It would buy no enforcement.** The L1 allowlist classifies by
+//!   opcode, never by the negotiated capability set, and it is
+//!   fail-closed: an opcode it does not model is `Disallowed`, which the
+//!   firewall observes or terminates on. A capability cannot talk a
+//!   message past it. Message *bodies* are unchecked, but that is L2
+//!   (kerbside#682) and the reply mask would not change it either way.
+//!
+//! The risk runs the other way instead, and this is the load-bearing
+//! fact: because the client's caps reach the backend unmasked,
+//! spice-server may send an opcode gated behind a capability Kerbside
+//! never offered, and fail-closed means an opcode `allowlist.rs` does not
+//! model terminates a *legitimate* session. That is safe only because the
+//! L1 table is derived from ryll's complete per-channel message-type
+//! tables, not from [`reply_channel_caps`], so the opcodes an unoffered
+//! capability can enable are already modelled --
+//! `unoffered_client_cap_still_admits_its_server_message` shows one. If
+//! one ever is not, the fix is to model the opcode in the table. It is
+//! *not* to widen a verdict so the traffic passes, which `AGENTS.md`
+//! forbids, and not to clamp the forwarded caps, which would break the
+//! clients above.
 
 use shakenfist_spice_protocol::constants::capabilities;
 use shakenfist_spice_protocol::ChannelType;
@@ -150,6 +192,25 @@ pub fn backend_common_caps(client_common_caps: &[u32]) -> Vec<u32> {
     }
     caps[0] = (caps[0] & !capabilities::AUTH_SASL) | capabilities::AUTH_SPICE;
     caps
+}
+
+/// The channel capabilities to advertise to the backend for a relayed
+/// channel: the client's own, verbatim.
+///
+/// Deliberately not masked to what the client-leg reply offered. A
+/// capability is effective only where both ends advertise it, so
+/// forwarding the client's set is what lets spice-server encode for the
+/// client actually connected (kerbside#477). It does mean the client can
+/// negotiate a feature Kerbside never offered; see "The reply mask is not
+/// a security boundary" in this module's documentation for why that is
+/// safe, and why clamping it would break real clients and buy no
+/// enforcement.
+///
+/// This is the seam the whole argument rests on: masking the forwarded set
+/// means editing this function, which
+/// `unoffered_client_cap_still_admits_its_server_message` pins.
+pub fn backend_channel_caps(client_channel_caps: &[u32]) -> Vec<u32> {
+    client_channel_caps.to_vec()
 }
 
 /// Capability bit numbers set in `offered` but not in `granted`.
@@ -387,6 +448,76 @@ mod tests {
         assert_eq!(
             classify(ChannelType::Record, ClientToServer, 101),
             MsgClass::ChannelUnmodeled
+        );
+    }
+
+    /// The reply mask bounds what Kerbside offers, not what the session
+    /// carries: the client's channel caps reach the backend verbatim, so
+    /// a capability Kerbside never offered can still be negotiated and
+    /// its server messages still relayed. Pinned here so that the module
+    /// docs' claim is checked rather than asserted, and so that a future
+    /// decision to mask the forwarded caps has to change a test.
+    ///
+    /// DISPLAY_SIZED_STREAM (bit 0) is the case: absent from
+    /// `DISPLAY_CAPS`, present in ryll's `DEFAULT_DISPLAY`, and the only
+    /// capability gating `SPICE_MSG_DISPLAY_STREAM_DATA_SIZED`.
+    #[test]
+    fn unoffered_client_cap_still_admits_its_server_message() {
+        use shakenfist_spice_protocol::constants::display_server;
+        use Direction::ServerToClient;
+
+        assert_eq!(
+            reply_channel_caps(ChannelType::Display)[0] & capabilities::DISPLAY_SIZED_STREAM,
+            0,
+            "DISPLAY_CAPS is expected not to offer SIZED_STREAM"
+        );
+        // A client that advertises it has it forwarded untouched: this is
+        // the function both of `backend.rs`'s build arms take the relayed
+        // channel caps from, so masking cannot be added without failing
+        // here.
+        let client = ClientCaps {
+            common: vec![capabilities::AUTH_SELECTION | capabilities::MINI_HEADER],
+            channel: vec![capabilities::DISPLAY_SIZED_STREAM],
+        };
+        assert_eq!(
+            backend_channel_caps(&client.channel),
+            vec![capabilities::DISPLAY_SIZED_STREAM],
+            "the relayed channel caps must reach the backend unmasked"
+        );
+        // And the message that capability enables is admitted, not
+        // flagged, so the firewall does not fight a negotiation the
+        // client and spice-server agreed on.
+        assert_eq!(
+            classify(
+                ChannelType::Display,
+                ServerToClient,
+                display_server::STREAM_DATA_SIZED
+            ),
+            MsgClass::Allowed
+        );
+    }
+
+    /// The claim in [`backend_channel_caps`] and in the module docs is that
+    /// both of `backend.rs`'s build arms take the relayed channel caps from
+    /// that function, so masking them cannot be added without failing a test.
+    /// Reading the source is the only way to pin it: an inlined
+    /// `client_caps.channel.clone()` in either arm would compile, behave
+    /// identically today, and leave the seam's own test green. Same mechanism
+    /// as `relay::tests::terminate_message_is_the_ci_oracle_text`.
+    #[test]
+    fn both_backend_arms_take_the_relayed_caps_from_the_seam() {
+        const BACKEND: &str = include_str!("backend.rs");
+        const SEAM_CALL: &str = "caps::backend_channel_caps(&client_caps.channel)";
+
+        assert_eq!(
+            BACKEND.matches(SEAM_CALL).count(),
+            2,
+            "backend.rs should call the seam once per build arm, transcode and not"
+        );
+        assert!(
+            !BACKEND.contains("client_caps.channel.clone()"),
+            "an arm of backend.rs clones the client's channel caps directly, which \
+             bypasses caps::backend_channel_caps and the test that guards it"
         );
     }
 
