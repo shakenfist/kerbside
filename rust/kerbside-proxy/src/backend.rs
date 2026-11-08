@@ -411,7 +411,8 @@ struct BackendLink {
 }
 
 /// Log what the backend granted, and warn when it lacks a channel
-/// capability the client leg already offered the client.
+/// capability the client leg already offered the client *and* could have
+/// been expected to have.
 ///
 /// The client-leg reply is sent before the backend is known (it carries the
 /// ticket key), so Kerbside offers the caps spice-server normally
@@ -419,6 +420,22 @@ struct BackendLink {
 /// built without, say, Opus or LZ4 then lacks a cap the client was told it
 /// has, and the client may send something that server refuses. That cannot
 /// be undone at this point, but it should be visible.
+///
+/// It should not be visible as a fault, though, which is what this used to
+/// do. Those gaps are routine: the streaming-agent display channel always
+/// lacks PREF_COMPRESSION, an Opus-less build always lacks OPUS, and a
+/// build without LZ4 always lacks LZ4. Warning about each one meant one
+/// WARN per channel per session against a perfectly ordinary backend,
+/// which buries the warnings that mean something (kerbside#573). So a gap
+/// `caps::optional_channel_caps` accounts for is logged at DEBUG, and WARN
+/// is kept for a gap it does not -- a backend claiming to be a SPICE
+/// server of this channel type while lacking something every
+/// implementation of it sets unconditionally.
+///
+/// What the expected gaps cost the session is a separate question from
+/// whether the backend is at fault, and not one this line can answer: see
+/// kerbside#572 for the record channel offering Opus to clients
+/// regardless of what the backend can do.
 ///
 /// Only the channel word is compared. Every common capability Kerbside
 /// offers (`caps::REPLY_COMMON_CAPS`) is one the backend leg cannot work
@@ -441,16 +458,26 @@ fn log_backend_caps(
         backend_channel_caps = ?reply.channel_caps,
         "backend link capabilities"
     );
-    let missing_channel =
-        caps::missing_caps(caps::reply_channel_caps(channel_type), &reply.channel_caps);
-    if !missing_channel.is_empty() {
+    let (expected, unexpected) = caps::classify_missing_caps(channel_type, &reply.channel_caps);
+    if !expected.is_empty() {
+        debug!(
+            %connection_ref,
+            channel_type = channel_type.name(),
+            missing_channel = ?expected,
+            backend_channel_caps = ?reply.channel_caps,
+            "backend lacks capabilities Kerbside offered the client, which a \
+             backend of this channel type may legitimately not have"
+        );
+    }
+    if !unexpected.is_empty() {
         warn!(
             %connection_ref,
             channel_type = channel_type.name(),
-            ?missing_channel,
+            missing_channel = ?unexpected,
             backend_channel_caps = ?reply.channel_caps,
-            "backend lacks capabilities Kerbside offered the client; the client may \
-             send messages this backend does not support"
+            "backend lacks capabilities Kerbside offered the client and every \
+             implementation of this channel type sets; the client may send \
+             messages this backend does not support"
         );
     }
 }
