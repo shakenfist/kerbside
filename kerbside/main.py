@@ -309,7 +309,21 @@ def _parse_sources():
                 source_count += 1
 
         except Exception as e:
-            LOG.warning('Exception while querying source %s: %s' % (source['source'], e))
+            # The exception's class and module, never its text. This
+            # catches whatever a driver, an HTTP library or a cloud SDK
+            # raised, and their messages quote what they were doing: the
+            # Proxmox driver's exceptions carry the API URL, and a
+            # response body could carry anything. Its own _failure()
+            # helper makes the same choice for the same reason, and this
+            # line was quoting the text it declines to (#660). The class
+            # is what distinguishes a ConnectionError from a KeyError,
+            # which is what this line is read for; the driver logs the
+            # detail it has already decided is safe to log.
+            LOG.with_fields({
+                'source': source['source'],
+                'error': type(e).__name__,
+                'error_module': type(e).__module__
+                }).warning('Exception while querying source')
             kerbside_db.set_source_error_state(source['source'], True)
             continue
 

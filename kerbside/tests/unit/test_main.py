@@ -394,6 +394,52 @@ class ParseSourcesTestCase(testtools.TestCase):
             # Should set error state when exception occurs
             self.mock_db_set_source_error_state.assert_called_with('test-sf', True)
 
+    def test_a_failing_source_does_not_log_the_exception_text(self):
+        """A scrape failure is reported by class, not by message.
+
+        Drivers raise whatever their cloud SDK raised, and those
+        messages quote what the call was doing. The Proxmox driver's
+        exceptions carry the API URL, which is why its own _failure()
+        helper reports the class alone -- and this line used to quote
+        the text anyway (#660). The URL is not a credential; the
+        pattern is the problem, since a response body could carry
+        anything.
+        """
+        from kerbside import main
+
+        with self._create_sources_yaml([{
+            'source': 'test-sf',
+            'type': 'shakenfist',
+            'url': 'http://localhost:13000',
+            'username': 'admin',
+            'password': 'secret'
+        }]):
+            self.mock_db_get_source.return_value = None
+            self.mock_shakenfist_source.side_effect = ConnectionError(
+                'HTTPSConnectionPool(host=\'pve.example.com\', port=8006): '
+                'Max retries exceeded with url: /api2/json/cluster/resources')
+
+            with mock.patch.object(main, 'LOG') as mock_log:
+                main._parse_sources()
+
+        # The failure is still reported, and still identifies the source
+        # and what went wrong...
+        fields = [c.args[0] for c in mock_log.with_fields.call_args_list
+                  if c.args and c.args[0].get('source') == 'test-sf'
+                  and 'error' in c.args[0]]
+        self.assertEqual(1, len(fields), mock_log.with_fields.call_args_list)
+        self.assertEqual('ConnectionError', fields[0]['error'])
+
+        # ...without quoting the message.
+        everything = repr(mock_log.mock_calls)
+        self.assertNotIn('pve.example.com', everything)
+        self.assertNotIn('Max retries exceeded', everything)
+        self.assertNotIn('/api2/json/', everything)
+
+        # And the source really was errored, so the assertions above are
+        # about a line which actually fired.
+        self.mock_db_set_source_error_state.assert_called_with('test-sf', True)
+
     def test_parse_sources_cleanup_extra_consoles(self):
         from kerbside import main
 
