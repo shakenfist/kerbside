@@ -347,6 +347,10 @@ class SfTokenApiTestCase(testtools.TestCase):
                 (sf_token.BadSignature, 'invalid token signature'),
                 (sf_token.Expired, 'token expired'),
                 (sf_token.WrongAudience, 'token audience rejected'),
+                # A clock disagreement has its own message rather than
+                # arriving as 'invalid token signature' (#619), which
+                # sent an operator looking for a stale cached key.
+                (sf_token.NotYetValid, 'token is not valid yet'),
                 (sf_token.SfTokenError, 'token rejected')]:
             self.mock_verify.side_effect = error('nope')
 
@@ -356,6 +360,36 @@ class SfTokenApiTestCase(testtools.TestCase):
             self.assertEqual(message, resp.get_json()['error'])
 
         mock_audit.assert_not_called()
+
+    def test_every_token_error_subclass_has_its_own_message(self):
+        """No SfTokenError subclass reaches the generic safety net.
+
+        The catch-all arm exists so a future subclass cannot 500, not as
+        a resting place: a rejection landing there tells the caller only
+        'token rejected'. #619 was the same failure one level down, where
+        ImmatureSignatureError reached a PyJWT catch-all and was reported
+        as a bad signature. This fails when a subclass is added without
+        an arm of its own, which is the moment to decide its message.
+        """
+        subclasses = set()
+        pending = [sf_token.SfTokenError]
+        while pending:
+            for child in pending.pop().__subclasses__():
+                subclasses.add(child)
+                pending.append(child)
+
+        # The subclass list itself must not be empty, or this passes
+        # vacuously.
+        self.assertIn(sf_token.BadSignature, subclasses)
+
+        for error in sorted(subclasses, key=lambda c: c.__name__):
+            self.mock_verify.side_effect = error('nope')
+            resp = self.client.get('/sf-console.vv?token=some.jwt.value')
+            self.assertEqual(401, resp.status_code)
+            self.assertNotEqual(
+                'token rejected', resp.get_json()['error'],
+                '%s falls through to the generic arm; give it a message '
+                'naming its own cause.' % error.__name__)
 
     @mock.patch('kerbside.api.db.add_audit_event')
     @mock.patch('kerbside.api.db.sf_token_jti_exists', return_value=True)

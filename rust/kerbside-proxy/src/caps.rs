@@ -154,6 +154,79 @@ pub fn reply_channel_caps(channel_type: ChannelType) -> &'static [u32] {
     }
 }
 
+/// Display channel: the streaming-agent display channel
+/// (`StreamChannel::StreamChannel`) sets MONITORS_CONFIG, STREAM_REPORT
+/// and PREF_VIDEO_CODEC_TYPE, so PREF_COMPRESSION is the one bit of
+/// DISPLAY_CAPS it does not set.
+const DISPLAY_OPTIONAL_CAPS: [u32; 1] = [capabilities::DISPLAY_PREF_COMPRESSION];
+
+/// Playback and record channels: `RedPlaybackChannel`'s and
+/// `RedRecordChannel`'s constructors set VOLUME unconditionally, while
+/// OPUS is set from `snd_set_rate` only when snd_codec_is_capable()
+/// agrees -- which needs both an Opus-enabled build and a device running
+/// at the Opus rate.
+const PLAYBACK_OPTIONAL_CAPS: [u32; 1] = [PLAYBACK_OPUS];
+const RECORD_OPTIONAL_CAPS: [u32; 1] = [RECORD_OPUS];
+
+/// usbredir, port and webdav: `RedVmcChannel`'s constructor sets
+/// DATA_COMPRESS_LZ4 inside `#ifdef USE_LZ4`, so a build without LZ4
+/// has none of it.
+const SPICEVMC_OPTIONAL_CAPS: [u32; 1] = [capabilities::SPICEVMC_LZ4];
+
+/// Of the capabilities [`reply_channel_caps`] offers for `channel_type`,
+/// those a conforming backend may legitimately not have.
+///
+/// Kerbside's client-leg reply is sent before the backend is known, so it
+/// offers what spice-server *normally* advertises for the channel type.
+/// Every bit in that table is set in a spice-server channel constructor,
+/// but not every one is set unconditionally: some are gated on a build
+/// option, on the device's configuration, or belong to a different
+/// implementation of the same channel. A backend lacking one of those is
+/// a backend built differently, not a backend misbehaving, and reporting
+/// it as a fault means reporting one on every channel of a normal session
+/// (kerbside#573).
+///
+/// So this is the line between "this backend is not what we assumed" and
+/// "this backend is not one we understand". Each entry names the
+/// spice-server constructor that makes it conditional; a bit with no such
+/// grounding does not belong here. MAIN_CAPS and INPUTS_CAPS have no
+/// entry because `MainChannel`'s and `InputsChannel`'s constructors set
+/// every bit of them with no condition at all.
+pub fn optional_channel_caps(channel_type: ChannelType) -> &'static [u32] {
+    match channel_type {
+        ChannelType::Display => &DISPLAY_OPTIONAL_CAPS,
+        ChannelType::Playback => &PLAYBACK_OPTIONAL_CAPS,
+        ChannelType::Record => &RECORD_OPTIONAL_CAPS,
+        ChannelType::Usbredir | ChannelType::Port | ChannelType::Webdav => &SPICEVMC_OPTIONAL_CAPS,
+        ChannelType::Main
+        | ChannelType::Inputs
+        | ChannelType::Cursor
+        | ChannelType::Smartcard
+        | ChannelType::Tunnel => &[],
+    }
+}
+
+/// Split the channel capabilities a backend lacks, of those Kerbside
+/// offered the client for `channel_type`, into (expected, unexpected).
+///
+/// Expected are the ones [`optional_channel_caps`] accounts for: a
+/// backend built differently, or another implementation of the same
+/// channel. Unexpected are the rest -- a backend lacking something every
+/// implementation of this channel type sets unconditionally, which is a
+/// backend we do not understand.
+///
+/// Separated from the logging in `backend::log_backend_caps` so that the
+/// decision can be tested against a capability word rather than against
+/// a log line.
+pub fn classify_missing_caps(
+    channel_type: ChannelType,
+    backend_channel_caps: &[u32],
+) -> (Vec<u32>, Vec<u32>) {
+    let missing = missing_caps(reply_channel_caps(channel_type), backend_channel_caps);
+    let optional = cap_bits(optional_channel_caps(channel_type));
+    missing.iter().partition(|bit| optional.contains(bit))
+}
+
 /// The common capabilities Kerbside requires of a client's link message,
 /// that `common_caps` lacks, by name.
 ///
@@ -218,6 +291,14 @@ pub fn backend_channel_caps(client_channel_caps: &[u32]) -> Vec<u32> {
 /// Used to spot a backend that lacks a capability Kerbside already
 /// offered the client: bit `n` of word `w` is reported as `32 * w + n`,
 /// the numbering spice-protocol's `SPICE_*_CAP_*` enums use.
+/// The bit numbers set in `words`, in [`missing_caps`]' numbering.
+///
+/// A capability set with nothing granted against it is every bit it
+/// holds, which is what makes this one line.
+pub fn cap_bits(words: &[u32]) -> Vec<u32> {
+    missing_caps(words, &[])
+}
+
 pub fn missing_caps(offered: &[u32], granted: &[u32]) -> Vec<u32> {
     let mut missing = Vec::new();
     for (word_index, word) in offered.iter().enumerate() {
@@ -568,5 +649,130 @@ mod tests {
         assert_eq!(missing_caps(&[0b1010], &[0b0010]), vec![3]);
         assert_eq!(missing_caps(&[0, 1 << 5], &[0]), vec![37]);
         assert!(missing_caps(&[], &[0xffff]).is_empty());
+    }
+
+    /// The optional table, pinned explicitly, like `reply_caps_table`.
+    #[test]
+    fn optional_caps_table() {
+        let expected: &[(ChannelType, &[u32])] = &[
+            (ChannelType::Main, &[]),
+            // PREF_COMPRESSION(6) alone: StreamChannel's constructor
+            // sets the other three.
+            (ChannelType::Display, &[1 << 6]),
+            (ChannelType::Inputs, &[]),
+            (ChannelType::Cursor, &[]),
+            // OPUS(3), conditional on the build and the device rate.
+            (ChannelType::Playback, &[1 << 3]),
+            // OPUS(2), same.
+            (ChannelType::Record, &[1 << 2]),
+            (ChannelType::Tunnel, &[]),
+            (ChannelType::Smartcard, &[]),
+            // DATA_COMPRESS_LZ4(0), conditional on USE_LZ4.
+            (ChannelType::Usbredir, &[1]),
+            (ChannelType::Port, &[1]),
+            (ChannelType::Webdav, &[1]),
+        ];
+        assert_eq!(expected.len(), ALL_CHANNELS.len());
+        for (channel, words) in expected {
+            assert_eq!(
+                optional_channel_caps(*channel),
+                *words,
+                "optional caps for {}",
+                channel.name()
+            );
+        }
+    }
+
+    /// Nothing may be optional that was never offered.
+    ///
+    /// An entry outside the reply table can never be reported missing, so
+    /// it would be dead -- and, worse, would read as a documented
+    /// exemption for a bit the backend is not being asked about at all.
+    #[test]
+    fn every_optional_cap_is_one_we_offered() {
+        let mut total = 0;
+        for channel in ALL_CHANNELS {
+            let offered = reply_channel_caps(channel);
+            for (word_index, word) in optional_channel_caps(channel).iter().enumerate() {
+                total += word.count_ones();
+                let offered_word = offered.get(word_index).copied().unwrap_or(0);
+                assert_eq!(
+                    word & !offered_word,
+                    0,
+                    "{} marks a capability optional that the reply table does \
+                     not offer",
+                    channel.name()
+                );
+            }
+        }
+        // And the table is not empty, or the loop above proves nothing:
+        // PREF_COMPRESSION, two OPUS bits, and LZ4 on each of the three
+        // spicevmc channels.
+        assert_eq!(total, 6);
+    }
+
+    /// A streaming-agent display backend is not a fault.
+    ///
+    /// `StreamChannel::StreamChannel` sets MONITORS_CONFIG, STREAM_REPORT
+    /// and PREF_VIDEO_CODEC_TYPE, so PREF_COMPRESSION is missing on every
+    /// display channel of every session against one. That used to be a
+    /// WARN (kerbside#573).
+    #[test]
+    fn streaming_agent_display_gap_is_expected() {
+        let streaming_agent = [capabilities::DISPLAY_MONITORS_CONFIG
+            | capabilities::DISPLAY_STREAM_REPORT
+            | capabilities::DISPLAY_PREF_VIDEO_CODEC_TYPE];
+        let (expected, unexpected) = classify_missing_caps(ChannelType::Display, &streaming_agent);
+        assert_eq!(expected, vec![6]);
+        assert!(unexpected.is_empty(), "{unexpected:?}");
+    }
+
+    /// An Opus-less sound build is not a fault either, on either channel.
+    #[test]
+    fn opus_less_sound_gap_is_expected() {
+        for (channel, volume_bit) in [(ChannelType::Playback, 3), (ChannelType::Record, 2)] {
+            let volume_only = [reply_channel_caps(channel)[0] & !(1 << volume_bit)];
+            let (expected, unexpected) = classify_missing_caps(channel, &volume_only);
+            assert_eq!(expected, vec![volume_bit], "{}", channel.name());
+            assert!(unexpected.is_empty(), "{} {unexpected:?}", channel.name());
+        }
+    }
+
+    /// Nor is a build without LZ4, on any of the three spicevmc channels.
+    #[test]
+    fn lz4_less_spicevmc_gap_is_expected() {
+        for channel in [
+            ChannelType::Usbredir,
+            ChannelType::Port,
+            ChannelType::Webdav,
+        ] {
+            let (expected, unexpected) = classify_missing_caps(channel, &[0]);
+            assert_eq!(expected, vec![0], "{}", channel.name());
+            assert!(unexpected.is_empty(), "{} {unexpected:?}", channel.name());
+        }
+    }
+
+    /// A gap the table does not account for still warns.
+    ///
+    /// MainChannel's constructor sets all four of MAIN_CAPS with no
+    /// condition, so a backend offering the display channel's word on the
+    /// main channel is not a spice-server we recognise. This is the half
+    /// of the behaviour that must survive quieting the other half.
+    #[test]
+    fn an_unconditional_cap_going_missing_is_unexpected() {
+        let (expected, unexpected) = classify_missing_caps(ChannelType::Main, &[0]);
+        assert!(expected.is_empty(), "{expected:?}");
+        assert_eq!(unexpected, vec![0, 1, 2, 3]);
+    }
+
+    /// A backend with everything Kerbside offered reports nothing at all.
+    #[test]
+    fn a_complete_backend_reports_no_gap() {
+        for channel in ALL_CHANNELS {
+            let (expected, unexpected) =
+                classify_missing_caps(channel, reply_channel_caps(channel));
+            assert!(expected.is_empty(), "{} {expected:?}", channel.name());
+            assert!(unexpected.is_empty(), "{} {unexpected:?}", channel.name());
+        }
     }
 }

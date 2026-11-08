@@ -914,6 +914,14 @@ class SfToken(sf_api.Resource):
         except sf_token.WrongAudience:
             _reject_pre_verify('token audience rejected')
             return sf_api.error(401, 'token audience rejected')
+        except sf_token.NotYetValid:
+            # Named separately from 'invalid token signature' because the
+            # cause is the minting host's clock and this host's
+            # disagreeing by more than the skew allowance, not a key
+            # (#619). Reporting it as a signature failure sent an
+            # operator looking for a stale cached key.
+            _reject_pre_verify('token is not valid yet')
+            return sf_api.error(401, 'token is not valid yet')
         except sf_token.SfTokenError:
             # Safety net for any future SfTokenError subclass.
             _reject_pre_verify('token rejected')

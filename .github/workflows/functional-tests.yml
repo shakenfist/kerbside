@@ -1239,36 +1239,59 @@ jobs:
           MINUTES: ${{ inputs.retention }}
 
   # The cloud lanes gate nothing, so a red nightly in the Actions tab
-  # would alert nobody. File or update one tracking issue per lane
-  # instead, as the smoke nightlies do. A lane is reported unless it
-  # succeeded: one skipped because sanity_checks failed has not run
-  # either. A separate job so issues: write is never granted to the
-  # lane jobs.
+  # would alert nobody. File or update one tracking issue per job
+  # instead, as the smoke nightlies do. A separate job so issues: write
+  # is never granted to the lane jobs.
+  #
+  # Each step reports the job that broke, not the jobs that never ran
+  # because of it. Both matrices need sanity_checks and check_paths, so
+  # a failure in either skips both, and reporting any job that did not
+  # succeed filed the oVirt and OpenStack issues for a sanity_checks
+  # failure -- naming two lanes that had not run and leaving the one
+  # that broke unnamed (#626). Hence the guards: a job is reported only
+  # when everything it needed succeeded, so exactly one link in the
+  # chain is named and it is the one that failed.
   nightly_failure_issue:
     name: "File nightly failure issues"
-    needs: [ovirt_matrix, openstack_matrix]
+    needs: [check_paths, sanity_checks, ovirt_matrix, openstack_matrix]
     if: failure() && github.event_name == 'schedule'
     permissions:
       contents: read
       issues: write
     runs-on: [self-hosted, static]
     timeout-minutes: 5
+    env:
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - uses: actions/checkout@v7
+      - name: File or update the check-paths tracking issue
+        if: needs.check_paths.result != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: tools/file-nightly-failure-issue.sh check-paths "$RUN_URL"
+      - name: File or update the sanity-checks tracking issue
+        if: >-
+          needs.check_paths.result == 'success'
+          && needs.sanity_checks.result != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: tools/file-nightly-failure-issue.sh sanity-checks "$RUN_URL"
       - name: File or update the oVirt tracking issue
-        if: needs.ovirt_matrix.result != 'success'
+        if: >-
+          needs.check_paths.result == 'success'
+          && needs.sanity_checks.result == 'success'
+          && needs.ovirt_matrix.result != 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          tools/file-nightly-failure-issue.sh oVirt \
-              "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: tools/file-nightly-failure-issue.sh oVirt "$RUN_URL"
       - name: File or update the OpenStack tracking issue
-        if: needs.openstack_matrix.result != 'success'
+        if: >-
+          needs.check_paths.result == 'success'
+          && needs.sanity_checks.result == 'success'
+          && needs.openstack_matrix.result != 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          tools/file-nightly-failure-issue.sh OpenStack \
-              "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: tools/file-nightly-failure-issue.sh OpenStack "$RUN_URL"
 
   automated_reviewer:
     name: "Automated reviewer"
