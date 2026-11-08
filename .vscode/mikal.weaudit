@@ -72,10 +72,6 @@
       "author": "mikal"
     },
     {
-      "path": "kerbside/tests/unit/test_sf_token.py",
-      "author": "mikal"
-    },
-    {
       "path": "tempest-plugin/kerbside_tempest_plugin/__init__.py",
       "author": "mikal"
     },
