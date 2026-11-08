@@ -10,6 +10,14 @@
 #
 # Sextant is a UEFI guest whose assertion oracle needs a working SPICE
 # console, so the instance MUST enable UEFI and a SPICE video device.
+#
+# It also creates the empty vdie2e-other namespace with its own generated key,
+# which owns no instance. drive-adversarial.py's cross-namespace case asks for
+# the vdie2e instance's console as vdie2e-other and asserts Shaken Fist
+# refuses it a token. Both namespace fixtures live here, with the one
+# credential on this host which may create a namespace: /etc/sf/sfrc's deploy
+# key, sourced below. The driver is handed only the two namespace keys, so it
+# needs no system-namespace credential of its own (kerbside#697).
 
 set -euo pipefail
 
@@ -18,6 +26,8 @@ export no_proxy="${no_proxy:-}127.0.0.1,localhost"
 SF_E2E_ROOT='/tmp/sf-e2e'
 INSTANCE_ENV="${SF_E2E_ROOT}/instance.env"
 NAMESPACE='vdie2e'
+# Owns no instance; only drive-adversarial.py's cross-namespace case uses it.
+OTHER_NAMESPACE='vdie2e-other'
 ARTIFACT_NAME='uncalibrated-sextant'
 SF_BIN='/srv/shakenfist/venv/bin'
 
@@ -48,12 +58,15 @@ echo "[sf-e2e] Uploading ${ARTIFACT_NAME} from ${QCOW2}"
 "${SF_BIN}/sf-client" artifact upload \
     "${ARTIFACT_NAME}" "${QCOW2}" --shared --no-checksum
 
-# ── Step 2: Create the test namespace with a generated key ───────────────────
+# ── Step 2: Create the test namespaces, each with a generated key ────────────
 
 NAMESPACE_KEY="$(openssl rand -hex 16)"
-export NAMESPACE NAMESPACE_KEY ARTIFACT_NAME INSTANCE_ENV
+OTHER_NAMESPACE_KEY="$(openssl rand -hex 16)"
+export NAMESPACE NAMESPACE_KEY OTHER_NAMESPACE OTHER_NAMESPACE_KEY
+export ARTIFACT_NAME INSTANCE_ENV
 
-echo "[sf-e2e] Creating namespace ${NAMESPACE} and booting the Sextant instance"
+echo "[sf-e2e] Creating namespaces ${NAMESPACE} and ${OTHER_NAMESPACE}," \
+     "and booting the Sextant instance"
 "${SF_BIN}/python3" - << 'PYEOF'
 import json
 import os
@@ -64,17 +77,24 @@ from shakenfist_client import apiclient
 
 namespace = os.environ['NAMESPACE']
 namespace_key = os.environ['NAMESPACE_KEY']
+other_namespace = os.environ['OTHER_NAMESPACE']
+other_namespace_key = os.environ['OTHER_NAMESPACE_KEY']
 artifact_name = os.environ['ARTIFACT_NAME']
 instance_env = os.environ['INSTANCE_ENV']
 sf_url = os.environ.get('SHAKENFIST_API_URL', 'http://localhost:13000')
 
 system = apiclient.Client(async_strategy=apiclient.ASYNC_BLOCK)
 
-# Fresh namespace with a single generated key.
-if namespace in system.get_namespaces():
-    system.delete_namespace(namespace)
-system.create_namespace(namespace)
-system.add_namespace_key(namespace, 'e2e', namespace_key)
+# Fresh namespaces, each with a single generated key. Deleting first makes
+# this idempotent against a retained environment, where the previous run's
+# namespaces are still present.
+existing = system.get_namespaces()
+for ns, key in ((namespace, namespace_key),
+                (other_namespace, other_namespace_key)):
+    if ns in existing:
+        system.delete_namespace(ns)
+    system.create_namespace(ns)
+    system.add_namespace_key(ns, 'e2e', key)
 
 client = apiclient.Client(
     base_url=sf_url, namespace=namespace, key=namespace_key,
@@ -121,6 +141,8 @@ with open(instance_env, 'w') as f:
     f.write('INSTANCE_UUID=%s\n' % uuid)
     f.write('SF_NAMESPACE=%s\n' % namespace)
     f.write('SF_NAMESPACE_KEY=%s\n' % namespace_key)
+    f.write('SF_OTHER_NAMESPACE=%s\n' % other_namespace)
+    f.write('SF_OTHER_NAMESPACE_KEY=%s\n' % other_namespace_key)
     f.write('SF_URL=%s\n' % sf_url)
 print('[sf-e2e] wrote %s' % instance_env)
 PYEOF

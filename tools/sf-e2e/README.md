@@ -71,9 +71,13 @@ The workflow runs, in order:
 
 Then, over SSH on the primary:
 
-4. `import-instance.sh` — creates namespace `vdie2e`, uploads the Sextant
-   qcow2 as a shared image, and boots a UEFI + SPICE instance from it.
-   Emits `/tmp/sf-e2e/instance.env`.
+4. `import-instance.sh` — creates namespaces `vdie2e` and `vdie2e-other`,
+   uploads the Sextant qcow2 as a shared image, and boots a UEFI + SPICE
+   instance from it in `vdie2e`. `vdie2e-other` stays empty: it is the
+   namespace the adversarial cross-namespace case asks with. Both
+   namespace fixtures live here because creating a namespace needs the
+   cluster's deploy key from `/etc/sf/sfrc`, which the drivers are not
+   given. Emits `/tmp/sf-e2e/instance.env`.
 5. `drive-happy-path.py` — waits for kerbside's scrape to pick up the
    console, mints + exchanges the token (one client call returns the
    `.vv`), drives a proxied SPICE session with `ryll --headless`, reuses
@@ -83,11 +87,17 @@ Then, over SSH on the primary:
    console removes the session.
 6. `drive-adversarial.py` — five asserted rejections against the live app:
    replay, expired, wrong audience, unknown kid, and a cross-namespace
-   mint attempt.
+   mint attempt. It authenticates to Shaken Fist only as the two
+   namespaces step 4 made, never with a system-namespace key: the
+   `kerbside` scrape credential the deploy mints is read-only, so
+   borrowing it for the cross-namespace fixture used to 403
+   (kerbside#697).
 
-The drivers run as root (`sudo`), with the role's venv. They read the
-role's `sources.yaml`, which only root and the `kerbside` group may
-read, and the role's files keep the owners and modes it gave them.
+The drivers run as root (`sudo`), with the role's venv: the workdir's
+auth-seed file is root-owned `0600`, and `prepare-drivers.sh` reads the
+role's `kerbside.ini` and `sources.yaml`, which only root and the
+`kerbside` group may read, to write `kerbside.env`. The role's files keep
+the owners and modes it gave them.
 
 ## Security
 
@@ -119,4 +129,6 @@ withheld from the upload and fails the step by name. See shakenfist/kerbside#482
   auth seed is copied to a root-owned `0600` file in the workdir, since
   the happy path reads it from a file.
 - `/tmp/sf-e2e/instance.env` (written by `import-instance.sh`): instance
-  uuid, namespace, namespace key, SF API URL.
+  uuid, namespace, namespace key, SF API URL, and the scratch
+  `vdie2e-other` namespace and its key, which only the adversarial
+  cross-namespace case reads.

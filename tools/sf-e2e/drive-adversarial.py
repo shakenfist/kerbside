@@ -16,6 +16,9 @@ mint endpoint, each asserted; any miss exits non-zero.
                          cached; 401 "unknown signing key".
   (e) cross-namespace -- a second namespace minting for the first namespace's
                          instance; SF returns 404 (ResourceNotFoundException).
+                         import-instance.sh creates both namespaces and hands
+                         their keys over in instance.env, so this driver holds
+                         no system-namespace credential (kerbside#697).
 
 Cases (b) and (c) inject a throwaway PUBLIC key (never private material) into
 the shakenfist source's cached key set immediately before exchanging, to
@@ -181,29 +184,23 @@ def case_unknown_kid(ctx):
 
 
 def case_cross_namespace(ctx):
-    """A second namespace minting for the first's instance: SF 404."""
-    system = apiclient.Client(
-        base_url=ctx['sf_url'], namespace='system',
-        key=ctx['kerbside_key'], async_strategy=apiclient.ASYNC_BLOCK)
-    other_ns = 'vdie2e-other'
-    other_key = uuidlib.uuid4().hex
-    if other_ns in system.get_namespaces():
-        system.delete_namespace(other_ns)
-    system.create_namespace(other_ns)
-    system.add_namespace_key(other_ns, 'e2e', other_key)
+    """A second namespace minting for the first's instance: SF 404.
+
+    import-instance.sh owns both namespace fixtures, because creating one
+    needs the cluster's deploy key and that key is deliberately not given to
+    this driver. The scratch namespace owns no instance, so asking it for the
+    vdie2e instance's console must be refused a token outright.
+    """
+    other = apiclient.Client(
+        base_url=ctx['sf_url'], namespace=ctx['other_namespace'],
+        key=ctx['other_namespace_key'], async_strategy=apiclient.ASYNC_BLOCK)
     try:
-        other = apiclient.Client(
-            base_url=ctx['sf_url'], namespace=other_ns, key=other_key,
-            async_strategy=apiclient.ASYNC_BLOCK)
-        try:
-            other.get_vdi_console_proxy(ctx['instance_uuid'])
-        except apiclient.ResourceNotFoundException:
-            _log('cross-namespace: SF returned 404 as expected')
-            return
-        raise AssertionError(
-            'cross-namespace: expected ResourceNotFoundException, none raised')
-    finally:
-        system.delete_namespace(other_ns)
+        other.get_vdi_console_proxy(ctx['instance_uuid'])
+    except apiclient.ResourceNotFoundException:
+        _log('cross-namespace: SF returned 404 as expected')
+        return
+    raise AssertionError(
+        'cross-namespace: expected ResourceNotFoundException, none raised')
 
 
 def main():
@@ -226,12 +223,12 @@ def main():
         'sf_url': os.environ['SF_URL'],
         'namespace': os.environ['SF_NAMESPACE'],
         'namespace_key': os.environ['SF_NAMESPACE_KEY'],
-        # The source password in sources.yaml is the dedicated "kerbside"
-        # key in the system namespace, which the deploy mints. It is not the
-        # workflow's CI system key, but any system-namespace key may create
-        # and delete the scratch namespace case_cross_namespace needs.
-        'kerbside_key': _read_source_password(
-            os.environ['KERBSIDE_SOURCES_PATH']),
+        # The scratch namespace case_cross_namespace asks with, created by
+        # import-instance.sh. Both are ordinary namespace keys: this driver
+        # holds no system-namespace credential, and in particular not the
+        # read-only "kerbside" scrape key it once borrowed (kerbside#697).
+        'other_namespace': os.environ['SF_OTHER_NAMESPACE'],
+        'other_namespace_key': os.environ['SF_OTHER_NAMESPACE_KEY'],
     }
     ctx['client'] = apiclient.Client(
         base_url=ctx['sf_url'], namespace=ctx['namespace'],
@@ -264,18 +261,6 @@ def main():
         return 1
     _log('adversarial matrix passed (all five cases)')
     return 0
-
-
-def _read_source_password(sources_path):
-    """Read the shakenfist source password (the kerbside key) from yaml."""
-    import yaml
-
-    with open(sources_path) as f:
-        sources = yaml.safe_load(f) or []
-    for source in sources:
-        if source.get('type') == 'shakenfist':
-            return source['password']
-    raise SystemExit('no shakenfist source in %s' % sources_path)
 
 
 if __name__ == '__main__':
