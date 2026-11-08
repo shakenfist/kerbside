@@ -293,10 +293,6 @@
       "sha": "9c16ea1489d31e2e26c99c309fe685d60c4e6bf1",
       "date": "2026-09-18"
     },
-    "tools/flake8wrap.sh": {
-      "sha": "019adfcb6fa59ff04ed28e14ab5a726f61d43425",
-      "date": "2026-09-18"
-    },
     "tools/gen-protos.sh": {
       "sha": "e56d238dbdaa31490f83a34766e73e2361b0c5df",
       "date": "2026-08-18"
@@ -328,10 +324,6 @@
     "tools/test-ovirt-console.py": {
       "sha": "c3ee796b2c44079bcacd21fa166e104e9a3930b1",
       "date": "2026-08-06"
-    },
-    "tox.ini": {
-      "sha": "d5df9f97ea180376bad48ade0081dc2aa934e639",
-      "date": "2026-09-26"
     }
   }
 }

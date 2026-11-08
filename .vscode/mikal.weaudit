@@ -296,10 +296,6 @@
       "author": "mikal"
     },
     {
-      "path": "tools/flake8wrap.sh",
-      "author": "mikal"
-    },
-    {
       "path": "tools/gitleaks-scan.sh",
       "author": "mikal"
     },
@@ -309,10 +305,6 @@
     },
     {
       "path": "alembic.ini",
-      "author": "mikal"
-    },
-    {
-      "path": "tox.ini",
       "author": "mikal"
     },
     {
