@@ -27,6 +27,10 @@ from kerbside.config import config
 
 SIGNING_ALG = 'EdDSA'
 
+# Distinguishes "caller said nothing" from "caller said omit this claim"
+# in _make_token, where None already means omit.
+_UNSET = object()
+
 
 def _generate_keypair():
     """A fresh Ed25519 keypair as (private_pem, public_pem) strings.
@@ -108,13 +112,24 @@ class VerifySfTokenTestCase(testtools.TestCase):
 
     def _make_token(
             self, private_pem=None, kid=None, aud=None, exp=None,
-            sub='console-uuid', jti='jti-1', alg=SIGNING_ALG):
+            sub='console-uuid', jti='jti-1', alg=SIGNING_ALG, iat=_UNSET,
+            nbf=None):
+        # Shaken Fist stamps iat = int(time.time()) on the minting host,
+        # so the default fixture carries one: without it these tokens
+        # never exercised the iat path at all, which is how #619 shipped.
+        # iat=None omits the claim, for the pre-iat minter.
         claims = {
             'sub': sub,
             'jti': jti,
             'aud': self.audience if aud is None else aud,
             'exp': int(time.time()) + 300 if exp is None else exp,
         }
+        if iat is _UNSET:
+            claims['iat'] = int(time.time())
+        elif iat is not None:
+            claims['iat'] = iat
+        if nbf is not None:
+            claims['nbf'] = nbf
         return jwt.encode(
             claims,
             self.private_pem if private_pem is None else private_pem,
@@ -135,6 +150,61 @@ class VerifySfTokenTestCase(testtools.TestCase):
 
     def test_expired_token_raises_expired(self):
         token = self._make_token(exp=int(time.time()) - 10)
+        self.assertRaises(sf_token.Expired, sf_token.verify_sf_token, token)
+
+    # --- 2b. not yet valid -----------------------------------------------
+
+    def test_token_minted_a_second_ahead_is_accepted(self):
+        """A kerbside host whose clock is a second behind still works.
+
+        Shaken Fist stamps iat on the minting host. With PyJWT checking
+        iat at a leeway of zero, one second of disagreement rejected
+        every fresh token -- and reported it as an invalid signature,
+        because ImmatureSignatureError fell through to the
+        except PyJWTError catch-all (#619). This is the case a
+        cross-host CI lane hit (shakenfist #4598).
+        """
+        token = self._make_token(iat=int(time.time()) + 1)
+        result = sf_token.verify_sf_token(token)
+        self.assertEqual('console-uuid', result['sub'])
+
+    def test_token_minted_far_ahead_raises_not_yet_valid(self):
+        """Beyond the allowance it is still refused, but named correctly.
+
+        The point of the fix is not that a future iat is accepted. It is
+        that a clock disagreement is reported as one, rather than as a
+        signature or key failure, which is where it sent an operator.
+        """
+        token = self._make_token(
+            iat=int(time.time()) + sf_token._CLOCK_SKEW_SECONDS + 60)
+        self.assertRaises(
+            sf_token.NotYetValid, sf_token.verify_sf_token, token)
+
+    def test_future_nbf_raises_not_yet_valid(self):
+        """An nbf ahead of the clock is the same answer, not a signature one.
+
+        Shaken Fist stamps no nbf, so this guards the branch against
+        another minter rather than today's one.
+        """
+        token = self._make_token(nbf=int(time.time()) + 300)
+        self.assertRaises(
+            sf_token.NotYetValid, sf_token.verify_sf_token, token)
+
+    def test_a_token_without_an_iat_is_still_accepted(self):
+        """iat is not required, so a minter that stamps none still works."""
+        token = self._make_token(iat=None)
+        result = sf_token.verify_sf_token(token)
+        self.assertEqual('console-uuid', result['sub'])
+
+    def test_expiry_gained_no_grace_from_the_skew_allowance(self):
+        """exp is still checked at a leeway of zero.
+
+        The skew allowance is iat's alone. PyJWT shares one leeway value
+        across every time claim, so had it been given the leeway instead,
+        a token would have stayed usable for _CLOCK_SKEW_SECONDS past its
+        expiry. This pins that it does not.
+        """
+        token = self._make_token(exp=int(time.time()) - 1)
         self.assertRaises(sf_token.Expired, sf_token.verify_sf_token, token)
 
     # --- 3. wrong aud ----------------------------------------------------

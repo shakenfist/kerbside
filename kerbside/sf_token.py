@@ -50,6 +50,17 @@ class WrongAudience(SfTokenError):
     """The token's audience does not match this kerbside deployment."""
 
 
+class NotYetValid(SfTokenError):
+    """The token's signature verified but it is not valid yet.
+
+    An iat or nbf ahead of this host's clock by more than
+    _CLOCK_SKEW_SECONDS. Distinct from BadSignature because the cause is
+    a clock, not a key: Shaken Fist stamps iat on the minting host, and a
+    kerbside host whose clock is behind used to report every fresh token
+    as an invalid signature (#619).
+    """
+
+
 # Sentinel returned by _verify_with_cached to mean "the token's kid is not
 # present in any cached key set" -- distinct from a verification failure, so
 # verify_sf_token can decide whether to refetch and retry.
@@ -58,6 +69,15 @@ _KID_UNKNOWN = None
 # Debounce window (seconds) for the unknown-kid key refetch. See
 # verify_sf_token for why this bounds an unauthenticated amplification vector.
 _REFETCH_COOLDOWN_SECONDS = 60
+
+# How far ahead of this host's clock a token's iat or nbf may be. Shaken
+# Fist stamps iat = int(time.time()) on the minting host, so a kerbside
+# host one second behind it sees every fresh token as not yet valid. This
+# does not widen the window a token is usable in: exp is still checked
+# with no leeway at all, and exp is what bounds that window. It only
+# decides how much disagreement between two hosts' clocks is reported as
+# a fault rather than tolerated.
+_CLOCK_SKEW_SECONDS = 30
 
 # Wall-clock time of the last refetch attempt, per worker process. Reset by
 # tests via sf_token._last_refetch_attempt = 0.0.
@@ -119,10 +139,22 @@ def _verify_with_cached(token, kid):
         try:
             payload = jwt.decode(
                 token, public_pem, algorithms=['EdDSA'], audience=audience,
-                options={'require': ['sub', 'jti', 'exp', 'aud']})
+                # iat is checked below instead, with a skew allowance.
+                # PyJWT's leeway is one value shared by every time claim,
+                # so asking it to tolerate skew on iat would grant exp
+                # the same grace and widen the window a token is usable
+                # in. exp therefore keeps the leeway of zero it has
+                # always had, checked here by PyJWT as before.
+                options={'require': ['sub', 'jti', 'exp', 'aud'],
+                         'verify_iat': False})
         except jwt.ExpiredSignatureError:
             # Definitive: the signature was valid but the token has expired.
             raise Expired('token has expired')
+        except jwt.ImmatureSignatureError:
+            # Definitive: the signature was valid but nbf is ahead of
+            # this host's clock. Shaken Fist stamps no nbf today, so this
+            # is reachable only from another minter.
+            raise NotYetValid('token is not valid yet')
         except jwt.InvalidAudienceError:
             # Definitive: the signature was valid but the audience is wrong.
             raise WrongAudience('token audience is not accepted here')
@@ -134,9 +166,25 @@ def _verify_with_cached(token, kid):
         except jwt.InvalidSignatureError:
             # This key did not sign the token; try the next candidate.
             continue
-        except jwt.PyJWTError:
-            # Any other verification problem for this key; try the next one.
+        except jwt.PyJWTError as e:
+            # Any other verification problem for this key; try the next
+            # one. The class is logged because this branch is why #619
+            # took a cross-host CI failure to find: a rejection that
+            # lands here is reported to the caller as a bad signature,
+            # and nothing recorded what PyJWT had actually objected to.
+            LOG.with_fields({
+                'source': source_name,
+                'error': type(e).__name__
+                }).warning('Shaken Fist token rejected by a candidate key')
             continue
+
+        # The signature has verified by this point, so a token issued
+        # further ahead than the skew allowance is a definitive
+        # rejection: no other candidate key can help, and the cause is
+        # the two hosts' clocks rather than the key.
+        iat = payload.get('iat')
+        if iat is not None and iat > time.time() + _CLOCK_SKEW_SECONDS:
+            raise NotYetValid('token is not valid yet')
 
         return {
             'source': source_name,
