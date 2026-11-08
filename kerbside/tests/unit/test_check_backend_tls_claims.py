@@ -119,6 +119,60 @@ class ClaimDetectionTestCase(testtools.TestCase):
         self.assertEqual(1, len(found))
         self.assertIn('qemu is TLS and pinned', found[0][1])
 
+    def test_a_bare_predicative_tls_claim_is_caught(self):
+        """"is TLS" was the one way of claiming it the guard could not
+        read: the pattern had "over TLS" and "TLS'd" but no copula, so
+        a sentence asserting it in the plainest words passed with no
+        condition attached (#659)."""
+        found = _claims('The backend connection is TLS and checked.\n')
+
+        self.assertEqual(1, len(found))
+        self.assertIn('is TLS', found[0][1])
+
+    def test_other_copulas_are_read_the_same_way(self):
+        for sentence in ('The node connections are TLS.\n',
+                         'The hypervisor leg was TLS.\n',
+                         'The backend leg will be TLS.\n',
+                         'The leg to the node has been TLS since v0.5.\n'):
+            self.assertEqual(1, len(_claims(sentence)), sentence)
+
+    def test_the_copulas_match_the_assertion_vocabulary(self):
+        """Neither pattern may carry an alternative the other lacks.
+
+        A claim must satisfy both conjuncts, so a copula in CRYPTO that
+        ASSERTS does not have is dead: it can never be reported. The
+        reverse, adding `stays`, `remains` and `becomes` to ASSERTS to
+        match, turned the ovirt.md row describing which field "becomes
+        the pin" into a false positive, so both lists stay as they are.
+        """
+        for copula in ('is', 'are', 'was', 'were', 'be', 'been'):
+            self.assertTrue(
+                check_backend_tls_claims.CRYPTO.search('it %s TLS' % copula),
+                copula)
+            self.assertTrue(
+                check_backend_tls_claims.ASSERTS.search('it %s TLS' % copula),
+                copula)
+        for copula in ('stays', 'remains', 'becomes'):
+            self.assertIsNone(
+                check_backend_tls_claims.CRYPTO.search('it %s TLS' % copula),
+                copula)
+
+    def test_tls_as_reachability_is_not_a_claim(self):
+        """A bare \\bTLS\\b would have been the wrong fix.
+
+        Naming a port is not asserting transport security, and these
+        pages name both ports constantly. The copula is what separates
+        the two.
+        """
+        self.assertEqual([], _claims(
+            'The proxy dials both the plaintext and TLS ports of the '
+            'node.\n'))
+
+    def test_a_predicative_claim_naming_its_condition_passes(self):
+        self.assertEqual([], _claims(
+            'The backend connection is TLS only when the hypervisor '
+            'rejects plaintext.\n'))
+
     def test_configured_alone_does_not_exempt_a_block(self):
         """`configured` is a noun modifier, not a condition marker.
 
@@ -281,11 +335,19 @@ class RepositoryTestCase(testtools.TestCase):
         self.assertIn('docs/deployment/manual.md',
                       check_backend_tls_claims.default_paths())
 
+        # Every pattern in DOC_PATHS has to match something, or the
+        # check refuses to report at all, so the built tree carries an
+        # innocuous file for the other two patterns.
         with tempfile.TemporaryDirectory() as root:
             os.makedirs(os.path.join(root, 'docs', 'deployment'))
-            with open(os.path.join(root, 'docs', 'deployment', 'x.md'),
-                      'w', encoding='utf-8') as f:
-                f.write(UNCONDITIONAL)
+            os.makedirs(os.path.join(root, 'docs', 'use-cases'))
+            for relative, content in (
+                    (('docs', 'deployment', 'x.md'), UNCONDITIONAL),
+                    (('docs', 'use-cases', 'y.md'), 'Nothing to see.\n'),
+                    (('docs', 'index.md'), 'Nothing to see.\n')):
+                with open(os.path.join(root, *relative), 'w',
+                          encoding='utf-8') as f:
+                    f.write(content)
 
             with mock.patch.object(
                     check_backend_tls_claims, 'repository_root',
@@ -294,13 +356,60 @@ class RepositoryTestCase(testtools.TestCase):
                 with mock.patch('sys.stderr', new=io.StringIO()):
                     verdict = check_backend_tls_claims.main()
 
-        self.assertEqual(['docs/deployment/x.md'], paths)
+        self.assertIn('docs/deployment/x.md', paths)
         self.assertEqual(1, verdict)
 
     def test_the_documentation_passes(self):
         self.assertEqual(
             0, check_backend_tls_claims.main(), 'documentation has an '
             'unconditional backend TLS or pinning claim')
+
+    def test_every_doc_pattern_matches_something_in_this_tree(self):
+        """A pattern that matches nothing is the guard gone blind."""
+        self.assertEqual([], check_backend_tls_claims.unmatched_doc_patterns())
+
+    def test_a_tree_with_no_documentation_fails_rather_than_passing(self):
+        """CI runs this bare, so a renamed docs/ must not read as clean.
+
+        It reported "No unconditional backend TLS or pinning claims in
+        0 documentation files" and exited 0 (#641).
+        """
+        with tempfile.TemporaryDirectory() as root:
+            with mock.patch.object(
+                    check_backend_tls_claims, 'repository_root',
+                    return_value=root):
+                stderr = io.StringIO()
+                with mock.patch('sys.stderr', new=stderr):
+                    verdict = check_backend_tls_claims.main()
+
+        self.assertEqual(2, verdict)
+        self.assertIn('no documentation matched', stderr.getvalue())
+
+    def test_one_pattern_matching_nothing_is_enough_to_fail(self):
+        """The failure the real-tree assertions could not have caught.
+
+        A total collapse would break the assertions on docs/index.md
+        above. One of three patterns going empty would not.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, 'docs', 'use-cases'))
+            for relative in (('docs', 'use-cases', 'y.md'),
+                             ('docs', 'index.md')):
+                with open(os.path.join(root, *relative), 'w',
+                          encoding='utf-8') as f:
+                    f.write('Nothing to see.\n')
+
+            with mock.patch.object(
+                    check_backend_tls_claims, 'repository_root',
+                    return_value=root):
+                unmatched = check_backend_tls_claims.unmatched_doc_patterns()
+                stderr = io.StringIO()
+                with mock.patch('sys.stderr', new=stderr):
+                    verdict = check_backend_tls_claims.main()
+
+        self.assertEqual(['docs/deployment/*.md'], unmatched)
+        self.assertEqual(2, verdict)
+        self.assertIn('docs/deployment/*.md', stderr.getvalue())
 
     def test_it_reports_rather_than_crashing_without_utf8(self):
         """The pages are full of em dashes.

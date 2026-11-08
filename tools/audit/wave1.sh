@@ -27,9 +27,11 @@
 # AUDIT_RANGE and AUDIT_PATHS may be set in the environment to audit
 # an accumulated range instead of a live branch -- a branch whose
 # work has already merged to develop otherwise diffs empty and passes
-# vacuously. tools/audit/plan-range.sh derives both from a plan's
-# merge commits. Defaults, unset: AUDIT_RANGE=develop...HEAD,
-# AUDIT_PATHS='' (no path restriction) -- today's behaviour exactly.
+# vacuously. AUDIT_RANGE holds one range or several separated by
+# whitespace, and every check below covers the union of them;
+# tools/audit/plan-range.sh derives both, one range per merge a plan
+# landed. Defaults, unset: AUDIT_RANGE=develop...HEAD, AUDIT_PATHS=''
+# (no path restriction) -- today's behaviour exactly.
 
 set -u
 
@@ -62,6 +64,22 @@ if [ -z "${AUDIT_RANGE:-}" ]; then
     fi
 fi
 AUDIT_PATHS="${AUDIT_PATHS:-}"
+
+# AUDIT_RANGE holds one range, or several separated by whitespace, and
+# every diff below is the union of what each one covers. A plan's work
+# is what its merges landed, not everything in the span between the
+# first and the last: a single contiguous range also contains every
+# other commit that touched a file the plan touched, and path scoping
+# cannot exclude those, because they are changes to the very paths it
+# scopes to. plan-range.sh emits one range per merge for that reason.
+#
+# Word-split with globbing off, as AUDIT_PATHS is below: a range can
+# contain no whitespace, so splitting is the whole of the parsing, but
+# `HEAD^{/fix}` must not be expanded against the working tree.
+set -f
+# shellcheck disable=SC2206  # deliberate split, globbing off
+AUDIT_RANGES=($AUDIT_RANGE)
+set +f
 
 # Git unions positive pathspecs rather than intersecting them, so a
 # caller's '*.py' cannot simply be appended to $AUDIT_PATHS -- that
@@ -97,9 +115,11 @@ audit_paths_for() {
         scope=($AUDIT_PATHS)
         set +f
     fi
-    git -c core.quotePath=false diff --name-only "$AUDIT_RANGE" \
-            -- "${scope[@]}" "$@" \
-        | grep -E "$pattern" || true
+    local range
+    for range in "${AUDIT_RANGES[@]}"; do
+        git -c core.quotePath=false diff --name-only "$range" \
+            -- "${scope[@]}" "$@"
+    done | sort -u | grep -E "$pattern" || true
 }
 
 # audit_diff_for <filename-ere> [exclusion pathspec...]
@@ -109,17 +129,84 @@ audit_diff_for() {
     local -a files=()
     mapfile -t files < <(audit_paths_for "$pattern" "$@")
     [ "${#files[@]}" -gt 0 ] || return 0
-    git -c core.quotePath=false diff "$AUDIT_RANGE" -- "${files[@]}"
+    local range
+    for range in "${AUDIT_RANGES[@]}"; do
+        git -c core.quotePath=false diff "$range" -- "${files[@]}"
+    done
 }
+
+# Validate both ends of the range, not just the base. A range whose tip
+# does not resolve makes every git diff below emit "fatal: bad
+# revision" to stderr and produce nothing, so every check reports clean
+# and the script exits 0 having inspected nothing.
+#
+# Split the base at '..' rather than at the first '.': a dotted ref
+# ("v0.5.0..HEAD") truncates to "v0" under '%%.*', which does not
+# resolve, and the guard then skips everything for the same reason.
+# '%%..*' leaves a dotless single ref untouched.
+#
+# An explicitly-set AUDIT_RANGE that does not resolve is fatal: the
+# operator asked for a specific range and would otherwise get a green
+# report over nothing. The default range keeps the original tolerance.
+#
+# Every range in the list is validated, not just the first. One
+# unresolvable range among several silently drops that merge's work
+# from the audit, which is exactly the quiet pass this guard exists to
+# stop -- and an AUDIT_RANGE of nothing but whitespace leaves an empty
+# list, which would otherwise inspect nothing and report clean.
+have_base=0
+unresolved=""
+if [[ "${#AUDIT_RANGES[@]}" -eq 0 ]]; then
+    unresolved="$AUDIT_RANGE"
+else
+    have_base=1
+    for range in "${AUDIT_RANGES[@]}"; do
+        if ! git rev-parse --verify "${range%%..*}" >/dev/null 2>&1 \
+                || ! git rev-parse --verify "${range##*..}" >/dev/null 2>&1; then
+            have_base=0
+            unresolved="$range"
+            break
+        fi
+    done
+fi
+
+if [[ "$have_base" != "1" ]]; then
+    if [[ "$AUDIT_RANGE_EXPLICIT" == "1" ]]; then
+        red "FAIL: AUDIT_RANGE '$unresolved' does not resolve"
+        exit 6
+    fi
+    echo "ADVISORY: cannot resolve '$unresolved'; skipping diff-based style checks"
+fi
 
 # AUDIT_SKIP_TOX=1 runs wave 1b alone. The two fatal style checks
 # below had never inspected a line for six weeks because nothing
 # exercised them; they are only cheaply testable if they can be
 # reached without a full tox cycle first. It is also the fast path
 # for re-running the mechanical checks while fixing one of them.
+#
+# The range is resolved above rather than below this block, so a typo'd
+# AUDIT_RANGE fails before a tox cycle is spent on it, and so the lint
+# gate can be pointed at the audited range.
 if [[ "${AUDIT_SKIP_TOX:-0}" != "1" ]]; then
     bold "=== wave 1a: flake8 (tox -eflake8) ==="
-    if ! tox -eflake8; then
+    # `tox -eflake8` alone runs flake8wrap.sh with -HEAD, which selects
+    # files with `git diff --name-only HEAD~1` and so inspects the last
+    # commit of whatever is checked out, whatever AUDIT_RANGE says. In a
+    # fresh worktree cut from develop to audit an already-merged plan
+    # that is the previous unrelated merge, and the gate reported
+    #
+    #     No python files in change.
+    #       flake8: OK
+    #     PASS: flake8
+    #
+    # over a range holding six Python files and some 970 added lines
+    # (#488). It read like a clean result, which is the worst way for a
+    # gate to be wrong. Hand it the audited ranges instead.
+    flake8_args=(-HEAD)
+    if [[ "$have_base" == "1" ]]; then
+        flake8_args=(-RANGE "${AUDIT_RANGES[@]}")
+    fi
+    if ! tox -eflake8 -- "${flake8_args[@]}"; then
         red "FAIL: flake8"
         exit 1
     fi
@@ -137,30 +224,6 @@ fi
 
 bold "=== wave 1b: mechanical style checks ==="
 
-# Validate both ends of the range, not just the base. A range whose tip
-# does not resolve makes every git diff below emit "fatal: bad
-# revision" to stderr and produce nothing, so every check reports clean
-# and the script exits 0 having inspected nothing.
-#
-# Split the base at '..' rather than at the first '.': a dotted ref
-# ("v0.5.0..HEAD") truncates to "v0" under '%%.*', which does not
-# resolve, and the guard then skips everything for the same reason.
-# '%%..*' leaves a dotless single ref untouched.
-#
-# An explicitly-set AUDIT_RANGE that does not resolve is fatal: the
-# operator asked for a specific range and would otherwise get a green
-# report over nothing. The default range keeps the original tolerance.
-have_base=0
-if git rev-parse --verify "${AUDIT_RANGE%%..*}" >/dev/null 2>&1 \
-        && git rev-parse --verify "${AUDIT_RANGE##*..}" >/dev/null 2>&1; then
-    have_base=1
-elif [[ "$AUDIT_RANGE_EXPLICIT" == "1" ]]; then
-    red "FAIL: AUDIT_RANGE '$AUDIT_RANGE' does not resolve"
-    exit 6
-else
-    echo "ADVISORY: cannot resolve '$AUDIT_RANGE'; skipping diff-based style checks"
-fi
-
 if [[ "$have_base" == "1" ]]; then
     # Added .py lines in the diff, excluding tests and generated stubs.
     # The second grep needs -E: in BRE (the default), \+ is the
@@ -174,8 +237,16 @@ if [[ "$have_base" == "1" ]]; then
     #    carries the `audit-allow-print` marker.
     PRINT_HITS=$(printf '%s\n' "$ADDED" | grep -E '^\+[[:space:]]*print\(' || true)
     if [[ -n "$PRINT_HITS" ]]; then
-        # Only fatal if no changed file opted in via the marker.
-        MARKED=$(audit_paths_for '\.py$' \
+        # Only fatal if no changed file opted in via the marker. The
+        # candidate list carries the same exclusions as ADDED above,
+        # which it did not until a test file that merely mentioned the
+        # marker by name was found suppressing the check for a whole
+        # diff. A print in an excluded file cannot trip the check in the
+        # first place, so such a file can never need the exemption, and
+        # letting it grant one turns documenting the marker into
+        # disabling the gate.
+        MARKED=$(audit_paths_for '\.py$' ':!*/tests/*' ':!*_pb2*' \
+                ':!*_pb2_grpc*' \
             | xargs -r grep -l 'audit-allow-print' 2>/dev/null || true)
         if [[ -z "$MARKED" ]]; then
             red "FAIL: raw print() added in non-test source:"

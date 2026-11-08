@@ -59,8 +59,14 @@ class PlanRangeTestCase(testtools.TestCase):
         # An unrelated merge between the two phases. The path scoping
         # exists precisely to keep this file out of the audited diff, so
         # it has to be here for the scoping assertions to mean anything.
+        #
+        # It also edits one.py, which phase 1 landed. Path scoping cannot
+        # exclude that -- it is a change to the very path being scoped to
+        # -- so it is the contamination a single contiguous range admits
+        # and per-merge ranges do not.
         self.git('checkout', '-q', '-b', 'unrelated', self.first)
         self.commit('unrelated.py', 'y = 2\n')
+        self.commit('one.py', 'x = 1\nunrelated = True\n')
         self.git('checkout', '-q', 'develop')
         self.merge('unrelated')
 
@@ -99,6 +105,15 @@ class PlanRangeTestCase(testtools.TestCase):
             out[key] = value.strip("'")
         return out
 
+    def union_diff(self, exports):
+        """The diff the wave scripts see, over every derived range."""
+        text = ''
+        for audit_range in exports['AUDIT_RANGE'].split():
+            text += self.git(
+                'diff', audit_range, '--',
+                *exports['AUDIT_PATHS'].split()).stdout
+        return text
+
     def test_emits_range_and_paths_for_a_plans_merges(self):
         result = self.run_script(self.first, self.last)
 
@@ -107,19 +122,43 @@ class PlanRangeTestCase(testtools.TestCase):
         self.assertEqual(2, len(result.stdout.strip().splitlines()))
         exports = self.exports(result)
         self.assertEqual(
-            '%s^1..%s' % (self.first, self.last), exports['AUDIT_RANGE'])
+            ['%s^1..%s' % (self.first, self.first),
+             '%s^1..%s' % (self.last, self.last)],
+            exports['AUDIT_RANGE'].split())
         self.assertEqual(
             ['one.py', 'two.py'], sorted(exports['AUDIT_PATHS'].split()))
 
+    def test_ranges_exclude_a_foreign_commit_touching_a_plan_path(self):
+        """The defect a single contiguous span could not avoid.
+
+        An unrelated commit that edits a file the plan also touched is
+        inside the span between the plan's first and last merge, and
+        path scoping cannot exclude it, because it is a change to the
+        path being scoped to. Auditing it credits the plan with work it
+        did not do, which happened: PLAN-use-case-docs.md's audit read
+        991 added Python lines against the 758 its merges landed.
+        """
+        exports = self.exports(self.run_script(self.first, self.last))
+
+        self.assertNotIn('unrelated = True', self.union_diff(exports))
+        # ... and that line really is in the span the derived ranges
+        # replace, so the assertion above cannot pass vacuously.
+        spanned = self.git(
+            'diff', '%s^1..%s' % (self.first, self.last), '--',
+            *exports['AUDIT_PATHS'].split()).stdout
+        self.assertIn('unrelated = True', spanned)
+
     def test_path_set_excludes_unrelated_merges_in_the_range(self):
-        """The scoping's whole job: the range spans a merge it must omit."""
+        """The scoping's other half: a file no listed merge touched."""
         exports = self.exports(self.run_script(self.first, self.last))
 
         self.assertNotIn('unrelated.py', exports['AUDIT_PATHS'])
-        # ... and that file really is inside the derived range, so the
-        # assertion above cannot pass just because it is absent anyway.
+        # ... and that file really is inside the span the derived ranges
+        # replace, so the assertion above cannot pass just because it is
+        # absent anyway.
         spanned = self.git(
-            'diff', '--name-only', exports['AUDIT_RANGE']).stdout.split()
+            'diff', '--name-only',
+            '%s^1..%s' % (self.first, self.last)).stdout.split()
         self.assertIn('unrelated.py', spanned)
 
     def test_paths_intersect_rather_than_union(self):
@@ -127,17 +166,20 @@ class PlanRangeTestCase(testtools.TestCase):
 
         This is the property the phase plan makes a done-criterion, and
         the reason the audit scripts filter a scoped file list by name
-        instead of appending '*.py' to the pathspec list.
+        instead of appending '*.py' to the pathspec list. The union
+        hazard is per range, so it is checked over the span, where the
+        foreign file is reachable at all.
         """
         exports = self.exports(self.run_script(self.first, self.last))
+        span = '%s^1..%s' % (self.first, self.last)
 
         scoped = self.git(
-            'diff', '--name-only', exports['AUDIT_RANGE'], '--',
+            'diff', '--name-only', span, '--',
             *exports['AUDIT_PATHS'].split()).stdout.split()
         intersected = [p for p in scoped if p.endswith('.py')]
 
         unioned = self.git(
-            'diff', '--name-only', exports['AUDIT_RANGE'], '--',
+            'diff', '--name-only', span, '--',
             *exports['AUDIT_PATHS'].split(), '*.py').stdout.split()
 
         self.assertEqual(['one.py', 'two.py'], sorted(intersected))
@@ -151,6 +193,15 @@ class PlanRangeTestCase(testtools.TestCase):
         self.assertEqual(
             '%s^1..%s' % (self.last, self.last), exports['AUDIT_RANGE'])
         self.assertEqual(['two.py'], exports['AUDIT_PATHS'].split())
+
+    def test_keeps_the_merges_in_the_order_given(self):
+        """The ranges are audited and reported in landing order."""
+        exports = self.exports(self.run_script(self.first, self.last))
+
+        ranges = exports['AUDIT_RANGE'].split()
+        self.assertEqual(2, len(ranges))
+        self.assertTrue(ranges[0].startswith(self.first), ranges)
+        self.assertTrue(ranges[1].startswith(self.last), ranges)
 
     def test_rejects_no_arguments(self):
         result = self.run_script()
@@ -282,6 +333,91 @@ class PlanRangeTestCase(testtools.TestCase):
         # git's own 'Not a valid object name' must not reach the reader.
         self.assertNotIn('Not a valid object name', result.stderr)
 
+    def clone_with_stale_develop(self, stale_at):
+        """A clone whose local develop sits behind origin/develop.
+
+        The shape a git worktree is in when the main clone has an old
+        `develop` checked out: the local ref cannot be fast-forwarded
+        from the worktree, because another worktree holds it.
+        """
+        clone = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, clone, ignore_errors=True)
+        subprocess.run(
+            ['git', 'clone', '-q', '--no-local', self.repo, clone],
+            check=True, capture_output=True, env=self.env)
+        subprocess.run(
+            ['git', 'reset', '-q', '--hard', stale_at], cwd=clone, check=True,
+            capture_output=True, env=self.env)
+        return clone
+
+    def test_prefers_origin_develop_when_the_local_develop_is_stale(self):
+        """A stale ref must not decide whether a merge is on develop.
+
+        Resolving `develop` first made the script reject a merge that
+        had landed, blaming the SHA for a ref the reader had not
+        thought about.
+        """
+        clone = self.clone_with_stale_develop(self.first)
+
+        result = self.run_script(self.first, self.last, cwd=clone)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn('is not an ancestor', result.stderr)
+        # ... and it says which ref it used, so a reader who expected
+        # the local one is not left guessing.
+        self.assertIn("local 'develop' is behind", result.stderr)
+        exports = self.exports(result)
+        self.assertEqual(
+            ['%s^1..%s' % (self.first, self.first),
+             '%s^1..%s' % (self.last, self.last)],
+            exports['AUDIT_RANGE'].split())
+
+    def test_prefers_the_local_develop_when_it_is_ahead(self):
+        """A merge landed locally but not yet pushed is still auditable."""
+        clone = self.clone_with_stale_develop(self.first)
+        subprocess.run(
+            ['git', 'merge', '-q', '--ff-only', self.last], cwd=clone,
+            check=True, capture_output=True, env=self.env)
+        subprocess.run(
+            ['git', 'update-ref', 'refs/remotes/origin/develop', self.first],
+            cwd=clone, check=True, capture_output=True, env=self.env)
+
+        result = self.run_script(self.first, self.last, cwd=clone)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn('is not an ancestor', result.stderr)
+        self.assertNotIn('is behind', result.stderr)
+
+    def test_uses_origin_develop_when_the_local_develop_has_diverged(self):
+        """Neither contains the other: the remote is the authority."""
+        clone = self.clone_with_stale_develop(self.first)
+        (Path(clone) / 'local-only.txt').write_text('local\n')
+        subprocess.run(
+            ['git', 'add', '--', 'local-only.txt'], cwd=clone, check=True,
+            capture_output=True, env=self.env)
+        subprocess.run(
+            ['git', 'commit', '-q', '-m', 'local only'], cwd=clone,
+            check=True, capture_output=True, env=self.env)
+
+        result = self.run_script(self.first, self.last, cwd=clone)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn('has diverged', result.stderr)
+        self.assertNotIn('is not an ancestor', result.stderr)
+
+    def test_says_nothing_about_staleness_when_the_refs_agree(self):
+        """The common case stays silent; stdout is an eval contract."""
+        clone = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, clone, ignore_errors=True)
+        subprocess.run(
+            ['git', 'clone', '-q', '--no-local', self.repo, clone],
+            check=True, capture_output=True, env=self.env)
+
+        result = self.run_script(self.first, self.last, cwd=clone)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual('', result.stderr)
+
     def test_reports_an_unresolvable_base_branch_as_such(self):
         """Neither develop nor origin/develop: say that, not 'ancestry'."""
         self.git('checkout', '-q', '--detach', 'HEAD')
@@ -377,6 +513,28 @@ class AuditBaseResolutionTestCase(testtools.TestCase):
         for audit_range in ('develop...HEAD', 'v0.1.0..HEAD'):
             result = self._run(audit_range)
             self.assertNotIn('nothing to diff', result.stdout, audit_range)
+
+    def test_a_list_of_ranges_resolves(self):
+        result = self._run('v0.1.0..HEAD HEAD~1..HEAD')
+
+        self.assertNotIn('nothing to diff', result.stdout)
+        self.assertIn('wave 2a', result.stdout)
+
+    def test_one_unresolvable_range_among_several_is_fatal(self):
+        """Validating only the first range drops a merge's work silently."""
+        result = self._run('v0.1.0..HEAD nosuchref..HEAD')
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn('does not resolve', result.stderr)
+        # Name the range that failed, not the whole list.
+        self.assertIn('nosuchref..HEAD', result.stderr)
+
+    def test_a_whitespace_only_range_is_fatal(self):
+        """An empty list would otherwise diff nothing and report clean."""
+        result = self._run('   ')
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn('does not resolve', result.stderr)
 
 
 _WAVE1 = (
@@ -503,6 +661,28 @@ class Wave1StyleCheckTestCase(testtools.TestCase):
         self.assertIn('suppressed', result.stdout)
         self.assertIn('kerbside/mod.py', result.stdout)
 
+    def test_a_test_file_naming_the_marker_grants_no_exemption(self):
+        """Documenting the marker must not disable the gate.
+
+        The candidate list for the marker grep carried no exclusions,
+        so a test file that merely mentioned `audit-allow-print` by
+        name suppressed the print check for the whole diff -- and a
+        print in a test file cannot trip the check at all, so such a
+        file can never need the exemption.
+        """
+        self._git('checkout', '-q', '-b', 'feature')
+        self._write(
+            'kerbside/tests/unit/test_x.py',
+            '# the marker is audit-allow-print\nx = 1\n')
+        self._write('kerbside/mod.py', 'import os\nprint("boom")\n')
+        self._commit('mention the marker in a test and add a print')
+
+        result = self._run_wave1()
+
+        self.assertEqual(3, result.returncode, result.stdout + result.stderr)
+        self.assertIn('raw print() added', result.stdout)
+        self.assertNotIn('suppressed', result.stdout)
+
     def test_a_print_in_a_non_ascii_filename_is_still_caught(self):
         """The helpers round-trip a filename back into a pathspec.
 
@@ -547,3 +727,153 @@ class Wave1StyleCheckTestCase(testtools.TestCase):
 
         self.assertEqual(6, result.returncode, result.stdout + result.stderr)
         self.assertNotIn('all mechanical checks passed', result.stdout)
+
+    def test_one_unresolvable_range_among_several_is_fatal_in_wave_1(self):
+        """Wave 1 has its own copy of the guard, so it has its own test.
+
+        Validating only the first range drops the rest of the plan from
+        the audit without saying so, which is the vacuous pass the knob
+        exists to eliminate.
+        """
+        self._git('checkout', '-q', '-b', 'feature')
+        self._write('kerbside/mod.py', 'import os\nprint("hi")\n')
+        self._commit('add a print')
+
+        result = self._run_wave1_over('develop..HEAD nosuchref..HEAD')
+
+        self.assertEqual(6, result.returncode, result.stdout + result.stderr)
+        self.assertIn('nosuchref..HEAD', result.stdout)
+        self.assertNotIn('all mechanical checks passed', result.stdout)
+
+    def test_a_whitespace_only_range_is_fatal_in_wave_1(self):
+        """An empty range list would inspect nothing and report clean."""
+        self._git('checkout', '-q', '-b', 'feature')
+        self._write('kerbside/mod.py', 'import os\nprint("hi")\n')
+        self._commit('add a print')
+
+        result = self._run_wave1_over('   ')
+
+        self.assertEqual(6, result.returncode, result.stdout + result.stderr)
+        self.assertNotIn('all mechanical checks passed', result.stdout)
+
+    def test_the_lint_gate_is_given_the_audited_ranges(self):
+        """The gate selected files with `git diff --name-only HEAD~1`.
+
+        Whatever AUDIT_RANGE said, `tox -eflake8` ran flake8wrap.sh
+        with -HEAD, so in a fresh worktree cut from develop to audit an
+        already-merged plan the lint gate inspected the previous
+        unrelated merge and reported "No python files in change" as a
+        pass (#488). tox is stubbed here: what the gate was told is the
+        whole of the behaviour under test.
+        """
+        recorded = Path(self.repo) / 'tox-args'
+        stub = Path(self.repo) / 'bin' / 'tox'
+        stub.parent.mkdir(parents=True, exist_ok=True)
+        stub.write_text(
+            '#!/bin/sh\nfor a in "$@"; do echo "$a"; done >> %s\nexit 0\n'
+            % recorded)
+        stub.chmod(0o755)
+
+        self._git('checkout', '-q', '-b', 'feature')
+        self._write('kerbside/mod.py', 'import os\nimport sys\n')
+        self._commit('add an import')
+
+        env = dict(self.env)
+        del env['AUDIT_SKIP_TOX']
+        env['PATH'] = '%s:%s' % (stub.parent, env['PATH'])
+        # Two ranges, so that handing the gate only the first is
+        # distinguishable from handing it all of them.
+        env['AUDIT_RANGE'] = 'develop..HEAD HEAD~1..HEAD'
+        result = subprocess.run(
+            ['bash', 'tools/audit/wave1.sh'], cwd=self.repo,
+            capture_output=True, text=True, env=env)
+
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        args = recorded.read_text().split()
+        self.assertIn('-RANGE', args)
+        self.assertIn('develop..HEAD', args)
+        self.assertIn('HEAD~1..HEAD', args)
+        self.assertNotIn('-HEAD', args)
+
+    def test_the_lint_gate_falls_back_to_head_for_an_unresolved_default(self):
+        """No develop, no explicit range: today's behaviour is kept."""
+        recorded = Path(self.repo) / 'tox-args'
+        stub = Path(self.repo) / 'bin' / 'tox'
+        stub.parent.mkdir(parents=True, exist_ok=True)
+        stub.write_text(
+            '#!/bin/sh\nfor a in "$@"; do echo "$a"; done >> %s\nexit 0\n'
+            % recorded)
+        stub.chmod(0o755)
+
+        self._git('checkout', '-q', '-b', 'feature')
+        self._write('kerbside/mod.py', 'import os\nimport sys\n')
+        self._commit('add an import')
+        self._git('branch', '-q', '-D', 'develop')
+
+        env = dict(self.env)
+        del env['AUDIT_SKIP_TOX']
+        env['PATH'] = '%s:%s' % (stub.parent, env['PATH'])
+        result = subprocess.run(
+            ['bash', 'tools/audit/wave1.sh'], cwd=self.repo,
+            capture_output=True, text=True, env=env)
+
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        args = recorded.read_text().split()
+        self.assertIn('-HEAD', args)
+        self.assertNotIn('-RANGE', args)
+
+    def _land_as_merge(self, branch, path, content, message):
+        """Land one commit on develop as a merge, and return the merge."""
+        self._git('checkout', '-q', '-b', branch)
+        self._write(path, content)
+        self._commit(message)
+        self._git('checkout', '-q', 'develop')
+        self._git('merge', '--no-ff', '-q', '-m', 'merge %s' % branch, branch)
+        return self._git('rev-parse', 'HEAD').stdout.strip()
+
+    def _run_wave1_over(self, audit_range):
+        env = dict(self.env)
+        env['AUDIT_RANGE'] = audit_range
+        return subprocess.run(
+            ['bash', 'tools/audit/wave1.sh'], cwd=self.repo,
+            capture_output=True, text=True, env=env)
+
+    def test_a_print_in_the_second_of_two_ranges_is_caught(self):
+        """Every range in the list is inspected, not just the first."""
+        first = self._land_as_merge(
+            'phase1', 'kerbside/one.py', 'x = 1\n', 'phase 1')
+        last = self._land_as_merge(
+            'phase2', 'kerbside/two.py', 'print("boom")\n', 'phase 2')
+
+        result = self._run_wave1_over(
+            '%s^1..%s %s^1..%s' % (first, first, last, last))
+
+        self.assertEqual(3, result.returncode, result.stdout + result.stderr)
+        self.assertIn('raw print() added', result.stdout)
+
+    def test_a_foreign_commits_print_is_not_reported_as_the_plans(self):
+        """The defect: a contiguous span audits work the plan never did.
+
+        A commit that is not part of any listed merge lands between two
+        phases and adds a print to a file phase 1 created. Path scoping
+        cannot exclude it. Over per-merge ranges it is invisible, which
+        is the point; over the span it is reported as the plan's.
+        """
+        first = self._land_as_merge(
+            'phase1', 'kerbside/one.py', 'x = 1\n', 'phase 1')
+        self._write('kerbside/one.py', 'x = 1\nprint("not ours")\n')
+        self._commit('a foreign commit touching a phase path')
+        last = self._land_as_merge(
+            'phase2', 'kerbside/two.py', 'z = 3\n', 'phase 2')
+
+        per_merge = self._run_wave1_over(
+            '%s^1..%s %s^1..%s' % (first, first, last, last))
+        span = self._run_wave1_over('%s^1..%s' % (first, last))
+
+        self.assertEqual(
+            0, per_merge.returncode, per_merge.stdout + per_merge.stderr)
+        self.assertIn('no raw print() added', per_merge.stdout)
+        # ... and the span really does see it, so the assertion above is
+        # not passing because the print went missing some other way.
+        self.assertEqual(3, span.returncode, span.stdout + span.stderr)
+        self.assertIn('not ours', span.stdout)

@@ -99,8 +99,31 @@ ASSERTS = re.compile(
     r'pins|verifies|escalates|relays|refuses|fails|happens|enforces|'
     r'encrypts|terminates|dials|connects|retries|checks|pinned)\b', re.I)
 PIN = re.compile(r'\bpin(?:s|ned|ning)?\b', re.I)
+
+# TLS as a predicate -- "the SPICE session to qemu is TLS" -- is the
+# plainest way to make this claim and was the one way of making it this
+# pattern did not read (#659): it matched "over TLS" and "TLS'd" but not
+# "is TLS", so a sentence like "The backend connection is TLS and
+# checked." passed with no condition attached.
+#
+# A bare \bTLS\b is not the fix, because it also matches reachability --
+# "both the plaintext and TLS ports" is not a claim about transport
+# security, and the docstring above says so -- which is why the copula
+# is required.
+#
+# The copulas here are exactly those ASSERTS already carries, so that
+# no alternative is dead: a sentence has to satisfy both conjuncts, and
+# one matched only here would never be reported. `stays`, `remains` and
+# `becomes` were tried and withdrawn. Adding them to ASSERTS to go with
+# them made the ovirt.md table row describing which field "becomes the
+# pin" into a finding, which is a false positive in the corpus bought
+# for a sentence shape these pages do not use -- and silencing false
+# positives by tuning these patterns is how a guard stops catching
+# anything.
 CRYPTO = re.compile(
-    r"\b(?:escalat\w+|encrypt\w+|verif\w+)\b|\bTLS'd\b|\bover TLS\b", re.I)
+    r"\b(?:escalat\w+|encrypt\w+|verif\w+)\b|\bTLS'd\b|\bover TLS\b"
+    r'|\b(?:is|are|was|were|be|been)\s+TLS\b',
+    re.I)
 
 # Words which name a condition. Any one of them in the block the
 # sentence belongs to is enough, which is why the list is short: see
@@ -146,11 +169,33 @@ SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
 # The deployment pages under docs/deployment/ are in scope because they
 # describe TLS material, which is where an unconditional backend-TLS
 # claim would reappear.
+#
+# Every pattern here must match at least one file; see
+# unmatched_doc_patterns(). Removing a directory from the tree means
+# removing its pattern from this tuple, deliberately, rather than
+# leaving a pattern that quietly matches nothing.
 DOC_PATHS = ('docs/use-cases/*.md', 'docs/deployment/*.md', 'docs/index.md')
 
 
 def repository_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def unmatched_doc_patterns():
+    """Patterns in DOC_PATHS that match no file at all.
+
+    A pattern matching nothing is this check going blind over that part
+    of the tree, and it used to be indistinguishable from a clean
+    result: with every pattern empty, main() reported "No unconditional
+    backend TLS or pinning claims in 0 documentation files" and exited
+    0. CI runs the check bare, so a renamed or moved docs directory
+    turned the guard into a silent pass (#641). The real-tree tests
+    would catch a total collapse through their assertions on
+    docs/index.md, but not one pattern of three matching nothing.
+    """
+    root = repository_root()
+    return [pattern for pattern in DOC_PATHS
+            if not glob.glob(os.path.join(root, pattern))]
 
 
 def default_paths():
@@ -257,6 +302,19 @@ def claims(path):
 def main(paths=None):
     root = repository_root()
     if not paths:
+        # Before reading anything, refuse to report on a tree this
+        # check cannot see. Exit 2, as for a named file that is not
+        # there: both mean the check did not run, which is a different
+        # answer from "it ran and found nothing".
+        unmatched = unmatched_doc_patterns()
+        if unmatched:
+            print('no documentation matched, relative to %s: %s'
+                  % (root, ', '.join(unmatched)), file=sys.stderr)
+            print('Every pattern in DOC_PATHS must match at least one '
+                  'file. A renamed or', file=sys.stderr)
+            print('moved documentation directory has to fail this check, '
+                  'not silence it.', file=sys.stderr)
+            return 2
         paths = default_paths()
 
     # Arguments are interpreted relative to the repository root, not

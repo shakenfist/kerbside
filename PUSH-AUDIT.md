@@ -39,7 +39,13 @@ tools/audit/wave1.sh
 
 It performs (and exits non-zero on any failure):
 
-- `tox -eflake8` (the project's lint gate, also run by CI)
+- `tox -eflake8` (the project's lint gate, also run by CI),
+  over the python files in `AUDIT_RANGE` rather than over
+  the last commit of whatever is checked out. The bare
+  `tox -eflake8` CI gate still lints `HEAD~1..HEAD`; the
+  audit passes `-RANGE` with the ranges it is auditing,
+  and falls back to `-HEAD` only when the default range
+  cannot be resolved
 - `tox -epy3` (the unit test suite via stestr)
 - Mechanical style checks: no raw `print()` in non-test
   source (logging only), no bare `except:` clauses, no
@@ -66,8 +72,12 @@ inspect **only lines added** relative to `AUDIT_RANGE`
 prints — the config and logging bootstrap, the `kerbside`
 CLI — do not trip them. A `print()` may still be added
 deliberately if its file carries the marker comment
-`audit-allow-print`. Every other style check is advisory
-and does not change the exit code.
+`audit-allow-print`, and the marker is read only from the
+files the check itself inspects: a test file naming it,
+including this one's own tests, grants no exemption, since
+a `print()` in a test cannot trip the check and so can
+never need one. Every other style check is advisory and
+does not change the exit code.
 
 Because those checks are diff-based, a branch whose work
 has already merged to `develop` gets an empty diff and a
@@ -78,22 +88,40 @@ the environment, so auditing an accumulated range — as a
 master plan's push-audit phase does — is exporting those
 instead of editing either script.
 `tools/audit/plan-range.sh` derives both from a plan's
-merge commits:
+merge commits, naming every merge rather than just the
+ends:
 
 ```
-eval "$(tools/audit/plan-range.sh <first-merge-sha> <last-merge-sha>)"
+eval "$(tools/audit/plan-range.sh <merge-sha> [<merge-sha> ...])"
 ```
 
-Give the merge SHAs oldest-first: reversed, the derived
-range diffs backwards and the style checks pass on
-reverted content. The script rejects that, along with a
-SHA that is not on `develop` or has no first parent, an
-empty derived path set, and a path carrying whitespace, a
-glob metacharacter or a quoting character — each of which
-would otherwise make the audit inspect the wrong content
-and pass. An explicitly-set `AUDIT_RANGE` that does not
-resolve is fatal for the same reason (wave 1 exit 6, wave
-2 exit 1); the default range stays advisory.
+`AUDIT_RANGE` holds one range or several separated by
+whitespace, and every check covers the union of them.
+`plan-range.sh` emits one range per merge, `<sha>^1..<sha>`,
+because that is exactly what the merge landed. **A single
+contiguous span from the first merge to the last is not a
+plan's work**: it also holds every other commit that
+touched a file the plan touched, and `AUDIT_PATHS` cannot
+exclude those, because they are changes to the paths it
+scopes to. `PLAN-use-case-docs.md`'s audit read 991 added
+Python lines against the 758 its merges landed, 233 of them
+another change's tests, which three judgment agents then
+reviewed as the plan's own work (#491). Do not replace the
+list with a span to make a range tidier.
+
+Give the merge SHAs oldest-first, so the ranges are
+audited and reported in landing order. The script rejects
+a reversed list, along with a SHA that is not on `develop`
+or has no first parent, an empty derived path set, and a
+path carrying whitespace, a glob metacharacter or a
+quoting character — each of which would otherwise make the
+audit inspect the wrong content and pass. Where both
+`develop` and `origin/develop` resolve it uses the newer,
+since a stale local ref rejects a merge that has landed
+(#638). An `AUDIT_RANGE` set explicitly is fatal when any
+of its ranges does not resolve, or when it is nothing but
+whitespace (wave 1 exit 6, wave 2 exit 1); the default
+range stays advisory.
 
 If wave 1 fails, fix the cause and re-run before
 spending on wave 2.
