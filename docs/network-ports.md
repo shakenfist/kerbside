@@ -67,10 +67,26 @@ Kerbside's defaults put TLS on 5900 and the plaintext redirect on
 5901. Hypervisor SPICE ports use the same 5900-upwards range, but
 their numbering follows the cloud's choices, and the plaintext port is
 often the lower one. A `5900` in a use-case diagram about the backend
-leg is therefore a hypervisor port, not Kerbside's. The overlap also
-matters if Kerbside runs on a host that also runs hypervisor SPICE
-consoles, because the two will contend for the same ports. Move
-Kerbside's `VDI_*_PORT` values out of the range in that case.
+leg is therefore a hypervisor port, not Kerbside's.
+
+Whether the overlap matters on a host that also runs hypervisor SPICE
+consoles depends on the cloud, so it is not a reason to move
+Kerbside's ports everywhere:
+
+- **oVirt** puts a console on whatever port the engine reports,
+  typically from 5900 upwards ([oVirt](use-cases/ovirt.md)). A
+  Kerbside on one of those hypervisors does contend, and its
+  `VDI_*_PORT` values should move out of the range.
+- **Shaken Fist** allocates each console a random port between 30000
+  and 50000, so Kerbside's defaults clear them. That is part of why
+  Shaken Fist's operator guide recommends putting Kerbside on a
+  hypervisor ([Shaken Fist](use-cases/shakenfist.md)).
+- **Proxmox VE** is reached through `spiceproxy` on port 3128 rather
+  than a per-console port in this range, so nothing of Kerbside's
+  contends with it ([Proxmox VE](use-cases/proxmox.md)).
+
+For any other cloud, check where it puts its consoles before
+co-locating.
 
 ## Connections Kerbside makes
 
