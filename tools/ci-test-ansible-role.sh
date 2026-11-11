@@ -159,11 +159,13 @@ cp "${WORK}/certs/override-key.pem" "${OVERRIDE}/key.pem"
 cp "${WORK}/certs/override-ca-cert.pem" "${OVERRIDE}/ca.pem"
 ca sf-ca '/O=Shaken Fist/CN=Shaken Fist Test SPICE CA'
 ca ovirt-ca '/O=oVirt/CN=oVirt Test Engine CA'
+ca pve-ca '/O=Proxmox/CN=Proxmox VE Test CA'
 
 URL='https://console.example.com:13002/kerbside/'
 FQDN='console.example.com'
-# The secrets: one password for each source type which has one, a static
-# console's ticket, the seed and the SQL URL's password. The seed is exactly
+# The secrets: one password for each source type which has one -- a
+# Proxmox source's is an API token's secret -- a static console's ticket,
+# the seed and the SQL URL's password. The seed is exactly
 # 32 characters, validate's minimum. The SQL URL's password carries a %,
 # which the INI keeps as written; its distinctive part is what the output is
 # searched for, so that a doubled copy is found too.
@@ -171,13 +173,15 @@ SYSTEM_KEY='kb-system-key-Vt7qL2mXc9Rw'
 SF2_KEY='kb-second-cluster-Hp3sW8dQ'
 OVIRT_PASSWORD='ovirt-pw-Zr6kN1vB4tYe'
 OPENSTACK_PASSWORD='openstack-pw-Ld9xF2cM7qUa'
+PROXMOX_TOKEN_SECRET='pve-token-Qv7mB2sX9jLd'
 STATIC_TICKET='spice-ticket-Gw5jR8nT3hKo'
 SEED='seed-Jk4pW8zN2bQ6vT1yH5cR9mD3fL7'
 SQL_SECRET='Xq8Tz3LmPw'
 SQL_URL="mysql+pymysql://kerbside:pw%25${SQL_SECRET}@db.example.com/kerbside"
 [ "${#SEED}" -eq 32 ] || fail "the test seed is ${#SEED} characters, not 32"
 SECRETS=("${SYSTEM_KEY}" "${SF2_KEY}" "${OVIRT_PASSWORD}" "${OPENSTACK_PASSWORD}"
-    "${STATIC_TICKET}" "${SEED}" "${SEED:0:31}" "${SQL_SECRET}")
+    "${PROXMOX_TOKEN_SECRET}" "${STATIC_TICKET}" "${SEED}" "${SEED:0:31}"
+    "${SQL_SECRET}")
 
 SF_CA_FILE="${WORK}/certs/sf-ca-cert.pem"
 
@@ -204,11 +208,15 @@ hkjOPQQDAjAvMRQwEgYDVQQKDAtTaGFrZW4gRmlzdDEXMBUGA1UEAwwORXF1aXZh
 #   * shakenfist.json: Shaken Fist's deployment with the fixed CA.
 URL="${URL}" FQDN="${FQDN}" SYSTEM_KEY="${SYSTEM_KEY}" SF2_KEY="${SF2_KEY}" \
     OVIRT_PASSWORD="${OVIRT_PASSWORD}" OPENSTACK_PASSWORD="${OPENSTACK_PASSWORD}" \
+    PROXMOX_TOKEN_SECRET="${PROXMOX_TOKEN_SECRET}" \
     STATIC_TICKET="${STATIC_TICKET}" SEED="${SEED}" SQL_URL="${SQL_URL}" \
     SF_CA_FILE="${SF_CA_FILE}" OVIRT_CA_FILE="${WORK}/certs/ovirt-ca-cert.pem" \
+    PVE_CA_FILE="${WORK}/certs/pve-ca-cert.pem" \
     FIXED_CA="${FIXED_CA}" CONF="${CONF}" STATE="${STATE}" VENV="${VENV}" \
+    REPO_ROOT="${REPO_ROOT}" \
     UNITS="${UNITS}" USER_NAME="$(id -un)" GROUP_NAME="$(id -gn)" \
     "${PY}" - "${WORK}" << 'PYEOF'
+import importlib.util
 import json
 import os
 import sys
@@ -219,6 +227,8 @@ with open(env['SF_CA_FILE']) as f:
     sf_ca = f.read()
 with open(env['OVIRT_CA_FILE']) as f:
     ovirt_ca = f.read()
+with open(env['PVE_CA_FILE']) as f:
+    pve_ca = f.read()
 
 
 def sf_source(name, url, password, ca):
@@ -234,6 +244,14 @@ ovirt = {
     'username': 'admin@ovirt@internalsso',
     'password': env['OVIRT_PASSWORD'], 'ca_cert': ovirt_ca,
     'ca_file': env['OVIRT_CA_FILE'],
+}
+# A Proxmox source's username is an API token ID and its password is that
+# token's secret, which is why neither looks like the others.
+proxmox = {
+    'source': 'pve', 'type': 'proxmox',
+    'url': 'https://pve1.example.com:8006',
+    'username': 'kerbside@pve!consoles',
+    'password': env['PROXMOX_TOKEN_SECRET'], 'ca_cert': pve_ca,
 }
 openstack = {
     'source': 'kolla', 'type': 'openstack',
@@ -276,7 +294,7 @@ files = {
         'kerbside_sources': [
             sf_source('sf', 'http://localhost:13000', env['SYSTEM_KEY'],
                       sf_ca),
-            ovirt, openstack, static,
+            ovirt, openstack, proxmox, static,
             dict(sf_source('sf2', 'https://sf2.example.com:13000',
                            env['SF2_KEY'], sf_ca),
                  synthesize_host_subject=True),
@@ -293,6 +311,26 @@ files = {
         'kerbside_reserved_ports': sf_reserved,
     },
 }
+# multi.json is this test's source-type coverage, and the description
+# above calls it one source of every type. Hold it to that against the
+# checker's own list rather than trusting the comment: the Proxmox type
+# was added to the role with no source of that type here, and nothing
+# noticed (#643).
+checker = os.path.join(
+    os.environ['REPO_ROOT'], 'ansible', 'roles', 'kerbside', 'files',
+    'kerbside-check-sources.py')
+spec = importlib.util.spec_from_file_location('check_sources', checker)
+check_sources = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(check_sources)
+known = set(check_sources.TYPE_REQUIRED)
+covered = {s['type'] for s in files['multi.json']['kerbside_sources']}
+if covered != known:
+    sys.exit('[ci-test-ansible-role] multi.json covers %s, but the role '
+             'accepts %s; add a source of each missing type, with its own '
+             'CA and its own invented secret'
+             % (', '.join(sorted(covered)) or 'nothing',
+                ', '.join(sorted(known))))
+
 for name, content in files.items():
     path = os.path.join(work, 'common.json' if name == 'common.json'
                         else os.path.join('vars', name))
@@ -695,7 +733,15 @@ import json, sys
 sources = json.load(open(sys.argv[1]))["kerbside_sources"]
 sources.append(dict(sources[1]))
 print(json.dumps({"kerbside_sources": sources}))' "${MULTI_VARS}")"
-    VERBOSITY=-vvv validate_fails 'sources.yaml refused: sources 1 and 5 share a source name' \
+    # The duplicate is appended, so its position is the fixture's length
+    # before the append. Derived rather than written out, because a source
+    # added to multi.json moves it and the message names positions.
+    local dup_index
+    dup_index="$("${PY}" -c '
+import json, sys
+print(len(json.load(open(sys.argv[1]))["kerbside_sources"]))' "${MULTI_VARS}")"
+    VERBOSITY=-vvv validate_fails \
+        "sources.yaml refused: sources 1 and ${dup_index} share a source name" \
         "$(write_vars multi-dup "${multi_plus_dup}")"
     assert_validate_refused
 }
