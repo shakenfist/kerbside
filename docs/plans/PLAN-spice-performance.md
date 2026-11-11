@@ -331,6 +331,14 @@ latency figures.
   `docs/performance/proxy-backpressure.md`.
 - BBR was not measured: the host has no `tcp_bbr` module, and
   an unprivileged namespace cannot load one.
+  - *Corrected 2026-11-12 by phase 7:* the module is present, at
+    `/lib/modules/6.12.115+deb13.1-amd64/kernel/net/ipv4/tcp_bbr.ko.xz`;
+    it was simply not loaded, so
+    `tcp_available_congestion_control` offered only reno and
+    cubic. The second half of the note holds — an unprivileged
+    namespace cannot load it — but root on the host can, which
+    is what the rig's own `CC` variable documents. Phase 7 loads
+    it to run a BBR arm.
 
 **Phase 2** started on 2026-09-23 as an out-of-tree prototype.
 It is a patch series against qemu `ui/spice-display.c`,

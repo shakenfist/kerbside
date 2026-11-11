@@ -271,6 +271,35 @@ One thing phase 1 recorded that phase 7 should not forget:
 QUIC leg. It defaults off, so nothing is lost; the write-up
 should say so rather than leave a reader wondering.
 
+### 9. The rig's ryll pin cannot carry new ryll work
+
+Found on 2026-11-12 while checking step 6's premises, after the
+plan was first written. It blocks step 6 as the plan was
+drafted, and the fix is a new step.
+
+`tools/shaped-link/build-ryll.sh` pins `RYLL_REF` to 0d140b3
+and applies `ryll-surface-drawn-rect.patch`, which adds a
+`rect` field to the control socket's `surface_drawn` event.
+`keydraw-latency.py` needs that field to tell the guest's
+key-box draw apart from the screen activity's draws — without
+it the rig measures nothing. The script's own comment says the
+pin is fixed because "the patch stopped applying to ryll
+develop when control/server.rs moved after 0d140b3, so HEAD no
+longer builds".
+
+Confirmed against ryll `develop` at e381b1e:
+`git apply --check ryll-surface-drawn-rect.patch` fails at
+`shakenfist-spice-renderer/src/control/server.rs:480`, and
+`surface_drawn` does not appear in ryll's `src/` at all.
+
+So the rig cannot build a ryll that carries both the rect patch
+and step 5's QUIC dialer, and step 6 has no client to measure
+with. The fix is the one `build-ryll.sh` already names: land the
+rect field in ryll's control socket protocol proper, drop the
+patch, and move the pin. That is ryll#673's rect half, already
+open and already listed in the master plan's *Future work*.
+See steps 5a and 5b.
+
 ## Decisions
 
 **1. Latency is a floor for this phase, not the case for it.**
@@ -435,6 +464,8 @@ live system.
 | 3 | high | opus | ryll worktree | ryll: a `SpiceStream::Quic` variant and a QUIC dialer in `shakenfist-spice-protocol`, behind a `quic` feature, with tests. Opens the ryll pull request. Commit (ryll): "Carry a SPICE channel over a QUIC stream." See brief notes. |
 | 4 | high | opus | none | kerbside: the proxy's QUIC listener behind a `quic` feature, feeding the existing `handle_connection`. Commit: "Accept SPICE channels over QUIC behind a feature." See brief notes. |
 | 5 | high | opus | ryll worktree | ryll: the client side — one QUIC connection per session, a stream per channel, and the TCP fallback. Commit (ryll): "Dial Kerbside over QUIC, falling back to TCP." See brief notes. |
+| 5a | high | opus | ryll worktree | ryll: land the `surface_drawn` `rect` field in the control socket protocol proper, so the rig stops needing a carried patch (ryll#673's rect half). Commit (ryll): "Report the drawn rectangle on surface_drawn." See brief notes. |
+| 5b | low | sonnet | none | kerbside: drop `ryll-surface-drawn-rect.patch` and move `build-ryll.sh`'s `RYLL_REF` pin to a ryll `develop` commit carrying 5a. Commit: "Drop the rig's carried ryll patch." See brief notes. |
 | 6 | high | opus | none | kerbside: run the matrix under loss, plus connect time, a path change and the fallback cost. Commit: "Measure a QUIC client leg on the shaped-link rig." See brief notes. |
 | 7 | high | opus | none | kerbside: the write-up, the verdict, the UDP recommendation and the master plan updates. Commit: "Write up the QUIC client-leg experiment." See brief notes. |
 
@@ -451,10 +482,17 @@ Order:
   rev. So step 4 bumps all three ryll `rev` pins to the merged
   ryll commit in the same commit as the listener; it does not
   introduce a path override.
-- **Step 5 may run in parallel with step 4.** Different
-  repositories, and step 5 needs only step 3's API.
-- **Step 6 needs steps 4 and 5**, and the ryll pull request
-  merged.
+- **Steps 5 and 5a may run in parallel with step 4.**
+  Different repositories, and step 5 needs only step 3's API.
+  Step 5a is independent of all of them — it touches ryll's
+  control socket, not its transport — so it can start as soon
+  as the gate opens.
+- **Step 5b needs 5a merged**, because it moves the rig's pin
+  onto a ryll commit that must exist.
+- **Step 6 needs steps 4, 5 and 5b**, and both ryll pull
+  requests merged. Without 5b the rig has no client that both
+  speaks QUIC and reports the drawn rectangle, and so measures
+  nothing (survey finding 9).
 - **Step 7 needs step 6.**
 
 ### Brief notes
@@ -631,6 +669,41 @@ survey findings 1, 2 and 4.
   read them.
 - No `.vv` parsing changes. The endpoint comes from the flag.
 
+**Step 5a.** Read survey finding 9 and
+`tools/shaped-link/ryll-surface-drawn-rect.patch`, which is the
+specification: it is what the rig has been carrying and what
+`keydraw-latency.py` parses.
+
+- Add the `rect` field (`[left, top, right, bottom]`) to the
+  `surface_drawn` control-socket event in
+  `shakenfist-spice-renderer/src/control/server.rs`. The patch
+  targets around line 480 of that file as it stood at 0d140b3;
+  the code has moved, so find the event's emission site rather
+  than trusting the line number.
+- It is an additive field, so nothing that reads the event today
+  breaks. Follow whatever the control socket's other events do
+  for geometry — do not invent a different encoding from the
+  patch's, because `keydraw-latency.py` parses the patch's.
+- Document it wherever ryll documents that protocol, and add a
+  test that the event carries the rectangle of the region that
+  was drawn, not the surface's bounds.
+- Reference ryll#673 for the rect half only. The issue carries
+  other deferred items; do not sweep them in.
+- Open the ryll pull request with ryll's own push audit.
+
+**Step 5b.** One mechanical change, after 5a has merged.
+
+- Delete `tools/shaped-link/ryll-surface-drawn-rect.patch`.
+- In `tools/shaped-link/build-ryll.sh`, remove the patch
+  application and rewrite the `RYLL_REF` comment: the pin exists
+  so every run measures the same client, and no longer because
+  the patch fails to apply. Set `RYLL_REF` to the ryll `develop`
+  commit that carries 5a, by SHA.
+- Check nothing else in `tools/shaped-link/` references the
+  patch: `grep -rn surface-drawn-rect tools/`.
+- Confirm the rig still builds a ryll: run `build-ryll.sh` into
+  a scratch directory and check the binary appears.
+
 **Step 6.** Read decision 10 and survey finding 7.
 
 - Build the proxy with `FEATURES=quic` and ryll from step 5's
@@ -796,10 +869,39 @@ pages.
       and no longer implies the rig can inject loss without
       change. (Done in the planning commit; re-check it still
       reads correctly after step 7's amendments.)
+- [ ] `tools/shaped-link/ryll-surface-drawn-rect.patch` does not
+      exist, `grep -rn surface-drawn-rect tools/` finds nothing,
+      and `build-ryll.sh`'s `RYLL_REF` names a ryll `develop`
+      commit that `git log` resolves in ryll.
 - [ ] If go, `PLAN-spice-performance-phase-08-quic.md` exists
       with a step table; if no-go, phase 8's row reads
       `Abandoned` with the reason in the section.
 - [ ] `pre-commit run --all-files` passes.
+
+## Execution notes
+
+- 2026-11-12 AEDT, back brief. Michael kept decision 1 (the
+  phase stays, reframed around the operational benefits with
+  latency as a floor) rather than abandoning phases 7 and 8 for
+  the four upstream items. He asked for the BBR sensitivity arm
+  and said he would load `tcp_bbr` himself, so step 2 runs both
+  the cubic-against-cubic headline and a labelled BBR arm. He
+  chose to fix survey finding 9 by adding steps 5a and 5b now
+  rather than deferring the decision to the gate. He gave this
+  session permission to push and open the pull request when the
+  gate is reached, with steps 3 to 7 still unstarted.
+- Phase 1 recorded that this host "has no `tcp_bbr` module".
+  That is wrong and is corrected in the master plan: the module
+  is present at
+  `/lib/modules/6.12.115+deb13.1-amd64/kernel/net/ipv4/tcp_bbr.ko.xz`
+  but not loaded, and `tcp_available_congestion_control` offers
+  only reno and cubic until it is. The half of phase 1's note
+  that holds is that an unprivileged namespace cannot load it;
+  root on the host can.
+- Survey finding 9 was found after the plan was first written,
+  while checking step 6's premises during the back brief. Steps
+  5a and 5b, their brief notes and their definition-of-done
+  item were added in the same commit as these notes.
 
 ## Bugs fixed during this work
 
