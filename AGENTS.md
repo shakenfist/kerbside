@@ -226,7 +226,10 @@ https://www.spice-space.org/spice-protocol.html.
 
 - Follow PEP 8 style guidelines
 - Use single quotes for strings (except docstrings)
-- Wrap lines at 80 characters
+- Wrap lines at 120 characters, which is what the lint gate
+  enforces (`flake8 --max-line-length=120`, in
+  `tools/flake8wrap.sh`). Much of the tree sits nearer 80 by
+  habit; neither the gate nor this list asks you to reflow it.
 - Use `LOG.with_fields({...}).info()` for structured logging
 - Add audit events for security-sensitive operations
 - Use mypy type hints
