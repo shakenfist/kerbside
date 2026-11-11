@@ -52,6 +52,12 @@ class SfTabs extends LitElement {
             display: flex;
             gap: 4px;
             border-bottom: 1px solid var(--sf-border, #2a2d3a);
+            /* More tabs than fit the viewport scroll within the
+               strip rather than pushing the whole page sideways.
+               The selected tab is scrolled into view on selection
+               (see updated()), so a strip that starts scrolled
+               still opens on the current tab. */
+            overflow-x: auto;
         }
         button {
             appearance: none;
@@ -65,6 +71,11 @@ class SfTabs extends LitElement {
             display: flex;
             align-items: center;
             gap: 7px;
+            /* Hold each tab at its natural width so the strip
+               scrolls as one piece; without this the flex items
+               shrink and their labels wrap. */
+            flex-shrink: 0;
+            white-space: nowrap;
         }
         button:hover {
             color: var(--sf-text, #e1e4ed);
@@ -124,6 +135,28 @@ class SfTabs extends LitElement {
                     </button>`,
                 )}
             </nav>`;
+    }
+
+    updated(changed) {
+        // Keep the selected tab visible when the strip scrolls: on
+        // first paint and whenever the selection moves, bring the
+        // current tab within the scroll viewport. inline/block
+        // 'nearest' leaves a tab already in view untouched, so an
+        // ordinary render does not jump. Arrow-key selection also
+        // focuses its button, which scrolls it in on its own; this
+        // covers the first-load and page-driven cases, where there
+        // is no focus change to lean on.
+        if (changed.has('selected')) {
+            const button = this.renderRoot.querySelector(
+                'button[aria-selected="true"]',
+            );
+            if (button) {
+                button.scrollIntoView({
+                    block: 'nearest',
+                    inline: 'nearest',
+                });
+            }
+        }
     }
 
     _badge(badge) {
