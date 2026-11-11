@@ -814,6 +814,13 @@ pages.
 
 ## Definition of done
 
+Step 2's gate came back a no-go, so steps 3 to 6 never ran and
+the items below that describe their output cannot be met. They
+are not failures; they are void, and they are kept rather than
+deleted so a reader can see what the go path would have had to
+show. Which items were checked, and which are void, is recorded
+with the gate's result in *Execution notes*.
+
 - [ ] `PROFILES="80:10:1"` produces a netem qdisc line
       containing `loss 1%`, shown by the rig's own `shaped:` log
       line.
@@ -924,12 +931,87 @@ pages.
   re-segmented a client's writes would measure a transport
   nobody ships.
 
+- 2026-11-12, step 2 and the gate. The transport bench came
+  back a **no-go**. At 80 ms / 10 Mbit with 1% loss the
+  interactive p95 is 144.3 ms over one QUIC connection with
+  five streams against 82.8 ms over five TCP connections, with
+  run-to-run spreads of 0.9 ms and 0.1 ms, so decision 2's
+  threshold is crossed by two orders of magnitude and the phase
+  stops at step 2. The management session did not take the
+  measuring agent's word for it: the headline percentiles were
+  recomputed from the raw per-sample arrays with an independent
+  percentile implementation and reproduced to 0.1 ms; the
+  queue's bytes per slot were re-derived from the backlog
+  samples, giving exactly 1442 in every QUIC cell with a
+  *maximum* also of 1442, so no super-packet was ever queued,
+  against about 9700 in the deliberately-wrong control; the
+  congestion controller in force was read from each run's own
+  `ss -tim` dumps on both sides rather than taken from the
+  sysctl write; and `make lint`, `make test`, `shellcheck` and
+  `pre-commit run --all-files` were re-run rather than trusted.
+  The qdisc line and queue-limit formula in
+  `tools/quic-bench/run-bench.sh` were diffed against
+  `tools/shaped-link/run-matrix.sh`'s and are byte-identical,
+  which is what decision 6 asked for.
+- The result indicts the design, not the protocol. The TCP arm
+  is five connections and the QUIC arm is one, because that is
+  the arrangement this phase proposed, so what the bench prices
+  is collapsing a session's channels onto one congestion window
+  — 60 to 75 ms of interactive p95 under loss. The one case
+  where a single window might win, N sessions sharing a
+  bottleneck, is not measured, and both measurement pages say
+  so.
+- 2026-11-12, steps 3 to 6 were never run, per decision 2. No
+  ryll work, no proxy QUIC listener, no `quic` feature, and so
+  no answer to the path change or the fallback cost. Steps 5a
+  and 5b, added at the back brief to unblock step 6, are void
+  with it: `tools/shaped-link/ryll-surface-drawn-rect.patch`
+  and `build-ryll.sh`'s `RYLL_REF` pin are untouched and the
+  rig still carries the patch. That blocker is real and still
+  open for whatever next needs the rig's draw counts.
+- 2026-11-12, step 7 ran over step 2's numbers alone, as
+  decision 2 provides. Three things changed in review. The
+  write-up's claim that the kernel's BBR is "much better than
+  its Cubic on these links" was too broad and is now
+  profile-qualified in both measurement pages: on the slow
+  profile BBR more than doubles throughput in the lossy cells
+  but its interactive p95 there sits above Cubic's, 217 ms
+  against 164 ms at 1% loss, because Cubic has stopped trying
+  to fill the link and queues nothing in front of the
+  interactive channel. The agent's narrowing of phase 9 to
+  "Push audit of phase 7 (kerbside)" in the master plan's
+  Execution table, and its removal of the sentence sending
+  ryll's share of the work to ryll's own audit, were both kept:
+  nothing landed in ryll. The phase plan's Definition of done
+  was left as written, with a note at its head recording that
+  the go-path items are void rather than failed.
+
 ## Bugs fixed during this work
 
 None yet.
 
 ## Future work
 
+- **The kernel's BBR, on the proxy host.** Step 2's BBR
+  sensitivity arm produced the most useful number of the phase,
+  and it has nothing to do with QUIC. On these shaped links the
+  kernel's BBR beats its Cubic badly: 9.27 Mbit against 1.64 at
+  1% loss on the 80 ms / 10 Mbit profile, and an interactive p95
+  of 104 ms against 171 ms at no loss, because it keeps the queue
+  short instead of filling it. That is a
+  `net.ipv4.tcp_congestion_control` change on the proxy host and
+  it applies to today's per-channel TCP client leg. This phase
+  will not act on it: the measurement is transport-only, nothing
+  was measured end to end with BBR, and the latency trade is not
+  uniform — on 150 ms / 2 Mbit BBR more than doubles throughput
+  in the lossy cells but its p95 there sits above Cubic's. Two
+  caveats any follow-up has to carry: `tcp_bbr` was loaded by
+  hand on
+  this host and the load is not persisted, so a recommendation
+  has to say how the module gets loaded as well as which sysctl
+  to set; and this is a kernel-TCP finding only, because quinn's
+  own BBR was much worse than quinn's Cubic. Worth its own plan,
+  and `tools/quic-bench/` is the bench to re-run it with.
 - Kerbside's `.vv` template does not emit `ticket-valid-until`,
   although `docs/spice/console-vv-extensions.md` defines it and
   recommends it for Kerbside specifically. `kerbside/api.py:463`

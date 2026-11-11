@@ -23,7 +23,7 @@ but quiet. The tool is `tools/quic-bench/`. Measured on 2026-11-12.
 | Throughput | Equal within a few percent in every cell, both arms loss-limited the same way. |
 | Why QUIC loses under loss | One connection is one congestion window. The saturating stream keeps it full, and the interactive stream's bytes wait for window to open rather than for a turn to be scheduled. |
 | Does a stream send priority fix it? | No. Giving the interactive stream priority over the saturating one changed its p95 by 0.2 ms at 1% loss. Priority orders what is sent when the window allows; it does not create window. |
-| Congestion control | Headline is Cubic against Cubic. The kernel's BBR is much better than its Cubic on these links; quinn's BBR is much worse than quinn's Cubic. Both are reported separately. |
+| Congestion control | Headline is Cubic against Cubic. The kernel's BBR carries six to ten times what its Cubic does under loss, for no latency cost on the fast profile and a worse one on the slow profile; quinn's BBR is much worse than quinn's Cubic. Both are reported separately. |
 | Was segmentation offload really off? | Yes, verified per run from the queue's bytes per slot: 1436-1442 observed against 1442 expected, and 9669 in a deliberately-wrong control run. |
 | Verdict | **No-go.** See below. |
 
@@ -376,15 +376,27 @@ sensitivity arm rather than folding it in.
 
 Two findings, pointing in opposite directions.
 
-**The kernel's BBR is much better than its Cubic on these links, and it
-is the more interesting result on this page.** At 1% loss on the fast
-profile it sustains 9.27 Mbit where Cubic manages 1.64, and at 2% loss
-9.19 against 0.94 — six to ten times the throughput — while its
-interactive p95 rises only from about 83 ms to about 104 ms. At no loss
-it cuts the interactive p95 from 171 ms to 104 ms, because it keeps the
-queue short instead of filling it. None of that needs QUIC. It needs
-`net.ipv4.tcp_congestion_control` set to `bbr` on the proxy host, and
-it is worth investigating on its own.
+**The kernel's BBR carries far more than its Cubic on both profiles,
+and on the fast one it does so without costing latency — which is the
+more interesting result on this page.** At 1% loss on the fast profile
+it sustains 9.27 Mbit where Cubic manages 1.64, and at 2% loss 9.19
+against 0.94 — six to ten times the throughput — while its interactive
+p95 rises only from about 83 ms to about 104 ms. At no loss it cuts the
+interactive p95 from 171 ms to 104 ms, because it keeps the queue short
+instead of filling it.
+
+The slow profile shows the same throughput effect and a worse latency
+trade. BBR carries 1.84 Mbit against Cubic's 0.87 at 1% loss and 1.85
+against 0.54 at 2%, and at no loss it cuts the interactive p95 from
+349 ms to 227 ms — but in the lossy cells its p95 sits *above* Cubic's,
+217 ms against 164 ms at 1% loss. Cubic's interactive channel is quick
+there precisely because Cubic has stopped trying to fill the link, so
+nothing is queued in front of it. Which of those an operator wants is
+a real question and this bench does not settle it.
+
+None of that needs QUIC. It needs `net.ipv4.tcp_congestion_control`
+set to `bbr` on the proxy host, and it is worth investigating on its
+own.
 
 **quinn's BBR is much worse than quinn's Cubic**, and should not be
 taken as what QUIC-with-BBR would do. It reaches the same throughput
