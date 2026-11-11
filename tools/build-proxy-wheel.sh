@@ -65,9 +65,12 @@ mkdir -p "${wheel_out}"
 cd "${crate_dir}"
 
 # The published wheel must carry no cargo features. In particular `transcode`
-# builds openh264 from source, and the phase 3 verdict left the transcoder an
-# experiment that no wheel enables. None of the ways to turn a feature on shows
-# up in the wheel's name, so nothing downstream would notice.
+# builds openh264 from vendored source, and the transcoding spike came back
+# no-go: relaying with qemu's `streaming-video=all` matches or beats it almost
+# everywhere, for a fraction of the CPU and no code. The transcoder therefore
+# stays behind its build feature as an experiment that no wheel enables; see
+# docs/performance/transcoding-spike.md. None of the ways to turn a feature on
+# shows up in the wheel's name, so nothing downstream would notice.
 #
 # Two checks. The crate's own `default` list must be empty. And [tool.maturin]
 # must carry nothing but the keys named below: `features`, `all-features` and

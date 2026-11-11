@@ -241,6 +241,11 @@
         /* Matching the page-level placement the base layer gives
            :where(sf-tabs), so the two sit the same in flow. */
         margin-bottom: 1.5rem;
+        /* Scroll a too-wide strip within itself rather than pushing
+           the page sideways, matching <sf-tabs>'s nav. The link
+           strip has no script to scroll the current item in, but
+           site navigation is short and reads left to right. */
+        overflow-x: auto;
     }
 
     /* The underline is switched off explicitly because the base
@@ -252,6 +257,10 @@
         padding: 8px 14px;
         color: var(--sf-text-dim);
         text-decoration: none;
+        /* Hold each item's width so the strip scrolls in one piece,
+           matching <sf-tabs>'s buttons. */
+        flex-shrink: 0;
+        white-space: nowrap;
     }
 
     .sf-nav a:hover {
