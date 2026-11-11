@@ -60,7 +60,7 @@ class PlanRangeTestCase(testtools.TestCase):
         # exists precisely to keep this file out of the audited diff, so
         # it has to be here for the scoping assertions to mean anything.
         #
-        # It also edits one.py, which phase 1 landed. Path scoping cannot
+        # It also edits one.py, which `phase1` landed. Path scoping cannot
         # exclude that -- it is a change to the very path being scoped to
         # -- so it is the contamination a single contiguous range admits
         # and per-merge ranges do not.
@@ -164,11 +164,12 @@ class PlanRangeTestCase(testtools.TestCase):
     def test_paths_intersect_rather_than_union(self):
         """git unions positive pathspecs; the two-stage form must not.
 
-        This is the property the phase plan makes a done-criterion, and
-        the reason the audit scripts filter a scoped file list by name
-        instead of appending '*.py' to the pathspec list. The union
-        hazard is per range, so it is checked over the span, where the
-        foreign file is reachable at all.
+        This is why the audit scripts filter a scoped file list by name
+        instead of appending '*.py' to the pathspec list: git unions
+        positive pathspecs, so the appended form widens the audit to
+        every .py file in the tree rather than narrowing it to the
+        scoped ones. The union hazard is per range, so it is checked
+        over the span, where the foreign file is reachable at all.
         """
         exports = self.exports(self.run_script(self.first, self.last))
         span = '%s^1..%s' % (self.first, self.last)
@@ -544,13 +545,14 @@ _WAVE1 = (
 class Wave1StyleCheckTestCase(testtools.TestCase):
     """Pin wave 1's two fatal style checks against going dead again.
 
-    These checks inspected no line at all between 2026-07-06 and this
-    phase, because `grep -v '^\\+\\+\\+'` is a BRE in which `\\+` is the
-    repetition operator, so the pattern stripped every added line rather
-    than the two diff headers. Nothing failed, because nothing exercised
-    them: they reported PASS over an empty variable. That is the defect
-    with the largest blast radius this phase found, so it is pinned
-    here rather than left to the next reader to rediscover.
+    These checks inspected no line at all between 2026-07-06 and
+    2026-08-29, because `grep -v '^\\+\\+\\+'` is a BRE in which `\\+` is
+    the repetition operator, so the pattern stripped every added line
+    rather than the two diff headers. Nothing failed, because nothing
+    exercised them: they reported PASS over an empty variable. A check
+    that reports success having inspected nothing hides every finding it
+    exists to make, so it is pinned here rather than left to the next
+    reader to rediscover.
 
     AUDIT_SKIP_TOX reaches wave 1b without a tox cycle.
     """
@@ -841,9 +843,10 @@ class Wave1StyleCheckTestCase(testtools.TestCase):
     def test_a_print_in_the_second_of_two_ranges_is_caught(self):
         """Every range in the list is inspected, not just the first."""
         first = self._land_as_merge(
-            'phase1', 'kerbside/one.py', 'x = 1\n', 'phase 1')
+            'phase1', 'kerbside/one.py', 'x = 1\n', 'add one.py')
         last = self._land_as_merge(
-            'phase2', 'kerbside/two.py', 'print("boom")\n', 'phase 2')
+            'phase2', 'kerbside/two.py', 'print("boom")\n',
+            'add two.py with a print')
 
         result = self._run_wave1_over(
             '%s^1..%s %s^1..%s' % (first, first, last, last))
@@ -854,17 +857,18 @@ class Wave1StyleCheckTestCase(testtools.TestCase):
     def test_a_foreign_commits_print_is_not_reported_as_the_plans(self):
         """The defect: a contiguous span audits work the plan never did.
 
-        A commit that is not part of any listed merge lands between two
-        phases and adds a print to a file phase 1 created. Path scoping
-        cannot exclude it. Over per-merge ranges it is invisible, which
-        is the point; over the span it is reported as the plan's.
+        A commit that is not part of any listed merge lands between the
+        two phase merges and adds a print to a file `phase1` created.
+        Path scoping cannot exclude it. Over per-merge ranges it is
+        invisible, which is the point; over the span it is reported as
+        the plan's.
         """
         first = self._land_as_merge(
-            'phase1', 'kerbside/one.py', 'x = 1\n', 'phase 1')
+            'phase1', 'kerbside/one.py', 'x = 1\n', 'add one.py')
         self._write('kerbside/one.py', 'x = 1\nprint("not ours")\n')
         self._commit('a foreign commit touching a phase path')
         last = self._land_as_merge(
-            'phase2', 'kerbside/two.py', 'z = 3\n', 'phase 2')
+            'phase2', 'kerbside/two.py', 'z = 3\n', 'add two.py')
 
         per_merge = self._run_wave1_over(
             '%s^1..%s %s^1..%s' % (first, first, last, last))
