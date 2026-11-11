@@ -902,6 +902,27 @@ pages.
   while checking step 6's premises during the back brief. Steps
   5a and 5b, their brief notes and their definition-of-done
   item were added in the same commit as these notes.
+- Michael loaded `tcp_bbr` by hand on 2026-11-12;
+  `tcp_available_congestion_control` now reads
+  `reno cubic bbr`, with cubic still the default. The load is
+  not persisted across a reboot, so a later re-run may find the
+  BBR cells unreproducible unless it is loaded again.
+- 2026-11-12, step 1. The UDP GSO question step 1's brief left
+  open is answered, and the answer is the unwelcome one: a UDP
+  sender that sets `UDP_SEGMENT` hands netem one super-packet
+  per write, whatever `gso_max_size`/`gso_max_segs` say on the
+  device. At `limit 110` the queue held 1 586 200 bytes with a
+  ten-segment sender against 158 620 with a plain one, and the
+  management session reproduced it independently at `limit 1`,
+  where one ten-segment write occupied a single slot and all ten
+  datagrams arrived. `tc -s qdisc show`'s packet counter cannot
+  detect this, because it counts segments either way. **Step 2
+  must therefore disable quinn's segmentation offload and say so
+  in its results**, which resolves the conditional its brief
+  carries. The rig documents the constraint at its veth setup
+  rather than working around it, because a rig that silently
+  re-segmented a client's writes would measure a transport
+  nobody ships.
 
 ## Bugs fixed during this work
 

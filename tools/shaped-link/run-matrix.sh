@@ -36,8 +36,22 @@
 #                  unless DISPLAYS names a guest per display)
 #   MOCK_PYTHON    python with grpcio and kerbside importable
 #                  (default: .tox/py3/bin/python)
-#   PROFILES       "rtt_ms:rate_mbit ..." (default "20:50 80:10"; a
-#                  rate of 0 leaves the veth unshaped, e.g. "0:0")
+#   PROFILES       "rtt_ms:rate_mbit[:loss_pct] ..." (default
+#                  "20:50 80:10"; a rate of 0 leaves the veth unshaped,
+#                  e.g. "0:0"). loss_pct, optional, is a decimal
+#                  percentage of packets netem drops, uncorrelated and
+#                  per packet, e.g. "80:10:1" or "150:2:0.5" -- but see
+#                  the GSO note at the veth setup for what "per packet"
+#                  means to a UDP sender. Each veth end drops
+#                  independently, so it is a one-way rate applied in
+#                  both directions, not a round-trip one.
+#                  Omitted, the qdisc is the same one the rig built
+#                  before it knew about loss and the case directory
+#                  keeps its "<rtt>ms-<rate>mbit" name; given, the
+#                  directory gains a "-<loss>pct" suffix, so results at
+#                  different loss levels neither collide nor merge. A
+#                  loss term with a rate of 0 shapes loss alone, with
+#                  no delay and no rate limit
 #   ACTIVITIES     "name:fps:noise_bits ..." (fps 0 = idle;
 #                  default "idle:0:0 busy:30:3")
 #   CONFIGS        "name:notsent_lowat:backend_rcvbuf[:flags[:displays]] ..."
@@ -261,6 +275,15 @@ in_client ip link set sl1 up
 # always builds GSO packets and the device segments them after the
 # qdisc. Capping the device's GSO size is what makes TCP send one MSS
 # per skb.
+#
+# It only works for TCP. A UDP sender that sets UDP_SEGMENT still hands
+# netem one super-packet per write, whatever the device's GSO limits
+# say: measured here, 110 queue slots held 1 586 200 bytes with a
+# ten-segment UDP sender and 158 620 with a plain one, and a loss term
+# then drops whole writes rather than single packets. A UDP client
+# measured on this link therefore has to turn its own segmentation
+# offload off, and `tc -s qdisc show` will not reveal it if it does not,
+# because that packet counter counts segments either way.
 for dev in sl0 sl1; do
     ns=()
     [ "${dev}" = sl1 ] && ns=(nsenter --target "${CLIENT_NS_PID}" --net --)
@@ -307,22 +330,34 @@ done
 cat "${WORKDIR}/host.txt" >&2
 
 # One-way netem on each veth end: half the RTT as delay, the full rate,
-# and a queue of BUFFER_BDP bandwidth-delay products on top of the
-# packets that are sitting in the delay line.
+# a queue of BUFFER_BDP bandwidth-delay products on top of the packets
+# that are sitting in the delay line, and the profile's packet loss when
+# it named one. Both ends drop at the same percentage and independently
+# of each other, which is netem's default uncorrelated per-packet model.
+# Without a loss term the qdisc is built exactly as it always was, so
+# every figure already recorded against these profiles stays comparable.
 shape() {
-    local rtt_ms="$1" rate_mbit="$2"
+    local rtt_ms="$1" rate_mbit="$2" loss_pct="${3:-}"
     local limit
+    local loss=()
+    [ -n "${loss_pct}" ] && loss=(loss "${loss_pct}%")
     if [ "${rate_mbit}" = '0' ]; then
+        if [ "${#loss[@]}" -gt 0 ]; then
+            "${TC}" qdisc replace dev sl0 root netem "${loss[@]}"
+            in_client "${TC}" qdisc replace dev sl1 root netem "${loss[@]}"
+            log "shaped: loss ${loss_pct}% per direction, delay and rate unshaped"
+            return
+        fi
         "${TC}" qdisc del dev sl0 root 2>/dev/null || true
         in_client "${TC}" qdisc del dev sl1 root 2>/dev/null || true
         log 'unshaped (veth only)'
         return
     fi
     limit=$(( (rate_mbit * 1000 * (rtt_ms / 2 + BUFFER_BDP * rtt_ms)) / (8 * 1500) + 10 ))
-    local qdisc=(netem delay "$(( rtt_ms / 2 ))ms" rate "${rate_mbit}mbit" limit "${limit}")
+    local qdisc=(netem delay "$(( rtt_ms / 2 ))ms" rate "${rate_mbit}mbit" limit "${limit}" "${loss[@]}")
     "${TC}" qdisc replace dev sl0 root "${qdisc[@]}"
     in_client "${TC}" qdisc replace dev sl1 root "${qdisc[@]}"
-    log "shaped: rtt ${rtt_ms}ms rate ${rate_mbit}mbit limit ${limit} pkts per direction"
+    log "shaped: rtt ${rtt_ms}ms rate ${rate_mbit}mbit limit ${limit} pkts per direction${loss_pct:+ loss ${loss_pct}%}"
 }
 
 # ── Long-lived pieces: TLS material and the mock control plane ───────────────
@@ -616,9 +651,9 @@ run_case() {
 
 for rep in $(seq "${REPEATS}"); do
     for profile in ${PROFILES}; do
-        rtt="${profile%%:*}"
-        rate="${profile##*:}"
-        shape "${rtt}" "${rate}"
+        IFS=: read -r rtt rate loss <<< "${profile}"
+        shape "${rtt}" "${rate}" "${loss}"
+        profile_dir="${rtt}ms-${rate}mbit${loss:+-${loss}pct}"
         for activity in ${ACTIVITIES}; do
             IFS=: read -r aname fps noise <<< "${activity}"
             for display in ${DISPLAYS}; do
@@ -633,7 +668,7 @@ for rep in $(seq "${REPEATS}"); do
                     fi
                     case_name="${cname}"
                     [ -n "${DISPLAYS_SET}" ] && case_name="${dname}-${cname}"
-                    run_case "${WORKDIR}/${rtt}ms-${rate}mbit/${aname}/${case_name}-r${rep}" \
+                    run_case "${WORKDIR}/${profile_dir}/${aname}/${case_name}-r${rep}" \
                         "${fps}" "${noise}" "${lowat}" "${rcvbuf}" \
                         "${dqemu}" "${dstream}" "${dguest}" "${cflags}" || true
                 done
