@@ -234,6 +234,12 @@ Guides for working on Kerbside itself:
   shared congestion window costs the interactive round trip, and why
   the kernel's BBR is the more interesting result
 
+- [A QUIC client leg: the experiment's verdict](performance/quic-experiment.md) -
+  Why the client leg stays on a TCP connection per channel, what one
+  connection per session would have bought and what was never priced,
+  the recommendation on exposing UDP, and the kernel congestion
+  control finding that came out of it
+
 ### Architecture Documentation
 
 Internal design of the Kerbside proxy:
