@@ -45,6 +45,11 @@
 #                  means to a UDP sender. Each veth end drops
 #                  independently, so it is a one-way rate applied in
 #                  both directions, not a round-trip one.
+#                  An explicit ":0" shapes exactly as omitting the
+#                  field does -- no loss term reaches the qdisc, so the
+#                  line is the historical one -- but it still names the
+#                  case directory "-0pct", so an explicit control and
+#                  an old no-loss run stay in separate directories.
 #                  Omitted, the qdisc is the same one the rig built
 #                  before it knew about loss and the case directory
 #                  keeps its "<rtt>ms-<rate>mbit" name; given, the
@@ -340,7 +345,11 @@ shape() {
     local rtt_ms="$1" rate_mbit="$2" loss_pct="${3:-}"
     local limit
     local loss=()
-    [ -n "${loss_pct}" ] && loss=(loss "${loss_pct}%")
+    # An explicit ":0" means the same as omitting the field: no loss term at
+    # all, so the qdisc line is byte-for-byte the one this rig has always
+    # built. A literal "loss 0%" shapes identically but is not that line, and
+    # the whole point of the 0% case is that it is the historical control.
+    [ -n "${loss_pct}" ] && [ "${loss_pct}" != '0' ] && loss=(loss "${loss_pct}%")
     if [ "${rate_mbit}" = '0' ]; then
         if [ "${#loss[@]}" -gt 0 ]; then
             "${TC}" qdisc replace dev sl0 root netem "${loss[@]}"
@@ -357,7 +366,7 @@ shape() {
     local qdisc=(netem delay "$(( rtt_ms / 2 ))ms" rate "${rate_mbit}mbit" limit "${limit}" "${loss[@]}")
     "${TC}" qdisc replace dev sl0 root "${qdisc[@]}"
     in_client "${TC}" qdisc replace dev sl1 root "${qdisc[@]}"
-    log "shaped: rtt ${rtt_ms}ms rate ${rate_mbit}mbit limit ${limit} pkts per direction${loss_pct:+ loss ${loss_pct}%}"
+    log "shaped: rtt ${rtt_ms}ms rate ${rate_mbit}mbit limit ${limit} pkts per direction${loss[0]:+ loss ${loss_pct}%}"
 }
 
 # ── Long-lived pieces: TLS material and the mock control plane ───────────────

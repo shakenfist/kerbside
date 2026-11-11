@@ -26,9 +26,16 @@ pub const ROLE_IDLE: u8 = 2;
 /// Role byte plus a little-endian u32 payload size.
 const HEADER_LEN: usize = 5;
 
-/// How long to keep waiting for an interactive response once the measurement
-/// window has closed. A response still outstanding after this is recorded as a
-/// timeout rather than silently dropping the sample.
+/// How long to keep waiting for any one interactive response. A response still
+/// outstanding after this is recorded as a censored sample at the bound and
+/// counted as a timeout, rather than silently dropping it.
+///
+/// The bound is per request, not per run. Anchored to the end of the
+/// measurement window instead, a request stalled early in a run would wait out
+/// the whole remainder before being counted, which costs the repeat most of
+/// its samples and -- because the stalled exchange itself is never
+/// recorded -- makes a catastrophic stall look like a quiet repeat rather than
+/// a tail.
 const RESPONSE_GRACE: Duration = Duration::from_secs(3);
 
 /// The role the channel at a given index plays.
@@ -231,14 +238,23 @@ where
         stream.write_all(&request).await?;
         stream.flush().await?;
 
-        let echo = tokio::time::timeout_at(
-            (deadline + RESPONSE_GRACE).into(),
-            stream.read_exact(&mut response),
-        )
-        .await;
+        // Whichever comes first: this request's own grace period, or the
+        // window's end plus one grace period for a request issued at the death.
+        let give_up = (sent_at + RESPONSE_GRACE).min(deadline + RESPONSE_GRACE);
+        let echo = tokio::time::timeout_at(give_up.into(), stream.read_exact(&mut response)).await;
         match echo {
             Err(_) => {
+                // Censored at the bound: the true round trip is at least this
+                // long and unbounded above. Recording it keeps the stall in
+                // the distribution, and `timeouts` says how many samples are
+                // floors rather than measurements. The byte stream is now
+                // desynchronised -- a late echo would fail the sequence check
+                // below -- so this channel stops here.
                 result.timeouts += 1;
+                result.samples.push(Sample {
+                    offset_ms: sent_at.saturating_duration_since(start).as_secs_f64() * 1000.0,
+                    rtt_us: RESPONSE_GRACE.as_micros() as u64,
+                });
                 break;
             }
             Ok(Err(e)) if e.kind() == io::ErrorKind::UnexpectedEof => break,

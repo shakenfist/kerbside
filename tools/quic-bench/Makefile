@@ -31,7 +31,7 @@ DOCKER_RUN = docker run --rm \
 	-e HOME=/tmp \
 	$(IMAGE)
 
-.PHONY: all image cache build release test lint clean help
+.PHONY: all image cache build release test lint mutants clean help
 
 all: release
 
@@ -42,6 +42,7 @@ help:
 	@echo "  make release - Build the bench (release) in the container"
 	@echo "  make test    - Run the test suite in the container"
 	@echo "  make lint    - Run rustfmt --check and clippy -D warnings"
+	@echo "  make mutants - Break each tested property and require a failure"
 	@echo "  make clean   - Remove target/ and the cargo cache"
 	@echo "Then run tools/quic-bench/run-bench.sh, which shapes the link."
 
@@ -64,6 +65,12 @@ test: image cache
 
 lint: image cache
 	$(DOCKER_RUN) sh -c "cargo fmt --all --check && cargo clippy --all-targets -- -D warnings"
+
+# `make test` says the tests ran, not that they would have caught anything.
+# This mutates one tested property at a time and requires the matching test to
+# fail. It runs on the host because it edits src/ in place and restores it.
+mutants:
+	./mutation-check.sh
 
 clean:
 	rm -rf target $(CARGO_CACHE)

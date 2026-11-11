@@ -56,6 +56,15 @@ def backlog_bytes_per_slot(path):
     return total_bytes / total_packets, samples
 
 
+def us_to_ms(value):
+    """Microseconds to milliseconds, passing a missing measurement through.
+
+    The bench writes null rather than zero for a percentile it had no samples
+    for, so that a failed cell cannot be read as a fast one.
+    """
+    return None if value is None else value / 1000.0
+
+
 def read_run(casedir, arm):
     """One repeat of one arm, or None if the harness did not get a result."""
     path = os.path.join(casedir, f'{arm}.json')
@@ -66,9 +75,9 @@ def read_run(casedir, arm):
     interactive = data['interactive']
     ratio, ratio_samples = backlog_bytes_per_slot(os.path.join(casedir, f'{arm}-backlog.jsonl'))
     return {
-        'p50_ms': interactive['p50_us'] / 1000.0,
-        'p95_ms': interactive['p95_us'] / 1000.0,
-        'p99_ms': interactive['p99_us'] / 1000.0,
+        'p50_ms': us_to_ms(interactive['p50_us']),
+        'p95_ms': us_to_ms(interactive['p95_us']),
+        'p99_ms': us_to_ms(interactive['p99_us']),
         'samples': interactive['samples_steady'],
         'timeouts': interactive['timeouts'],
         'mbit_per_sec': data['bulk']['mbit_per_sec'],
@@ -125,24 +134,41 @@ def aggregate(runs):
     """Median and spread across repeats for one arm of one cell."""
     if not runs:
         return None
-    p95 = [run['p95_ms'] for run in runs]
+    # A repeat that produced no steady-state samples has no percentile to
+    # take a median of. Those repeats are counted and excluded rather than
+    # contributing a zero, which would drag every figure in the cell down.
+    measured = [run for run in runs if run['p95_ms'] is not None]
+    unmeasured = len(runs) - len(measured)
+    if not measured:
+        return None
+    p95 = [run['p95_ms'] for run in measured]
+    slots = [run['bytes_per_slot'] for run in runs if run['bytes_per_slot'] is not None]
     return {
-        'repeats': len(runs),
-        'p50_ms': statistics.median(run['p50_ms'] for run in runs),
+        'repeats': len(measured),
+        'unmeasured_repeats': unmeasured,
+        'p50_ms': statistics.median(run['p50_ms'] for run in measured),
         'p95_ms': statistics.median(p95),
-        'p99_ms': statistics.median(run['p99_ms'] for run in runs),
+        'p99_ms': statistics.median(run['p99_ms'] for run in measured),
         'p95_min_ms': min(p95),
         'p95_max_ms': max(p95),
         'p95_spread_ms': max(p95) - min(p95),
-        'mbit_per_sec': statistics.median(run['mbit_per_sec'] for run in runs),
-        'mbit_min': min(run['mbit_per_sec'] for run in runs),
-        'mbit_max': max(run['mbit_per_sec'] for run in runs),
-        'connect_ms': statistics.median(run['connect_ms'] for run in runs),
-        'samples': statistics.median(run['samples'] for run in runs),
+        # Throughput, connect time and sample counts come from the measured
+        # repeats too: a repeat that produced no samples produced no usable
+        # figure of any kind, and averaging its zeros in would understate
+        # every column in the row.
+        'mbit_per_sec': statistics.median(run['mbit_per_sec'] for run in measured),
+        'mbit_min': min(run['mbit_per_sec'] for run in measured),
+        'mbit_max': max(run['mbit_per_sec'] for run in measured),
+        'connect_ms': statistics.median(run['connect_ms'] for run in measured),
+        'samples': statistics.median(run['samples'] for run in measured),
+        # Timeouts are counted over every repeat, including the excluded
+        # ones: a repeat that timed out its way to no samples is exactly what
+        # this count is for.
         'timeouts': sum(run['timeouts'] for run in runs),
-        'bytes_per_slot': statistics.median(
-            [run['bytes_per_slot'] for run in runs if run['bytes_per_slot'] is not None] or [0]
-        ),
+        # None, not zero, when no run produced a usable queue sample: fmt()
+        # prints '--' for a missing value and 0.0 would look like a short
+        # datagram, which is the opposite of what this check is for.
+        'bytes_per_slot': statistics.median(slots) if slots else None,
         'gso': next((run['gso'] for run in runs if run['gso']), None),
         'quic_cc': next((run['quic_cc'] for run in runs if run['quic_cc']), None),
     }
@@ -152,15 +178,39 @@ def fmt(value, places=1):
     return '--' if value is None else f'{value:.{places}f}'
 
 
-def report(cells, controls, out=sys.stdout):
+def detect_headline_cc(workdir):
+    """The controller the harness ran first, which is the gate's.
+
+    run-bench.sh appends each cell to cells.txt as it starts it, in matrix
+    order, so the first line names the headline arm. Without that file -- a
+    hand-assembled work directory -- the caller has to say.
+    """
+    path = os.path.join(workdir, 'cells.txt')
+    if not os.path.exists(path):
+        return None
+    with open(path) as handle:
+        for line in handle:
+            match = CELL_RE.match(line.strip())
+            if match:
+                return match.group('cc')
+    return None
+
+
+def report(cells, controls, headline_cc=None, out=sys.stdout):
     summary = {}
+    warnings = []
     ccs = sorted({cell['fields']['cc'] for cell in cells.values()})
+    # The gate is defined against one controller on both sides. Any other arm
+    # is a labelled sensitivity run, so its rows must not be quotable as the
+    # gate's verdict.
+    if headline_cc not in ccs:
+        headline_cc = ccs[0] if ccs else None
 
     for cc in ccs:
         print(f'\n## Congestion controller: {cc}\n', file=out)
         print('| profile | loss | arm | p50 ms | p95 ms | p99 ms | p95 spread ms | p95 range ms | '
-              'Mbit/s | samples/run |', file=out)
-        print('|---|---|---|---|---|---|---|---|---|---|', file=out)
+              'Mbit/s | samples/run | timeouts |', file=out)
+        print('|---|---|---|---|---|---|---|---|---|---|---|', file=out)
         for name, cell in cells.items():
             fields = cell['fields']
             if fields['cc'] != cc:
@@ -170,15 +220,27 @@ def report(cells, controls, out=sys.stdout):
                 agg = aggregate(cell['runs'][arm])
                 summary.setdefault(name, {})[arm] = agg
                 if agg is None:
-                    print(f"| {profile} | {fields['loss']}% | {arm} | missing |||||||", file=out)
+                    print(f"| {profile} | {fields['loss']}% | {arm} | missing ||||||||", file=out)
+                    warnings.append(f'{name} {arm}: no repeat produced a measurement')
                     continue
+                flag = '' if not agg['timeouts'] else f" **{agg['timeouts']}**"
                 print(
                     f"| {profile} | {fields['loss']}% | {arm} | {fmt(agg['p50_ms'])} | "
                     f"{fmt(agg['p95_ms'])} | {fmt(agg['p99_ms'])} | {fmt(agg['p95_spread_ms'])} | "
                     f"{fmt(agg['p95_min_ms'])}-{fmt(agg['p95_max_ms'])} | "
-                    f"{fmt(agg['mbit_per_sec'], 2)} | {int(agg['samples'])} |",
+                    f"{fmt(agg['mbit_per_sec'], 2)} | {int(agg['samples'])} |"
+                    f"{flag or ' 0'} |",
                     file=out,
                 )
+                if agg['timeouts']:
+                    warnings.append(
+                        f"{name} {arm}: {agg['timeouts']} interactive exchange(s) timed out, so "
+                        'that many samples are censored floors rather than measurements')
+                if agg['unmeasured_repeats']:
+                    warnings.append(
+                        f"{name} {arm}: {agg['unmeasured_repeats']} of "
+                        f"{agg['repeats'] + agg['unmeasured_repeats']} repeats produced no "
+                        'steady-state samples and are excluded')
 
     print('\n## Queue accounting (bytes per netem slot, server egress)\n', file=out)
     print('| cell | arm | bytes/slot | segments available | segments used |', file=out)
@@ -210,13 +272,20 @@ def report(cells, controls, out=sys.stdout):
     print('\n## Gate: quic p95 against tcp p95\n', file=out)
     print('The threshold is the bench\'s own run-to-run spread, taken as the wider of the two '
           'arms\' p95 spreads in that cell.\n', file=out)
-    print('| cell | tcp p95 ms | quic p95 ms | delta ms | threshold ms | verdict |', file=out)
-    print('|---|---|---|---|---|---|', file=out)
+    if headline_cc is not None:
+        print(f'The gate is defined against `{headline_cc}` on both sides. Cells on another '
+              'controller are sensitivity runs: their rows are marked as such and are not the '
+              "gate's verdict.\n", file=out)
+    print('| cell | scope | tcp p95 ms | quic p95 ms | delta ms | threshold ms | verdict |',
+          file=out)
+    print('|---|---|---|---|---|---|---|', file=out)
     gate = {}
     for name, arms in summary.items():
         tcp, quic = arms.get('tcp'), arms.get('quic')
         if not tcp or not quic:
             continue
+        cc = cells[name]['fields']['cc']
+        scope = 'gate' if cc == headline_cc else 'sensitivity'
         delta = quic['p95_ms'] - tcp['p95_ms']
         threshold = max(tcp['p95_spread_ms'], quic['p95_spread_ms'])
         if delta > threshold:
@@ -225,14 +294,23 @@ def report(cells, controls, out=sys.stdout):
             verdict = 'quic better beyond spread'
         else:
             verdict = 'tie within spread'
-        gate[name] = {'delta_ms': delta, 'threshold_ms': threshold, 'verdict': verdict}
+        gate[name] = {'delta_ms': delta, 'threshold_ms': threshold, 'verdict': verdict,
+                      'scope': scope}
         print(
-            f'| {name} | {fmt(tcp["p95_ms"])} | {fmt(quic["p95_ms"])} | {delta:+.1f} | '
+            f'| {name} | {scope} | {fmt(tcp["p95_ms"])} | {fmt(quic["p95_ms"])} | {delta:+.1f} | '
             f'{fmt(threshold)} | {verdict} |',
             file=out,
         )
 
-    return {'cells': summary, 'gate': gate,
+    if warnings:
+        print('\n## Warnings\n', file=out)
+        for line in warnings:
+            print(f'- {line}', file=out)
+    else:
+        print('\n## Warnings\n\nNone: every cell measured every repeat, and no interactive '
+              'exchange timed out.', file=out)
+
+    return {'cells': summary, 'gate': gate, 'headline_cc': headline_cc, 'warnings': warnings,
             'gso_control': {name: run for name, run in controls}}
 
 
@@ -240,13 +318,17 @@ def main():
     parser = argparse.ArgumentParser(description='Summarise a quic-bench work directory.')
     parser.add_argument('workdir')
     parser.add_argument('--json', dest='json_out', help='also write the summary as JSON')
+    parser.add_argument('--headline-cc', default=None,
+                        help='the congestion controller the gate is defined against; defaults to '
+                             'the first cell the harness ran, else the first alphabetically')
     args = parser.parse_args()
 
     cells = collect(args.workdir)
     if not cells:
         print(f'No cells found under {args.workdir}', file=sys.stderr)
         return 1
-    summary = report(cells, collect_gso_control(args.workdir))
+    summary = report(cells, collect_gso_control(args.workdir),
+                     headline_cc=args.headline_cc or detect_headline_cc(args.workdir))
     if args.json_out:
         with open(args.json_out, 'w') as handle:
             json.dump(summary, handle, indent=1, sort_keys=True)

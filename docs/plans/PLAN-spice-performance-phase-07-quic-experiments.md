@@ -936,15 +936,26 @@ with the gate's result in *Execution notes*.
   interactive p95 is 144.3 ms over one QUIC connection with
   five streams against 82.8 ms over five TCP connections, with
   run-to-run spreads of 0.9 ms and 0.1 ms, so decision 2's
-  threshold is crossed by two orders of magnitude and the phase
-  stops at step 2. The management session did not take the
+  threshold is crossed by roughly seventy times the wider
+  spread and the phase stops at step 2. The management session did not take the
   measuring agent's word for it: the headline percentiles were
   recomputed from the raw per-sample arrays with an independent
-  percentile implementation and reproduced to 0.1 ms; the
+  nearest-rank implementation -- taking each run's steady-state
+  samples from its `interactive.raw` array, discarding those
+  inside the warmup by their offset, and then taking the median
+  across the five repeats, which is the bench's own definition
+  -- and reproduced to 0.1 ms on every headline cell; the
   queue's bytes per slot were re-derived from the backlog
-  samples, giving exactly 1442 in every QUIC cell with a
-  *maximum* also of 1442, so no super-packet was ever queued,
-  against about 9700 in the deliberately-wrong control; the
+  samples per sample rather than pooled, giving a *median and
+  maximum* of exactly 1442 in every QUIC cell, so no queue
+  sample ever held more than one pinned datagram, against about
+  9700 mean and 11522 maximum in the deliberately-wrong
+  control. The bench page's own 1436.1-1441.9 figure is the
+  pooled mean over occupied slots, which sits under 1442
+  because the 64-byte echoes and bare acknowledgements share
+  the same egress queue; both statistics are now named on that
+  page, because one of them read as a short datagram would
+  undercut the check it exists to make. The
   congestion controller in force was read from each run's own
   `ss -tim` dumps on both sides rather than taken from the
   sysctl write; and `make lint`, `make test`, `shellcheck` and

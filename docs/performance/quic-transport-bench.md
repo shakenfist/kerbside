@@ -148,6 +148,10 @@ WORKDIR=/path/to/priority PROFILES="80:10" LOSSES="0 1 2" CCS=cubic \
 
 # The tables below.
 tools/quic-bench/summarise.py /path/to/results
+
+# The bench's own tests, and a check that they would notice a regression:
+# each run breaks one tested property and requires the matching test to fail.
+cd tools/quic-bench && make test && make mutants
 ```
 
 Each cell's directory keeps the per-repeat results, both ends' server
@@ -155,6 +159,17 @@ and client logs, the `ss -tim` dumps, the qdisc as it was applied, and
 the queue samples taken while the run was in flight.
 
 ### How the numbers are aggregated
+
+**No interactive exchange timed out, in any cell.** Across all 151
+measured runs the count is zero, which `summarise.py` reports as a
+`timeouts` column beside each cell and again in a warning section that
+lists every cell with a timeout or a repeat it could not measure. For
+these results that section is empty.
+
+That matters because a timed-out exchange ends its channel: a repeat
+that suffered one would have fewer samples than its neighbours and a
+p95 computed over them, which is a silent truncation in an argument
+that turns on sub-millisecond spreads.
 
 A cell's p50, p95 and p99 are the **median of each repeat's own
 percentile**, not a percentile of the pooled samples: pooling would let
@@ -213,7 +228,16 @@ packets, over samples where at least two packets were queued.
   payload plus 8 UDP, 20 IP and 14 Ethernet, so **1442 bytes per
   slot**.
 - **Observed**, across all twelve measured QUIC cells: **1436.1 to
-  1441.9** bytes per slot, median 1441.
+  1441.9** bytes per slot, median 1441. That figure is a *mean* —
+  total queued bytes over total queued packets, across every sample
+  where at least two packets were in the queue — so it sits a little
+  under 1442 because the server's own small packets share the same
+  egress queue: the 64-byte interactive echoes, and acknowledgement-only
+  datagrams. The *per-sample maximum* is exactly 1442 in every measured
+  QUIC cell, which is the sharper statement: no queue sample ever held
+  a slot larger than one pinned datagram, so no write was ever
+  segmented into one. A mean below 1442 is small packets, not a short
+  datagram.
 - **TCP arms**, for contrast: 1384 to 1504, the 1500-byte data
   segments pulled down by 54-byte pure acknowledgements and the
   64-byte interactive packets, more so in the cells with more

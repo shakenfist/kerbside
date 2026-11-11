@@ -155,12 +155,16 @@ fn install_crypto_provider() {
 }
 
 /// Nearest-rank percentile over a sorted slice.
-fn percentile(sorted: &[u64], quantile: f64) -> u64 {
+///
+/// `None` for an empty slice rather than zero: a run that produced no
+/// steady-state samples has no percentile, and writing 0 would put a
+/// plausible-looking number in the results for a cell that failed.
+fn percentile(sorted: &[u64], quantile: f64) -> Option<u64> {
     if sorted.is_empty() {
-        return 0;
+        return None;
     }
     let rank = (quantile * sorted.len() as f64).ceil() as usize;
-    sorted[rank.clamp(1, sorted.len()) - 1]
+    Some(sorted[rank.clamp(1, sorted.len()) - 1])
 }
 
 /// Drive every channel for the measurement window and return what the two
@@ -248,8 +252,8 @@ fn results_json(
             "p50_us": percentile(&steady, 0.50),
             "p95_us": percentile(&steady, 0.95),
             "p99_us": percentile(&steady, 0.99),
-            "min_us": steady.first().copied().unwrap_or(0),
-            "max_us": steady.last().copied().unwrap_or(0),
+            "min_us": steady.first().copied(),
+            "max_us": steady.last().copied(),
             "raw": interactive.samples.iter().map(|s| serde_json::json!([s.offset_ms, s.rtt_us])).collect::<Vec<_>>(),
         },
         "bulk": {
@@ -367,6 +371,104 @@ async fn main() -> Result<(), BoxError> {
                 None => println!("{rendered}"),
             }
             Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workload::{Bulk, ROLE_BULK, ROLE_IDLE, ROLE_INTERACTIVE};
+
+    #[test]
+    fn percentile_of_nothing_is_none() {
+        assert_eq!(percentile(&[], 0.95), None);
+    }
+
+    #[test]
+    fn percentile_is_nearest_rank() {
+        // Ten samples, so 0.95 and 0.99 land between ranks and rounding up
+        // is distinguishable from rounding down: 0.95 * 10 = 9.5 takes the
+        // tenth sample, not the ninth.
+        let sorted: Vec<u64> = (1..=10).collect();
+        assert_eq!(percentile(&sorted, 0.50), Some(5));
+        assert_eq!(percentile(&sorted, 0.95), Some(10));
+        assert_eq!(percentile(&sorted, 0.99), Some(10));
+        assert_eq!(percentile(&sorted, 0.90), Some(9));
+
+        // And on a length where the ranks are exact, the same values.
+        let hundred: Vec<u64> = (1..=100).collect();
+        assert_eq!(percentile(&hundred, 0.50), Some(50));
+        assert_eq!(percentile(&hundred, 0.95), Some(95));
+        assert_eq!(percentile(&hundred, 0.99), Some(99));
+    }
+
+    #[test]
+    fn percentile_never_runs_off_the_bottom() {
+        // A quantile of 0 gives a rank of 0, which would index -1 and
+        // underflow without the clamp's lower bound. Its upper bound is
+        // unreachable for a quantile of 1.0 or less, and the caller only ever
+        // passes 0.50, 0.95 and 0.99.
+        assert_eq!(percentile(&[7], 0.0), Some(7));
+        assert_eq!(percentile(&[7], 1.0), Some(7));
+        assert_eq!(percentile(&[1, 2, 3], 0.0), Some(1));
+        assert_eq!(percentile(&[1, 2, 3], 1.0), Some(3));
+    }
+
+    #[test]
+    fn throughput_without_a_steady_window_is_zero_not_a_division_by_zero() {
+        let bulk = Bulk::default();
+        assert_eq!(bulk.steady_secs, 0.0);
+        assert_eq!(bulk.mbit_per_sec(), 0.0);
+    }
+
+    #[test]
+    fn throughput_is_megabits_of_the_steady_bytes_only() {
+        let bulk = Bulk {
+            bytes_total: 2_000_000,
+            bytes_steady: 1_250_000,
+            steady_secs: 10.0,
+        };
+        // 1.25 MB over 10 s is 1 Mbit/s, and the warmup bytes do not count.
+        assert!((bulk.mbit_per_sec() - 1.0).abs() < 1e-9);
+    }
+
+    #[tokio::test]
+    async fn a_header_round_trips_its_role_and_size() {
+        // Role byte, then the size little-endian: role 1, 64 bytes.
+        let bytes: &[u8] = &[ROLE_INTERACTIVE, 64, 0, 0, 0];
+        let mut reader = bytes;
+        let (role, size) = workload::read_header(&mut reader).await.unwrap();
+        assert_eq!(role, ROLE_INTERACTIVE);
+        assert_eq!(size, 64);
+    }
+
+    #[tokio::test]
+    async fn a_header_claiming_an_implausible_size_is_refused() {
+        // Zero, and anything above the 8 MiB ceiling, are both rejected
+        // rather than used to size an allocation.
+        let zero: &[u8] = &[ROLE_BULK, 0, 0, 0, 0];
+        let mut reader = zero;
+        assert!(workload::read_header(&mut reader).await.is_err());
+
+        let huge: &[u8] = &[ROLE_BULK, 1, 0, 0, 1];
+        let mut reader = huge;
+        assert!(workload::read_header(&mut reader).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn a_truncated_header_is_an_error_not_a_default() {
+        let short: &[u8] = &[ROLE_BULK, 64];
+        let mut reader = short;
+        assert!(workload::read_header(&mut reader).await.is_err());
+    }
+
+    #[test]
+    fn the_first_two_channels_are_the_measured_ones() {
+        assert_eq!(workload::role_for(0), ROLE_BULK);
+        assert_eq!(workload::role_for(1), ROLE_INTERACTIVE);
+        for index in 2..8 {
+            assert_eq!(workload::role_for(index), ROLE_IDLE);
         }
     }
 }

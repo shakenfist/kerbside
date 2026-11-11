@@ -108,11 +108,20 @@ fi
 
 # ── Inner half: the shaped link ─────────────────────────────────────────────
 
-PIDS=()
+# Only the processes still believed to be running, so the exit trap cannot
+# signal a pid that was reaped hours ago and has since been recycled. These are
+# host pids -- the script runs in a user and network namespace, not a pid
+# namespace -- so a stale entry is somebody else's process, within this user.
+CLIENT_NS_PID=''
+SERVER_PID=''
+SAMPLER_PID=''
+WITNESS_PID=''
 cleanup() {
-    for pid in "${PIDS[@]}"; do
-        kill "${pid}" 2>/dev/null || true
+    local pid
+    for pid in "${SERVER_PID}" "${SAMPLER_PID}" "${WITNESS_PID}" "${CLIENT_NS_PID}"; do
+        [ -n "${pid}" ] && kill "${pid}" 2>/dev/null
     done
+    return 0
 }
 trap cleanup EXIT
 
@@ -122,7 +131,6 @@ ip link set lo up
 # through nsenter into it.
 unshare --net sleep infinity &
 CLIENT_NS_PID=$!
-PIDS+=("${CLIENT_NS_PID}")
 sleep 0.5
 in_client() { nsenter --target "${CLIENT_NS_PID}" --net -- "$@"; }
 
@@ -186,9 +194,26 @@ cat "${WORKDIR}/host.txt" >&2
 # explicitly because `openssl x509 -req` emits a v1 certificate when a
 # certificate carries none, and webpki rejects v1 outright.
 
+# The directory is narrowed before anything is written into it, not after:
+# `openssl req -nodes` writes the keys unencrypted, so a chmod afterwards
+# leaves a window at the default umask. The material is a throwaway CA used
+# only inside the namespace, but the results directory is what a reader is
+# invited to keep.
 TLS_DIR="${WORKDIR}/tls"
 mkdir -p "${TLS_DIR}"
-if [ ! -s "${TLS_DIR}/server-cert.pem" ]; then
+chmod 700 "${TLS_DIR}"
+
+# Regenerate when the leaf is missing, or when it would expire inside this
+# run: the certificates are issued for two days, and a work directory reused
+# later would otherwise fail with a handshake error rather than renewing.
+tls_is_usable() {
+    [ -s "${TLS_DIR}/server-cert.pem" ] || return 1
+    openssl x509 -in "${TLS_DIR}/server-cert.pem" \
+        -checkend $(( (DURATION + 300) * 2 )) >/dev/null 2>&1
+}
+
+if ! tls_is_usable; then
+    rm -f "${TLS_DIR}"/*.pem
     openssl req -x509 -newkey rsa:2048 -nodes -days 2 \
         -keyout "${TLS_DIR}/ca-key.pem" -out "${TLS_DIR}/ca-cert.pem" \
         -subj '/CN=quic-bench-ca' \
@@ -209,6 +234,10 @@ EOF
         >/dev/null 2>&1
     rm -f "${TLS_DIR}/server.csr" "${TLS_DIR}/server-ext.cnf" "${TLS_DIR}/ca-cert.srl"
     chmod 600 "${TLS_DIR}/ca-key.pem" "${TLS_DIR}/server-key.pem"
+    if ! tls_is_usable; then
+        echo 'ERROR: generated TLS material is unusable; see openssl above' >&2
+        exit 1
+    fi
 fi
 
 # ── The shaped link ─────────────────────────────────────────────────────────
@@ -286,16 +315,17 @@ run_arm() {
         *) echo "ERROR: unknown arm ${arm}" >&2; return 1 ;;
     esac
     server_pid=$!
-    PIDS+=("${server_pid}")
+    SERVER_PID="${server_pid}"
     if ! wait_for_server "${slog}" "${server_pid}"; then
         echo "ERROR: ${arm} server did not come up; see ${slog}" >&2
         kill "${server_pid}" 2>/dev/null || true
+        SERVER_PID=''
         return 1
     fi
 
     sample_backlog "${casedir}/${arm}-backlog.jsonl" &
     sampler_pid=$!
-    PIDS+=("${sampler_pid}")
+    SAMPLER_PID="${sampler_pid}"
 
     if [ "${arm}" = tcp ]; then
         # Witness the controller the kernel actually chose for these sockets,
@@ -305,7 +335,7 @@ run_arm() {
             "${SS}" -tim 2>/dev/null > "${casedir}/tcp-ss-server.txt" || true
             in_client "${SS}" -tim 2>/dev/null > "${casedir}/tcp-ss-client.txt" || true
         ) &
-        PIDS+=("$!")
+        WITNESS_PID=$!
     fi
 
     local port="${TCP_PORT}"
@@ -322,8 +352,15 @@ run_arm() {
             --out "${casedir}/${arm}.json" "${extra[@]}" > "${clog}" 2>&1 || rc=$?
 
     kill "${sampler_pid}" 2>/dev/null || true
+    wait "${sampler_pid}" 2>/dev/null || true
+    SAMPLER_PID=''
     kill "${server_pid}" 2>/dev/null || true
     wait "${server_pid}" 2>/dev/null || true
+    SERVER_PID=''
+    if [ -n "${WITNESS_PID}" ]; then
+        wait "${WITNESS_PID}" 2>/dev/null || true
+        WITNESS_PID=''
+    fi
     if [ "${rc}" -ne 0 ]; then
         echo "ERROR: ${arm} client failed (${rc}); see ${clog}" >&2
         return 1
