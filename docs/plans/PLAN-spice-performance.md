@@ -316,7 +316,7 @@ first phase.
 | 4. Son of SPICE: D-Bus display feasibility spike (verdict: no-go, as measured) | [PLAN-spice-performance-phase-04-dbus-spike.md](PLAN-spice-performance-phase-04-dbus-spike.md) | Complete | andris 9a997a3 (#56), a90f17ff90 (#637) |
 | 5. spice-server patches, measured: codec choice, the connect crash, trace ring, 60 fps, hardware probing | [PLAN-spice-performance-phase-05-spice-server.md](PLAN-spice-performance-phase-05-spice-server.md) | Complete | 46c3e9857c (#654), kerbside-patches 2d7b626422 (#2024) |
 | 6. Push audit of phases 1-5 (kerbside, kerbside-patches and ryll #406) | [PLAN-spice-performance-phase-06-push-audit.md](PLAN-spice-performance-phase-06-push-audit.md) | Complete | 2a34fe7ea9 (#668), 17a31ebf75 (#701) |
-| 7. QUIC client leg: experiments | | Not started | |
+| 7. QUIC client leg: experiments | [PLAN-spice-performance-phase-07-quic-experiments.md](PLAN-spice-performance-phase-07-quic-experiments.md) | In progress | |
 | 8. QUIC client leg: implementation, if phase 7 says go | | Not started | |
 | 9. Push audit of phases 7-8 (kerbside and ryll) | | Not started | |
 
@@ -929,6 +929,16 @@ it is about throughput:
   wait behind a retransmitted display frame, on exactly the
   lossy links where the other benefits matter. QUIC streams are
   independent, with per-stream flow control.
+  - *Corrected 2026-11-11 by phase 7's survey:* this is a
+    benefit over a TCP multiplex that nobody proposed, not over
+    today's code. The client leg is already one TCP connection
+    per channel (`listen.rs:179`, `session.rs:159`), so inputs
+    and display already have independent loss recovery. What is
+    left of the latency case is whether quinn's userspace loss
+    recovery and congestion control beat the kernel's for this
+    traffic shape, and whether one congestion controller per
+    session is better than N. Phase 7's plan reframes the phase
+    around the operational benefits, with latency as a floor.
 - **Faster connects.** One 1-RTT (or 0-RTT on resume)
   handshake, instead of TCP, TLS, link and ticket per channel,
   in at least two serial rounds (main, then the rest).
@@ -964,6 +974,15 @@ least:
   input-to-echo latency under packet loss while the display
   is busy, on the shaped-link rig's profiles plus 1-2% loss.
   This is the measurement that decides the phase;
+  - *Corrected 2026-11-11 by phase 7's survey:* the rig cannot
+    inject loss. `PROFILES` parses as `rtt_ms:rate_mbit`
+    (`tools/shaped-link/run-matrix.sh:138`) and the qdisc it
+    builds carries `delay`, `rate` and `limit` only (line 322),
+    so teaching it a loss term is the phase's first step. The
+    measurement also no longer decides the phase on its own, for
+    the reason given against the head-of-line-blocking bullet
+    above; it is a floor, and the decision rests on the
+    operational benefits and the cost.
 - connect time, and behaviour across a path change;
 - how ryll decides QUIC has failed and how long the fallback
   costs;
