@@ -1,0 +1,50 @@
+# A transport-only bench: N independent TCP connections against one QUIC
+# connection carrying N bidirectional streams, over a shaped link.
+#
+# Deliberately standalone. The empty [workspace] table keeps cargo from
+# absorbing this crate into anything above it, so it builds and locks on its
+# own and cannot drag a dependency into the proxy's tree.
+[workspace]
+
+[package]
+name = "quic-bench"
+version = "0.1.0"
+edition = "2021"
+description = "Transport-only bench comparing per-channel TCP with one QUIC connection per session."
+publish = false
+
+[[bin]]
+name = "quic-bench"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+
+# quinn with its defaults off. runtime-tokio matches the rest of the bench,
+# rustls-ring matches the crypto provider installed at startup, and log routes
+# quinn's tracing into the log crate. platform-verifier is a client trust store
+# this bench does not need (the client is handed the server's certificate on
+# disk), bloom is an amplification defence that would only add noise here, and
+# aws-lc-rs would pull a second crypto provider and a C toolchain.
+quinn = { version = "0.11.12", default-features = false, features = [
+    "runtime-tokio",
+    "rustls-ring",
+    "log",
+] }
+# rustls with its defaults off as well. Its default feature set includes
+# aws-lc-rs, which would build a second crypto provider from C and assembly
+# alongside the ring one quinn and this bench actually use.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging"] }
+rustls-pemfile = "2"
+serde_json = "1"
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "net",
+    "io-util",
+    "time",
+    "macros",
+    "sync",
+] }
+
+[profile.release]
+debug = false

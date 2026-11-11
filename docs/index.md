@@ -228,6 +228,12 @@ Guides for working on Kerbside itself:
   released spice-server and its fix, hardware encoding on any GPU, and
   what upgrading 0.15.2 to master gains
 
+- [QUIC against per-channel TCP on a shaped link](performance/quic-transport-bench.md) -
+  A transport-only bench of one QUIC connection with a stream per
+  channel against today's connection per channel, under loss: what a
+  shared congestion window costs the interactive round trip, and why
+  the kernel's BBR is the more interesting result
+
 ### Architecture Documentation
 
 Internal design of the Kerbside proxy:
