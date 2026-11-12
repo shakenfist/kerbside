@@ -19,7 +19,9 @@
 # Kerbside does with interpolation off, to exactly the values given (a % in
 # kerbside_sql_url included, never doubled), whose token audience is
 # kerbside_url byte for byte, and a sources.yaml which loads back as
-# kerbside_sources exactly; that a Shaken Fist deployment renders both files
+# kerbside_sources exactly; that kerbside_extra_settings reaches that file
+# and a name the role owns, a name which is not an INI key, or a name
+# Kerbside has no setting for is refused instead (#629); that a Shaken Fist deployment renders both files
 # as the role did before it took any source; that a render either checker
 # refuses leaves the running file in place and nothing behind; that the
 # desired-state hash is stable across reruns, follows every file Kerbside
@@ -114,9 +116,13 @@ mkdir -p "${PKI}" "${VENV}/bin" "${UNITS}" "${OVERRIDE}" "${WORK}/certs"
 
 # The virtualenv's Python. A wrapper rather than a symlink: a symlink to a
 # virtualenv's python, from outside it, loses that virtualenv's packages.
+# PYTHONPATH carries this checkout's kerbside package, because a real
+# Kerbside virtualenv has Kerbside installed in it and the checks the role
+# runs with this Python read it: kerbside-check-ini.py asks the installed
+# config.py which settings exist, and passes over the names it cannot read.
 cat > "${VENV}/bin/python" << EOF
 #!/bin/sh
-exec '${PY}' "\$@"
+PYTHONPATH='${REPO_ROOT}' exec '${PY}' "\$@"
 EOF
 chmod +x "${VENV}/bin/python"
 
@@ -179,12 +185,13 @@ OVIRT_PASSWORD='ovirt-pw-Zr6kN1vB4tYe'
 OPENSTACK_PASSWORD='openstack-pw-Ld9xF2cM7qUa'
 PROXMOX_TOKEN_SECRET='pve-token-Qv7mB2sX9jLd'
 STATIC_TICKET='spice-ticket-Gw5jR8nT3hKo'
+KEYSTONE_PASSWORD='keystone-pw-Tn4bX7sQ2vHe'
 SEED='seed-Jk4pW8zN2bQ6vT1yH5cR9mD3fL7'
 SQL_SECRET='Xq8Tz3LmPw'
 SQL_URL="mysql+pymysql://kerbside:pw%25${SQL_SECRET}@db.example.com/kerbside"
 [ "${#SEED}" -eq 32 ] || fail "the test seed is ${#SEED} characters, not 32"
 SECRETS=("${SYSTEM_KEY}" "${SF2_KEY}" "${OVIRT_PASSWORD}" "${OPENSTACK_PASSWORD}"
-    "${PROXMOX_TOKEN_SECRET}" "${STATIC_TICKET}" "${SEED}" "${SEED:0:31}"
+    "${PROXMOX_TOKEN_SECRET}" "${STATIC_TICKET}" "${KEYSTONE_PASSWORD}" "${SEED}" "${SEED:0:31}"
     "${SQL_SECRET}")
 
 SF_CA_FILE="${WORK}/certs/sf-ca-cert.pem"
@@ -645,7 +652,7 @@ case_6_partial_overrides() {
 
 case_7_sources() {
     # Every type's required fields, each source lacking all of them, so each
-    # is named. The values are not secrets; case 18 searches for those. Each
+    # is named. The values are not secrets; case 19 searches for those. Each
     # case records its type in field_types, checked against the role's own
     # list below rather than trusted to this comment.
     local field_types=()
@@ -707,7 +714,7 @@ case_7_sources() {
 
     # The argument specs declare consoles a list of mappings, so that a
     # ticket can be no_log alone, and refuse any other shape before the
-    # checker sees it, without printing it (case 18).
+    # checker sees it, without printing it (case 19).
     CURRENT_CASE="case 7a: validate refuses a static source's consoles which is not a list"
     VERBOSITY=-vvv validate_fails "argument 'consoles' is of type dict found in 'kerbside_sources'" \
         "$(write_vars consoles-mapping "{\"kerbside_sources\": [{\"source\": \"b\",
@@ -730,7 +737,7 @@ case_7_sources() {
         'source 1: type is missing, or is not non-empty text'
 
     # The argument specs refuse an entry which is not a mapping, before the
-    # checker sees it, and without printing it (case 18).
+    # checker sees it, and without printing it (case 19).
     CURRENT_CASE='case 7b: validate refuses a source which is not a mapping'
     VERBOSITY=-vvv validate_fails "Elements value for option 'kerbside_sources' is of type str" \
         "$(write_vars not-mapping "{\"kerbside_sources\": [\"ticket ${STATIC_TICKET}\"]}")"
@@ -771,7 +778,7 @@ case_7_sources() {
         'source 0: password is not text' 'source 1 console 0: ticket is not text'
 
     # The same checks, with secrets in every other source and at -vvv, for
-    # case 18: a refusal must name positions, never print a value.
+    # case 19: a refusal must name positions, never print a value.
     CURRENT_CASE='case 7g: a refusal among secret-bearing sources names only positions'
     local multi_plus_dup
     multi_plus_dup="$("${PY}" -c '
@@ -1045,7 +1052,7 @@ case_12_refused_render() {
     CURRENT_CASE='case 12b: a sources.yaml the checker refuses is not written'
     # config does not run validate's checks, so the write is the last line of
     # defence. The other sources carry secrets, which the refusal must not
-    # print (case 18).
+    # print (case 19).
     # The static source is the one corrupted, as it was before the fixture
     # grew: it is the only one with no source-level password, though its
     # console ticket is still one of SECRETS, so the refusal is held to
@@ -1279,6 +1286,12 @@ with open(sys.argv[1], 'w') as f:
         'kerbside_file_group': env['GROUP_NAME'],
     }, f, indent=2)
 PYEOF2
+EXTRA_SETTINGS_VARS="$(write_vars extra-settings "{\"kerbside_extra_settings\": {
+  \"log_verbose\": true, \"console_token_duration\": 120,
+  \"keystone_auth_url\": \"https://keystone.example.com:5000/v3\",
+  \"keystone_service_auth_user\": \"kerbside\",
+  \"keystone_service_auth_password\": \"${KEYSTONE_PASSWORD}\"}}")"
+
 STATIC_ONLY_VARS="$(write_vars static-only \
     '{"kerbside_sources": [{"source": "lab", "type": "static", "consoles": []}]}')"
 
@@ -1605,8 +1618,97 @@ case_17_readiness() {
     rm -f "${WORK}/ready-output"
 }
 
-case_18_secrets() {
-    CURRENT_CASE='case 18: no secret reaches the ansible output'
+case_18_extra_settings() {
+    # kerbside.ini carried the fifteen settings the role writes from its own
+    # variables and nothing else, so a role-deployed Kerbside could not be
+    # given a Keystone login, a firewall mode or verbose logging at all
+    # (#629). kerbside_extra_settings carries the rest, and each way of
+    # getting one wrong is refused somewhere.
+    CURRENT_CASE='case 18: validate refuses an extra setting the role writes itself'
+    validate_fails 'sets public_fqdn, sql_url, which the role writes into kerbside.ini itself' \
+        "$(write_vars extra-owned '{"kerbside_extra_settings": {
+          "sql_url": "mysql://x/y", "public_fqdn": "elsewhere.example.com",
+          "log_verbose": true}}')"
+    assert_validate_refused
+
+    CURRENT_CASE='case 18: validate refuses an extra setting which is not an INI key'
+    validate_fails 'name\(s\) KEYSTONE_AUTH_URL, log-verbose, which are not Kerbside INI keys' \
+        "$(write_vars extra-malformed '{"kerbside_extra_settings": {
+          "log-verbose": true, "KEYSTONE_AUTH_URL": "https://k.example.com"}}')"
+    assert_validate_refused
+
+    CURRENT_CASE='case 18: validate refuses an extra setting with no value'
+    validate_fails 'sets keystone_auth_url to nothing at all' \
+        "$(write_vars extra-null '{"kerbside_extra_settings": {
+          "keystone_auth_url": null, "log_verbose": true}}')"
+    assert_validate_refused
+
+    CURRENT_CASE='case 18: validate passes settings Kerbside has'
+    VERBOSITY=-vvv validate_passes "${EXTRA_SETTINGS_VARS}"
+
+    CURRENT_CASE='case 18: config writes them after its own settings'
+    VERBOSITY=-vvv config_passes "${EXTRA_SETTINGS_VARS}"
+    local out
+    out="$(KEYSTONE_PASSWORD="${KEYSTONE_PASSWORD}" "${PY}" - "${CONF}/kerbside.ini" << 'INNER_EOF' 2>&1
+import configparser
+import os
+import sys
+
+path = sys.argv[1]
+parser = configparser.ConfigParser(interpolation=None)
+if parser.read(path) != [path]:
+    sys.exit('kerbside.ini could not be read')
+options = parser.options('kerbside')
+values = {k: parser.get('kerbside', k) for k in options}
+expected = {
+    'log_verbose': 'True',
+    'console_token_duration': '120',
+    'keystone_auth_url': 'https://keystone.example.com:5000/v3',
+    'keystone_service_auth_user': 'kerbside',
+    'keystone_service_auth_password': os.environ['KEYSTONE_PASSWORD'],
+}
+for key, want in expected.items():
+    if values.get(key) != want:
+        sys.exit(f'{key} reads back as {values.get(key)!r}, not {want!r}')
+# The role's own settings are still there, and still first: later wins in
+# configparser, so an extra setting must not be able to shadow one.
+if 'sql_url' not in values:
+    sys.exit('the role stopped writing its own settings')
+if options.index('sql_url') > options.index('log_verbose'):
+    sys.exit("the extra settings are written before the role's own")
+if len(options) != len(set(options)):
+    sys.exit('kerbside.ini writes an option twice')
+INNER_EOF
+)" || fail "${out}"
+
+    CURRENT_CASE='case 18: config refuses a setting Kerbside does not have'
+    # Rendered, then refused by the check kerbside.ini is held to, so the
+    # running file stays: Kerbside ignores an unknown setting rather than
+    # refusing it, which would make a misspelling do nothing in silence.
+    config_fails 'kerbside.ini refused: log_verbos is not one of' \
+        "$(write_vars extra-unknown '{"kerbside_extra_settings": {
+          "log_verbos": true}}')"
+
+    CURRENT_CASE='case 18: bootstrap installs the login clients for a Keystone login'
+    local client
+    for client in keystoneauth1 keystoneclient; do
+        mkdir -p "${BSITE}/${client}"
+        echo "${client} stub" > "${BSITE}/${client}/__init__.py"
+    done
+    install_stub_code
+    run_bootstrap "${EXTRA_SETTINGS_VARS}" || fail 'bootstrap failed with a Keystone login'
+    installed_has keystoneauth1
+    installed_has python-keystoneclient
+    installed_lacks openstacksdk
+
+    CURRENT_CASE='case 18: bootstrap installs no login client without one'
+    run_bootstrap || fail 'bootstrap failed'
+    installed_lacks keystoneauth1
+    installed_lacks python-keystoneclient
+}
+
+case_19_secrets() {
+    CURRENT_CASE='case 19: no secret reaches the ansible output'
     LAST_LOG=''
     # Prove the verbose runs happened, with every source type, or their
     # absence of secrets proves nothing.
@@ -1641,6 +1743,7 @@ case_14_shakenfist_deployment
 case_15_bootstrap_code_hash
 case_16_local_wheels
 case_17_readiness
-case_18_secrets
+case_18_extra_settings
+case_19_secrets
 
-echo "kerbside role: all eighteen cases passed (${RUNS} ansible runs, $((SECONDS - START))s)"
+echo "kerbside role: all nineteen cases passed (${RUNS} ansible runs, $((SECONDS - START))s)"

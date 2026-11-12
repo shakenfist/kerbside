@@ -197,6 +197,7 @@ class RoleDefaultsTestCase(testtools.TestCase):
     # instead. Pinned rather than skipped on shape, so a new prose
     # default is a deliberate edit.
     PACKAGE_LIST_DEFAULTS = (
+        'kerbside_login_client_packages',
         'kerbside_source_build_packages',
         'kerbside_source_client_packages')
     PROSE_DEFAULTS = (
@@ -713,9 +714,28 @@ class CheckIniScriptTestCase(testtools.TestCase):
     def test_no_message_quotes_a_value(self):
         for text in ('sql_url = secret-value\n',
                      '[kerbside]\nsql_url = secret-value\n  more\n',
-                     '[kerbside]\nsql_url = a\nsql_url = secret-value\n'):
+                     '[kerbside]\nsql_url = a\nsql_url = secret-value\n',
+                     '[kerbside]\nnot_a_setting = secret-value\n'):
             for reason in self._check(text):
                 self.assertNotIn('secret-value', reason)
+
+    def test_an_option_kerbside_has_no_setting_for_is_refused(self):
+        # Kerbside ignores an unknown KERBSIDE_* variable rather than
+        # refusing it, so a misspelled setting in kerbside_extra_settings
+        # would otherwise be written, read, ignored, and never mentioned
+        # by anything (#629).
+        errors = self._check(
+            '[kerbside]\nlog_verbose = true\nlog_verbos = true\n')
+        self.assertEqual(1, len(errors))
+        self.assertIn('log_verbos ', errors[0])
+
+    def test_the_settings_it_knows_are_the_ones_kerbside_has(self):
+        # Read out of config.py by parsing it, because importing it
+        # reads the kerbside.ini Kerbside is running with. That reading
+        # is what this holds to the class itself.
+        self.assertEqual(
+            {name.lower() for name in config.Config.model_fields},
+            check_ini.kerbside_settings())
 
 
 # The heading of the table in docs/installation.md that says which client
@@ -860,10 +880,10 @@ class RoleClientLibrariesTestCase(testtools.TestCase):
             'docs/installation.md does not name every source type, so the '
             'comparison above passed over one')
         # Interactive login is the one row that is not about a source
-        # type, and the role covers it from kerbside_extra_settings
-        # rather than from the sources.
-        self.assertEqual(
-            {'keystoneauth1', 'python-keystoneclient'}, documented[None])
+        # type: the role installs those libraries when
+        # kerbside_extra_settings configures a login, which
+        # IniTemplateTestCase holds to the same row.
+        self.assertNotEqual(set(), documented[None])
 
     def test_a_documented_version_floor_is_installed(self):
         _, floors = _documented_client_libraries()
@@ -887,3 +907,75 @@ class RoleClientLibrariesTestCase(testtools.TestCase):
                     'the role installs %s for a %s source, but '
                     'docs/installation.md does not say why it is needed'
                     % (package, kind))
+
+
+class IniTemplateTestCase(testtools.TestCase):
+    """The settings the role owns are named in one place.
+
+    validate refuses a kerbside_extra_settings which sets a name the
+    role writes itself, from kerbside_owned_ini_settings. It cannot ask
+    the template for that list, because it runs on the control node
+    before anything renders -- so the list and the template are held
+    together here, and both to the guide an operator reads (#629).
+    """
+
+    def setUp(self):
+        super().setUp()
+        with open(_ROLE / 'vars' / 'main.yml') as f:
+            self.vars = yaml.safe_load(f)
+        self.owned = self.vars['kerbside_owned_ini_settings']
+        self.template = (
+            _ROLE / 'templates' / 'kerbside.ini').read_text(encoding='utf-8')
+        self.guide = (
+            _ROOT / 'docs' / 'deployment' / 'ansible.md').read_text(
+                encoding='utf-8')
+
+    def test_the_template_renders_exactly_those_settings(self):
+        block = re.search(
+            r'\{%\s*set kerbside_ini_settings = \{(.*?)\}\s*%\}',
+            self.template, re.S)
+        self.assertIsNotNone(
+            block, 'the template no longer sets kerbside_ini_settings to a '
+            'literal mapping, so this test cannot read what it writes')
+        self.assertEqual(
+            self.owned, re.findall(r"'([a-z0-9_]+)':", block.group(1)))
+
+    def test_they_are_all_kerbside_settings(self):
+        self.assertEqual(
+            set(), set(self.owned) - check_ini.kerbside_settings())
+
+    def test_the_extra_settings_come_after_them(self):
+        # Later in the file wins in configparser, so the order is what
+        # makes refusing a collision in validate the whole guard.
+        self.assertLess(
+            self.template.index('kerbside_ini_settings.items()'),
+            self.template.index('kerbside_extra_settings | dictsort'))
+
+    def test_the_guide_lists_the_settings_the_role_writes(self):
+        section = self.guide.split('### Settings the role writes')[1]
+        section = section.split('```')[0]
+        listed = set()
+        for line in section.splitlines():
+            if line.startswith(('-', ' ')):
+                listed.update(re.findall(r'`([a-z0-9_]+)`', line))
+        self.assertEqual(
+            set(self.owned), listed,
+            'docs/deployment/ansible.md names settings the role writes '
+            'which are not kerbside_owned_ini_settings, or the reverse')
+
+    def test_a_keystone_setting_asks_for_the_login_libraries(self):
+        # The condition vars/main.yml puts on installing them, read as
+        # the rule it is: any keystone_* setting means a login.
+        self.assertIn(
+            "select('match', '^keystone_')", self.vars['kerbside_keystone_login'])
+
+    def test_the_login_libraries_are_the_documented_ones(self):
+        with open(_DEFAULTS) as f:
+            defaults = yaml.safe_load(f)
+        documented, _ = _documented_client_libraries()
+        self.assertEqual(
+            documented[None],
+            {re.split(r'[><=!~\[]', entry['package'])[0]
+             for entry in defaults['kerbside_login_client_packages']},
+            'the role installs other libraries for an interactive login '
+            'than docs/installation.md names')

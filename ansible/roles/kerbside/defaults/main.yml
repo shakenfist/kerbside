@@ -17,6 +17,29 @@ kerbside_auth_secret_seed: ""
 kerbside_sql_url: ""
 kerbside_sources: []
 
+# Settings written into kerbside.ini after the ones the role writes from its
+# own variables (kerbside_owned_ini_settings, vars/main.yml), as a mapping of
+# INI key to value: a Keystone login, firewall_mode, log_verbose, the token
+# durations, or anything else in Kerbside's configuration reference. Without
+# them a role-deployed Kerbside could be given nothing but those the role
+# knows about (#629).
+#
+# A name the role writes itself is refused by validate, and a name Kerbside
+# has no setting for is refused on the host, before the render replaces the
+# file Kerbside is running with. The values are no_log, since a login carries
+# a service password, and kerbside.ini is 0640 root:kerbside either way.
+kerbside_extra_settings: {}
+
+# The client libraries interactive login imports, installed when
+# kerbside_extra_settings configures one. Kerbside's Keystone login is not a
+# property of the sources, so it is not in kerbside_source_client_packages;
+# the shape is the same (see there).
+kerbside_login_client_packages:
+  - package: "keystoneauth1"
+    directory: keystoneauth1
+  - package: "python-keystoneclient"
+    directory: keystoneclient
+
 # The Kerbside hosts this run validates or deploys to.
 kerbside_hosts: []
 

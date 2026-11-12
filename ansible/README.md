@@ -95,6 +95,17 @@ console sources below, and other tasks read only the source names.
 | `kerbside_sources` | `[]` | Kerbside's console sources. Each source's `password` and each static console's `ticket` are secrets. See below. |
 | `kerbside_url` | `""` | Kerbside's base URL, rendered as the console token audience. Required when a source is of type `shakenfist`, where it must equal the cluster's `KERBSIDE_URL` byte for byte. Otherwise optional. |
 
+### Other Kerbside settings
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `kerbside_extra_settings` | `{}` | Settings written into `kerbside.ini` after the ones the role writes from its own variables, as a mapping of INI key to value: a Keystone login, `firewall_mode`, `log_verbose`, the token durations, or anything else in Kerbside's [configuration reference](https://github.com/shakenfist/kerbside/blob/develop/docs/configuration.md). The values are `no_log`. `validate` refuses a name the role writes itself, and the check `kerbside.ini` is held to on the host refuses a name Kerbside has no setting for, since Kerbside ignores an unknown setting rather than refusing it. |
+| `kerbside_login_client_packages` | `keystoneauth1` and `python-keystoneclient` | The client libraries interactive login imports, installed when `kerbside_extra_settings` carries any `keystone_*` setting. |
+
+A change to a setting here restarts Kerbside on the next deploy, like
+any other change to a file Kerbside runs with, which ends the SPICE
+sessions on that host.
+
 ### Console sources
 
 `kerbside_sources` is written to `sources.yaml` as given, in the form

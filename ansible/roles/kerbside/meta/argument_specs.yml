@@ -253,6 +253,41 @@ argument_specs:
             under site-packages. bootstrap hashes each directory, so a client
             which did not install fails the deploy instead of surfacing later
             as an errored source or a 500 from token exchange.
+      kerbside_extra_settings:
+        type: dict
+        default: {}
+        no_log: true
+        description:
+          - >-
+            Settings written into kerbside.ini after the ones the role writes
+            from its own variables, as a mapping of INI key to value: a
+            Keystone login, firewall_mode, log_verbose, the token durations,
+            or anything else in Kerbside's configuration reference. Without
+            these the role could configure only the settings it knows about.
+          - >-
+            validate refuses a name the role writes itself, and the check the
+            rendered file is held to on the host refuses a name Kerbside has
+            no setting for -- Kerbside ignores an unknown setting rather than
+            refusing it, so a misspelling would otherwise do nothing at all
+            and say nothing. The values are no_log, since a login carries a
+            service password, and kerbside.ini is 0640 root:kerbside either
+            way. It is one of the files whose contents decide whether Kerbside
+            restarts, so a change here restarts it on the next deploy.
+      kerbside_login_client_packages:
+        type: list
+        elements: dict
+        default:
+          - package: "keystoneauth1"
+            directory: keystoneauth1
+          - package: "python-keystoneclient"
+            directory: keystoneclient
+        description:
+          - >-
+            The client libraries Kerbside's interactive login imports,
+            installed when kerbside_extra_settings configures one (any
+            keystone_* setting). The login is not a property of the sources,
+            so these are separate from kerbside_source_client_packages; each
+            entry has the same package and directory keys.
       kerbside_source_build_packages:
         type: dict
         default:

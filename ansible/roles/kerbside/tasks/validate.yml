@@ -89,6 +89,65 @@
           | default('The check printed no reason.', true) }}
         quiet: true
 
+    # kerbside_extra_settings is written into kerbside.ini after the settings
+    # the role writes from its own variables, so a name in both would be
+    # written twice and configparser would silently keep the last. A name
+    # Kerbside has no setting for is refused on the host instead, by the
+    # check the render is held to: which settings exist is Kerbside's to say,
+    # and the control node may not have Kerbside installed (#629).
+    - name: Refuse an extra setting the role writes itself
+      ansible.builtin.assert:
+        that: kerbside_extra_settings_owned | length == 0
+        fail_msg: >-
+          kerbside_extra_settings on {{ inventory_hostname }} sets
+          {{ kerbside_extra_settings_owned | join(', ') }}, which the role
+          writes into kerbside.ini itself. Set {{ 'those' if
+          kerbside_extra_settings_owned | length > 1 else 'it' }} through the
+          role's own variables, listed in ansible/README.md, so that the rest
+          of the role sees the same value: the ports it opens, the certificate
+          it renders a subject from, and the audience it requires on a Shaken
+          Fist console token are all read from those variables too.
+        quiet: true
+      vars:
+        kerbside_extra_settings_owned: >-
+          {{ kerbside_extra_settings | select('in', kerbside_owned_ini_settings)
+             | sort | list }}
+
+    - name: Refuse an extra setting with no value
+      ansible.builtin.assert:
+        that: kerbside_extra_settings_null | length == 0
+        fail_msg: >-
+          kerbside_extra_settings on {{ inventory_hostname }} sets
+          {{ kerbside_extra_settings_null | join(', ') }} to nothing at all.
+          An undefined variable renders as the text None, which Kerbside
+          would read as the value of that setting, so this is refused rather
+          than written: it is almost always a vault variable or a lookup
+          which did not resolve. An empty string is allowed, for the
+          settings whose default is one.
+        quiet: true
+      vars:
+        kerbside_extra_settings_null: >-
+          {{ kerbside_extra_settings | dict2items
+             | selectattr('value', 'none') | map(attribute='key')
+             | sort | list }}
+
+    - name: Refuse an extra setting which is not an INI key
+      ansible.builtin.assert:
+        that: kerbside_extra_settings_malformed | length == 0
+        fail_msg: >-
+          kerbside_extra_settings on {{ inventory_hostname }} has the
+          name(s) {{ kerbside_extra_settings_malformed | join(', ') }}, which
+          are not Kerbside INI keys. A key is lower case, starts with a
+          letter, and holds only letters, digits and underscores: Kerbside
+          maps it to an environment variable by upper-casing it, so an upper
+          case name here is the same setting written twice, and configparser
+          would keep one of them.
+        quiet: true
+      vars:
+        kerbside_extra_settings_malformed: >-
+          {{ kerbside_extra_settings | reject('match', '^[a-z][a-z0-9_]*$')
+             | sort | list }}
+
     # bootstrap installs the client libraries the configured source types
     # need by looking each type up in these two mappings, so a type missing
     # from either would fail the lookup in the middle of a deploy, with a

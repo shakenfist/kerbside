@@ -138,10 +138,10 @@
 #     binary. find fails on a directory which is not there, which is what
 #     makes this the check that each client landed at all: otherwise a
 #     client which did not install surfaces only later, as a source marked
-#     errored or a 500 from token exchange (#602). The kerbside-proxy wheel installs only that binary
-#     and no Python package, so the binary is the whole of it. These catch a
-#     rebuilt wheel whose version did not change. __pycache__ is left out
-#     because .pyc files embed timestamps.
+#     errored or a 500 from token exchange (#602). The kerbside-proxy wheel
+#     installs only that binary and no Python package, so the binary is the
+#     whole of it. These catch a rebuilt wheel whose version did not change.
+#     __pycache__ is left out because .pyc files embed timestamps.
 #   * the virtualenv's resolved package set, from uv pip freeze, sorted here
 #     rather than trusting uv's order. A dependency-only upgrade (sqlalchemy,
 #     gunicorn, ...) changes no file above, but --reinstall has still rewritten
