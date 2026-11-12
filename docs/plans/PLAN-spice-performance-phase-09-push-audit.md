@@ -105,30 +105,67 @@ shellcheck matches `^(tools|demo)/` and flake8 matches `^tools/`,
 so `run-bench.sh`, `mutation-check.sh` and `summarise.py` are
 covered. Wave 1 would therefore pass vacuously on the Rust, which
 is why decision 2 names a substitute gate.
+- *Corrected 2026-11-12 during execution:* "no repository gate
+  touches it" was too strong. CodeQL does. `codeql-analysis.yml`
+  pins `languages: actions, javascript-typescript, python, rust`
+  with no path configuration, and its run on the phase 7 merge
+  found both Cargo manifests and extracted 30 Rust files without
+  error -- exactly the 24 under `rust/kerbside-proxy/src/`, plus
+  `build.rs`, plus the crate's 5. Its Python extractor took
+  `tools/quic-bench/summarise.py` as well. The narrower claim is
+  the one that matters and still holds: nothing builds, tests or
+  lints the crate. CodeQL neither compiles it -- it logged
+  "unable to determine project Rust toolchain" -- nor runs its
+  tests, so a broken build or a failing test still lands unseen.
 
-**3. A phase-1 page still states what phase 7 disproved.**
+**3. A phase-1 page states one thing phase 7 disproved, and the
+finding as first written overstated which.** This entry was
+rewritten on 2026-11-12 after step 9d refuted most of it; the
+corrected version is below, and what it replaced is recorded in
+*Execution notes*.
+
+What is wrong is one sentence.
 `docs/performance/proxy-backpressure.md:253` says BBR "was not
 measured" because "This host's kernel has only `reno` and `cubic`
-loaded". Phase 7 found the module present on disk and the master
-plan carries a dated correction, but the page itself was never
-revisited. The page then predicts that "On these profiles BBR
-could only trim the bottleneck queue (about 20 ms at 20 ms RTT,
-one BDP), which is small next to the ACK-window backlog", where
-phase 7 measured 9.27 Mbit against Cubic's 1.64 at 1% loss and an
-interactive p95 of 104 ms against 171 ms at no loss. Those numbers
-are from 80 ms / 10 Mbit and 150 ms / 2 Mbit, not phase 1's
-profiles, so whether the prediction is falsified or merely out of
-scope is a question for the audit rather than a settled finding.
-This is the exact class the shared block warns about: the page an
-earlier phase made wrong that a later phase never revisited.
+loaded". That is false in the present tense -- the host now
+reports `reno cubic bbr`, which
+`docs/performance/quic-transport-bench.md` records -- and, more
+to the point, it reads as the reason BBR *cannot* be measured
+here, where phase 7 found the module shipped with the kernel and
+simply not loaded. The rest of the bullet survives: loading it
+needs root, and an unprivileged namespace cannot autoload it,
+which the master plan's correction already says.
 
-**4. The page that owns the rigs does not mention the new one.**
-`docs/testing.md` documents `tools/shaped-link/` at length and was
-not touched by phase 7. It mentions `PROFILES=0:0` but says
-nothing about the optional third `:loss_pct` field phase 7 added,
-and `tools/quic-bench/` appears nowhere outside `docs/plans/` and
-the two measurement pages. A reader looking for the rigs in the
-page that teaches them will not learn the bench exists.
+What is not wrong is the prediction. "On these profiles BBR could
+only trim the bottleneck queue (about 20 ms at 20 ms RTT, one
+BDP)" is a statement about queue depth, and phase 7's 171 to
+104 ms no-loss cut on 80 ms / 10 Mbit is roughly one BDP at that
+RTT, so it illustrates the mechanism rather than refuting it.
+Phase 7's throughput result is a loss effect: at 0% loss the two
+controllers tie, and phase 1's rig had no loss term at all, since
+phase 7 added it. Nor can phase 7 touch "small next to the
+ACK-window backlog", because its bench has no spice-server and no
+ACK window.
+
+The first draft of this finding also said phase 7's numbers were
+"not phase 1's profiles". That is wrong: `PROFILES='20:50 80:10
+80:50'` at `docs/performance/proxy-backpressure.md:87` includes
+80 ms / 10 Mbit. Only 150 ms / 2 Mbit is new.
+
+**4. A discoverability gap, not a stale page.** Also rewritten on
+2026-11-12 after step 9d refuted half of it. The loss-term half
+was wrong: `docs/testing.md` says in terms that "The header of
+`run-matrix.sh` documents every variable", and phase 7 documented
+the `:loss_pct` field in that header at length, so the page
+delegates by design and is not stale. Its one `PROFILES=0:0` is
+an incidental example of an unshaped case, not a field reference.
+What survives is advisory: `tools/quic-bench/` appears nowhere
+outside `docs/plans/` and the two measurement pages, and
+`docs/testing.md`'s shaped-link material is a subsection of its
+Ryll section -- which the bench does not belong in, having no
+Ryll, no guest and no SPICE. The measurement page owns the
+bench's invocation; a one-line cross-reference would help
+discovery, and that is the whole of the finding.
 
 **5. The premise that holds.** Phase 7 landed nothing in ryll:
 its diff touches neither `tools/shaped-link/ryll-surface-drawn-rect.patch`
@@ -137,12 +174,17 @@ notes record as deliberately untouched once steps 5a, 5b and 6
 became void. Phase 8 landed nothing at all. So the master plan's
 "all of it in Kerbside" is correct, even though its scope is not.
 
-**6. Two `Future work` entries have no home.**
-`gh issue list --state all --search` finds no issue for the
-kernel-BBR finding or for the missing `ticket-valid-until` in the
-`.vv` template, both of which phase 7 records as worth one. Phase
-9 is the plan's last phase, so an entry with no issue dies with
-the plan when it retires.
+**6. Two `Future work` entries phase 7 asked to have tracked have
+no home.** As first written this said "two entries have no home",
+which step 9d showed is false: about fifteen have none, nearly
+all of them the master plan's own long tail. The defensible
+version is narrower. Two entries are ones phase 7 itself flagged
+as deserving a home -- the kernel-BBR finding, "worth its own
+plan", and the missing `ticket-valid-until` in the `.vv`
+template, "worth an issue" -- and `gh issue list --state all
+--search` finds no issue for either. Phase 9 is the plan's last
+phase, so an entry with no home dies with the plan when it
+retires.
 
 **7. Floor item 3 looks clean mechanically.** The addresses in the
 files phase 7 added are RFC1918 rig addresses inside unprivileged
@@ -185,6 +227,18 @@ confirms rather than discovers this, and extends it to #701.
    the backend sees it. The security step reads #701 at high
    effort on opus; `quic-bench`'s security question is what the
    tool does to the host that runs it.
+
+   - *Corrected 2026-11-12 by steps 9c and 9e, independently:*
+     `caps.rs` does not parse the link message. #701's code there
+     is `backend_channel_caps`, a one-line `.to_vec()`
+     pass-through, plus tests and about 83 lines of module doc;
+     every bound on the wire -- the 4096-byte link message, 16
+     capability words, the checked capability offset, the
+     handshake timeout -- is in ryll's protocol crate, which
+     #701 relies on and does not change. The weighting still
+     stands, because what #701 changed governs which
+     capabilities reach the backend, but the reason given for it
+     was wrong.
 
 4. **Findings are not fixed here.** The shared block puts them in
    their own pull request against the default branch. That
@@ -286,6 +340,47 @@ Entries are added as the steps run, per `PLAN-TEMPLATE.md`: the
 date with its timezone, any step run out of order, any decision
 that changed, and the wave exit codes.
 
+- **2026-11-12, AEDT.** All six steps ran on 2026-11-12. 9a ran
+  first as the gate and passed; 9b, 9c, 9d and 9e then ran in
+  parallel as read-only readers; 9f is this record. No step ran
+  out of order and no decision changed during execution, beyond
+  the corrections below.
+- **2026-11-12, AEDT.** Wave exit codes: `wave1.sh` 0 for
+  `17a31ebf75^1..17a31ebf75` and 0 for `e0f53fb04a^1..e0f53fb04a`;
+  `wave2-mechanical.sh` 0 for both, which it returns regardless of
+  findings. No range was altered. `plan-range.sh` was not used.
+- **2026-11-12, AEDT.** Step 9a's brief omitted the floor item 1
+  verdict that the plan's *Risks* table assigns to 9a, so the
+  management session did it instead: all twelve kerbside landings
+  resolve as two-parent merge commits, and the four out-of-repo
+  landings take the cited-audit form. That is a defect in the
+  brief, not in the step.
+- **2026-11-12, AEDT.** Step 9a reported no `rust.yml` push run on
+  `17a31ebf75`. That was its tooling's window rather than an
+  absence: `ci-status` returned the newest 100 runs, which begin
+  after the merge. The run exists, 42355942233, push event,
+  conclusion success, and the management session confirmed it by
+  querying the workflow runs for that head directly.
+- **2026-11-12, AEDT.** Four of the survey's findings and one
+  decision were corrected during execution, each recorded at its
+  source and summarised in *Outcome*. What they said before:
+  finding 2, "no repository gate touches it"; finding 3, that the
+  page's queue prediction was disproved and that phase 7's
+  numbers were "not phase 1's profiles"; finding 4, that
+  `docs/testing.md` is stale on the loss term; finding 6, "two
+  `Future work` entries have no home"; decision 3, that
+  `caps.rs` "parses a client's link message". Steps 9c, 9d and 9e
+  refuted them against the tree. The briefs asked for exactly
+  that, and told the steps not to soften a refutation to match
+  the plan. Rows 9c and 9e in *Step plan* are left as they were
+  sent, so row 9e still describes `caps.rs` as parsing the link
+  message: the briefs are a record of what was asked, and the
+  correction belongs in decision 3 and *Outcome*, which carry
+  it.
+- **2026-11-12, AEDT.** The private-data probe set was run over
+  the text this phase adds: no address beyond loopback and the
+  rig's documentation-range namespace addresses, no hostname, no
+  username, no home or scratchpad path, no credential.
 - **2026-11-12, AEDT.** The survey's count of the crate's Rust was
   wrong in the first draft of this plan: `tools/quic-bench/src/`
   is 1,162 lines, not about 1,500, which the planning commit also
@@ -304,7 +399,307 @@ that changed, and the wave exit codes.
 
 ## Outcome
 
-To be written by step 9f.
+**Audited 2026-11-12, AEDT. Nothing blocking was found in either
+landing, and no vulnerability.** Thirteen advisory or
+informational findings go to a follow-up pull request, listed
+below with their disposition. The two landings are 17a31ebf75
+(#701) and e0f53fb04a (#716), each read as a merge against its
+first parent.
+
+### Wave results
+
+| Check | 17a31ebf75 (#701) | e0f53fb04a (#716) |
+|-------|-------------------|-------------------|
+| `wave1.sh` | exit 0 | exit 0 |
+| `wave2-mechanical.sh` | exit 0, nothing to triage | exit 0, nothing to triage |
+| `rust.yml` | run 42355942233, push, success | not triggered: path-scoped to `rust/**` |
+
+Wave 1's one advisory was a suppressed `print()` in
+`tools/shaped-link/summarise.py`, which carries an
+`audit-allow-print` marker and is scored as a pass.
+
+The substitute Rust gate decision 2 names, run in Docker:
+`make lint` exit 0, `make test` 9 passed, `make mutants` killed 7
+and survived 0. Step 9c then re-ran the crate's mutation script
+with the failing test printed, and confirmed each mutant fails
+*exactly* its named test rather than being credited by a generic
+panic. It added two mutants for the two header tests the script
+did not defend, six Rust mutants against #701's guards and one
+Python mutant against the narrowed config bound: all nine killed,
+each by the test that names the property.
+
+### Each test, and the mutation that kills it
+
+Every mutation was run on a copy, under `timeout`, with the files
+touched after restoring so that no stale binary could be tested,
+and each was confirmed to fail *exactly* the test named rather
+than being credited by a generic panic. None survived.
+
+| Test (`tools/quic-bench/src/main.rs`) | Mutation that kills it |
+|---|---|
+| `percentile_of_nothing_is_none` | `None` returned as `Some(0)` |
+| `percentile_is_nearest_rank` | `ceil` for the rank becomes `floor` |
+| `percentile_never_runs_off_the_bottom` | the clamp removed |
+| `throughput_without_a_steady_window_is_zero_not_a_division_by_zero` | the guard becomes `if false` |
+| `throughput_is_megabits_of_the_steady_bytes_only` | `bytes_steady` becomes `bytes_total` |
+| `the_first_two_channels_are_the_measured_ones` | bulk and interactive swapped |
+| `a_header_claiming_an_implausible_size_is_refused` | the size check becomes `if false` |
+| `a_header_round_trips_its_role_and_size` | the role returned as `ROLE_IDLE` |
+| `a_truncated_header_is_an_error_not_a_default` | `read_exact(..)?` becomes `let _ =` |
+
+The last two were added by step 9c: the crate's own script
+defended seven of the nine, which is finding 12. The guards #701
+added were mutated too, seven mutants in all, each killed and
+correctly attributed: masking the forwarded capabilities to the
+reply set (killed by the unit test and by a functional handshake
+test), inlining the relayed capabilities in one backend arm,
+clamping an over-ack at zero, the stall threshold from twice to
+three times the window, crediting a zero window as one, the
+socket-option bound disabled, and in Python the narrowed ceiling
+widened back to the unsigned maximum.
+
+### The BBR bullet, statement by statement
+
+The definition of done asks for this one explicitly, since it is
+the finding the survey got wrong.
+
+| Statement | File and line | Verdict |
+|---|---|---|
+| "This host's kernel has only `reno` and `cubic` loaded" | `docs/performance/proxy-backpressure.md:253` | **False.** The host reports `reno cubic bbr`. Worse, it reads as the reason BBR cannot be measured here, where the module ships with the kernel and was merely unloaded. This page owns the claim and is the only line needing an edit. |
+| "Loading `tcp_bbr` needs root, and an unprivileged network namespace cannot autoload it" | `docs/performance/proxy-backpressure.md:254-256` | **True**, and the master plan's correction says so. |
+| "On these profiles BBR could only trim the bottleneck queue (about 20 ms at 20 ms RTT, one BDP)" | `docs/performance/proxy-backpressure.md:258-260` | **Not falsified.** It is a statement about queue depth, and phase 7's 171 to 104 ms no-loss cut on 80 ms / 10 Mbit is about one BDP at that RTT, so it illustrates the mechanism. This page owns it and nothing overturns it. |
+| "which is small next to the ACK-window backlog" | `docs/performance/proxy-backpressure.md:260` | **Untouched by phase 7**, whose bench has no spice-server and no ACK window. |
+| The throughput gap, 9.27 against 1.64 Mbit at 1% loss | `docs/performance/quic-transport-bench.md` owns the data | **A loss effect.** At 0% loss the controllers tie, and phase 1's rig had no loss term, which phase 7 added. |
+| "not phase 1's profiles" | this plan, as first written | **False.** `PROFILES='20:50 80:10 80:50'` at `docs/performance/proxy-backpressure.md:87` includes 80 ms / 10 Mbit. Only 150 ms / 2 Mbit is new. |
+
+### Floor checklist: kerbside
+
+1. **Pass.** Every recorded landing in the plan takes one of the
+   block's forms. All twelve kerbside landings resolve and have
+   two parents, so each is read against its first parent; the
+   four landings in other repositories -- kerbside-patches
+   #1748 and #2024, ryll #406, andris #56 -- take the
+   cited-audit form, and phase 6 cites each.
+2. **Pass.** #701's wheel feature check runs in workflows that
+   publish unattended, and a failure fails the job before
+   anything is published, visibly as an Actions failure. #716
+   adds nothing that runs unattended.
+3. **Pass.** Neither landing put a secret, token, private
+   hostname, username or home path into this public repository.
+   #701: no hits. #716: only the rig's RFC1918 namespace
+   addresses, `0.0.0.0` and loopback. Neither landing added an
+   image or any binary. The command output quoted in the two new
+   pages is sysctl values plus a kernel and an iproute2 version,
+   which the results need in order to be interpretable.
+4. **Pass, near-vacuously.** Neither landing removed or renamed
+   anything: `git diff --name-status --find-renames` shows only
+   `M` for #701 and `A` or `M` for #716. The one interface
+   narrowing -- the socket-option ceiling from 2^32-1 to 2^31-1
+   -- moved in `config.py`, `main.rs`, `transcode/mod.rs` and
+   `docs/configuration.md` together, with an upgrade note, and
+   the only configured sites in `etc/kerbside.conf.example` are
+   commented out. Greps run: the renamed log constant's prefix
+   repository-wide, and `backend_channel_caps`, `notsent_lowat`
+   and the old ceiling across this repository and `../ryll` at
+   `origin/develop`, which consumes none of it.
+5. **Pass, with one advisory.** This repository publishes a wheel
+   and images. `build-proxy-wheel.sh` runs under
+   `set -euo pipefail` and aborts before maturin on a missing
+   interpreter, a parse error or an unexpected key, so a broken
+   change publishes nothing. The advisory is finding 11.
+
+### Findings
+
+All advisory or informational; none blocks the landing. Each goes
+to the follow-up pull request unless marked otherwise.
+
+1. **`tools/quic-bench/summarise.py`: a lost repeat narrows the
+   gate's own threshold, silently.** `collect` appends a repeat
+   only when `read_run` returns a value, and `read_run` returns
+   `None` when a repeat's `{arm}.json` is missing, so such a
+   repeat never enters `runs` -- while `aggregate`'s
+   `unmeasured = len(runs) - len(measured)` can only see repeats
+   that are present with a null percentile. A repeat lost to a
+   crash, a kill or a full disk therefore shrinks
+   `p95_spread_ms`, which is the figure decision 2 of phase 7
+   gates its verdict against, and nothing warns. This is the
+   same class as the null-percentile path that #716's own review
+   round fixed, one layer further up: the fix generalised to the
+   wrong boundary. It cannot have moved a published number --
+   the independent recomputation covered those, and phase 7's
+   margin was about seventy times its spread -- but the next run
+   of this bench is unprotected. Fix: count repeats attempted
+   against repeats read, and warn on the difference.
+2. **`detect_headline_cc` falls back to `ccs[0]`.** `bbr` sorts
+   before `cubic`, so the fallback would label every row's scope
+   backwards, making the sensitivity arm read as the gate.
+3. **The throughput medians were never independently
+   recomputed.** Phase 7's recomputation covered the interactive
+   percentiles and bytes per queue slot, not the megabit tables,
+   which pass through the same `aggregate`.
+4. **`tools/quic-bench/run-bench.sh`: a pre-created TLS
+   directory.** The script does `mkdir -p "${WORKDIR}/tls"` and
+   then `chmod 700`, and its comment correctly reasons that
+   narrowing must precede writing. The residual case is a
+   `WORKDIR` under a world-writable directory, where another
+   local user can pre-create `tls` as a symlink: `mkdir -p`
+   succeeds on it, `chmod` follows it, and the unencrypted keys
+   land somewhere readable. Not reachable with the default
+   `WORKDIR`. Fix: port the ownership refusal already in
+   `tools/shaped-link/quality.sh`, which rejects a path this
+   user does not own.
+5. **`run-bench.sh` leaks the namespace holder on SIGKILL.** The
+   client namespace is held by `unshare --net sleep infinity`; a
+   kill that skips the EXIT trap leaves that process and its
+   namespace indefinitely. Everything else dies with the script,
+   and no `tc` or namespace state reaches the host, since all of
+   it runs under `unshare --user --map-root-user --net`. Fix:
+   bound the sleeper.
+6. **`docs/performance/quic-transport-bench.md` writes "the phase
+   should stop here".** A plan reference in documentation, which
+   `plan-phase-references` reserves for plan files. Introduced by
+   #716, and the definition of done's own grep misses it because
+   the word carries no number.
+7. **`docs/spice/capabilities.md` does not document the proxy's
+   reply mask.** The page is 176 lines and says nothing about the
+   mask, what is forwarded verbatim, or that the mask is not a
+   security boundary. That reasoning is phase 6's audit
+   resolution, and it now lives in exactly two places:
+   `caps.rs`'s module doc, and plan files that retirement
+   deletes. Fix: give the page the behaviour and leave the code
+   comment a pointer. This supersedes the comment-proportion
+   finding below.
+8. **`tools/shaped-link/run-matrix.sh`'s loss field has no
+   caller.** No committed script or page invokes `PROFILES` with
+   a third field; the only reference outside the rig's own header
+   is phase 7's definition of done. The runs under loss went
+   through `tools/quic-bench`'s own matrix instead, because steps
+   3 to 6 never ran. Keep it with one documented example, or
+   remove it.
+9. **`docs/testing.md` has no cross-reference to the bench.**
+   Advisory only: the measurement page owns the bench's
+   invocation, and `docs/testing.md`'s shaped-link material is a
+   subsection of its Ryll section, which the bench does not
+   belong in, having no Ryll, no guest and no SPICE.
+10. **Informational.** `caps.rs`'s module doc covers enforcement
+    and client compatibility but does not name the resource-cost
+    axis: forwarding a capability the proxy never offered lets a
+    client turn on backend work, such as an encoder, that the
+    proxy did not advertise. One sentence there.
+11. **Advisory.** `build-proxy-wheel.sh`'s feature check reads
+    the two manifests rather than the built wheel, so a feature
+    arriving by another route -- a dependency's own features, a
+    cargo config, a caller's maturin invocation -- would pass.
+    An assertion over the built binary would close it.
+12. **The mutation script covered seven of nine tests.** The two
+    header tests were undefended until step 9c added mutants for
+    them; both hold. Nothing tests `quic.rs`, `tcp.rs`,
+    `nogso.rs`, or the warmup-to-steady sample boundary that
+    decides every published percentile.
+13. **Trivial.** A loss field of `0.0` rather than `0` is not
+    caught by the `!= '0'` test, so it shapes `loss 0.0%` and
+    names a `-0.0pct` directory.
+
+### Declined, and why
+
+- **Moving `caps.rs`'s module doc to `docs/`, as the
+  comment-proportion check suggests.** #701 added 128 lines
+  there, 83 of them comment against 45 of code, which the rule
+  makes a candidate. Declined as stated: the rule exempts a
+  hard-won explanation, and this is one -- it is the resolution
+  phase 6's audit accepted when it declined capability masking,
+  on the ground that masking would drop guests to a slower render
+  path for no enforcement the opcode allowlist does not already
+  give. Cutting it would discard that. Finding 7 is the right
+  shape of the same observation: the gap is in `docs/`, not an
+  excess in the code.
+- **Sharing the namespace and shaping setup between
+  `run-bench.sh` and `run-matrix.sh`.** They do duplicate it.
+  Declined: the 0% control depends on the two scripts building
+  the same qdisc line independently, which phase 7 verified by
+  diffing them. Factoring it out would replace a cross-check with
+  a single point of failure.
+- **`tools/quic-bench/src/main.rs`'s `.unwrap()` on a header
+  read.** Not a finding: it is inside a `#[tokio::test]`, where
+  the unwrap failing is the assertion.
+- **Clamping the forwarded capabilities.** Declined by phase 6
+  with reasons; this audit does not reopen it, and step 9e agrees
+  the landing argues it down convincingly.
+
+### `Future work` with no home
+
+Phases 1, 3, 4 and 5 carry no *Future work* section of their own,
+feeding the master plan's instead; phase 6's reads "None yet". So
+the live set is phase 7's entries and the master plan's.
+
+With a home, every issue verified open:
+
+| Entry | Plan | Home |
+|---|---|---|
+| ryll `surface_drawn` rect patch; SET_ACK restart; display-socket stall; codec preference after DISPLAY_INIT | master | ryll#673 |
+| andris heat counting; socket pacing and the JPEG fringe; lag watchdog; libvirt attach; own D-Bus bindings | master | andris#62 |
+| kerbside-patches sysroot `build.sh` | master | kerbside-patches#2033 |
+| RustCrypto unpin | master | ryll#93 |
+| RDP | master | ryll's own RDP frontend plan |
+| Phase 2's dri-devel submission; phase 5's spice-server series | phase 7 | the master plan's phase 2 and 5 sections; Michael's to send |
+
+With no home:
+
+| Entry | Plan |
+|---|---|
+| **The kernel's BBR on the proxy host** | phase 7 |
+| **The `.vv` file lacks `ticket-valid-until`** | phase 7 |
+| Items 2, 6, 7 and 8, which were to "become the next plan" | master |
+| Lossless refinement for `gl=on`; `FB_DAMAGE_CLIPS` for qxl | master |
+| AF_UNIX in `reds_security_check`; backend-leg TLS session resumption | master |
+| ACK pacing; the `streaming-video` recommendation | master |
+| H.265 in spice-server; a faster bitrate ramp | master |
+| Re-measuring the helper's failing cells; the `transcode` feature's CI steps | master |
+
+Two of those are different, because phase 7 itself asked for them
+to be tracked, and both are Michael's to file:
+
+- **The kernel's BBR on the proxy host** (phase 7, "worth its own
+  plan"). On the shaped links the kernel's BBR carried 9.27 Mbit
+  against Cubic's 1.64 at 1% loss on 80 ms / 10 Mbit, and cut the
+  no-loss interactive p95 from 171 ms to 104 ms. It is a
+  `net.ipv4.tcp_congestion_control` change and it applies to
+  today's per-channel TCP client leg. Two caveats any follow-up
+  must carry: `tcp_bbr` was loaded by hand on this host and the
+  load is not persisted, so a recommendation has to say how the
+  module gets loaded as well as which sysctl to set; and the
+  trade is not uniform, since on 150 ms / 2 Mbit BBR's p95 under
+  loss sits above Cubic's. `tools/quic-bench/` is the bench to
+  re-run it with, which is also the argument for finding 2 of the
+  survey.
+- **The `.vv` file does not emit `ticket-valid-until`** (phase 7,
+  "worth an issue"), although `docs/spice/console-vv-extensions.md`
+  defines it and recommends it for Kerbside specifically, and the
+  API knows the lifetime. Note that kerbside#411 -- the `.vv`
+  construction being duplicated three times -- is a dependency
+  rather than a home: adding a key means touching every copy.
+
+### Corrections this audit made to its own plan
+
+The survey's documentation findings were the management session's
+own unverified claims, and the steps were briefed to refute them
+rather than confirm them. Four did not survive intact, and the
+corrections are in *What the survey found* with the originals
+recorded there and in *Execution notes*:
+
+- Finding 2 said no repository gate touches the crate. CodeQL
+  does; what holds is that nothing builds, tests or lints it.
+- Finding 3 said a page states what phase 7 disproved. One
+  sentence of it, the availability claim, is wrong; the queue
+  prediction is not falsified, and 80 ms / 10 Mbit *is* one of
+  phase 1's profiles, which the finding denied.
+- Finding 4 said `docs/testing.md` is stale on the loss term. It
+  delegates to the rig's header by design; only the
+  discoverability half survives.
+- Finding 6 said two entries have no home. About fifteen have
+  none; two are the ones phase 7 asked to have tracked.
+- Decision 3 said `caps.rs` parses the client's link message. It
+  does not; ryll's crate does, unchanged by #701.
 
 ## Back brief
 
