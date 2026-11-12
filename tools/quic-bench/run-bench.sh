@@ -51,6 +51,7 @@
 set -euo pipefail
 
 WORKDIR="${WORKDIR:-$(pwd)/quic-bench-results}"
+TLS_DIR="${WORKDIR}/tls"
 DQ="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BENCH_BIN="${BENCH_BIN:-${DQ}/target/release/quic-bench}"
 PROFILES="${PROFILES:-80:10 150:2}"
@@ -78,6 +79,62 @@ QUIC_PORT=5802
 
 log() { echo "[$(date -u +%H:%M:%S)] $*" >&2; }
 
+count_words() { echo "$#"; }
+
+# A loss field of "0.0" or "0.00" is the same unshaped control as "0". Reduce
+# it to "0" so the qdisc gets no loss term at all and the cell is named
+# "-0pct" rather than "-0.0pct".
+normalise_loss() {
+    if [[ "$1" =~ ^0+(\.0*)?$ ]]; then
+        echo 0
+    else
+        echo "$1"
+    fi
+}
+
+# Refuse a directory the keys must not be written into or under: one this user
+# does not own, or one any other local user can write. `openssl req -nodes`
+# writes the keys unencrypted, and both mkdir -p and chmod accept whatever is
+# already at the path, so under a writable parent another local user can
+# pre-create the directory as a symlink and read the keys where it points.
+#
+# Only the two directories the run writes into are checked, not every ancestor:
+# a measurement host keeps its checkout under a shared, sometimes mode-777
+# parent, and an ancestor another user can write is a compromise of the whole
+# checkout rather than something this script can narrow.
+require_private_dir() {
+    local dir="$1" mode
+    # `test -O` follows symlinks, so a symlink has to be refused on its own
+    # before the ownership test below can mean anything.
+    if [ -L "${dir}" ]; then
+        echo "ERROR: ${dir} is a symlink; refusing to write the run's TLS material through it." >&2
+        exit 1
+    fi
+    if [ ! -e "${dir}" ]; then
+        return 0
+    fi
+    if [ ! -O "${dir}" ]; then
+        echo "ERROR: ${dir} is not owned by this user; refusing to use it." >&2
+        echo "       Remove it, or set WORKDIR to a path you own." >&2
+        exit 1
+    fi
+    # Read the mode through stat and check stat's exit status: a `find -perm`
+    # probe that errors prints nothing, which is indistinguishable from a pass.
+    # The last octal digit holds the other bits, so 2, 3, 6 and 7 are writable.
+    if ! mode="$(stat -c '%a' "${dir}" 2>/dev/null)"; then
+        echo "ERROR: cannot read the permissions of ${dir}; refusing to run there." >&2
+        exit 1
+    fi
+    case "${mode}" in
+        *[2367])
+            echo "ERROR: ${dir} is writable by any local user; refusing to put the run's" >&2
+            echo "       TLS material there. Remove the write bit, or set WORKDIR to a" >&2
+            echo "       private path." >&2
+            exit 1
+            ;;
+    esac
+}
+
 # ── Outer half: check the inputs, then re-execute in a namespace ─────────────
 
 if [ -z "${QUIC_BENCH_INNER:-}" ]; then
@@ -100,6 +157,15 @@ if [ -z "${QUIC_BENCH_INNER:-}" ]; then
                 ;;
         esac
     done
+    normalised=''
+    for loss in ${LOSSES}; do
+        normalised="${normalised}${normalised:+ }$(normalise_loss "${loss}")"
+    done
+    LOSSES="${normalised}"
+    # Before anything is created, so a hostile path is refused rather than
+    # written into.
+    require_private_dir "${WORKDIR}"
+    require_private_dir "${TLS_DIR}"
     mkdir -p "${WORKDIR}"
     export QUIC_BENCH_INNER=1 WORKDIR BENCH_BIN PROFILES LOSSES CCS REPEATS \
         DURATION WARMUP CHANNELS INTERVAL_MS GSO_CONTROL BUFFER_BDP QUIC_FLAGS
@@ -128,8 +194,21 @@ trap cleanup EXIT
 ip link set lo up
 
 # The client namespace is held open by a sleeper; everything client side runs
-# through nsenter into it.
-unshare --net sleep infinity &
+# through nsenter into it. The sleeper is bounded rather than infinite: the
+# exit trap kills it, but a signal that skips the trap -- SIGKILL -- would
+# otherwise leave it, and the namespace it owns, running until the host
+# reboots.
+#
+# The bound is the matrix's own worst case, doubled. Every client run is
+# already capped at DURATION + 120 seconds by its own timeout; there are two
+# arms per repeat of every cell plus the single GSO control run, and 300
+# seconds covers link setup, TLS generation and per-run server startup. The
+# doubling means a host slow enough to take twice that extends the run instead
+# of losing its namespace mid-measurement.
+# shellcheck disable=SC2086  # deliberate splitting: these are space-separated lists
+CELLS=$(( $(count_words ${PROFILES}) * $(count_words ${LOSSES}) * $(count_words ${CCS}) ))
+NS_TTL=$(( 2 * (300 + (CELLS * REPEATS * 2 + 1) * (DURATION + 120)) ))
+unshare --net sleep "${NS_TTL}" &
 CLIENT_NS_PID=$!
 sleep 0.5
 in_client() { nsenter --target "${CLIENT_NS_PID}" --net -- "$@"; }
@@ -199,7 +278,11 @@ cat "${WORKDIR}/host.txt" >&2
 # leaves a window at the default umask. The material is a throwaway CA used
 # only inside the namespace, but the results directory is what a reader is
 # invited to keep.
-TLS_DIR="${WORKDIR}/tls"
+#
+# The ownership check runs again here, not only in the outer half: WORKDIR did
+# not necessarily exist then, so a writable parent left a window in which the
+# tls directory could be pre-created between the two.
+require_private_dir "${TLS_DIR}"
 mkdir -p "${TLS_DIR}"
 chmod 700 "${TLS_DIR}"
 
