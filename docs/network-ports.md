@@ -78,12 +78,14 @@ Kerbside's ports everywhere:
   Kerbside on one of those hypervisors does contend, and its
   `VDI_*_PORT` values should move out of the range.
 - **Shaken Fist** allocates each console a random port in the
-  30000-50000 range, so Kerbside's defaults clear them. The role
-  reserves nothing by default: on a Shaken Fist hypervisor pass the
-  cluster's daemon ports and `[30000, 65535]` in
-  `kerbside_reserved_ports`, as the Ports section of
-  `ansible/README.md` shows, and keep ports of your own out of that
-  range. That the consoles are nowhere near 5900 is part of why Shaken
+  30000-50000 range (`Instance._allocate_console_port` in Shaken
+  Fist's `shakenfist/instance.py`), so Kerbside's defaults clear
+  them. The role reserves nothing by default: on a Shaken Fist
+  hypervisor pass the cluster's daemon ports and a range covering
+  the consoles in `kerbside_reserved_ports`. The Ports section of
+  `ansible/README.md` shows `[30000, 65535]`, which covers them with
+  room to spare; keep ports of your own out of whichever range you
+  reserve. That the consoles are nowhere near 5900 is part of why Shaken
   Fist's operator guide recommends putting Kerbside on a hypervisor
   ([Shaken Fist](use-cases/shakenfist.md)).
 - **Proxmox VE** puts each VM's SPICE listener above this range and

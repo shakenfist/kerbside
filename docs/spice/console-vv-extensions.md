@@ -66,9 +66,11 @@ ticket is single-use** and therefore:
   associated bug-report zips.
 
 Kerbside is the near miss here: its console token is not
-invalidated on first use, so it is reusable in principle,
-but `CONSOLE_TOKEN_DURATION` defaults to one minute, which
-closes the window before a user could act on it.
+invalidated on first use, so it is replayable until it
+expires, `CONSOLE_TOKEN_DURATION` after issue (one minute
+by default). No client in the stack tries to replay it,
+so a copy left on disk after that first minute is not
+worth reusing, and inside it nothing asks to.
 
 If a future producer wants the file deleted but the ticket
 *usefully* reusable, this interpretation will surprise it.

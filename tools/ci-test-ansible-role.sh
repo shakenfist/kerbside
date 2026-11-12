@@ -1032,8 +1032,10 @@ case_12_refused_render() {
     # config does not run validate's checks, so the write is the last line of
     # defence. The other sources carry secrets, which the refusal must not
     # print (case 18).
-    # The static source is the one corrupted, because it is the only one
-    # in the fixture carrying no secret. It is found by type and the
+    # The static source is the one corrupted, as it was before the fixture
+    # grew: it is the only one with no source-level password, though its
+    # console ticket is still one of SECRETS, so the refusal is held to
+    # printing none of them either way. It is found by type and the
     # expected position derived from that, rather than both being written
     # out: a source added to multi.json moves the indices, and the refusal
     # names the position -- the same reason case 7 derives its duplicate.

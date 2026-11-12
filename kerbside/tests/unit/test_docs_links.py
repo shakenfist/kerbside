@@ -202,7 +202,9 @@ class MarkdownLinkTestCase(testtools.TestCase):
                 '```sh\n'
                 '# Not a heading, a shell comment\n'
                 '```\n'
-                '## Trailing hashes ##\n')
+                '## Trailing hashes ##\n'
+                '## Style conformance \u2014 judgment portion\n'
+                '### `delete-this-file=1` \u2192 single-use ticket\n')
 
         self.assertEqual(
             set([
@@ -226,6 +228,11 @@ class MarkdownLinkTestCase(testtools.TestCase):
                 # Later duplicates take a suffix; the first does not.
                 'repeated', 'repeated-1', 'repeated-2',
                 'trailing-hashes',
+                # Non-ASCII punctuation, as this tree's headings use:
+                # the dash and the arrow go, the spaces either side of
+                # them stay, so the slug carries a doubled hyphen.
+                'style-conformance--judgment-portion',
+                'delete-this-file1--single-use-ticket',
             ]),
             self._anchors(fixture))
 

@@ -195,6 +195,12 @@ class RoleDefaultsTestCase(testtools.TestCase):
     # differ between a checkout and a release. Pinned rather than
     # skipped on shape, so a new prose default is a deliberate edit.
     PROSE_DEFAULTS = ('kerbside_collection_version', 'kerbside_package')
+    # Rows for variables defaults/main.yml does not set. Pinned for the
+    # same reason: a row left behind by a renamed or deleted variable is
+    # drift in the other direction, and must fail rather than be skipped.
+    # kerbside_collection_version is set by the collection's build, not
+    # by the role.
+    NOT_DEFAULTED = ('kerbside_collection_version',)
 
     def test_the_readme_documents_the_real_defaults(self):
         """ansible/README.md's tables are read in place of the code.
@@ -215,6 +221,11 @@ class RoleDefaultsTestCase(testtools.TestCase):
             [], undocumented,
             'role defaults with no row in ansible/README.md: %s'
             % ', '.join(undocumented))
+        stale = sorted(set(documented) - set(defaults))
+        self.assertEqual(
+            sorted(self.NOT_DEFAULTED), stale,
+            'ansible/README.md documents a default for a variable the role '
+            'does not set; if that is deliberate, add it to NOT_DEFAULTED')
 
         prose = sorted(name for name, cell in documented.items()
                        if not _README_LITERAL_RE.match(cell))
@@ -229,7 +240,7 @@ class RoleDefaultsTestCase(testtools.TestCase):
         compared = 0
         drifted = []
         for name, cell in sorted(documented.items()):
-            if name in self.PROSE_DEFAULTS or name not in defaults:
+            if name in self.PROSE_DEFAULTS:
                 continue
             literal = _README_LITERAL_RE.match(cell).group(1)
             stated = yaml.safe_load(literal) if literal else ''
@@ -253,8 +264,8 @@ _README_ROW_RE = re.compile(
 _README_LITERAL_RE = re.compile(r'^`([^`]*)`$')
 # A default referring to another, as kerbside_pki_dir does. Only the
 # bare `{{ name }}` form appears, and a reference to a variable the role
-# does not default is left alone, so it fails the comparison rather than
-# rendering as nothing.
+# does not default, or to one which is not a string, is left alone, so it
+# fails the comparison rather than rendering as nothing or as a repr.
 _JINJA_REF_RE = re.compile(r'{{\s*(kerbside_[a-z_0-9]+)\s*}}')
 
 
@@ -275,17 +286,20 @@ def _rendered_defaults():
     The role's default for kerbside_pki_dir is written in terms of
     kerbside_config_dir, which the README spells out, so comparing the
     two needs the reference rendered. Four passes is more depth than
-    the file has, and an unresolved reference is left in place to fail
-    the comparison.
+    the file has. A reference which cannot be resolved to a string -- to
+    a variable the role does not default, or to a list or a number -- is
+    left in place to fail the comparison.
     """
-    with open(_DEFAULTS) as f:
+    def resolve(match):
+        value = defaults.get(match.group(1))
+        return value if isinstance(value, str) else match.group(0)
+
+    with open(_DEFAULTS, encoding='utf-8') as f:
         defaults = yaml.safe_load(f)
     for _ in range(4):
         for name, value in list(defaults.items()):
             if isinstance(value, str) and '{{' in value:
-                defaults[name] = _JINJA_REF_RE.sub(
-                    lambda m: str(defaults.get(m.group(1), m.group(0))),
-                    value)
+                defaults[name] = _JINJA_REF_RE.sub(resolve, value)
     return defaults
 
 
