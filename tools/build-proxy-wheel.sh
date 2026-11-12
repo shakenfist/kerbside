@@ -116,6 +116,59 @@ then
     exit 1
 fi
 
+# A third feature check, independent of the two above and over the artefact
+# rather than the inputs. The manifest checks read what this script asks
+# cargo for; they cannot see a feature arriving by another route -- a
+# dependency that enables it, a .cargo/config.toml in the tree, or a caller
+# that invokes maturin itself with --features and never reaches this script.
+# So the finished wheel is opened and the binary inside it searched for
+# material only a `transcode` build can carry:
+#
+#   transcode-display  the clap long flag, which exists only inside
+#                      #[cfg(feature = "transcode")]
+#   openh264           the encoder the feature builds from vendored source
+#
+# Both are string data, not symbols, so the strip maturin applies to a
+# release build leaves them in place.
+#
+# What this proves is narrow, and worth saying plainly: the published binary
+# carries neither the transcoder's command-line surface nor any openh264.
+# It is not a general feature audit -- a future feature with no string
+# footprint would pass it -- which is why the deny-by-default manifest checks
+# stay. Anything that stops it from answering (no binary in the wheel, an
+# unreadable zip) fails the build rather than passing quietly.
+assert_wheel_carries_no_features() {
+    python3 -I - "$1" <<'ARTEFACT_CHECK'
+import sys, zipfile
+
+# Marker -> what finding it would mean. Matched case-insensitively against the
+# whole binary.
+MARKERS = {
+    b'transcode-display': 'the --transcode-display command-line flag',
+    b'openh264': 'openh264, built from vendored source',
+}
+
+wheel = sys.argv[1]
+try:
+    with zipfile.ZipFile(wheel) as zf:
+        # maturin's `bindings = "bin"` lays the binary into *.data/scripts/.
+        binaries = [n for n in zf.namelist() if '.data/scripts/' in n and not n.endswith('/')]
+        if len(binaries) != 1:
+            sys.exit('ERROR: %s holds %d files under .data/scripts/, expected 1 (%r): this '
+                     'check cannot say what the wheel carries.' % (wheel, len(binaries), binaries))
+        blob = zf.read(binaries[0]).lower()
+except (OSError, zipfile.BadZipFile) as e:
+    sys.exit('ERROR: cannot read the built wheel %s: %s' % (wheel, e))
+
+found = sorted(why for marker, why in MARKERS.items() if marker in blob)
+if found:
+    sys.exit('ERROR: the built binary %s in %s carries %s. A cargo feature reached this build '
+             'by a route the manifest checks cannot see (a dependency, a cargo config, or a '
+             'caller running maturin directly), and the published wheel must carry none.'
+             % (binaries[0], wheel, '; '.join(found)))
+ARTEFACT_CHECK
+}
+
 # If the tree is unstamped (pyproject.toml still declares a dynamic version,
 # which maturin resolves from Cargo.toml's 0.1.0 placeholder), stamp the
 # setuptools_scm version first. kerbside's committed dependency floor
@@ -174,6 +227,7 @@ if [ "${native}" = 1 ]; then
         echo "ERROR: no wheel produced in ${wheel_out}" >&2
         exit 1
     fi
+    assert_wheel_carries_no_features "${wheel}"
     echo "OK: $(basename "${wheel}")"
     exit 0
 fi
@@ -206,5 +260,7 @@ case "$(basename "${wheel}")" in
         exit 1
         ;;
 esac
+
+assert_wheel_carries_no_features "${wheel}"
 
 echo "OK: $(basename "${wheel}")"
