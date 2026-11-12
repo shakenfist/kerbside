@@ -12,17 +12,13 @@
 
 # mysqlclient ships no wheel and is built from source, which needs a compiler,
 # the MariaDB client headers and pkg-config (Kerbside's installation guide).
+# kerbside_build_packages (vars/main.yml) is that list plus whatever the
+# configured source types' client libraries need to build, since those are
+# built from source on this host too.
 # The cache is refreshed because nothing else is assumed to have refreshed it.
 - name: Install Kerbside's build dependencies
   ansible.builtin.apt:
-    name:
-      - build-essential
-      - pkg-config
-      - python3-dev
-      - python3-venv
-      - libmariadb-dev-compat
-      - libxml2-dev
-      - libxslt1-dev
+    name: "{{ kerbside_build_packages }}"
     state: latest
     update_cache: true
     cache_valid_time: 3600
@@ -106,9 +102,10 @@
 # --reinstall makes a redeploy pick up a rebuilt wheel with an unchanged
 # version string. An empty proxy package is left out, so the kerbside-proxy
 # which the kerbside package requires is installed. gunicorn serves Kerbside's
-# API. The Shaken Fist client is imported by Kerbside's Shaken Fist source
-# driver but is not a dependency of the kerbside package, so it is installed
-# when a source is of type shakenfist, and otherwise not.
+# API. The client libraries the configured source types' drivers import
+# (kerbside_client_requirements, vars/main.yml) are dependencies of no
+# package, so each is installed here, and a type whose driver needs none
+# adds nothing.
 - name: Install Kerbside, its proxy, gunicorn and any client its sources need
   # noqa: command-instead-of-shell -- shell word-splitting is required because
   # kerbside_pip_extra may be empty or expand to several arguments. Everything
@@ -121,8 +118,7 @@
     {{ kerbside_install_proxy_package | quote
     if kerbside_install_proxy_package | length > 0 else '' }}
     gunicorn
-    {{ kerbside_client_package | quote
-    if kerbside_shakenfist_sources | length > 0 else '' }}
+    {{ kerbside_client_requirements | map('quote') | join(' ') }}
   environment:
     VIRTUAL_ENV: "{{ kerbside_venv }}"
   changed_when: true
@@ -136,9 +132,13 @@
 #
 # What is hashed, in one stream:
 #
-#   * the files of the kerbside package, of the shakenfist_client package when
-#     a source is of type shakenfist (so it was installed above), and the
-#     kerbside-proxy binary. The kerbside-proxy wheel installs only that binary
+#   * the files of the kerbside package, of every client library the
+#     configured source types need (kerbside_client_directories,
+#     vars/main.yml: exactly those installed above), and the kerbside-proxy
+#     binary. find fails on a directory which is not there, which is what
+#     makes this the check that each client landed at all: otherwise a
+#     client which did not install surfaces only later, as a source marked
+#     errored or a 500 from token exchange (#602). The kerbside-proxy wheel installs only that binary
 #     and no Python package, so the binary is the whole of it. These catch a
 #     rebuilt wheel whose version did not change. __pycache__ is left out
 #     because .pyc files embed timestamps.
@@ -177,8 +177,9 @@
       {
       find -H
       {{ (kerbside_site_packages.stdout ~ '/kerbside') | quote }}
-      {{ (kerbside_site_packages.stdout ~ '/shakenfist_client') | quote
-      if kerbside_shakenfist_sources | length > 0 else '' }}
+      {% for directory in kerbside_client_directories %}
+      {{ (kerbside_site_packages.stdout ~ '/' ~ directory) | quote }}
+      {% endfor %}
       {{ (kerbside_venv ~ '/bin/kerbside-proxy') | quote }}
       -type f -not -path '*__pycache__*' -print0
       | sort -z | xargs -0 sha256sum;

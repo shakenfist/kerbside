@@ -74,6 +74,14 @@ When adding a new cloud source type to Kerbside:
      Leaving the fixture out is how the Proxmox type shipped
      four-fifths covered (#643). Run the script before CI does: it is
      also the gate proving no new secret leaks into the role's output;
+   - give it an entry in `kerbside_source_client_packages` and
+     `kerbside_source_build_packages`, in both
+     `ansible/roles/kerbside/defaults/main.yml` and the defaults
+     `meta/argument_specs.yml` documents: the client libraries its driver
+     imports with the site-packages directory each installs, and whatever
+     they need to build. An empty list is the answer for a type whose
+     driver imports none, and a type missing from either mapping is
+     refused by `validate` rather than deployed without its client;
    - add cases to `kerbside/tests/unit/test_ansible_role.py`.
 
 9. Add tests. Unit tests mock the platform's API at the driver's

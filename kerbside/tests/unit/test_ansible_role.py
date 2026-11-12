@@ -190,11 +190,18 @@ class RoleDefaultsTestCase(testtools.TestCase):
             'argument_specs.yml documents a default other than '
             'defaults/main.yml sets: %s' % ', '.join(drifted))
 
-    # Rows whose default is prose rather than one literal, because it
-    # depends on something outside defaults/main.yml: both of these
-    # differ between a checkout and a release. Pinned rather than
-    # skipped on shape, so a new prose default is a deliberate edit.
-    PROSE_DEFAULTS = ('kerbside_collection_version', 'kerbside_package')
+    # Rows whose default is prose rather than one literal. Two depend on
+    # something outside defaults/main.yml, and differ between a checkout
+    # and a release; the rest are package lists, too long for one
+    # literal in a table cell, which PACKAGE_LIST_DEFAULTS checks
+    # instead. Pinned rather than skipped on shape, so a new prose
+    # default is a deliberate edit.
+    PACKAGE_LIST_DEFAULTS = (
+        'kerbside_source_build_packages',
+        'kerbside_source_client_packages')
+    PROSE_DEFAULTS = (
+        ('kerbside_collection_version', 'kerbside_package')
+        + PACKAGE_LIST_DEFAULTS)
     # Rows for variables defaults/main.yml does not set. Pinned for the
     # same reason: a row left behind by a renamed or deleted variable is
     # drift in the other direction, and must fail rather than be skipped.
@@ -254,6 +261,24 @@ class RoleDefaultsTestCase(testtools.TestCase):
                          'only %d of %d comparable role defaults were '
                          'compared: %r' % (compared, expected, documented))
 
+    def test_the_readme_names_every_default_package(self):
+        # A package-list default is prose in the README, so it cannot be
+        # compared as one literal; what an operator reads it for is which
+        # packages a deploy installs, so the row must name each of them.
+        documented = _documented_defaults()
+        defaults = _rendered_defaults()
+        unnamed = []
+        for name in self.PACKAGE_LIST_DEFAULTS:
+            named = set(re.findall(r'`([^`]+)`', documented[name]))
+            packages = _default_packages(defaults[name])
+            self.assertNotEqual(set(), packages, name)
+            unnamed.extend('%s: %s' % (name, package)
+                           for package in sorted(packages - named))
+        self.assertEqual(
+            [], unnamed,
+            'ansible/README.md does not name a package the role installs '
+            'by default: %s' % ', '.join(unnamed))
+
 
 # A row of one of ansible/README.md's variable tables: the variable, the
 # default it documents, and the prose, which is not read here.
@@ -278,6 +303,20 @@ def _documented_defaults():
             if match:
                 rows[match.group(1)] = match.group(2)
     return rows
+
+
+def _default_packages(value):
+    """Every package a package-list default names, at any depth.
+
+    A list holds apt package names, or entries whose package is a pip
+    requirement; a mapping holds such lists by source type.
+    """
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, dict) and 'package' in value:
+        return {value['package']}
+    items = value.values() if isinstance(value, dict) else value
+    return set().union(*(_default_packages(item) for item in items))
 
 
 def _rendered_defaults():
@@ -626,3 +665,174 @@ class CheckIniScriptTestCase(testtools.TestCase):
                      '[kerbside]\nsql_url = a\nsql_url = secret-value\n'):
             for reason in self._check(text):
                 self.assertNotIn('secret-value', reason)
+
+
+# The heading of the table in docs/installation.md that says which client
+# library each kind of deployment needs. The guide is written for someone
+# installing by hand, so it is the statement of what the role automates.
+_CLIENT_SECTION = 'Client libraries for console sources'
+
+
+def _lazily_imported_modules():
+    """Every top-level module Kerbside imports with importlib.
+
+    Kerbside's cloud clients are all imported this way, because none of
+    them is a dependency: a deployment installs the ones its sources
+    need. So this is the list of client libraries a deployment may have
+    to install, read off the code that imports them.
+    """
+    modules = set()
+    for path in sorted(_KERBSIDE.rglob('*.py')):
+        if 'tests' in path.parts:
+            continue
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(node, ast.Call):
+                continue
+            function = node.func
+            name = (function.attr if isinstance(function, ast.Attribute)
+                    else getattr(function, 'id', None))
+            if name != 'import_module' or not node.args:
+                continue
+            argument = node.args[0]
+            if isinstance(argument, ast.Constant) and isinstance(
+                    argument.value, str):
+                modules.add(argument.value.split('.')[0])
+    return modules
+
+
+def _documented_client_libraries():
+    """The client libraries docs/installation.md names, by source type.
+
+    The table's rows read "A `<type>` source", with the libraries as the
+    backticked names of the second column -- except where that column
+    begins with "Nothing", which means none, whatever it goes on to
+    mention. A row naming no source type (interactive login, which is
+    not a property of the sources) is returned under None.
+    """
+    rows = []
+    section = False
+    with open(_ROOT / 'docs' / 'installation.md') as f:
+        for line in f:
+            if line.startswith('#'):
+                section = line.strip('#').strip() == _CLIENT_SECTION
+                continue
+            if not section or not line.startswith('|'):
+                continue
+            cells = [cell.strip()
+                     for cell in line.strip().strip('|').split('|')]
+            if len(cells) < 2 or set(cells[0]) <= set('- '):
+                continue
+            rows.append(cells)
+    if not rows:
+        raise AssertionError(
+            'docs/installation.md has no "%s" table' % _CLIENT_SECTION)
+    documented = {}
+    floors = {}
+    for used, install in ((row[0], row[1]) for row in rows):
+        names = re.findall(r'`([^`]+)`', used)
+        kind = next((name for name in names
+                     if name in check_sources.TYPE_REQUIRED), None)
+        if install.startswith('Nothing'):
+            libraries = []
+        else:
+            libraries = re.findall(r'`([^`]+)`', install)
+        documented.setdefault(kind, set()).update(libraries)
+        for library in libraries:
+            floor = re.search(
+                r'`%s`\s+([0-9][0-9.]*) or later' % re.escape(library),
+                install)
+            if floor:
+                floors[library] = floor.group(1)
+    return documented, floors
+
+
+class RoleClientLibrariesTestCase(testtools.TestCase):
+    """The role installs the client libraries its sources need.
+
+    Kerbside imports every cloud client lazily and depends on none of
+    them, so a missing client is not a failed install: the source is
+    marked errored and ignored, or token exchange answers 500. The role
+    installed shakenfist-client and nothing else, so a role-deployed
+    Kerbside accepted an ovirt or openstack source it could never serve
+    and said nothing (#602). These hold the role's mapping to the two
+    things that decide what it should be: the imports in the code, and
+    the table operators installing by hand follow.
+    """
+
+    def setUp(self):
+        super().setUp()
+        with open(_DEFAULTS) as f:
+            self.defaults = yaml.safe_load(f)
+        self.clients = self.defaults['kerbside_source_client_packages']
+        self.build = self.defaults['kerbside_source_build_packages']
+
+    def _requirements(self):
+        """Every client requirement the role can install, by distribution."""
+        return {re.split(r'[><=!~\[]', entry['package'])[0]: entry['package']
+                for entries in self.clients.values() for entry in entries}
+
+    def test_every_source_type_has_a_decision(self):
+        # Including the types which need nothing: an empty list says so,
+        # where a missing key would leave validate to refuse the deploy.
+        self.assertEqual(
+            set(check_sources.TYPE_REQUIRED), set(self.clients))
+        self.assertEqual(
+            set(check_sources.TYPE_REQUIRED), set(self.build))
+
+    def test_every_client_kerbside_imports_is_installable(self):
+        # The directories, because that is what Kerbside imports and
+        # what bootstrap hashes to prove the client landed. A client
+        # library Kerbside learns to import must be added to the role
+        # here, or no deploy will ever install it.
+        declared = {entry['directory']
+                    for entries in self.clients.values()
+                    for entry in entries}
+        self.assertEqual(_lazily_imported_modules(), declared)
+
+    def test_the_installed_clients_are_the_documented_ones(self):
+        documented, _ = _documented_client_libraries()
+        for kind in sorted(kind for kind in documented if kind):
+            libraries = documented[kind]
+            installed = {re.split(r'[><=!~\[]', entry['package'])[0]
+                         for entry in self.clients[kind]}
+            self.assertEqual(
+                libraries, installed,
+                'the role installs %s for a %s source, but '
+                'docs/installation.md documents %s'
+                % (sorted(installed), kind, sorted(libraries)))
+
+    def test_every_source_type_is_in_the_documented_table(self):
+        documented, _ = _documented_client_libraries()
+        self.assertEqual(
+            set(check_sources.TYPE_REQUIRED),
+            set(documented) - {None},
+            'docs/installation.md does not name every source type, so the '
+            'comparison above passed over one')
+        # Interactive login is the one row that is not about a source
+        # type, and the role covers it from kerbside_extra_settings
+        # rather than from the sources.
+        self.assertEqual(
+            {'keystoneauth1', 'python-keystoneclient'}, documented[None])
+
+    def test_a_documented_version_floor_is_installed(self):
+        _, floors = _documented_client_libraries()
+        self.assertNotEqual({}, floors)
+        requirements = self._requirements()
+        for library, floor in sorted(floors.items()):
+            self.assertEqual(
+                '%s>=%s' % (library, floor), requirements.get(library),
+                'docs/installation.md says %s %s or later, so that is what '
+                'the role must install: an older one leaves the source '
+                'errored, which is not a failed deploy' % (library, floor))
+
+    def test_the_build_packages_are_documented(self):
+        # One direction only: the guide names what a C extension needs
+        # on each distribution, and the role installs the Debian ones.
+        guide = (_ROOT / 'docs' / 'installation.md').read_text()
+        for kind, packages in sorted(self.build.items()):
+            for package in packages:
+                self.assertIn(
+                    '`%s`' % package, guide,
+                    'the role installs %s for a %s source, but '
+                    'docs/installation.md does not say why it is needed'
+                    % (package, kind))

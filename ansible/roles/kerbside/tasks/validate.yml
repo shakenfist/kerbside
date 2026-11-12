@@ -89,6 +89,33 @@
           | default('The check printed no reason.', true) }}
         quiet: true
 
+    # bootstrap installs the client libraries the configured source types
+    # need by looking each type up in these two mappings, so a type missing
+    # from either would fail the lookup in the middle of a deploy, with a
+    # Jinja error naming neither the type nor what to do about it. Said here
+    # instead, on the control node, before any host is touched. A type which
+    # needs no client library is an empty list, which is a decision; absence
+    # is not (#602).
+    - name: Refuse a source type the role has no client libraries for
+      ansible.builtin.assert:
+        that:
+          - kerbside_source_types | difference(
+              kerbside_source_client_packages.keys() | list) | length == 0
+          - kerbside_source_types | difference(
+              kerbside_source_build_packages.keys() | list) | length == 0
+        fail_msg: >-
+          kerbside_sources on {{ inventory_hostname }} has sources of
+          type(s) {{ (kerbside_source_types | difference(
+            kerbside_source_client_packages.keys() | list)
+            | union(kerbside_source_types | difference(
+              kerbside_source_build_packages.keys() | list)))
+            | sort | join(', ') }}, which
+          kerbside_source_client_packages or kerbside_source_build_packages
+          does not list. Kerbside supports the type, so this is the role
+          catching up with it: add the client libraries that type's driver
+          imports, or an empty list where it imports none.
+        quiet: true
+
     # A Shaken Fist cluster mints console tokens for the Kerbside at its
     # KERBSIDE_URL, and config renders kerbside_url as the audience Kerbside
     # accepts. Without a Shaken Fist source Kerbside verifies no such token,

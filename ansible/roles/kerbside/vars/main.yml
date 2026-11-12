@@ -28,6 +28,30 @@ kerbside_shakenfist_sources: >-
      | selectattr('type', 'equalto', 'shakenfist')
      | map(attribute='source') | map('string') | list }}
 
+# The types of the configured sources, and what each type needs installed:
+# the client requirements bootstrap passes to uv, the site-packages
+# directories those clients install into (which bootstrap hashes, so a client
+# which did not land fails the deploy), and the apt packages needed to build
+# them, with Kerbside's own. Every type is looked up in
+# kerbside_source_client_packages and kerbside_source_build_packages, so a
+# type missing from either is an error rather than a silently empty list --
+# validate says so before anything is installed.
+kerbside_source_types: >-
+  {{ kerbside_sources | selectattr('type', 'defined') | map(attribute='type')
+     | map('string') | unique | sort | list }}
+kerbside_source_clients: >-
+  {{ kerbside_source_types | map('extract', kerbside_source_client_packages)
+     | flatten | list }}
+kerbside_client_requirements: >-
+  {{ kerbside_source_clients | map(attribute='package') | unique | sort | list }}
+kerbside_client_directories: >-
+  {{ kerbside_source_clients | map(attribute='directory') | unique | sort | list }}
+kerbside_build_packages: >-
+  {{ (['build-essential', 'pkg-config', 'python3-dev', 'python3-venv',
+        'libmariadb-dev-compat', 'libxml2-dev', 'libxslt1-dev']
+      + (kerbside_source_types | map('extract', kerbside_source_build_packages)
+         | flatten | list)) | unique | list }}
+
 # Where bootstrap copies kerbside_local_wheels on the Kerbside host, and the
 # package each replaces. A wheel is installed from a fixed path named by its
 # file name alone, so the same wheel copied from anywhere on the control node

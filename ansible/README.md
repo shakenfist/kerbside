@@ -7,12 +7,9 @@ hosts you choose. It carries one role, `shakenfist.kerbside.kerbside`, which
 installs Kerbside into a virtualenv, writes its configuration and systemd
 units, runs its database migrations and waits for it to be ready.
 
-The role validates and renders all five console source types, but installs
-only the Shaken Fist client library. `proxmox` and `static` sources need no
-client library, but `ovirt` and `openstack` sources do not work until theirs
-are installed as well
-([kerbside#602](https://github.com/shakenfist/kerbside/issues/602)). It knows
-nothing about your inventory: you map your hosts onto `kerbside_hosts` and your
+The role validates and renders all five console source types, and installs
+the client library each configured type's driver imports, which `proxmox` and
+`static` sources do not have. It knows nothing about your inventory: you map your hosts onto `kerbside_hosts` and your
 consoles onto `kerbside_sources`. A collection release deploys the Kerbside
 release of the same version by default, so collection 0.8.0 installs Kerbside
 0.8.0. An install from a git checkout reports `unreleased` as its
@@ -160,8 +157,9 @@ kerbside_sources:
         ticket: "{{ vault_lab_vm_1_ticket }}"
 ```
 
-For every source of type `shakenfist`, `bootstrap` installs
-`kerbside_client_package`, `validate` requires `kerbside_url`, and `register`
+`bootstrap` installs the client libraries the configured source types need
+(`kerbside_source_client_packages`), and for every source of type
+`shakenfist`, `validate` requires `kerbside_url` and `register`
 waits for Kerbside to fetch that cluster's console token signing keys. For the
 Shaken Fist side of that (the cluster's `KERBSIDE_URL`, the `kerbside` key and
 the signing key), see the
@@ -173,7 +171,8 @@ the signing key), see the
 |----------|---------|---------|
 | `kerbside_package` | `kerbside>=0.7.0` in a checkout, `kerbside==<version>` in a release | What is installed into the virtualenv: a requirement or a wheel path. The floor is the first release which stopped returning source passwords from its API. |
 | `kerbside_proxy_package` | `""` | The `kerbside-proxy` package. Empty installs whichever version `kerbside_package` requires, which a Kerbside release pins exactly. |
-| `kerbside_client_package` | `shakenfist-client` | The Shaken Fist client Kerbside's Shaken Fist source driver imports. Installed only when a source is of type `shakenfist`. |
+| `kerbside_source_client_packages` | `shakenfist-client>=0.8.3`, `ovirt-engine-sdk-python>=4.6.1`, and `openstacksdk`, `keystoneauth1` and `python-keystoneclient`, by source type | The client libraries each source type's driver imports, with the site-packages directory each installs. Kerbside depends on none of them, so only the ones your sources need are installed; `proxmox` and `static` need none. A type missing from this mapping fails `validate`, and a client that does not install fails `bootstrap`. |
+| `kerbside_source_build_packages` | `libcurl4-openssl-dev` and `libssl-dev` for `ovirt` | The apt packages a type's client libraries need in order to build, installed with Kerbside's own. |
 | `kerbside_local_wheels` | `[]` | Wheels on the control node to install in place of the package specs. See below. |
 | `kerbside_pip_extra` | `""` | Extra arguments for both pip (installing uv) and `uv pip install`, for example `--index-url`; use flags both accept. |
 | `kerbside_collection_version` | `unreleased` in a checkout | Read-only: the release this collection was built as. Not a setting. |

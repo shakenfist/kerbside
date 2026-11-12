@@ -95,9 +95,10 @@ argument_specs:
             host is changed, and config checks the rendered sources.yaml again
             before it replaces the running one. Neither ever prints a value.
           - >-
-            For every source of type shakenfist, bootstrap installs
-            kerbside_client_package, and register waits for Kerbside to fetch
-            that cluster's console token signing keys.
+            bootstrap installs the client libraries every configured type
+            needs (kerbside_source_client_packages), and for every source of
+            type shakenfist register waits for Kerbside to fetch that
+            cluster's console token signing keys.
         options:
           source:
             type: raw
@@ -220,15 +221,56 @@ argument_specs:
             path or a requirement to install a particular one. A
             kerbside_proxy wheel in kerbside_local_wheels is installed in its
             place.
-      kerbside_client_package:
-        type: str
-        default: "shakenfist-client"
+      kerbside_source_client_packages:
+        type: dict
+        default:
+          shakenfist:
+            - package: "shakenfist-client>=0.8.3"
+              directory: shakenfist_client
+          ovirt:
+            - package: "ovirt-engine-sdk-python>=4.6.1"
+              directory: ovirtsdk4
+          openstack:
+            - package: "openstacksdk"
+              directory: openstack
+            - package: "keystoneauth1"
+              directory: keystoneauth1
+            - package: "python-keystoneclient"
+              directory: keystoneclient
+          proxmox: []
+          static: []
         description:
           - >-
-            The Shaken Fist client package Kerbside's Shaken Fist source
-            driver imports. Not a dependency of the kerbside package, so it is
-            installed separately, and only when a source in kerbside_sources
-            is of type shakenfist. A PyPI requirement or a local wheel path.
+            The client libraries each source type's driver imports, keyed by
+            source type. Kerbside depends on none of them and imports each
+            lazily, so bootstrap installs those the configured types need,
+            and a type whose driver imports none maps to an empty list.
+            Every configured type must appear: validate refuses one which
+            does not, rather than installing nothing for it.
+          - >-
+            Each entry is a mapping of package, a PyPI requirement or a local
+            wheel path, and directory, the top-level package it installs
+            under site-packages. bootstrap hashes each directory, so a client
+            which did not install fails the deploy instead of surfacing later
+            as an errored source or a 500 from token exchange.
+      kerbside_source_build_packages:
+        type: dict
+        default:
+          shakenfist: []
+          ovirt:
+            - libcurl4-openssl-dev
+            - libssl-dev
+          openstack: []
+          proxmox: []
+          static: []
+        description:
+          - >-
+            The apt packages each source type's client libraries need in
+            order to build, keyed by source type, installed with Kerbside's
+            own build dependencies when such a source is configured.
+            ovirt-engine-sdk-python is a C extension over libcurl, and ships
+            no wheel. Every configured type must appear, as for
+            kerbside_source_client_packages.
       kerbside_local_wheels:
         type: list
         elements: str
@@ -480,14 +522,15 @@ argument_specs:
         user and group and the state directory, creates kerbside_venv, copies
         kerbside_local_wheels to the host, and installs Kerbside, its proxy
         and gunicorn into it, from those wheels or kerbside_package and
-        kerbside_proxy_package, and kerbside_client_package when a source is
-        of type shakenfist.
+        kerbside_proxy_package, and the client libraries the configured
+        source types need (kerbside_source_client_packages).
       - >-
-        Then hashes the installed kerbside package (and shakenfist_client, when
-        it was installed), the kerbside-proxy binary and the virtualenv's
-        package versions into the fact kerbside_code_hash, which the config
-        entry point folds into the desired state that decides whether Kerbside
-        restarts.
+        Then hashes the installed kerbside package, each client library
+        installed, the kerbside-proxy binary and the virtualenv's package
+        versions into the fact kerbside_code_hash, which the config entry
+        point folds into the desired state that decides whether Kerbside
+        restarts. Hashing a client's directory is also what proves it
+        installed: the deploy fails when one is missing.
       - >-
         The apt task is tagged packages, and the user and group tasks
         system-users, so a test without root can skip them.

@@ -11,8 +11,9 @@
 # port in kerbside_reserved_ports is refused, as a single port or in a range;
 # that bootstrap's code hash follows every package version in the virtualenv
 # and the installed files, but not pip's, uv's, __pycache__ or the freeze
-# order, and installs and hashes the Shaken Fist client only for a Shaken
-# Fist source; that local wheels are copied, installed in place of the
+# order, and that bootstrap installs and hashes the client libraries the
+# configured source types need and no others, and fails when one of them did
+# not land (#602); that local wheels are copied, installed in place of the
 # package they are named for, and give the same hash for the same bytes;
 # that config renders a kerbside.ini which configparser reads back, as
 # Kerbside does with interpolation off, to exactly the values given (a % in
@@ -306,6 +307,16 @@ files = {
         'kerbside_url': '',
         'kerbside_sources': [ovirt, static],
     },
+    # One source of a single type, to see which client libraries bootstrap
+    # installs for it.
+    'ovirt-only.json': {
+        'kerbside_url': '',
+        'kerbside_sources': [ovirt],
+    },
+    'openstack-only.json': {
+        'kerbside_url': '',
+        'kerbside_sources': [openstack],
+    },
     'shakenfist.json': {
         'kerbside_sources': [sf_source(
             'sf', 'http://localhost:13000', env['SYSTEM_KEY'],
@@ -346,6 +357,8 @@ for name, content in files.items():
 PYEOF
 MULTI_VARS="${WORK}/vars/multi.json"
 NO_SF_VARS="${WORK}/vars/no-sf.json"
+OVIRT_ONLY_VARS="${WORK}/vars/ovirt-only.json"
+OPENSTACK_ONLY_VARS="${WORK}/vars/openstack-only.json"
 SF_VARS="${WORK}/vars/shakenfist.json"
 
 # role_playbook NAME ENTRY_POINT [REPORT...]: a playbook which runs one of
@@ -1328,7 +1341,7 @@ case_15_bootstrap_code_hash() {
     SEEN_CODE_HASHES=("${CODE_HASH}")
     installed_has 'kerbside>=0.7.0'
     installed_has gunicorn
-    installed_has shakenfist-client
+    installed_has 'shakenfist-client>=0.8.3'
 
     code_hash_step 'a rerun' same :
     code_hash_step 'uv listing packages in another order' same \
@@ -1380,13 +1393,48 @@ case_15_bootstrap_code_hash() {
     CURRENT_CASE="case 15: bootstrap neither installs nor needs the client without a Shaken Fist source"
     run_bootstrap "${STATIC_ONLY_VARS}" || fail 'bootstrap failed without shakenfist_client'
     [ -n "${CODE_HASH}" ] || fail 'bootstrap did not report a code hash'
-    installed_lacks shakenfist-client
+    installed_lacks 'shakenfist-client>=0.8.3'
     installed_has 'kerbside>=0.7.0'
     local without_client="${CODE_HASH}"
     mv "${WORK}/shakenfist_client.moved" "${BSITE}/shakenfist_client"
     run_bootstrap "${STATIC_ONLY_VARS}" || fail 'bootstrap failed'
     [ "${CODE_HASH}" = "${without_client}" ] \
         || fail 'an installed client changed the hash although no source needs it'
+
+    # Each source type's own client libraries, and only those: a deployment
+    # which serves no oVirt does not build its SDK (#602). The stub
+    # virtualenv has to carry each client's directory, because bootstrap
+    # hashes it -- which is what proves the client landed.
+    local client
+    for client in ovirtsdk4 openstack keystoneauth1 keystoneclient; do
+        mkdir -p "${BSITE}/${client}"
+        echo "${client} stub" > "${BSITE}/${client}/__init__.py"
+    done
+
+    CURRENT_CASE="case 15: bootstrap installs an oVirt source's client"
+    run_bootstrap "${OVIRT_ONLY_VARS}" || fail 'bootstrap failed for an oVirt source'
+    [ -n "${CODE_HASH}" ] || fail 'bootstrap did not report a code hash'
+    installed_has 'ovirt-engine-sdk-python>=4.6.1'
+    installed_lacks 'shakenfist-client>=0.8.3'
+    installed_lacks openstacksdk
+
+    CURRENT_CASE="case 15: bootstrap installs an OpenStack source's clients"
+    run_bootstrap "${OPENSTACK_ONLY_VARS}" || fail 'bootstrap failed for an OpenStack source'
+    [ -n "${CODE_HASH}" ] || fail 'bootstrap did not report a code hash'
+    installed_has openstacksdk
+    installed_has keystoneauth1
+    installed_has python-keystoneclient
+    installed_lacks 'ovirt-engine-sdk-python>=4.6.1'
+    installed_lacks 'shakenfist-client>=0.8.3'
+
+    CURRENT_CASE="case 15: bootstrap fails when an oVirt source's client is missing"
+    mv "${BSITE}/ovirtsdk4" "${WORK}/ovirtsdk4.moved"
+    if run_bootstrap "${OVIRT_ONLY_VARS}"; then
+        fail 'bootstrap succeeded although ovirtsdk4 is not installed'
+    fi
+    mv "${WORK}/ovirtsdk4.moved" "${BSITE}/ovirtsdk4"
+    [ -z "${CODE_HASH}" ] \
+        || fail 'bootstrap reported a code hash although a client is missing'
 }
 
 # make_wheel PATH CONTENT: a stand-in wheel at PATH, a zip file holding the
@@ -1435,7 +1483,7 @@ case_16_local_wheels() {
     done
     installed_lacks 'kerbside>=0.7.0'
     installed_has gunicorn
-    installed_has shakenfist-client
+    installed_has 'shakenfist-client>=0.8.3'
     grep -qx 'kerbside wheel 1' "${BSITE}/kerbside/db.py" \
         || fail 'the kerbside wheel was not installed'
     grep -qx 'kerbside-proxy wheel 1' "${BVENV}/bin/kerbside-proxy" \
