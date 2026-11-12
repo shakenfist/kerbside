@@ -214,6 +214,28 @@ class VerifySfTokenTestCase(testtools.TestCase):
         self.assertRaises(
             sf_token.WrongAudience, sf_token.verify_sf_token, token)
 
+    def test_a_trailing_slash_is_not_a_different_audience(self):
+        """A configured audience is normalised as Shaken Fist mints it.
+
+        Shaken Fist builds both the proxy URL and the 'aud' claim from
+        KERBSIDE_URL.rstrip('/'), so a cluster configured with a trailing
+        slash mints tokens without one. Comparing the configured value
+        verbatim rejected every one of them, and nothing a deploy checks
+        notices: the keys are fetched, the credential works, the CA
+        matches (#620).
+        """
+        audience_patch = mock.patch.object(
+            config, 'SF_CONSOLE_TOKEN_AUDIENCE',
+            'https://kerbside.example.com/')
+        audience_patch.start()
+        self.addCleanup(audience_patch.stop)
+
+        self.assertEqual(
+            'https://kerbside.example.com', sf_token.expected_audience())
+        token = self._make_token(aud='https://kerbside.example.com')
+        self.assertEqual(
+            'console-uuid', sf_token.verify_sf_token(token)['sub'])
+
     # --- 4. forged signature: same kid, different key ---------------------
 
     def test_forged_signature_same_kid_raises_bad_signature(self):

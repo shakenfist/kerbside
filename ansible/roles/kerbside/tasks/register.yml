@@ -272,6 +272,44 @@
   when: kerbside_shakenfist_sources | length > 0
   tags: [kerbside-readiness]
 
+# A fetch proves the CA matched and the source's credential authenticated. It
+# does not prove that what was fetched could verify a token: Shaken Fist's
+# published document names the kid it is signing with, and a document whose
+# own keys do not include that kid leaves every console token rejected as
+# having an unknown kid -- while this deploy, and every check in it, passes
+# (#620). keys_usable is that comparison, made by the readiness check against
+# the stored document alone, so it needs no credential and asks Shaken Fist
+# nothing. It is checked after the wait rather than in it, because a document
+# which is the wrong shape does not become the right one by waiting: the
+# message says what to look at instead of exhausting the retries first.
+#
+# What is still not proven here: that Kerbside's clock and the minting
+# cluster's agree. A token's exp is checked with no leeway, so skew past
+# KERBSIDE_TOKEN_DURATION rejects every token, and nothing on this host can
+# see the other clock. NTP on both is the only answer, as it is for the scrape
+# interval this wait already depends on.
+- name: Require the fetched signing keys to be able to verify a token
+  ansible.builtin.assert:
+    that: kerbside_ready_keys_usable == 'True'
+    fail_msg: >-
+      Kerbside has fetched the console token signing keys of every source of
+      type shakenfist ({{ kerbside_shakenfist_sources | join(', ') }}), but
+      at least one stored key set cannot verify a console token minted now
+      (keys_usable={{ kerbside_ready_keys_usable }}). The last check on
+      {{ kerbside_hosts[0] }} printed:
+      {{ kerbside_ready.stdout | default('') | trim | default('nothing', true) }}.
+      false means a stored set is not a document naming an active kid among
+      its own keys, which is what Shaken Fist publishes at
+      /admin/vditokenpubkey: ask that cluster for it, and see
+      "sf-ctl ensure-kerbside-signing-key". null means the readiness check
+      could not judge a set at all, which its "error", if any, explains.
+      Kerbside is deployed and answering; what fails is token exchange, with
+      every console token rejected as having an unknown kid.
+    quiet: true
+  run_once: true
+  when: kerbside_shakenfist_sources | length > 0
+  tags: [kerbside-readiness]
+
 - name: Record what was deployed
   ansible.builtin.copy:
     content: "{{ kerbside_desired_state }}\n"

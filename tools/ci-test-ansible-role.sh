@@ -25,7 +25,8 @@
 # desired-state hash is stable across reruns, follows every file Kerbside
 # runs with, and returns to its first value when they are restored; that
 # register waits on exactly the Shaken Fist sources, and on none without
-# one; that the multi-source fixture below carries a source of every type
+# one, and refuses a fetched key set which could not verify a token (#620);
+# that the multi-source fixture below carries a source of every type
 # the role's checker accepts, so a new type cannot ship without coverage
 # here (#643); and that no source's password, no console ticket, nor any
 # other secret reaches the ansible output.
@@ -1522,13 +1523,19 @@ case_16_local_wheels() {
 
 # The readiness check's runuser, a stub on PATH: it records its arguments,
 # one a line, and answers as kerbside-ready.py would for keys fetched a
-# minute from now, so the first check passes.
+# minute from now whose set can verify a token, so the first check passes.
+# A case which wants another answer writes it to ${WORK}/ready-output, one
+# line, and removes it afterwards.
 STUB_BIN="${WORK}/stub-bin"
 mkdir -p "${STUB_BIN}"
 cat > "${STUB_BIN}/runuser" << EOF
 #!/bin/sh
 printf '%s\n' "\$@" > '${WORK}/runuser-args'
-echo "{\"errored\": false, \"fetched_at\": \$((\$(date +%s) + 60))}"
+if [ -f '${WORK}/ready-output' ]; then
+    cat '${WORK}/ready-output'
+else
+    echo "{\"errored\": false, \"fetched_at\": \$((\$(date +%s) + 60)), \"keys_usable\": true}"
+fi
 EOF
 chmod +x "${STUB_BIN}/runuser"
 
@@ -1562,6 +1569,40 @@ case_17_readiness() {
     assert_output_has 'No source is of type shakenfist, so there are no console token signing'
     grep -qx 'desired-state-1' "${STATE}/.deployed-state.sha256" \
         || fail 'register did not record the desired state once ready'
+
+    # A fetch is not proof that the fetched keys could verify a token: the
+    # document Shaken Fist published may not carry the kid it signs with,
+    # and then every console token is rejected while the deploy passes
+    # (#620). Each of these is a fetch this deploy would have accepted.
+    local fetched
+    fetched="$(($(date +%s) + 60))"
+
+    CURRENT_CASE='case 17: register refuses a fetched key set which cannot verify a token'
+    echo "{\"errored\": false, \"fetched_at\": ${fetched}, \"keys_usable\": false}" \
+        > "${WORK}/ready-output"
+    if run_register "${MULTI_VARS}"; then
+        fail 'register succeeded although a stored key set cannot verify a token'
+    fi
+    assert_output_has 'cannot verify a console token minted now'
+    [ ! -e "${STATE}/.deployed-state.sha256" ] \
+        || fail 'register recorded the desired state although the keys are unusable'
+
+    CURRENT_CASE='case 17: register refuses a key set it could not judge'
+    echo "{\"errored\": false, \"fetched_at\": ${fetched}, \"keys_usable\": null}" \
+        > "${WORK}/ready-output"
+    if run_register "${MULTI_VARS}"; then
+        fail 'register succeeded although no key set was judged'
+    fi
+    assert_output_has 'keys_usable=null'
+
+    CURRENT_CASE='case 17: register reads a readiness answer it cannot parse as not ready'
+    echo '{"errored": false, "fetched_at": 1, "keys_usable": true, "unexpected": 1}' \
+        > "${WORK}/ready-output"
+    if run_register "${MULTI_VARS}"; then
+        fail 'register succeeded although the readiness check answered something else'
+    fi
+    assert_output_has 'did not fetch the console token signing keys'
+    rm -f "${WORK}/ready-output"
 }
 
 case_18_secrets() {

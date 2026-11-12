@@ -93,15 +93,23 @@ kerbside_deployed_state_file: "{{ kerbside_state_dir }}/.deployed-state.sha256"
 # would fail the task rather than count as not ready. The pattern admits only
 # what the script's json.dumps() can produce, and no backslash, so every match
 # parses. kerbside_ready_fetched_at is the parsed fetched_at as a string, or
-# 'null' when the keys were never fetched or the output was anything else.
+# 'null' when the keys were never fetched or the output was anything else, and
+# kerbside_ready_keys_usable the parsed keys_usable the same way: 'True',
+# 'False', or 'null' for a set which is not there or an output which is not
+# the object.
 # Evaluated lazily, so each reads the latest kerbside_ready the wait registered.
 kerbside_ready_pattern: >-
   ^[{]"errored": (true|false|null),
-  "fetched_at": (null|-?[0-9]+([.][0-9]+)?([eE][-+]?[0-9]+)?)(,
+  "fetched_at": (null|-?[0-9]+([.][0-9]+)?([eE][-+]?[0-9]+)?),
+  "keys_usable": (true|false|null)(,
   "error": "[A-Za-z0-9 .:_-]*")?[}]$
 kerbside_ready_output: "{{ kerbside_ready.stdout | default('') | trim }}"
 kerbside_ready_fetched_at: >-
   {{ (((kerbside_ready_output | from_json).fetched_at
+       if kerbside_ready_output is match(kerbside_ready_pattern) else none)
+      | default('null', true)) | string }}
+kerbside_ready_keys_usable: >-
+  {{ (((kerbside_ready_output | from_json).keys_usable
        if kerbside_ready_output is match(kerbside_ready_pattern) else none)
       | default('null', true)) | string }}
 

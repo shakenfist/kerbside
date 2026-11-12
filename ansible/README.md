@@ -237,7 +237,7 @@ refuses anything in between.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `kerbside_ready_retries` | `60` | How many times, three seconds apart, `register` checks that Kerbside fetched each Shaken Fist source's signing keys during this deploy. The default allows three of Kerbside's 60 second scrape passes. Unused without a Shaken Fist source. |
+| `kerbside_ready_retries` | `60` | How many times, three seconds apart, `register` checks that Kerbside fetched each Shaken Fist source's signing keys during this deploy. The default allows three of Kerbside's 60 second scrape passes. Unused without a Shaken Fist source. Once a set has been fetched, `register` also requires it to carry the kid its cluster signs with, since a fetch proves the CA and the credential but not that a token would verify. |
 
 ### Layout and ownership
 

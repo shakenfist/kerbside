@@ -519,24 +519,74 @@ class CheckSourcesScriptTestCase(testtools.TestCase):
         self.assertIn('line', errors[0])
 
 
+def _published(active_kid='kid-1', kids=('kid-1',), pem='-----PUBLIC-----'):
+    """Shaken Fist's /admin/vditokenpubkey document, as Kerbside caches it."""
+    return json.dumps({
+        'active_kid': active_kid,
+        'keys': [{'kid': kid, 'public_pem': pem} for kid in kids]})
+
+
 class ReadyScriptTestCase(testtools.TestCase):
     def test_combine_reports_the_oldest_fetch(self):
         self.assertEqual(
-            (False, 100.0),
-            ready.combine([(False, 300.0), (False, 100.0), (False, 200.0)]))
+            (False, 100.0, True),
+            ready.combine([(False, 300.0, True), (False, 100.0, True),
+                           (False, 200.0, True)]))
 
     def test_combine_reports_null_until_every_source_fetched(self):
         self.assertEqual(
-            (False, None), ready.combine([(False, 300.0), (False, None)]))
+            (False, None, True),
+            ready.combine([(False, 300.0, True), (False, None, True)]))
 
     def test_combine_reports_any_error_and_any_missing_source(self):
         self.assertEqual(
-            (True, None), ready.combine([(None, None), (True, 1.0)]))
+            (True, None, True),
+            ready.combine([(None, None, True), (True, 1.0, True)]))
         self.assertEqual(
-            (None, 1.0), ready.combine([(None, 1.0), (False, 2.0)]))
+            (None, 1.0, True),
+            ready.combine([(None, 1.0, True), (False, 2.0, True)]))
+
+    def test_combine_reports_the_least_usable_key_set(self):
+        # One source whose keys cannot verify a token is enough: the
+        # deploy is ready only when every source is.
+        self.assertEqual(
+            (False, 1.0, False),
+            ready.combine([(False, 1.0, True), (False, 2.0, False)]))
+        self.assertEqual(
+            (False, 1.0, None),
+            ready.combine([(False, 1.0, None), (False, 2.0, True)]))
+        # Unjudgeable beats unusable: a set which is not there yet is
+        # what the wait is for, and says nothing about the one stored.
+        self.assertEqual(
+            (False, 1.0, None),
+            ready.combine([(False, 1.0, None), (False, 2.0, False)]))
+
+    def test_a_set_whose_active_kid_is_present_is_usable(self):
+        self.assertIs(True, ready.usable(_published()))
+        self.assertIs(
+            True, ready.usable(_published(kids=('kid-0', 'kid-1'))))
+
+    def test_a_set_which_cannot_verify_a_token_is_not_usable(self):
+        # Shaken Fist's own tests treat each of these as a corrupt
+        # document, and Kerbside caches whatever it is served.
+        for document in (_published(kids=('kid-0',)),
+                         _published(active_kid=''),
+                         _published(pem=''),
+                         json.dumps({'active_kid': 'kid-1', 'keys': []}),
+                         json.dumps({'active_kid': 'kid-1'}),
+                         json.dumps({'keys': []}),
+                         json.dumps(['kid-1']),
+                         json.dumps('kid-1'),
+                         'not json at all'):
+            self.assertIs(
+                False, ready.usable(document),
+                'this document was judged usable: %r' % document)
+
+    def test_no_stored_set_is_not_a_verdict(self):
+        self.assertIsNone(ready.usable(None))
 
     def test_main_reads_every_source_named(self):
-        states = {'sf': (False, 200.0), 'sf2': (False, 150.0)}
+        states = {'sf': (False, 200.0, True), 'sf2': (False, 150.0, True)}
         stdout = io.StringIO()
         with mock.patch.object(ready, 'load_db',
                                return_value=(object(), None)), \
@@ -546,7 +596,7 @@ class ReadyScriptTestCase(testtools.TestCase):
             rc = ready.main(['kerbside-ready.py', 'sf', 'sf2'])
         self.assertEqual(0, rc)
         self.assertEqual(
-            {'errored': False, 'fetched_at': 150.0},
+            {'errored': False, 'fetched_at': 150.0, 'keys_usable': True},
             json.loads(stdout.getvalue()))
 
     def test_main_needs_a_source_name(self):
@@ -595,10 +645,11 @@ class ReadyScriptTestCase(testtools.TestCase):
             pattern = yaml.safe_load(f)['kerbside_ready_pattern']
 
         cases = (
-            {'errored': False, 'fetched_at': 150.0},
-            {'errored': None, 'fetched_at': None},
-            {'errored': True, 'fetched_at': 1791234567.123},
-            {'errored': None, 'fetched_at': None,
+            {'errored': False, 'fetched_at': 150.0, 'keys_usable': True},
+            {'errored': None, 'fetched_at': None, 'keys_usable': None},
+            {'errored': True, 'fetched_at': 1791234567.123,
+             'keys_usable': False},
+            {'errored': None, 'fetched_at': None, 'keys_usable': None,
              'error': 'usage: kerbside-ready.py SOURCE_NAME...'},
         )
         for case in cases:

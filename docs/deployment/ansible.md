@@ -52,7 +52,7 @@ Each row is what the role's tasks do, in
 | systemd units | `kerbside-api.service`, gunicorn on `0.0.0.0:13002` in plain HTTP, and `kerbside-daemon.service`, the daemon with the SPICE proxy as its child. Both run as `kerbside` and are wanted by `multi-user.target`. |
 | Database schema | `kerbside db upgrade`, once, on the first host, as the `kerbside` user. It checks that the migration read `kerbside.ini` and reached the database. |
 | Restarts | Only when the installed code, the configuration it writes, the units, or the proxy's certificate, its key or the CA changed since the last deploy that reached readiness. |
-| Readiness | Waits for the API to answer `GET /`, and for every `shakenfist` source, for Kerbside to fetch that cluster's console token signing keys during this deploy. |
+| Readiness | Waits for the API to answer `GET /`, and for every `shakenfist` source, for Kerbside to fetch that cluster's console token signing keys during this deploy -- then checks that each fetched set could verify a token minted now, which a fetch alone does not prove. |
 
 The [By hand](manual.md#what-it-deploys) page gives the same layout
 as a table of paths, owners and modes, with the reasons for each.
