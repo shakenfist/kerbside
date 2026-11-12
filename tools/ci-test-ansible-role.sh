@@ -28,10 +28,12 @@
 # runs with, and returns to its first value when they are restored; that
 # register waits on exactly the Shaken Fist sources, and on none without
 # one, and refuses a fetched key set which could not verify a token (#620);
-# that the multi-source fixture below carries a source of every type
-# the role's checker accepts, so a new type cannot ship without coverage
-# here (#643); and that no source's password, no console ticket, nor any
-# other secret reaches the ansible output.
+# that register decides a restart from the state it recorded last time, and
+# records it only once the readiness wait has passed (#625); that the
+# multi-source fixture below carries a source of every type the role's
+# checker accepts, so a new type cannot ship without coverage here (#643);
+# and that no source's password, no console ticket, nor any other
+# secret reaches the ansible output.
 #
 # register runs without its migration and its units, which need MariaDB and
 # systemd, and with a stub runuser which records how the readiness check
@@ -1319,6 +1321,15 @@ installed_lacks() {
     fi
 }
 
+# restart_decision: what register's own report said about restarting on the
+# last run, lower cased, or the empty string if it did not report.
+restart_decision() {
+    local decision
+    decision="$(sed -n 's/.*restart_needed=\([A-Za-z]*\) .*/\1/p' \
+        "${LAST_LOG}" | tail -1)"
+    printf '%s' "${decision,,}"
+}
+
 # code_hash_step DESCRIPTION same|new EDIT...: run the command EDIT, then
 # bootstrap with ${STEP_VARS[@]}, and check that the code hash is the first
 # one, or one not seen before.
@@ -1553,9 +1564,13 @@ EOF
 chmod +x "${STUB_BIN}/runuser"
 
 # run_register [extra vars file...]: register without the migration and the
-# units, against the stub runuser. Returns its status.
+# units, against the stub runuser. Returns its status. The deployed-state
+# marker is removed first, so each case starts from a host which has never
+# reached readiness; KEEP_STATE=1 leaves it, which is how the restart
+# decision and the marker itself are exercised.
 run_register() {
-    rm -f "${WORK}/runuser-args" "${STATE}/.deployed-state.sha256"
+    [ -n "${KEEP_STATE:-}" ] || rm -f "${STATE}/.deployed-state.sha256"
+    rm -f "${WORK}/runuser-args"
     local rc=0
     PATH="${STUB_BIN}:${PATH}" ANSIBLE_SKIP_TAGS=kerbside-database,kerbside-services \
         run_ansible "${WORK}/register.yml" \
@@ -1607,6 +1622,51 @@ case_17_readiness() {
         fail 'register succeeded although no key set was judged'
     fi
     assert_output_has 'keys_usable=null'
+
+    # The restart decision, and the marker it reads, were exercised by no
+    # rootless case: every run started by deleting the marker and the
+    # services tag was skipped, so register was only ever seen deciding to
+    # restart a host which had never deployed (#625). The services
+    # themselves still need the nightly lane; what is covered here is the
+    # decision and the record it rests on.
+    CURRENT_CASE='case 17: register restarts a host which has never reached readiness'
+    rm -f "${WORK}/ready-output"
+    run_register "${MULTI_VARS}" || fail 'register failed'
+    [ "$(restart_decision)" = true ] \
+        || fail "register decided restart_needed=$(restart_decision) with no recorded state"
+    grep -qx 'desired-state-1' "${STATE}/.deployed-state.sha256" \
+        || fail 'register did not record the desired state once ready'
+
+    CURRENT_CASE='case 17: register restarts nothing when the recorded state is the desired one'
+    KEEP_STATE=1 run_register "${MULTI_VARS}" || fail 'register failed'
+    [ "$(restart_decision)" = false ] \
+        || fail "register decided restart_needed=$(restart_decision) for an unchanged deployment"
+    grep -qx 'desired-state-1' "${STATE}/.deployed-state.sha256" \
+        || fail 'register changed the recorded state although nothing changed'
+
+    CURRENT_CASE='case 17: register restarts when the desired state has changed'
+    KEEP_STATE=1 run_register "${MULTI_VARS}" \
+        "$(write_vars register-changed '{"kerbside_desired_state": "desired-state-2"}')" \
+        || fail 'register failed'
+    [ "$(restart_decision)" = true ] \
+        || fail "register decided restart_needed=$(restart_decision) for a changed desired state"
+    grep -qx 'desired-state-2' "${STATE}/.deployed-state.sha256" \
+        || fail 'register did not record the new desired state'
+
+    # The marker is what the decision rests on, so a deploy which never
+    # reaches readiness must leave it alone: otherwise the next deploy reads
+    # it, decides nothing changed, and leaves Kerbside running old code.
+    CURRENT_CASE='case 17: register records nothing when the readiness wait fails'
+    echo '{"errored": false, "fetched_at": 1.0, "keys_usable": true}' \
+        > "${WORK}/ready-output"
+    if KEEP_STATE=1 run_register "${MULTI_VARS}" \
+        "$(write_vars register-unreached '{"kerbside_desired_state": "desired-state-3"}')"
+    then
+        fail 'register succeeded although the keys were never fetched'
+    fi
+    grep -qx 'desired-state-2' "${STATE}/.deployed-state.sha256" \
+        || fail 'register recorded a desired state it never reached readiness for'
+    rm -f "${WORK}/ready-output"
 
     CURRENT_CASE='case 17: register reads a readiness answer it cannot parse as not ready'
     echo '{"errored": false, "fetched_at": 1, "keys_usable": true, "unexpected": 1}' \
