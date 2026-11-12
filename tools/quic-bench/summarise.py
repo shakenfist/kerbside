@@ -34,6 +34,10 @@ ARMS = ('tcp', 'quic')
 MIN_QUEUE_PACKETS = 2
 
 
+class AmbiguousHeadlineCc(Exception):
+    """The matrix spans several controllers and nothing names the gate's."""
+
+
 def backlog_bytes_per_slot(path):
     """Mean bytes per occupied queue slot over a run's qdisc samples."""
     if not os.path.exists(path):
@@ -108,7 +112,7 @@ def collect_gso_control(workdir):
 
 
 def collect(workdir):
-    """Walk the work directory into {cell: {arm: [run, ...]}}."""
+    """Walk the work directory into {cell: {fields, runs, attempted}}."""
     cells = {}
     for name in sorted(os.listdir(workdir)):
         match = CELL_RE.match(name)
@@ -118,20 +122,34 @@ def collect(workdir):
         if not os.path.isdir(celldir):
             continue
         runs = {arm: [] for arm in ARMS}
+        # How many repeats each arm was asked for, counted as the directories
+        # are walked. A repeat the harness lost -- a crash, a kill, a full
+        # disk -- leaves no results file and so nothing in runs, and the only
+        # other record of it is this count: without it such a repeat narrows
+        # the spread the gate's threshold is taken from and says nothing.
+        attempted = {arm: 0 for arm in ARMS}
         for rep in sorted(os.listdir(celldir)):
             casedir = os.path.join(celldir, rep)
             if not os.path.isdir(casedir):
                 continue
             for arm in ARMS:
+                attempted[arm] += 1
                 run = read_run(casedir, arm)
                 if run is not None:
                     runs[arm].append(run)
-        cells[name] = {'fields': match.groupdict(), 'runs': runs}
+        cells[name] = {'fields': match.groupdict(), 'runs': runs, 'attempted': attempted}
     return cells
 
 
-def aggregate(runs):
-    """Median and spread across repeats for one arm of one cell."""
+def aggregate(runs, attempted):
+    """Median and spread across repeats for one arm of one cell.
+
+    `runs` is the repeats that produced a results file and `attempted` how
+    many were walked, so their difference is the repeats whose file never
+    arrived. Those cannot be excluded on their merits the way a repeat with
+    no steady-state samples can, since nothing about them is known, so they
+    are counted and reported rather than passed over.
+    """
     if not runs:
         return None
     # A repeat that produced no steady-state samples has no percentile to
@@ -146,6 +164,7 @@ def aggregate(runs):
     return {
         'repeats': len(measured),
         'unmeasured_repeats': unmeasured,
+        'absent_repeats': attempted - len(runs),
         'p50_ms': statistics.median(run['p50_ms'] for run in measured),
         'p95_ms': statistics.median(p95),
         'p99_ms': statistics.median(run['p99_ms'] for run in measured),
@@ -196,15 +215,45 @@ def detect_headline_cc(workdir):
     return None
 
 
+def controllers(cells):
+    """The congestion controllers the matrix covers, sorted."""
+    return sorted({cell['fields']['cc'] for cell in cells.values()})
+
+
+def resolve_headline_cc(requested, ccs):
+    """The controller the gate's rows are, or an error rather than a guess.
+
+    Reading a sensitivity arm as the gate inverts the scope of every row in
+    the report, and the controllers sort in no meaningful order -- `bbr`
+    before `cubic` -- so a first-alphabetically default is as likely to name
+    the sensitivity arm as the gate. A matrix on one controller is the only
+    case with nothing to choose; anything else the caller has to say. A
+    controller the caller asked for and the matrix does not have is an error
+    too, rather than the one controller it does have: the answer would be
+    about an arm the caller did not ask about.
+    """
+    if requested in ccs:
+        return requested
+    if requested is not None:
+        raise AmbiguousHeadlineCc(
+            f"asked for '{requested}', which no cell under this directory ran; its controllers "
+            f"are {', '.join(ccs) or 'none at all'}")
+    if len(ccs) == 1:
+        return ccs[0]
+    raise AmbiguousHeadlineCc(
+        f"cells on {', '.join(ccs) or 'no controller at all'} and nothing names the controller "
+        'the harness ran first, so which rows are the gate and which are sensitivity runs is '
+        'unknown; pass --headline-cc')
+
+
 def report(cells, controls, headline_cc=None, out=sys.stdout):
     summary = {}
     warnings = []
-    ccs = sorted({cell['fields']['cc'] for cell in cells.values()})
     # The gate is defined against one controller on both sides. Any other arm
     # is a labelled sensitivity run, so its rows must not be quotable as the
-    # gate's verdict.
-    if headline_cc not in ccs:
-        headline_cc = ccs[0] if ccs else None
+    # gate's verdict. Which controller that is has already been settled by
+    # resolve_headline_cc(); nothing here may fall back to a guess.
+    ccs = controllers(cells)
 
     for cc in ccs:
         print(f'\n## Congestion controller: {cc}\n', file=out)
@@ -217,8 +266,14 @@ def report(cells, controls, headline_cc=None, out=sys.stdout):
                 continue
             profile = f"{fields['rtt']} ms / {fields['rate']} Mbit"
             for arm in ARMS:
-                agg = aggregate(cell['runs'][arm])
+                runs, attempted = cell['runs'][arm], cell['attempted'][arm]
+                agg = aggregate(runs, attempted)
                 summary.setdefault(name, {})[arm] = agg
+                absent = attempted - len(runs)
+                if absent:
+                    warnings.append(
+                        f'{name} {arm}: {absent} of {attempted} repeats left no results file, so '
+                        'nothing from them reaches the medians or the spread')
                 if agg is None:
                     print(f"| {profile} | {fields['loss']}% | {arm} | missing ||||||||", file=out)
                     warnings.append(f'{name} {arm}: no repeat produced a measurement')
@@ -320,15 +375,21 @@ def main():
     parser.add_argument('--json', dest='json_out', help='also write the summary as JSON')
     parser.add_argument('--headline-cc', default=None,
                         help='the congestion controller the gate is defined against; defaults to '
-                             'the first cell the harness ran, else the first alphabetically')
+                             'the first cell cells.txt records, and is required when that file is '
+                             'absent and the matrix spans more than one controller')
     args = parser.parse_args()
 
     cells = collect(args.workdir)
     if not cells:
         print(f'No cells found under {args.workdir}', file=sys.stderr)
         return 1
-    summary = report(cells, collect_gso_control(args.workdir),
-                     headline_cc=args.headline_cc or detect_headline_cc(args.workdir))
+    try:
+        headline_cc = resolve_headline_cc(args.headline_cc or detect_headline_cc(args.workdir),
+                                          controllers(cells))
+    except AmbiguousHeadlineCc as exc:
+        print(f'{args.workdir}: {exc}', file=sys.stderr)
+        return 1
+    summary = report(cells, collect_gso_control(args.workdir), headline_cc=headline_cc)
     if args.json_out:
         with open(args.json_out, 'w') as handle:
             json.dump(summary, handle, indent=1, sort_keys=True)
