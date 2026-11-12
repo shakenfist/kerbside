@@ -77,18 +77,21 @@ Kerbside's ports everywhere:
   typically from 5900 upwards ([oVirt](use-cases/ovirt.md)). A
   Kerbside on one of those hypervisors does contend, and its
   `VDI_*_PORT` values should move out of the range.
-- **Shaken Fist** allocates each console a random port between 30000
-  and 50000 (`random.randint(30000, 50000)`, in its
-  `shakenfist/instance.py`), so Kerbside's defaults clear them. The
-  Ansible role goes wider still and reserves 30000-65535 on a Shaken
-  Fist node (`kerbside_reserved_ports`, defaulted in
-  `ansible/README.md`), so do not put a port of your own up there
-  either. That the consoles are nowhere near 5900 is part of why
-  Shaken Fist's operator guide recommends putting Kerbside on a
-  hypervisor ([Shaken Fist](use-cases/shakenfist.md)).
-- **Proxmox VE** is reached through `spiceproxy` on port 3128 rather
-  than a per-console port in this range, so nothing of Kerbside's
-  contends with it ([Proxmox VE](use-cases/proxmox.md)).
+- **Shaken Fist** allocates each console a random port in the
+  30000-50000 range, so Kerbside's defaults clear them. The role
+  reserves nothing by default: on a Shaken Fist hypervisor pass the
+  cluster's daemon ports and `[30000, 65535]` in
+  `kerbside_reserved_ports`, as the Ports section of
+  `ansible/README.md` shows, and keep ports of your own out of that
+  range. That the consoles are nowhere near 5900 is part of why Shaken
+  Fist's operator guide recommends putting Kerbside on a hypervisor
+  ([Shaken Fist](use-cases/shakenfist.md)).
+- **Proxmox VE** puts each VM's SPICE listener above this range and
+  fronts it with `spiceproxy` on port 3128, so a PVE node listens on
+  nothing Kerbside's 5900/5901 defaults want. No lane co-locates the
+  two -- the Proxmox lane runs Kerbside off-box from PVE -- so this
+  one is reasoned from where PVE puts its consoles rather than
+  exercised ([Proxmox VE](use-cases/proxmox.md)).
 
 For any other cloud, check where it puts its consoles before
 co-locating.

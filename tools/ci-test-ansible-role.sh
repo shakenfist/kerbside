@@ -332,6 +332,11 @@ if covered != known:
              'CA and its own invented secret'
              % (', '.join(sorted(covered)) or 'nothing',
                 ', '.join(sorted(known))))
+# The same list again, for the shell: case 7a enumerates the types too,
+# and its own header comment claimed all of them while Proxmox had no
+# case there either. One file, so neither site can drift alone.
+with open(os.path.join(work, 'source-types'), 'w') as f:
+    f.write(''.join('%s\n' % t for t in sorted(known)))
 
 for name, content in files.items():
     path = os.path.join(work, 'common.json' if name == 'common.json'
@@ -626,16 +631,21 @@ case_6_partial_overrides() {
 
 case_7_sources() {
     # Every type's required fields, each source lacking all of them, so each
-    # is named. The values are not secrets; case 18 searches for those.
+    # is named. The values are not secrets; case 18 searches for those. Each
+    # case records its type in field_types, checked against the role's own
+    # list below rather than trusted to this comment.
+    local field_types=()
     CURRENT_CASE="case 7a: validate refuses a Shaken Fist source's missing fields"
     sources_refused sf-fields '[{"source": "a", "type": "shakenfist"}]' \
         'source 0 (shakenfist): url is missing' 'source 0 (shakenfist): username is missing' \
         'source 0 (shakenfist): password is missing' 'source 0 (shakenfist): ca_cert is missing'
+    field_types+=(shakenfist)
 
     CURRENT_CASE="case 7a: validate refuses an oVirt source's missing fields"
     sources_refused ovirt-fields '[{"source": "a", "type": "ovirt", "url": ""}]' \
         'source 0 (ovirt): url is empty' 'source 0 (ovirt): username is missing' \
         'source 0 (ovirt): password is missing' 'source 0 (ovirt): ca_cert is missing'
+    field_types+=(ovirt)
 
     CURRENT_CASE="case 7a: validate refuses an OpenStack source's missing fields"
     sources_refused openstack-fields '[{"source": "a", "type": "openstack"}]' \
@@ -643,6 +653,13 @@ case_7_sources() {
         'source 0 (openstack): password is missing' 'source 0 (openstack): project_name is missing' \
         'source 0 (openstack): user_domain_id is missing' \
         'source 0 (openstack): project_domain_id is missing'
+    field_types+=(openstack)
+
+    CURRENT_CASE="case 7a: validate refuses a Proxmox source's missing fields"
+    sources_refused proxmox-fields '[{"source": "a", "type": "proxmox"}]' \
+        'source 0 (proxmox): url is missing' 'source 0 (proxmox): username is missing' \
+        'source 0 (proxmox): password is missing' 'source 0 (proxmox): ca_cert is missing'
+    field_types+=(proxmox)
 
     CURRENT_CASE="case 7a: validate refuses a static source's missing fields"
     # Secrets in these cases are long enough to appear in no message:
@@ -660,6 +677,19 @@ case_7_sources() {
         'source 1 console 1: hypervisor_ip is not text' \
         'source 1 console 1: insecure_port is not a port from 1 to 65535' \
         'source 1 console 1: secure_port is not a port from 1 to 65535'
+    field_types+=(static)
+
+    # The role's own type list, written by the fixture builder from
+    # kerbside-check-sources.py's TYPE_REQUIRED. A type added there with no
+    # case above stops the run here, as it does for multi.json (#643).
+    CURRENT_CASE='case 7a: every source type has a missing-fields case'
+    local covered expected
+    covered="$(printf '%s\n' "${field_types[@]}" | sort -u | paste -sd ' ')"
+    expected="$(sort -u < "${WORK}/source-types" | paste -sd ' ')"
+    [ "${covered}" = "${expected}" ] \
+        || fail "case 7a has a missing-fields case for ${covered}, but the role" \
+                "accepts ${expected}; add one for each type it does not, naming" \
+                'every field TYPE_REQUIRED lists for it'
 
     # The argument specs declare consoles a list of mappings, so that a
     # ticket can be no_log alone, and refuse any other shape before the

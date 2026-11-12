@@ -189,13 +189,16 @@ two keys.
 
 The minimum to enable the ryll-specific UX is:
 
-- Set `delete-this-file=1` if the ticket is single-use.
+- Set `delete-this-file=1` if the ticket is single-use, or
+  short-lived enough that a copy left on disk is not worth
+  replaying -- which is the case Kerbside is in.
 - Set `ticket-valid-until` to the unix timestamp at which the
   server will stop accepting the ticket.
 
-Both keys are independent. A reusable ticket with an expiry
-sets only `ticket-valid-until`. A single-use ticket without
-a known expiry sets only `delete-this-file=1`.
+Both keys are independent. A ticket worth replaying for as
+long as it is valid sets only `ticket-valid-until`. A ticket
+not worth replaying, with no known expiry, sets only
+`delete-this-file=1`.
 
 ## Future extensions under consideration
 

@@ -69,7 +69,13 @@ class MarkdownLinkTestCase(testtools.TestCase):
     DEFAULT_BRANCH = 'develop'
 
     # A setext-free tree, so one form of heading. Trailing hashes are
-    # decoration and are not part of the rendered text.
+    # decoration and are not part of the rendered text. No guard holds
+    # the tree to that -- `---` is ambiguous with a table rule and with
+    # YAML front matter, so a detector for it would have to guess -- so
+    # if a setext heading is ever written, a correct link into it is
+    # reported as dangling, with the file's other anchors listed and no
+    # mention of the real cause. That is the symptom to read backwards
+    # from.
     HEADING_RE = re.compile(r'^(#{1,6})\s+(.*?)\s*#*$')
     FENCE_RE = re.compile(r'^\s*(?:```|~~~)')
 
@@ -251,6 +257,14 @@ class MarkdownLinkTestCase(testtools.TestCase):
                 # Retired plans are linked that way on purpose.
                 tally['pinned'] += 1
                 return None
+            if not path.endswith('.md'):
+                # A blob link into source, which an `#L10` line anchor
+                # makes the natural shape of. The file is still checked,
+                # but the fragment is not a heading slug and the target
+                # has no headings to compare it with: `_anchors` over a
+                # .py file reads every `# comment` as one.
+                tally['self_absolute_source'] += 1
+                return path, None, 'self_absolute_source'
             tally['self_absolute'] += 1
             return path, anchor, 'self_absolute'
 
@@ -347,26 +361,41 @@ class MarkdownLinkTestCase(testtools.TestCase):
         with open(os.path.join(root, 'target.md'), 'w',
                   encoding='utf-8') as f:
             f.write('# A Real Heading\n')
+        with open(os.path.join(root, 'thing.py'), 'w',
+                  encoding='utf-8') as f:
+            f.write('# A comment which is not a heading\n')
+        blob = 'https://github.com/shakenfist/kerbside/blob/develop'
         with open(os.path.join(root, 'source.md'), 'w',
                   encoding='utf-8') as f:
             f.write('[good](target.md#a-real-heading)\n'
                     '[bad](target.md#no-such-heading)\n'
                     '[wrong case](target.md#A-Real-Heading)\n'
-                    '[gone](missing.md)\n')
+                    '[gone](missing.md)\n'
+                    '[source line](%s/thing.py#L1)\n'
+                    '[absent source](%s/nope.py#L1)\n' % (blob, blob))
 
         dangling, tally = self._check_links(
             root, ['source.md', 'target.md'])
 
-        self.assertEqual(3, len(dangling), '\n'.join(dangling))
+        self.assertEqual(4, len(dangling), '\n'.join(dangling))
         self.assertIn('#no-such-heading', dangling[0])
         self.assertIn('only in case', dangling[1])
         self.assertIn('missing.md', dangling[2])
+        # A blob link into source still has its file checked, so a
+        # renamed module is caught...
+        self.assertIn('nope.py', dangling[3])
+        # ...but its `#L1` is not looked for among thing.py's `#`
+        # comments, which would fail with a list of comment-derived
+        # slugs and no hint of why.
+        self.assertNotIn('thing.py', '\n'.join(dangling))
         # The good link is checked and not complained about, so the
-        # three complaints are not just "everything fails".
+        # four complaints are not just "everything fails".
         self.assertNotIn('links to target.md#a-real-heading',
                          '\n'.join(dangling))
         self.assertEqual(4, tally['relative'])
         self.assertEqual(3, tally['anchors_relative'])
+        self.assertEqual(2, tally['self_absolute_source'])
+        self.assertEqual(0, tally['anchors_self_absolute_source'])
 
     def test_relative_markdown_links_resolve(self):
         root = _repo_root()
