@@ -56,7 +56,23 @@
 #                  directory gains a "-<loss>pct" suffix, so results at
 #                  different loss levels neither collide nor merge. A
 #                  loss term with a rate of 0 shapes loss alone, with
-#                  no delay and no rate limit
+#                  no delay and no rate limit. "0.0" and "0.00" are
+#                  read as "0", so a decimal sweep's control cell is
+#                  the historical line and not a "-0.0pct" directory.
+#                  One worked invocation, the client leg's congestion
+#                  controller under loss -- the question
+#                  docs/performance/proxy-backpressure.md leaves open
+#                  and names this rig for:
+#                    for cc in cubic bbr; do
+#                      CC="${cc}" WORKDIR="$(pwd)/shaped-link-${cc}" \
+#                        RYLL_BIN=... GUEST_DIR=... \
+#                        PROFILES='80:10:1 150:2:1' \
+#                        ACTIVITIES=busy:30:3 CONFIGS=stock:0:0 \
+#                        ./run-matrix.sh
+#                    done
+#                  One WORKDIR per controller, because CC is not part
+#                  of a case name and the two sets of results would
+#                  otherwise merge
 #   ACTIVITIES     "name:fps:noise_bits ..." (fps 0 = idle;
 #                  default "idle:0:0 busy:30:3")
 #   CONFIGS        "name:notsent_lowat:backend_rcvbuf[:flags[:displays]] ..."
@@ -661,6 +677,12 @@ run_case() {
 for rep in $(seq "${REPEATS}"); do
     for profile in ${PROFILES}; do
         IFS=: read -r rtt rate loss <<< "${profile}"
+        # "0.0" and "0.00" mean the same explicit control as "0": reduce them
+        # so shape() leaves the loss term off the qdisc and the directory is
+        # named "-0pct", not "-0.0pct".
+        if [[ "${loss}" =~ ^0+(\.0*)?$ ]]; then
+            loss=0
+        fi
         shape "${rtt}" "${rate}" "${loss}"
         profile_dir="${rtt}ms-${rate}mbit${loss:+-${loss}pct}"
         for activity in ${ACTIVITIES}; do
