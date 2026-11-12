@@ -537,7 +537,7 @@ def main():
               f'{stats["qsendq50"]:.0f}/{stats["qsendq95"]:.0f} |')
     ack_rows = []
     for profile, activity, config, rep_dirs in cases(root):
-        m = re.search(r'-(\d+)mbit$', profile)
+        m = re.search(r'-(\d+)mbit\b', profile)
         stats = ack_stats(rep_dirs, int(m.group(1)) if m else 0)
         if stats:
             ack_rows.append((profile, activity, config, stats))
