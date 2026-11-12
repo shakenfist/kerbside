@@ -24,6 +24,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 from unittest import mock
@@ -47,6 +48,7 @@ _ROLE = _ROOT / 'ansible' / 'roles' / 'kerbside'
 _KERBSIDE = _ROOT / 'kerbside'
 _DEFAULTS = _ROLE / 'defaults' / 'main.yml'
 _ARGUMENT_SPECS = _ROLE / 'meta' / 'argument_specs.yml'
+_ANSIBLE_README = _ROOT / 'ansible' / 'README.md'
 _FIXTURE = _ROOT / 'tests' / 'fixtures' / 'host-subject-renderings.json'
 
 
@@ -187,6 +189,118 @@ class RoleDefaultsTestCase(testtools.TestCase):
             [], drifted,
             'argument_specs.yml documents a default other than '
             'defaults/main.yml sets: %s' % ', '.join(drifted))
+
+    # Rows whose default is prose rather than one literal, because it
+    # depends on something outside defaults/main.yml: both of these
+    # differ between a checkout and a release. Pinned rather than
+    # skipped on shape, so a new prose default is a deliberate edit.
+    PROSE_DEFAULTS = ('kerbside_collection_version', 'kerbside_package')
+    # Rows for variables defaults/main.yml does not set. Pinned for the
+    # same reason: a row left behind by a renamed or deleted variable is
+    # drift in the other direction, and must fail rather than be skipped.
+    # kerbside_collection_version is set by the collection's build, not
+    # by the role.
+    NOT_DEFAULTED = ('kerbside_collection_version',)
+
+    def test_the_readme_documents_the_real_defaults(self):
+        """ansible/README.md's tables are read in place of the code.
+
+        A default stated there which the role does not set is a claim
+        the tree contradicts, and operators act on those: review of
+        #717 found docs/network-ports.md telling them that
+        kerbside_reserved_ports already reserved Shaken Fist's console
+        range, where the role reserves nothing and the README's
+        [30000, 65535] is a worked example of what to pass.
+        """
+        documented = _documented_defaults()
+        defaults = _rendered_defaults()
+
+        self.assertNotEqual({}, defaults)
+        undocumented = sorted(set(defaults) - set(documented))
+        self.assertEqual(
+            [], undocumented,
+            'role defaults with no row in ansible/README.md: %s'
+            % ', '.join(undocumented))
+        stale = sorted(set(documented) - set(defaults))
+        self.assertEqual(
+            sorted(self.NOT_DEFAULTED), stale,
+            'ansible/README.md documents a default for a variable the role '
+            'does not set; if that is deliberate, add it to NOT_DEFAULTED')
+
+        prose = sorted(name for name, cell in documented.items()
+                       if not _README_LITERAL_RE.match(cell))
+        self.assertEqual(
+            sorted(self.PROSE_DEFAULTS), prose,
+            'ansible/README.md states a default this test cannot read as '
+            'one literal; if that is deliberate, add it to '
+            'PROSE_DEFAULTS, which is what exempts it')
+
+        # Every remaining row is compared, so the regex above cannot
+        # stop matching a table without the count moving.
+        compared = 0
+        drifted = []
+        for name, cell in sorted(documented.items()):
+            if name in self.PROSE_DEFAULTS:
+                continue
+            literal = _README_LITERAL_RE.match(cell).group(1)
+            stated = yaml.safe_load(literal) if literal else ''
+            compared += 1
+            if stated != defaults[name]:
+                drifted.append('%s: README says %r, the role sets %r'
+                               % (name, stated, defaults[name]))
+        self.assertEqual([], drifted, '; '.join(drifted))
+        expected = len(set(defaults) - set(self.PROSE_DEFAULTS))
+        self.assertEqual(expected, compared,
+                         'only %d of %d comparable role defaults were '
+                         'compared: %r' % (compared, expected, documented))
+
+
+# A row of one of ansible/README.md's variable tables: the variable, the
+# default it documents, and the prose, which is not read here.
+_README_ROW_RE = re.compile(
+    r'^\|\s*`(kerbside_[a-z_0-9]+)`\s*\|\s*(.*?)\s*\|.*\|\s*$')
+# A documented default which is one literal, so comparable with the
+# role's. A row saying more than that is listed below instead.
+_README_LITERAL_RE = re.compile(r'^`([^`]*)`$')
+# A default referring to another, as kerbside_pki_dir does. Only the
+# bare `{{ name }}` form appears, and a reference to a variable the role
+# does not default, or to one which is not a string, is left alone, so it
+# fails the comparison rather than rendering as nothing or as a repr.
+_JINJA_REF_RE = re.compile(r'{{\s*(kerbside_[a-z_0-9]+)\s*}}')
+
+
+def _documented_defaults():
+    """Each kerbside_* variable ansible/README.md documents a default for."""
+    rows = {}
+    with open(_ANSIBLE_README, encoding='utf-8') as f:
+        for line in f:
+            match = _README_ROW_RE.match(line)
+            if match:
+                rows[match.group(1)] = match.group(2)
+    return rows
+
+
+def _rendered_defaults():
+    """defaults/main.yml, with references to its own variables resolved.
+
+    The role's default for kerbside_pki_dir is written in terms of
+    kerbside_config_dir, which the README spells out, so comparing the
+    two needs the reference rendered. Four passes is more depth than
+    the file has. A reference which cannot be resolved to a string -- to
+    a variable the role does not default, or to a list or a number -- is
+    left in place to fail the comparison.
+    """
+    def resolve(match):
+        value = defaults.get(match.group(1))
+        return value if isinstance(value, str) else match.group(0)
+
+    with open(_DEFAULTS, encoding='utf-8') as f:
+        defaults = yaml.safe_load(f)
+    for _ in range(4):
+        for name, value in list(defaults.items()):
+            if isinstance(value, str) and '{{' in value:
+                defaults[name] = _JINJA_REF_RE.sub(resolve, value)
+    return defaults
 
 
 def _source_fields():

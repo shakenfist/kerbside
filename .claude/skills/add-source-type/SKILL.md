@@ -60,8 +60,20 @@ When adding a new cloud source type to Kerbside:
      the list of types in that file's header;
    - describe it in `ansible/roles/kerbside/meta/argument_specs.yml`;
    - add its fields and an example to `ansible/README.md`;
-   - update the unknown-type message that `tools/ci-test-ansible-role.sh`
-     asserts (it lists the types in alphabetical order);
+   - in `tools/ci-test-ansible-role.sh`:
+     - update the unknown-type message it asserts, which lists the types
+       in alphabetical order;
+     - add a source of the new type, with its own CA and its own
+       invented secret, to the `multi.json` fixture, which that file's
+       header describes as one source of every type;
+     - add a missing-required-fields case to case 7a naming every field
+       `TYPE_REQUIRED` lists for the type.
+
+     The script holds both the fixture and case 7a to `TYPE_REQUIRED`,
+     so skipping either stops the run with a message naming the type.
+     Leaving the fixture out is how the Proxmox type shipped
+     four-fifths covered (#643). Run the script before CI does: it is
+     also the gate proving no new secret leaks into the role's output;
    - add cases to `kerbside/tests/unit/test_ansible_role.py`.
 
 9. Add tests. Unit tests mock the platform's API at the driver's
