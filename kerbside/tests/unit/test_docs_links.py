@@ -1,9 +1,10 @@
 import collections
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 
-import fixtures
 import testtools
 
 
@@ -73,27 +74,46 @@ class MarkdownLinkTestCase(testtools.TestCase):
     FENCE_RE = re.compile(r'^\s*(?:```|~~~)')
 
     # The rendered text of a heading, as far as the slug is concerned:
-    # a link becomes its text, inline HTML and code ticks vanish, and
-    # emphasis markers are not part of what GitHub slugs. Underscores
-    # survive, because GitHub keeps them -- `sf_console_token_audience`
-    # slugs to itself.
+    # a link becomes its text, inline HTML vanishes along with the code
+    # ticks, and emphasis markers are not part of what GitHub slugs.
+    # Underscores survive, because GitHub keeps them --
+    # `sf_console_token_audience` slugs to itself, and so do the dozen
+    # `FILE_XFER_START (ID 10)` headings in docs/spice/. That is also
+    # why `_` is not an emphasis marker here: telling `_italic_` from
+    # an identifier needs CommonMark's flanking rules, no heading in
+    # the tree uses `_` for emphasis, and stripping it everywhere
+    # would corrupt the headings which do have it.
     INLINE_LINK_RE = re.compile(r'\[([^\]]*)\]\([^)]*\)')
     INLINE_HTML_RE = re.compile(r'<[^>]+>')
     EMPHASIS_RE = re.compile(r'[*~]')
     PUNCTUATION_RE = re.compile(r'[^\w\- ]', re.UNICODE)
 
     @classmethod
+    def _without_inline_html(cls, text):
+        """Drop HTML tags, and the code ticks, but not what a tick quotes.
+
+        A code span's contents are literal text that GitHub slugs, so
+        `` `<title>` `` keeps its angle brackets long enough for the
+        punctuation pass to drop them and leave `title`; a real tag
+        contributes no text at all. Splitting on the ticks keeps the
+        two apart -- odd segments are inside a code span -- and the
+        join drops the ticks themselves.
+        """
+        return ''.join(
+            part if n % 2 else cls.INLINE_HTML_RE.sub('', part)
+            for n, part in enumerate(text.split('`')))
+
+    @classmethod
     def _slug(cls, heading):
         """GitHub's anchor for a heading, before duplicate suffixing.
 
         Lowercase, punctuation other than hyphens and underscores
-        dropped, spaces to hyphens. Matches github-slugger closely
-        enough for the headings this tree has; the test that proves it
-        is that every anchor the tree links resolves.
+        dropped, each space to a hyphen. Matches github-slugger
+        closely enough for the headings this tree has; the test that
+        proves it is that every anchor the tree links resolves.
         """
         text = cls.INLINE_LINK_RE.sub(r'\1', heading)
-        text = cls.INLINE_HTML_RE.sub('', text)
-        text = text.replace('`', '')
+        text = cls._without_inline_html(text)
         text = cls.EMPHASIS_RE.sub('', text)
         text = cls.PUNCTUATION_RE.sub('', text.lower())
         return text.strip().replace(' ', '-')
@@ -127,6 +147,19 @@ class MarkdownLinkTestCase(testtools.TestCase):
                 anchors.add(slug if n == 0 else '%s-%d' % (slug, n))
         return anchors
 
+    def _tempdir(self):
+        """A directory removed when the test ends.
+
+        tempfile with addCleanup, which is what every other unit test
+        in this tree uses (test_rpc.py, test_main.py, test_demo_token.py
+        among them). `fixtures` is not in pyproject.toml's test extra,
+        so an import of it here would make this module's importability
+        depend on whatever else the environment happened to install.
+        """
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
+        return directory
+
     def _markdown_files(self, root):
         """Tracked .md files, so a developer's scratch notes are exempt."""
         try:
@@ -145,8 +178,7 @@ class MarkdownLinkTestCase(testtools.TestCase):
         from GitHub's either passes a link a reader cannot follow, or
         fails one they can.
         """
-        fixture = os.path.join(self.useFixture(fixtures.TempDir()).path,
-                               'headings.md')
+        fixture = os.path.join(self._tempdir(), 'headings.md')
         with open(fixture, 'w', encoding='utf-8') as f:
             f.write(
                 '# Kerbside Documentation\n'
@@ -156,6 +188,8 @@ class MarkdownLinkTestCase(testtools.TestCase):
                 '## [A link](somewhere.md)\n'
                 '## sf_console_token_audience\n'
                 '## Ports (and their numbers)\n'
+                '### `ticket-valid-until=<unix-ts>`\n'
+                '## Hard <br/>break\n'
                 '## Repeated\n'
                 '## Repeated\n'
                 '## Repeated\n'
@@ -177,6 +211,12 @@ class MarkdownLinkTestCase(testtools.TestCase):
                 'a-link',
                 # An underscore is a word character and survives.
                 'sf_console_token_audience',
+                # Angle brackets inside a code span are text GitHub
+                # slugs, so the punctuation pass drops them rather
+                # than the tag matcher eating the whole span.
+                'ticket-valid-untilunix-ts',
+                # A real tag contributes no text.
+                'hard-break',
                 # Later duplicates take a suffix; the first does not.
                 'repeated', 'repeated-1', 'repeated-2',
                 'trailing-hashes',
@@ -233,15 +273,15 @@ class MarkdownLinkTestCase(testtools.TestCase):
                                               path)),
                 anchor or None, 'relative')
 
-    def test_relative_markdown_links_resolve(self):
-        root = _repo_root()
-        if root is None:
-            raise self.skipException(
-                'no checkout above %s; markdown does not ship in the '
-                'wheel' % os.path.abspath(__file__))
+    def _check_links(self, root, files):
+        """Resolve every link in `files`, each read relative to `root`.
 
-        files = self._markdown_files(root)
-
+        Returns the complaints and the tally rather than asserting on
+        them, and takes the tree to walk rather than finding it: that
+        is what lets the negative test below run this over a tree it
+        built itself, and so prove that a bad link is reported, not
+        only that this tree has none.
+        """
         tally = collections.Counter()
         anchors = {}
         dangling = []
@@ -270,13 +310,73 @@ class MarkdownLinkTestCase(testtools.TestCase):
                 tally['anchors_' + kind] += 1
                 if path not in anchors:
                     anchors[path] = self._anchors(resolved)
-                if anchor.lower() not in anchors[path]:
+                if anchor in anchors[path]:
+                    continue
+
+                # Compared as written. GitHub emits a lowercase id and
+                # matches the fragment case-sensitively, so folding the
+                # case here would only pass links a reader cannot
+                # follow -- but it is worth its own message, because the
+                # list of anchors below makes it look like a near miss.
+                if anchor.lower() in anchors[path]:
+                    dangling.append(
+                        '%s links to %s, but GitHub ids are lowercase: '
+                        '#%s differs from #%s only in case'
+                        % (relpath, target, anchor, anchor.lower()))
+                else:
                     dangling.append(
                         '%s links to %s, but %s has no heading whose '
                         'anchor is #%s (it has %d: %s)'
-                        % (relpath, target, path, anchor.lower(),
+                        % (relpath, target, path, anchor,
                            len(anchors[path]),
                            ', '.join(sorted(anchors[path]))))
+        return dangling, tally
+
+    def test_a_dangling_link_is_reported(self):
+        """The checker fails on a bad link, not only passes on good ones.
+
+        The test below proves this tree is clean and the slug test
+        proves the anchors are GitHub's; neither would notice a checker
+        that reported nothing. An `_anchors` which returned a superset
+        -- an over-broad fence toggle, a `_slug` that dropped the
+        duplicate suffixing -- would leave both green, because the
+        per-class floors catch "stopped matching", not "stopped
+        failing".
+        """
+        root = self._tempdir()
+        with open(os.path.join(root, 'target.md'), 'w',
+                  encoding='utf-8') as f:
+            f.write('# A Real Heading\n')
+        with open(os.path.join(root, 'source.md'), 'w',
+                  encoding='utf-8') as f:
+            f.write('[good](target.md#a-real-heading)\n'
+                    '[bad](target.md#no-such-heading)\n'
+                    '[wrong case](target.md#A-Real-Heading)\n'
+                    '[gone](missing.md)\n')
+
+        dangling, tally = self._check_links(
+            root, ['source.md', 'target.md'])
+
+        self.assertEqual(3, len(dangling), '\n'.join(dangling))
+        self.assertIn('#no-such-heading', dangling[0])
+        self.assertIn('only in case', dangling[1])
+        self.assertIn('missing.md', dangling[2])
+        # The good link is checked and not complained about, so the
+        # three complaints are not just "everything fails".
+        self.assertNotIn('links to target.md#a-real-heading',
+                         '\n'.join(dangling))
+        self.assertEqual(4, tally['relative'])
+        self.assertEqual(3, tally['anchors_relative'])
+
+    def test_relative_markdown_links_resolve(self):
+        root = _repo_root()
+        if root is None:
+            raise self.skipException(
+                'no checkout above %s; markdown does not ship in the '
+                'wheel' % os.path.abspath(__file__))
+
+        files = self._markdown_files(root)
+        dangling, tally = self._check_links(root, files)
 
         self.assertEqual([], dangling, '\n'.join(dangling))
 

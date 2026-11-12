@@ -247,7 +247,10 @@ instead of static VM passwords:
    it expires; expired tokens are reaped only once they also have no open
    proxy channels. The default token lifetime is short (one minute), which
    bounds the reuse window, but a token is not strictly single-use despite
-   older descriptions to that effect.
+   older descriptions to that effect. Whether it ought to be is an open
+   question rather than a settled design point:
+   [#718](https://github.com/shakenfist/kerbside/issues/718) carries the
+   decision, and nothing here should be read as either answer.
 
 4. **Console Lookup**: Valid tokens are mapped to specific VM consoles,
    allowing Kerbside to establish the correct backend connection.

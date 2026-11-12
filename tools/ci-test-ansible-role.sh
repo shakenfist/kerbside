@@ -24,8 +24,10 @@
 # desired-state hash is stable across reruns, follows every file Kerbside
 # runs with, and returns to its first value when they are restored; that
 # register waits on exactly the Shaken Fist sources, and on none without
-# one; and that no source's password, no console ticket, nor any other
-# secret reaches the ansible output.
+# one; that the multi-source fixture below carries a source of every type
+# the role's checker accepts, so a new type cannot ship without coverage
+# here (#643); and that no source's password, no console ticket, nor any
+# other secret reaches the ansible output.
 #
 # register runs without its migration and its units, which need MariaDB and
 # systemd, and with a stub runuser which records how the readiness check
@@ -1000,13 +1002,27 @@ case_12_refused_render() {
     # config does not run validate's checks, so the write is the last line of
     # defence. The other sources carry secrets, which the refusal must not
     # print (case 18).
+    # The static source is the one corrupted, because it is the only one
+    # in the fixture carrying no secret. It is found by type and the
+    # expected position derived from that, rather than both being written
+    # out: a source added to multi.json moves the indices, and the refusal
+    # names the position -- the same reason case 7 derives its duplicate.
+    local unknown_index
+    unknown_index="$("${PY}" -c '
+import json, sys
+sources = json.load(open(sys.argv[1]))["kerbside_sources"]
+print(next(n for n, s in enumerate(sources) if s["type"] == "static"))' \
+        "${MULTI_VARS}")"
     local multi_unknown
     multi_unknown="$("${PY}" -c '
 import json, sys
 sources = json.load(open(sys.argv[1]))["kerbside_sources"]
-sources[3] = dict(sources[3], type="vmware")
-print(json.dumps({"kerbside_sources": sources}))' "${MULTI_VARS}")"
-    refused sources.yaml 'sources.yaml refused: source 3: type is not one of' \
+i = int(sys.argv[2])
+sources[i] = dict(sources[i], type="vmware")
+print(json.dumps({"kerbside_sources": sources}))' \
+        "${MULTI_VARS}" "${unknown_index}")"
+    refused sources.yaml \
+        "sources.yaml refused: source ${unknown_index}: type is not one of" \
         "$(write_vars multi-unknown "${multi_unknown}")"
 }
 

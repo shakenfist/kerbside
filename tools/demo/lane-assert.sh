@@ -131,13 +131,13 @@ else
     bad 'the .vv has no ca= field with a certificate in it'
 fi
 
-# The production template marks the ticket single-use. Asserted here so
-# that the deletion check in section 2 fails for the right reason if the
-# template ever changes.
+# The production template asks the client to delete the file. Asserted
+# here so that the deletion check in section 2 fails for the right reason
+# if the template ever changes.
 if grep -q '^delete-this-file=1' "${VV}"; then
     ok 'the .vv carries delete-this-file=1'
 else
-    bad 'the .vv does not set delete-this-file=1, so its single-use ticket would be left on disk'
+    bad 'the .vv does not set delete-this-file=1, so its live console token would be left on disk'
 fi
 
 # Read the ports now, while the file still exists. ryll honours
@@ -213,9 +213,9 @@ else
             bad 'ryll could not establish a SPICE session'
         fi
 
-        # The ticket in the .vv is a single-use credential, so ryll
-        # removes the file once it has parsed it. The control socket only
-        # exists after that parse, so the file must be gone by now.
+        # The ticket in the .vv is a live credential until it expires, so
+        # ryll removes the file once it has parsed it. The control socket
+        # only exists after that parse, so the file must be gone by now.
         if [ ! -e "${VV}" ]; then
             ok 'ryll removed the delete-this-file=1 .vv once it had read it'
         else
@@ -318,8 +318,8 @@ docker compose stop spice-target > /dev/null \
 if ! command -v ryll > /dev/null 2>&1; then
     bad 'ryll is not on PATH, so the backend-failure case could not be driven'
 else
-    # A fresh .vv: the token in the previous one is single-use in spirit
-    # and the session id is stale.
+    # A fresh .vv: the token in the previous one has a minute to live at
+    # most, and the session id is stale.
     ./get-console.sh "${WORKDIR}/backend-gone.vv" \
         > "${WORKDIR}/backend-gone-fetch.log" 2>&1 || true
 

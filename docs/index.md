@@ -295,8 +295,9 @@ virt-viewer console.vv format:
 
 - [console.vv Extensions](spice/console-vv-extensions.md) - ryll-specific
   console.vv keys (`ticket-valid-until`) and standard-key interpretations
-  (`delete-this-file=1` as a one-shot ticket signal). Producers (Kerbside,
-  oVirt, custom gateways) populate these to drive client-side behaviour.
+  (`delete-this-file=1` as a signal that the ticket is not worth
+  replaying). Producers (Kerbside, oVirt, custom gateways) populate these
+  to drive client-side behaviour.
 
 ## Protocol Implementation Status
 

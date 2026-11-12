@@ -73,10 +73,9 @@ closes the window before a user could act on it.
 If a future producer wants the file deleted but the ticket
 *usefully* reusable, this interpretation will surprise it.
 We have not encountered that case in the wild and consider
-it a
-deployment contradiction. If it ever arises, an explicit
-override key can be added; we are not speculatively defining
-one.
+it a deployment contradiction. If it ever arises, an
+explicit override key can be added; we are not speculatively
+defining one.
 
 ### `delete-this-file=0` or absent → reusable / permanent
 
