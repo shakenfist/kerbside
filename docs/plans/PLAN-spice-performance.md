@@ -316,7 +316,7 @@ first phase.
 | 4. Son of SPICE: D-Bus display feasibility spike (verdict: no-go, as measured) | [PLAN-spice-performance-phase-04-dbus-spike.md](PLAN-spice-performance-phase-04-dbus-spike.md) | Complete | andris 9a997a3 (#56), a90f17ff90 (#637) |
 | 5. spice-server patches, measured: codec choice, the connect crash, trace ring, 60 fps, hardware probing | [PLAN-spice-performance-phase-05-spice-server.md](PLAN-spice-performance-phase-05-spice-server.md) | Complete | 46c3e9857c (#654), kerbside-patches 2d7b626422 (#2024) |
 | 6. Push audit of phases 1-5 (kerbside, kerbside-patches and ryll #406) | [PLAN-spice-performance-phase-06-push-audit.md](PLAN-spice-performance-phase-06-push-audit.md) | Complete | 2a34fe7ea9 (#668), 17a31ebf75 (#701) |
-| 7. QUIC client leg: experiments (verdict: no-go, as measured) | [PLAN-spice-performance-phase-07-quic-experiments.md](PLAN-spice-performance-phase-07-quic-experiments.md) | In progress | |
+| 7. QUIC client leg: experiments (verdict: no-go, as measured) | [PLAN-spice-performance-phase-07-quic-experiments.md](PLAN-spice-performance-phase-07-quic-experiments.md) | Complete | e0f53fb04a (#716) |
 | 8. QUIC client leg: implementation (abandoned: phase 7's gate said no-go) | | Abandoned | |
 | 9. Push audit of phase 7 (kerbside) | | Not started | |
 
