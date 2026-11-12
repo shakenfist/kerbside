@@ -33,7 +33,7 @@ The threshold this bench was built to test is whether QUIC's
 interactive p95 is worse than TCP's by more than the bench's own
 run-to-run spread, on either loss level of the 80 ms / 10 Mbit profile.
 
-**It is, and the phase should stop here.** At 1% loss on that profile
+**It is, and the work went no further.** At 1% loss on that profile
 QUIC's interactive p95 is 144.3 ms against TCP's 82.8 ms — 61.6 ms
 worse, against a run-to-run spread of 0.9 ms in the QUIC arm and 0.1 ms
 in the TCP arm. That is not a close call and it is not a noisy one: the
