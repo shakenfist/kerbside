@@ -102,7 +102,7 @@ impl Bulk {
     }
 }
 
-fn header(role: u8, size: usize) -> [u8; HEADER_LEN] {
+pub(crate) fn header(role: u8, size: usize) -> [u8; HEADER_LEN] {
     let mut buf = [0u8; HEADER_LEN];
     buf[0] = role;
     buf[1..].copy_from_slice(&(size as u32).to_le_bytes());

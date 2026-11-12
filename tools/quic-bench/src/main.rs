@@ -378,7 +378,9 @@ async fn main() -> Result<(), BoxError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workload::{Bulk, ROLE_BULK, ROLE_IDLE, ROLE_INTERACTIVE};
+    use std::path::Path;
+
+    use crate::workload::{Bulk, Interactive, Sample, ROLE_BULK, ROLE_IDLE, ROLE_INTERACTIVE};
 
     #[test]
     fn percentile_of_nothing_is_none() {
@@ -470,5 +472,255 @@ mod tests {
         for index in 2..8 {
             assert_eq!(workload::role_for(index), ROLE_IDLE);
         }
+    }
+
+    fn work_with_warmup(duration_secs: u64, warmup_secs: u64) -> Workload {
+        Workload {
+            duration: Duration::from_secs(duration_secs),
+            warmup: Duration::from_secs(warmup_secs),
+            interval: Duration::from_millis(20),
+            request_bytes: 64,
+            bulk_chunk: 65536,
+        }
+    }
+
+    /// Interactive samples from `(offset_ms, rtt_us)` pairs, in arrival order.
+    fn samples(pairs: &[(f64, u64)]) -> Interactive {
+        Interactive {
+            samples: pairs
+                .iter()
+                .map(|&(offset_ms, rtt_us)| Sample { offset_ms, rtt_us })
+                .collect(),
+            timeouts: 0,
+        }
+    }
+
+    fn published(work: &Workload, interactive: &Interactive) -> serde_json::Value {
+        results_json(
+            "cell",
+            Transport::Quic,
+            Cc::Cubic,
+            5,
+            work,
+            1.0,
+            Some((64, 1)),
+            interactive,
+            &Bulk::default(),
+        )
+    }
+
+    #[test]
+    fn only_samples_at_or_after_the_warmup_boundary_are_measured() {
+        // The boundary is inclusive at the steady end, so with a five second
+        // warmup the sample at exactly 5000 ms is the first measured one and
+        // the one a millisecond earlier is the last discarded one. The two
+        // discarded samples are given round trips far above every measured
+        // one, so admitting either moves the percentiles as well as the count.
+        let work = work_with_warmup(10, 5);
+        let interactive = samples(&[
+            (0.0, 900_000),
+            (4_999.0, 800_000),
+            (5_000.0, 10),
+            (6_000.0, 20),
+            (7_000.0, 30),
+        ]);
+
+        let json = published(&work, &interactive);
+        assert_eq!(json["interactive"]["samples_total"], 5);
+        assert_eq!(json["interactive"]["samples_steady"], 3);
+        assert_eq!(json["interactive"]["min_us"], 10);
+        assert_eq!(json["interactive"]["max_us"], 30);
+        assert_eq!(json["interactive"]["p50_us"], 20);
+        assert_eq!(json["interactive"]["p95_us"], 30);
+        assert_eq!(json["interactive"]["p99_us"], 30);
+
+        // Every sample is still carried raw, warmup included, so the discard
+        // can be checked after the run rather than taken on trust.
+        assert_eq!(json["interactive"]["raw"].as_array().unwrap().len(), 5);
+    }
+
+    #[test]
+    fn a_run_whose_samples_all_fall_in_the_warmup_publishes_no_percentiles() {
+        // Nothing reached the steady window, so there is no percentile to
+        // publish. A number here would be indistinguishable from a measured
+        // cell to everything downstream.
+        let work = work_with_warmup(10, 5);
+        let interactive = samples(&[(0.0, 11), (4_999.9, 12)]);
+
+        let json = published(&work, &interactive);
+        assert_eq!(json["interactive"]["samples_total"], 2);
+        assert_eq!(json["interactive"]["samples_steady"], 0);
+        assert!(json["interactive"]["p50_us"].is_null());
+        assert!(json["interactive"]["p95_us"].is_null());
+        assert!(json["interactive"]["p99_us"].is_null());
+        assert!(json["interactive"]["min_us"].is_null());
+        assert!(json["interactive"]["max_us"].is_null());
+    }
+
+    #[test]
+    fn the_published_percentiles_are_over_sorted_samples() {
+        // Arrival order is not sorted order: these three steady round trips
+        // arrive 30, 10, 20 and every published figure is of 10, 20, 30.
+        let work = work_with_warmup(10, 5);
+        let interactive = samples(&[(5_000.0, 30), (6_000.0, 10), (7_000.0, 20)]);
+
+        let json = published(&work, &interactive);
+        assert_eq!(json["interactive"]["min_us"], 10);
+        assert_eq!(json["interactive"]["max_us"], 30);
+        assert_eq!(json["interactive"]["p50_us"], 20);
+    }
+
+    #[test]
+    fn the_results_name_the_congestion_controller_only_for_the_quic_arm() {
+        let work = work_with_warmup(10, 5);
+        let interactive = samples(&[(6_000.0, 20)]);
+
+        let quic_arm = results_json(
+            "cell",
+            Transport::Quic,
+            Cc::Bbr,
+            5,
+            &work,
+            1.0,
+            Some((64, 1)),
+            &interactive,
+            &Bulk::default(),
+        );
+        assert_eq!(quic_arm["transport"], "quic");
+        assert_eq!(quic_arm["quic_cc"], "bbr");
+        assert_eq!(quic_arm["gso"]["segments_available"], 64);
+        assert_eq!(quic_arm["gso"]["segments_used"], 1);
+        assert_eq!(quic_arm["gso"]["pinned_mtu"], quic::PINNED_MTU);
+
+        // The TCP arm has no QUIC controller and no segmentation count, and
+        // the fields are absent rather than carrying the unused default --
+        // which would read as a measured controller for an arm that took the
+        // namespace's instead.
+        let tcp_arm = results_json(
+            "cell",
+            Transport::Tcp,
+            Cc::Bbr,
+            5,
+            &work,
+            1.0,
+            None,
+            &interactive,
+            &Bulk::default(),
+        );
+        assert_eq!(tcp_arm["transport"], "tcp");
+        assert!(tcp_arm["quic_cc"].is_null());
+        assert!(tcp_arm["gso"].is_null());
+    }
+
+    #[tokio::test]
+    async fn an_encoded_header_decodes_to_the_role_and_size_it_carried() {
+        // The ceiling itself is a legal size, and the size is little-endian:
+        // read big-endian, 8 MiB would decode as 32768 and be accepted.
+        let encoded = workload::header(ROLE_IDLE, 8 * 1024 * 1024);
+        let mut reader = &encoded[..];
+        let (role, size) = workload::read_header(&mut reader).await.unwrap();
+        assert_eq!(role, ROLE_IDLE);
+        assert_eq!(size, 8 * 1024 * 1024);
+    }
+
+    #[tokio::test]
+    async fn the_tcp_arm_opens_one_connection_per_channel_with_nagle_off() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let accepted = tokio::spawn(async move {
+            let mut held = Vec::new();
+            for _ in 0..3 {
+                held.push(listener.accept().await.unwrap().0);
+            }
+            held.len()
+        });
+
+        let (streams, connect_ms) = tcp::connect(addr, 3).await.unwrap();
+        assert_eq!(streams.len(), 3);
+        for stream in &streams {
+            // SPICE sets TCP_NODELAY on its channels; a channel left with
+            // Nagle on measures Nagle rather than the transport.
+            assert!(stream.nodelay().unwrap());
+        }
+        assert_eq!(accepted.await.unwrap(), 3);
+        assert!(connect_ms >= 0.0);
+    }
+
+    #[tokio::test]
+    async fn the_no_gso_socket_reports_one_segment_and_delegates_everything_else() {
+        use quinn::{AsyncUdpSocket, Runtime, TokioRuntime};
+
+        let bound = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let inner = TokioRuntime.wrap_udp_socket(bound).unwrap();
+        let wrapped = nogso::NoGso::new(inner.clone());
+
+        assert_eq!(wrapped.max_transmit_segments(), 1);
+        assert_eq!(wrapped.max_receive_segments(), inner.max_receive_segments());
+        assert_eq!(wrapped.may_fragment(), inner.may_fragment());
+        assert_eq!(wrapped.local_addr().unwrap(), inner.local_addr().unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_quic_endpoint_sends_one_datagram_per_write_unless_gso_is_allowed() {
+        let bind: SocketAddr = "127.0.0.1:0".parse().unwrap();
+
+        let (_off, available, used) = quic::endpoint(bind, None, false).unwrap();
+        assert_eq!(used, 1, "a measured run must never batch datagrams");
+
+        // The positive control gets the socket's own batching back, whatever
+        // the host offers. Where the host offers only one segment the two
+        // configurations are indistinguishable, which is why the run records
+        // both numbers.
+        let (_on, available_on, used_on) = quic::endpoint(bind, None, true).unwrap();
+        assert_eq!(used_on, available_on);
+        assert_eq!(available_on, available);
+        assert!(available >= 1);
+    }
+
+    #[test]
+    fn a_certificate_file_is_read_whole_and_one_with_no_certificate_is_refused() {
+        // rustls_pemfile parses PEM without looking inside the DER, so these
+        // stand in for a chain and a key without needing a real one.
+        let chain = temp_file("chain.pem", &format!("{PEM_CERT}{PEM_CERT}"));
+        let not_a_cert = temp_file("notacert.pem", PEM_KEY);
+
+        let certs = quic::load_certs(&chain).unwrap();
+        // The whole chain, not just the leaf: an intermediate dropped here
+        // would be missing from the chain the client is asked to verify.
+        assert_eq!(certs.len(), 2);
+
+        // A file with no certificate in it fails here, naming the file,
+        // rather than becoming an empty chain that fails at handshake time.
+        assert!(quic::load_certs(&not_a_cert).is_err());
+        assert!(quic::load_certs(Path::new("/nonexistent/quic-bench-cert")).is_err());
+
+        std::fs::remove_file(chain).unwrap();
+        std::fs::remove_file(not_a_cert).unwrap();
+    }
+
+    #[test]
+    fn a_key_file_is_read_and_one_with_no_private_key_is_refused() {
+        let key = temp_file("key.pem", PEM_KEY);
+        let not_a_key = temp_file("notakey.pem", PEM_CERT);
+
+        assert_eq!(
+            quic::load_key(&key).unwrap().secret_der().to_vec(),
+            vec![1u8, 2, 3]
+        );
+        // Not an empty key: the server would otherwise start with a key
+        // nothing can complete a handshake with.
+        assert!(quic::load_key(&not_a_key).is_err());
+
+        std::fs::remove_file(key).unwrap();
+        std::fs::remove_file(not_a_key).unwrap();
+    }
+
+    const PEM_CERT: &str = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n";
+    const PEM_KEY: &str = "-----BEGIN PRIVATE KEY-----\nAQID\n-----END PRIVATE KEY-----\n";
+
+    fn temp_file(name: &str, contents: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("quic-bench-{}-{name}", std::process::id()));
+        std::fs::write(&path, contents).unwrap();
+        path
     }
 }

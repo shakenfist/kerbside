@@ -47,7 +47,7 @@ pub const PINNED_MTU: u16 = 1400;
 /// straightforward integration would not think to change it.
 const INTERACTIVE_PRIORITY: i32 = 8;
 
-fn load_certs(path: &Path) -> Result<Vec<CertificateDer<'static>>, BoxError> {
+pub(crate) fn load_certs(path: &Path) -> Result<Vec<CertificateDer<'static>>, BoxError> {
     let mut reader = BufReader::new(File::open(path)?);
     let certs = rustls_pemfile::certs(&mut reader).collect::<Result<Vec<_>, _>>()?;
     if certs.is_empty() {
@@ -56,7 +56,7 @@ fn load_certs(path: &Path) -> Result<Vec<CertificateDer<'static>>, BoxError> {
     Ok(certs)
 }
 
-fn load_key(path: &Path) -> Result<PrivateKeyDer<'static>, BoxError> {
+pub(crate) fn load_key(path: &Path) -> Result<PrivateKeyDer<'static>, BoxError> {
     let mut reader = BufReader::new(File::open(path)?);
     rustls_pemfile::private_key(&mut reader)?
         .ok_or_else(|| format!("no private key in {}", path.display()).into())
@@ -101,7 +101,7 @@ fn transport_config(cc: Cc, channels: u32) -> TransportConfig {
 ///
 /// Returns the endpoint, the number of transmit segments the underlying socket
 /// offered, and the number actually in use.
-fn endpoint(
+pub(crate) fn endpoint(
     addr: SocketAddr,
     server_config: Option<ServerConfig>,
     allow_gso: bool,
