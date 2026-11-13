@@ -1004,6 +1004,15 @@ class AuditEvent(Base):
 
 
 def add_audit_event(source, uuid, session_id, channel, node, pid, message):
+    """Record an audit event, and log it.
+
+    The message is stored and logged with its control characters
+    escaped. Some messages carry a value from outside Kerbside -- a
+    username, or whatever the proxy reports over RecordAuditEvent -- and
+    the audit trail is one event to a row and one to a log line, so a
+    newline in that value must not be able to forge another.
+    """
+    message = util.escape_control_characters(message)
     with Session(ENGINE) as session:
         event = AuditEvent(source, uuid, session_id, channel, node, pid, message)
         session.add(event)

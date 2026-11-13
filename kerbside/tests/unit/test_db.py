@@ -932,3 +932,25 @@ class ConsoleTokenSecretsTestCase(testtools.TestCase):
             secret = set(row.export(include_secrets=True))
 
         self.assertEqual(set(db.CONSOLE_TOKEN_SECRET_FIELDS), secret - public)
+
+
+class AuditEventEscapingTestCase(testtools.TestCase):
+    """An audit message cannot forge a second event (issue #138).
+
+    The auditevents table cannot be created under sqlite, so the row is
+    captured at its constructor rather than read back.
+    """
+
+    @mock.patch.object(db, 'LOG')
+    @mock.patch.object(db, 'Session')
+    @mock.patch.object(db, 'AuditEvent')
+    def test_message_is_stored_and_logged_escaped(
+            self, mock_event, mock_session, mock_log):
+        db.add_audit_event(
+            'src', 'uuid', 'sess', 'main', 'node', 'pid',
+            'Authenticated as mikal\nAudit: Issued token to admin')
+
+        escaped = 'Authenticated as mikal\\nAudit: Issued token to admin'
+        mock_event.assert_called_once_with(
+            'src', 'uuid', 'sess', 'main', 'node', 'pid', escaped)
+        mock_log.info.assert_called_once_with('Audit: %s' % escaped)
