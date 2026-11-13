@@ -9,6 +9,10 @@ from kerbside.sources import base
 from kerbside.sources import ovirt as ovirt_source
 
 
+# oVirt's ids are UUIDs.
+HOST_1 = '6f1a3c2e-8d4b-4e7a-9b1c-2d3e4f5a6b7c'
+
+
 class _Status(object):
     """The SDK's VmStatus enum, which the source stringifies."""
 
@@ -36,7 +40,7 @@ class _Host(object):
 
 
 class _Vm(object):
-    def __init__(self, id, name, status='up', host_id='host-1',
+    def __init__(self, id, name, status='up', host_id=HOST_1,
                  consoles=None):
         self.id = id
         self.name = name
@@ -52,6 +56,7 @@ class _FakeConnection(object):
         self.vms = vms
         self.hosts = hosts
         self.closed = False
+        self.searches = []
 
     # -- SDK surface ------------------------------------------------
     def system_service(self):
@@ -66,6 +71,7 @@ class _FakeConnection(object):
     def list(self, search=None, current=None):
         if search is None:
             return self.vms
+        self.searches.append(search)
         wanted = search.split('=', 1)[1]
         return [h for h in self.hosts if h.id == wanted]
 
@@ -113,7 +119,7 @@ class TestOVirtSourceDiscovery(unittest.TestCase):
     def test_spice_console_is_yielded(self):
         vms = [_Vm('vm-1', 'desktop-1',
                    consoles=[_Console('spice')])]
-        hosts = [_Host('host-1', 'O=local,CN=ovirt.local')]
+        hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
 
         results = self._scrape(vms, hosts)
 
@@ -134,20 +140,20 @@ class TestOVirtSourceDiscovery(unittest.TestCase):
     def test_vm_which_is_not_up_is_skipped(self):
         vms = [_Vm('vm-1', 'stopped-1', status='down',
                    consoles=[_Console('spice')])]
-        hosts = [_Host('host-1', 'O=local,CN=ovirt.local')]
+        hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
 
         self.assertEqual([], self._scrape(vms, hosts))
 
     def test_vm_with_no_spice_console_is_skipped(self):
         """A VNC-only VM has no SPICE console to broker."""
         vms = [_Vm('vm-1', 'vnc-only', consoles=[_Console('vnc')])]
-        hosts = [_Host('host-1', 'O=local,CN=ovirt.local')]
+        hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
 
         self.assertEqual([], self._scrape(vms, hosts))
 
     def test_vm_with_no_consoles_at_all_is_skipped(self):
         vms = [_Vm('vm-1', 'headless', consoles=[])]
-        hosts = [_Host('host-1', 'O=local,CN=ovirt.local')]
+        hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
 
         self.assertEqual([], self._scrape(vms, hosts))
 
@@ -167,7 +173,7 @@ class TestOVirtSourceDiscovery(unittest.TestCase):
             _Vm('vm-2', 'vnc-only', consoles=[_Console('vnc')]),
             _Vm('vm-3', 'desktop-2', consoles=[_Console('spice')]),
         ]
-        hosts = [_Host('host-1', 'O=local,CN=ovirt.local')]
+        hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
 
         results = self._scrape(vms, hosts)
 
@@ -178,7 +184,7 @@ class TestOVirtSourceDiscovery(unittest.TestCase):
             _Vm('vm-1', 'desktop-1', consoles=[_Console('spice')]),
             _Vm('vm-2', 'desktop-2', consoles=[_Console('spice')]),
         ]
-        hosts = [_Host('host-1', 'O=local,CN=ovirt.local')]
+        hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
 
         results = self._scrape(vms, hosts)
 
@@ -186,9 +192,34 @@ class TestOVirtSourceDiscovery(unittest.TestCase):
             ['O=local,CN=ovirt.local', 'O=local,CN=ovirt.local'],
             [r['host_subject'] for r in results])
 
+    def test_a_host_id_which_is_not_a_uuid_is_never_searched_for(self):
+        """The host id is interpolated into oVirt's search language.
+
+        So a VM whose host id is not a UUID is skipped rather than its id
+        searched for, and the rest of the scrape goes on (issue #138).
+        """
+        vms = [
+            _Vm('vm-1', 'desktop-1', host_id='x or name=*',
+                consoles=[_Console('spice')]),
+            _Vm('vm-2', 'desktop-2', host_id=HOST_1.upper(),
+                consoles=[_Console('spice')]),
+        ]
+        hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
+        connection = _FakeConnection(vms, hosts)
+        src, sdk, types = _make_source(connection)
+        with mock.patch.object(ovirt_source, 'OVIRT_SDK', sdk), \
+                mock.patch.object(ovirt_source, 'OVIRT_SDK_TYPES', types):
+            results = list(src())
+
+        self.assertEqual(['vm-2'], [r['uuid'] for r in results])
+        self.assertEqual('O=local,CN=ovirt.local', results[0]['host_subject'])
+        # What was searched for is the UUID's canonical form, not the
+        # text the engine sent.
+        self.assertEqual(['id=%s' % HOST_1], connection.searches)
+
     def test_scrape_closes_the_connection_it_opened(self):
         vms = [_Vm('vm-1', 'desktop-1', consoles=[_Console('spice')])]
-        connection = _FakeConnection(vms, [_Host('host-1', 'CN=h')])
+        connection = _FakeConnection(vms, [_Host(HOST_1, 'CN=h')])
         src, sdk, types = _make_source(connection)
         with mock.patch.object(ovirt_source, 'OVIRT_SDK', sdk), \
                 mock.patch.object(ovirt_source, 'OVIRT_SDK_TYPES', types):

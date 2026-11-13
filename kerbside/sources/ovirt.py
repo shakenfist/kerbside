@@ -4,6 +4,7 @@ import requests
 from shakenfist_utilities import logs
 import tempfile
 import time
+import uuid
 
 from . import base
 from .. import util
@@ -126,8 +127,18 @@ class oVirtSource(base.BaseSource):
                 continue
 
             if vm.host.id and vm.host.id not in host_cache:
-                host = hosts_service.list(search='id=%s' % vm.host.id)[0]
-                host_cache[host.id] = host.certificate.subject
+                # The id is interpolated into oVirt's search language,
+                # so it must be what oVirt's ids always are -- a UUID --
+                # rather than trusted to be one. The canonical form is
+                # what is searched for, so nothing the engine sent is
+                # interpolated as it arrived.
+                try:
+                    host_id = str(uuid.UUID(vm.host.id))
+                except (TypeError, ValueError):
+                    log.warning('Ignoring instance whose host id is not a UUID')
+                    continue
+                host = hosts_service.list(search='id=%s' % host_id)[0]
+                host_cache[vm.host.id] = host.certificate.subject
 
             console, _, _ = self.get_console_for_vm(vm.id, connection=connection)
             if not console:
