@@ -6,6 +6,7 @@ import sys
 import tempfile
 import threading
 import time
+import unittest
 from unittest import mock
 import testtools
 
@@ -16,6 +17,14 @@ from kerbside import sf_token
 from kerbside.sources import base as source_base
 from kerbside.sources import minting
 from kerbside.sources import proxmox
+
+
+try:
+    import gi
+    gi.require_version('GLib', '2.0')
+    from gi.repository import GLib
+except (ImportError, ValueError):
+    GLib = None
 
 
 # A console uuid as the Proxmox VE driver gives one.
@@ -1621,3 +1630,101 @@ class VirtViewerFileTestCase(testtools.TestCase):
     def test_an_unknown_key_is_refused(self):
         self.assertRaises(
             ValueError, api._render_vv, {'proxy': 'http://elsewhere'})
+
+    # What a source's management plane may call a console, and so what
+    # reaches a .vv's title (issue #661). Each would have ended the value,
+    # started another key, or been read as an escape.
+    HOSTILE_NAMES = [
+        'desktop\nproxy=http://attacker.example.com:3128',
+        'desktop\r\nhost=attacker.example.com',
+        'C:\\Users\\desktop',
+        'trailing backslash \\',
+        ' leading space',
+        'tab\there',
+        'nul\x00and\x1bescape',
+    ]
+
+    @staticmethod
+    def _gkeyfile_values(body):
+        """Read a .vv the way GKeyFile does, without needing GLib.
+
+        Split into lines first, then unescape each value, refusing an
+        escape GKeyFile would refuse.
+        """
+        lines = body.split('\n')
+        assert lines[0] == '[virt-viewer]'
+        assert lines[-1] == ''
+        values = {}
+        for line in lines[1:-1]:
+            key, raw = line.split('=', 1)
+            assert key not in values, 'duplicate key %s' % key
+            # GKeyFile drops the whitespace which leads a value.
+            raw = raw.lstrip(' \t')
+            out = []
+            i = 0
+            while i < len(raw):
+                if raw[i] == '\\':
+                    escape = raw[i + 1:i + 2]
+                    out.append({'s': ' ', 'n': '\n', 't': '\t', 'r': '\r',
+                                '\\': '\\'}[escape])
+                    i += 2
+                else:
+                    out.append(raw[i])
+                    i += 1
+            values[key] = ''.join(out)
+        return values
+
+    def _vv_titled(self, title):
+        return api._vv_response(
+            'hv1', 5900, 5901, 'a-ticket', None, title, 'CN=hv1'
+            ).get_data(as_text=True)
+
+    def test_no_name_adds_a_key(self):
+        for name in self.HOSTILE_NAMES:
+            body = api._proxy_vv_response(
+                {'token': 'a-token', 'session_id': 'sess-1'}, name, None
+                ).get_data(as_text=True)
+            values = self._gkeyfile_values(body)
+
+            self.assertEqual(
+                [k for k in api.VIRTVIEWER_KEYS if k != 'ca'],
+                list(values), repr(name))
+            self.assertEqual('kerbside.example.com', values['host'])
+            self.assertEqual('a-token', values['password'])
+
+    def test_printable_names_survive_intact(self):
+        for name in ['C:\\Users\\desktop', 'trailing backslash \\',
+                     ' leading space', 'tab\there', 'line\nbreak',
+                     'carriage\rreturn']:
+            values = self._gkeyfile_values(self._vv_titled(name))
+            self.assertEqual(name, values['title'])
+
+    def test_other_control_characters_are_replaced(self):
+        values = self._gkeyfile_values(self._vv_titled('nul\x00and\x1bescape'))
+        self.assertEqual('nul\ufffdand\ufffdescape', values['title'])
+
+    def test_the_ca_still_reads_back_as_the_pem(self):
+        pem = '-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n'
+        body = api._vv_response(
+            'hv1', 5900, 5901, 'a-ticket', pem, 'a desktop', None
+            ).get_data(as_text=True)
+        self.assertEqual(pem, self._gkeyfile_values(body)['ca'])
+
+    @unittest.skipUnless(GLib, 'needs the GLib introspection bindings')
+    def test_glib_reads_back_what_was_written(self):
+        # The test above reads with a model of GKeyFile. This reads with
+        # GKeyFile itself, which is what virt-viewer uses, where the
+        # bindings are installed.
+        for name in self.HOSTILE_NAMES:
+            keyfile = GLib.KeyFile()
+            body = self._vv_titled(name)
+            keyfile.load_from_data(
+                body, len(body.encode()), GLib.KeyFileFlags.NONE)
+
+            self.assertEqual(
+                [k for k in api.VIRTVIEWER_KEYS if k != 'ca'],
+                keyfile.get_keys('virt-viewer')[0], repr(name))
+            self.assertEqual('hv1', keyfile.get_string('virt-viewer', 'host'))
+            self.assertEqual(
+                name.replace('\x00', '\ufffd').replace('\x1b', '\ufffd'),
+                keyfile.get_string('virt-viewer', 'title'))

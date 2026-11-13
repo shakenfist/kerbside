@@ -17,6 +17,7 @@ import importlib
 import json
 import os
 import requests
+import unicodedata
 from webargs import fields
 from webargs.flaskparser import use_kwargs
 
@@ -497,8 +498,44 @@ def _vv_ca_cert():
         return f.read()
 
 
+# GKeyFile's escapes for a string value. Anything else after a backslash is
+# an invalid escape, which makes g_key_file_get_string() fail outright.
+_GKEYFILE_ESCAPES = {'\\': '\\\\', '\n': '\\n', '\r': '\\r', '\t': '\\t'}
+
+
+def _vv_escape(value):
+    """Escape a value for a .vv file.
+
+    virt-viewer reads a .vv with GKeyFile, which splits the file into
+    lines before it reads any value, and then unescapes each value it is
+    asked for as a string. So a newline in a value would end it and start
+    another key, and a backslash is the start of an escape sequence, not a
+    character. Every value is escaped as GKeyFile expects, which keeps the
+    file's structure ours whatever a value holds: a console name is
+    whatever its source's management plane says it is (issue #661).
+    GKeyFile also strips leading whitespace from a value, which \\s keeps,
+    and has no escape for any other control character, so those are
+    replaced: they have no business in any value this file carries.
+    """
+    out = []
+    for i, ch in enumerate(str(value)):
+        if ch in _GKEYFILE_ESCAPES:
+            out.append(_GKEYFILE_ESCAPES[ch])
+        elif ch == ' ' and i == 0:
+            out.append('\\s')
+        elif unicodedata.category(ch) == 'Cc':
+            out.append('\ufffd')
+        else:
+            out.append(ch)
+    return ''.join(out)
+
+
 def _render_vv(values):
-    """Render a .vv file from a dict of the variable keys' values."""
+    """Render a .vv file from a dict of the variable keys' values.
+
+    This is the only place a value enters the file, so it is the only
+    place one is escaped; callers pass values as they are.
+    """
     merged = dict(VIRTVIEWER_FIXED)
     merged.update(values)
     unknown = set(merged) - set(VIRTVIEWER_KEYS)
@@ -510,9 +547,7 @@ def _render_vv(values):
         value = merged.get(key)
         if value is None:
             continue
-        if key == 'ca':
-            value = value.replace('\n', '\\n')
-        lines.append('%s=%s' % (key, value))
+        lines.append('%s=%s' % (key, _vv_escape(value)))
     return '\n'.join(lines) + '\n'
 
 
