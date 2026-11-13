@@ -676,6 +676,21 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
 
         return RecordingLog()
 
+    @mock.patch('kerbside.consoletoken.create_token',
+                return_value={'token': 'a-proxy-token', 'session_id': 'sess'})
+    def test_proxy_vv_without_a_configured_ca_has_no_ca_key(
+            self, mock_create_token):
+        # setUp leaves CACERT_PATH unset. The direct handler always
+        # tolerated that and the proxy handlers opened it regardless
+        # (issue #411), so the same deployment issued one kind of .vv
+        # and failed the other with a 500.
+        resp = self.client.get('/console/proxy/sf1/console-1/console.vv')
+
+        self.assertEqual(200, resp.status_code)
+        body = resp.get_data(as_text=True)
+        self.assertIn('password=a-proxy-token', body)
+        self.assertNotIn('\nca=', body)
+
     def test_direct_vv_does_not_log_the_password(self):
         resp = self.client.get('/console/direct/sf1/console-1/console.vv')
 
@@ -1544,3 +1559,65 @@ class KeystoneAuthVerifyTestCase(testtools.TestCase):
         resp = self._login()
         self.assertEqual(500, resp.status_code)
         self.assertIn('Keystone SSL error', resp.get_data(as_text=True))
+
+
+class VirtViewerFileTestCase(testtools.TestCase):
+    """Every .vv this API issues is rendered in one place (issue #411)."""
+
+    def setUp(self):
+        super().setUp()
+        for name, value in [
+                ('PUBLIC_FQDN', 'kerbside.example.com'),
+                ('PUBLIC_INSECURE_PORT', 5898),
+                ('PUBLIC_SECURE_PORT', 5899),
+                ('PROXY_HOST_SUBJECT', 'C=AU,O=Example,CN=Kerbside Proxy')]:
+            patch = mock.patch.object(api.config, name, value)
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def test_proxy_vv(self):
+        resp = api._proxy_vv_response(
+            {'token': 'a-token', 'session_id': 'sess-1'}, 'a desktop',
+            '-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n')
+
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual(
+            'application/x-virt-viewer;charset=UTF-8', resp.content_type)
+        self.assertEqual(
+            '[virt-viewer]\n'
+            'type=spice\n'
+            'host=kerbside.example.com\n'
+            'port=5898\n'
+            'tls-port=5899\n'
+            'password=a-token\n'
+            'delete-this-file=1\n'
+            'fullscreen=0\n'
+            'title=a desktop via proxy session ID sess-1\n'
+            'toggle-fullscreen=shift+f11\n'
+            'release-cursor=shift+f12\n'
+            'secure-attention=ctrl+alt+end\n'
+            'enable-smartcard=1\n'
+            'enable-usb-autoshare=1\n'
+            'usb-filter=-1,-1,-1,-1,0\n'
+            'tls-ciphers=DEFAULT\n'
+            'ca=-----BEGIN CERTIFICATE-----\\nAAAA\\n'
+            '-----END CERTIFICATE-----\\n\n'
+            'host-subject=C=AU,O=Example,CN=Kerbside Proxy\n',
+            resp.get_data(as_text=True))
+
+    def test_absent_values_leave_their_keys_out(self):
+        resp = api._vv_response(
+            'hv1', 5900, None, '', None, 'a desktop direct connection', '')
+
+        body = resp.get_data(as_text=True)
+        keys = [line.split('=', 1)[0] for line in body.splitlines()[1:]]
+        self.assertNotIn('tls-port', keys)
+        self.assertNotIn('ca', keys)
+        self.assertNotIn('host-subject', keys)
+        # An empty password is a value, not an absence: a source with no
+        # ticket still has the key, as it always has.
+        self.assertIn('password=\n', body)
+
+    def test_an_unknown_key_is_refused(self):
+        self.assertRaises(
+            ValueError, api._render_vv, {'proxy': 'http://elsewhere'})
