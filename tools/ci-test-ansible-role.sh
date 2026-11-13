@@ -21,8 +21,8 @@
 # kerbside_url byte for byte, and a sources.yaml which loads back as
 # kerbside_sources exactly; that kerbside_extra_settings reaches that file
 # and a name the role owns, a name which is not an INI key, or a name
-# Kerbside has no setting for is refused instead (#629); that a Shaken Fist deployment renders both files
-# as the role did before it took any source; that a render either checker
+# Kerbside has no setting for is refused instead (#629); that a Shaken Fist
+# deployment renders both files as the role did before it took any source; that a render either checker
 # refuses leaves the running file in place and nothing behind; that the
 # desired-state hash is stable across reruns, follows every file Kerbside
 # runs with, and returns to its first value when they are restored; that
@@ -552,6 +552,41 @@ case_2_valid() {
     validate_fails 'kerbside_sources\.surprise\. Supported parameters include' \
         "$(write_vars sources-undeclared-key '{"kerbside_sources": [
           {"source": "s", "type": "static", "surprise": "x", "consoles": []}]}')"
+
+    # bootstrap looks every configured type up in the two client mappings
+    # and reads package and directory off each entry, so each of these
+    # would otherwise be a Jinja error in the middle of a deploy (#602).
+    CURRENT_CASE='case 2: validate refuses a source type the role has no client libraries for'
+    validate_fails 'has sources of type\(s\) shakenfist, which' \
+        "$(write_vars clients-missing-type '{"kerbside_source_client_packages": {
+          "ovirt": [], "openstack": [], "proxmox": [], "static": []}}')"
+    assert_validate_refused
+
+    CURRENT_CASE='case 2: validate refuses a client library entry without a directory'
+    validate_fails 'maps the source type shakenfist, which kerbside_sources uses' \
+        "$(write_vars clients-no-directory '{"kerbside_source_client_packages": {
+          "shakenfist": [{"package": "shakenfist-client"}],
+          "ovirt": [], "openstack": [], "proxmox": [], "static": []}}')"
+    assert_validate_refused
+
+    CURRENT_CASE='case 2: validate refuses a source type mapped to a string'
+    validate_fails 'maps the source type shakenfist, which kerbside_sources uses' \
+        "$(write_vars clients-string '{"kerbside_source_client_packages": {
+          "shakenfist": "shakenfist-client",
+          "ovirt": [], "openstack": [], "proxmox": [], "static": []}}')"
+    assert_validate_refused
+
+    CURRENT_CASE='case 2: validate refuses a login client library entry without a directory'
+    validate_fails 'kerbside_login_client_packages.*directory' \
+        "$(write_vars login-no-directory '{"kerbside_login_client_packages": [
+          {"package": "keystoneauth1"}]}')"
+
+    # The variable the per-type mapping replaced: set, it would be ignored,
+    # and the deploy would install a client the operator did not ask for.
+    CURRENT_CASE='case 2: validate refuses kerbside_client_package, which the role no longer reads'
+    validate_fails 'kerbside_client_package is set on localhost, but the role no longer reads it' \
+        "$(write_vars client-package-removed '{"kerbside_client_package": "shakenfist-client==0.8.3"}')"
+    assert_validate_refused
 
     CURRENT_CASE='case 2: validate passes no kerbside_url without a Shaken Fist source'
     VERBOSITY=-vvv validate_passes "${NO_SF_VARS}"
@@ -1618,6 +1653,9 @@ case_17_readiness() {
         fail 'register succeeded although a stored key set cannot verify a token'
     fi
     assert_output_has 'cannot verify a console token minted now'
+    # And says false, not null: the two have different remedies, and a
+    # default which forgave every falsy value once made them one.
+    assert_output_has 'keys_usable=False'
     [ ! -e "${STATE}/.deployed-state.sha256" ] \
         || fail 'register recorded the desired state although the keys are unusable'
 

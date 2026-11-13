@@ -298,7 +298,7 @@
       (keys_usable={{ kerbside_ready_keys_usable }}). The last check on
       {{ kerbside_hosts[0] }} printed:
       {{ kerbside_ready.stdout | default('') | trim | default('nothing', true) }}.
-      false means a stored set is not a document naming an active kid among
+      False means a stored set is not a document naming an active kid among
       its own keys, which is what Shaken Fist publishes at
       /admin/vditokenpubkey: ask that cluster for it, and see
       "sf-ctl ensure-kerbside-signing-key". null means the readiness check

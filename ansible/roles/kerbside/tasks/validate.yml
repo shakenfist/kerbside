@@ -175,6 +175,60 @@
           imports, or an empty list where it imports none.
         quiet: true
 
+    # bootstrap reads package and directory off every entry with
+    # map(attribute=...), so an entry missing either -- or a type mapped to
+    # something other than a list of them -- fails there, mid-deploy, with
+    # the same unhelpful Jinja error the check above exists to avoid.
+    # kerbside_login_client_packages is a list, so argument_specs holds its
+    # entries to this shape already; a mapping keyed by type cannot be
+    # described there, so these are checked here, for the configured types.
+    # A string or a non-empty mapping fails the count, since none of what it
+    # iterates is a mapping; the first two conditions are for what the count
+    # cannot see, a value which is not iterable at all, and {}.
+    - name: Refuse a client library entry without a package and a directory
+      ansible.builtin.assert:
+        that:
+          - kerbside_client_entries is sequence
+          - kerbside_client_entries is not mapping
+          - >-
+            kerbside_client_entries | select('mapping')
+            | selectattr('package', 'defined') | selectattr('package', 'string')
+            | selectattr('directory', 'defined') | selectattr('directory', 'string')
+            | list | length == kerbside_client_entries | length
+        fail_msg: >-
+          kerbside_source_client_packages on {{ inventory_hostname }} maps
+          the source type {{ item }}, which kerbside_sources uses, to
+          something other than a list of mappings each with a package (a
+          requirement or a wheel path) and a directory (the top-level
+          package it installs under site-packages, which bootstrap hashes to
+          prove it landed). Use an empty list for a type which needs no
+          client library.
+        quiet: true
+      loop: >-
+        {{ kerbside_source_types
+           | intersect(kerbside_source_client_packages.keys() | list) }}
+      vars:
+        kerbside_client_entries: "{{ kerbside_source_client_packages[item] }}"
+
+    # kerbside_client_package was the role's only client library variable
+    # until the libraries became per source type. Ansible does not refuse a
+    # variable nothing declares, so a deployment which pinned or redirected
+    # the Shaken Fist client with it would now get the default from PyPI and
+    # never be told: the deploy not doing what was asked, and not saying so.
+    - name: Refuse kerbside_client_package, which the role no longer reads
+      ansible.builtin.assert:
+        that: kerbside_client_package is not defined
+        fail_msg: >-
+          kerbside_client_package is set on {{ inventory_hostname }}, but the
+          role no longer reads it, so the Shaken Fist client it names would
+          not be the one installed. Move it into
+          kerbside_source_client_packages, as the package of the shakenfist
+          entry (whose directory is shakenfist_client), and remove it. That
+          variable replaces the whole default mapping, so copy the other
+          source types your kerbside_sources uses from the role's defaults
+          along with it.
+        quiet: true
+
     # A Shaken Fist cluster mints console tokens for the Kerbside at its
     # KERBSIDE_URL, and config renders kerbside_url as the audience Kerbside
     # accepts. Without a Shaken Fist source Kerbside verifies no such token,

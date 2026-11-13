@@ -10,6 +10,13 @@ and exits non-zero, so under systemd the service restarts forever. The role
 therefore runs this as the template task's validate command, so a file
 Kerbside could not read is refused and the old one stays in place.
 
+What it checks is that the file parses and names only Kerbside's settings, not
+that each value is one Kerbside will accept: console_token_duration = soon
+passes here and stops Kerbside when its configuration loads. The values the
+role writes from its own variables are validated before they render; a value
+in kerbside_extra_settings is the operator's, and a bad one is caught by
+register's readiness wait, which fails the deploy, rather than here.
+
 The file is read the way kerbside/config.py reads it, with interpolation off,
 so a % in a value is literal, exactly as Kerbside will see it, and every value
 in the [kerbside] section is then fetched. A value which spans lines is refused

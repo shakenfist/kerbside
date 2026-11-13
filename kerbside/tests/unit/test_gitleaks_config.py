@@ -125,8 +125,14 @@ class GitleaksConfigTestCase(testtools.TestCase):
                 continue
             path = os.path.join(_ROOT, relpath)
             try:
-                with open(path, encoding='utf-8') as f:
-                    content = f.read()
+                with open(path, 'rb') as f:
+                    # A NUL in the first block is git's own test for a
+                    # binary file, and the tree commits disk images:
+                    # no reason to read one whole to learn that.
+                    head = f.read(8192)
+                    if b'\0' in head:
+                        continue
+                    content = (head + f.read()).decode('utf-8')
             except (OSError, UnicodeDecodeError):
                 continue
             for regex in [r for r, compiled in unmatched.items() if compiled.search(content)]:

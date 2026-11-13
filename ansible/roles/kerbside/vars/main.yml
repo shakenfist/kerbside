@@ -128,9 +128,12 @@ kerbside_deployed_state_file: "{{ kerbside_state_dir }}/.deployed-state.sha256"
 # what the script's json.dumps() can produce, and no backslash, so every match
 # parses. kerbside_ready_fetched_at is the parsed fetched_at as a string, or
 # 'null' when the keys were never fetched or the output was anything else, and
-# kerbside_ready_keys_usable the parsed keys_usable the same way: 'True',
-# 'False', or 'null' for a set which is not there or an output which is not
-# the object.
+# kerbside_ready_keys_usable the parsed keys_usable as 'True', 'False', or
+# 'null' for a set which is not there or an output which is not the object.
+# That one is ternary's none_val rather than default('null', true), which
+# would turn false into 'null' as well: the one answer the assert in register
+# exists to report. fetched_at keeps default, since only 0.0 is a falsy one
+# and no key set was fetched at the epoch.
 # Evaluated lazily, so each reads the latest kerbside_ready the wait registered.
 kerbside_ready_pattern: >-
   ^[{]"errored": (true|false|null),
@@ -143,9 +146,9 @@ kerbside_ready_fetched_at: >-
        if kerbside_ready_output is match(kerbside_ready_pattern) else none)
       | default('null', true)) | string }}
 kerbside_ready_keys_usable: >-
-  {{ (((kerbside_ready_output | from_json).keys_usable
-       if kerbside_ready_output is match(kerbside_ready_pattern) else none)
-      | default('null', true)) | string }}
+  {{ ((kerbside_ready_output | from_json).keys_usable
+      if kerbside_ready_output is match(kerbside_ready_pattern) else none)
+     | ternary('True', 'False', 'null') }}
 
 # The version of this collection. The committed value is the marker
 # `unreleased`, and an install from a checkout reports it. The release build

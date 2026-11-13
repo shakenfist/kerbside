@@ -895,6 +895,17 @@ class RoleClientLibrariesTestCase(testtools.TestCase):
                 'docs/installation.md says %s %s or later, so that is what '
                 'the role must install: an older one leaves the source '
                 'errored, which is not a failed deploy' % (library, floor))
+        # And the other way: a floor the role installs which the guide
+        # does not state is one an operator installing by hand never
+        # hears about, so the two installs quietly differ.
+        for library, requirement in sorted(requirements.items()):
+            floor = re.search(r'>=([0-9][0-9.]*)$', requirement)
+            if floor:
+                self.assertEqual(
+                    floor.group(1), floors.get(library),
+                    'the role installs %s, but docs/installation.md does not '
+                    'say "`%s` %s or later"'
+                    % (requirement, library, floor.group(1)))
 
     def test_the_build_packages_are_documented(self):
         # One direction only: the guide names what a C extension needs

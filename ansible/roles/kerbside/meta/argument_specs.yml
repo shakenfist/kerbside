@@ -276,6 +276,19 @@ argument_specs:
       kerbside_login_client_packages:
         type: list
         elements: dict
+        options:
+          package:
+            type: str
+            required: true
+            description:
+              - A PyPI requirement or a local wheel path.
+          directory:
+            type: str
+            required: true
+            description:
+              - >-
+                The top-level package it installs under site-packages, which
+                bootstrap hashes to prove it installed.
         default:
           - package: "keystoneauth1"
             directory: keystoneauth1
@@ -544,10 +557,15 @@ argument_specs:
         ~~unconfigured~~ or shorter than 32 characters; when a Kerbside port
         is in kerbside_reserved_ports, or two are equal, or a
         kerbside_reserved_ports entry is malformed; when only some of the
-        three certificate override paths are set; or when kerbside_local_wheels
+        three certificate override paths are set; when kerbside_local_wheels
         lists a file which is not on the control node, or is not a kerbside or
-        kerbside_proxy wheel, or two wheels for one package. No message
-        includes a secret.
+        kerbside_proxy wheel, or two wheels for one package; when
+        kerbside_extra_settings sets a name the role writes itself, a name
+        which is not an INI key, or a value of null; when a configured source
+        type is missing from kerbside_source_client_packages or
+        kerbside_source_build_packages, or its client entries lack a package
+        or a directory; or when kerbside_client_package, which the role no
+        longer reads, is set. No message includes a secret.
     options: *kerbside_options
   bootstrap:
     short_description: Install Kerbside and record what was installed.
