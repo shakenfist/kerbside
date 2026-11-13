@@ -58,11 +58,32 @@ useDefault = true
 [allowlist]
 description = "Test fixtures, not credentials"
 regexes = [
-  # tools/ci-test-ansible-role.sh's throwaway oVirt source password. The
-  # role test plants one invented password per source type, and searches
-  # the role's output for each to prove none leaks; this one is the only
-  # value generic-api-key's entropy threshold catches.
+  # tools/ci-test-ansible-role.sh's throwaway credentials. The role test
+  # plants one invented secret per source type, plus a system key, a
+  # second cluster's key, a static console's ticket, a seed and the SQL
+  # URL's password, and searches the role's output for each to prove
+  # none of them leaks.
+  #
+  # Every planted value is listed, not only the ones gitleaks reports
+  # today. Which of them generic-api-key catches turns on its entropy
+  # threshold and on gitleaks' stopword list rather than on anything
+  # visible in the value -- of the nine below it reports exactly two,
+  # and not the two with the highest entropy -- so a new fixture is
+  # otherwise a coin toss resolved in CI. Listing all of them also
+  # means a gitleaks upgrade that moves the threshold cannot newly fail
+  # the scan. kerbside/tests/unit/test_gitleaks_config.py holds this
+  # list equal to the script's, and refuses an entry that no longer
+  # occurs anywhere in the tree, so widening it beyond the fixtures
+  # takes a deliberate edit to the test as well.
+  '''kb-system-key-Vt7qL2mXc9Rw''',
+  '''kb-second-cluster-Hp3sW8dQ''',
   '''ovirt-pw-Zr6kN1vB4tYe''',
+  '''openstack-pw-Ld9xF2cM7qUa''',
+  '''pve-token-Qv7mB2sX9jLd''',
+  '''spice-ticket-Gw5jR8nT3hKo''',
+  '''keystone-pw-Tn4bX7sQ2vHe''',
+  '''seed-Jk4pW8zN2bQ6vT1yH5cR9mD3fL7''',
+  '''Xq8Tz3LmPw''',
   # tools/quic-bench/src/main.rs's PEM fixture for the certificate and
   # key readers' tests. rustls_pemfile parses the base64 body without
   # inspecting the DER inside it, so the fixture's body is the three

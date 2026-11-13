@@ -181,6 +181,12 @@ FQDN='console.example.com'
 # 32 characters, validate's minimum. The SQL URL's password carries a %,
 # which the INI keeps as written; its distinctive part is what the output is
 # searched for, so that a doubled copy is found too.
+#
+# Each of these is credential shaped on purpose, so each is a finding for
+# the credential scan: add one here and add it to .gitleaks.toml's
+# allowlist too, which kerbside/tests/unit/test_gitleaks_config.py checks.
+# Whether gitleaks reports a given value is not something reading it tells
+# you, so the rule is every value rather than the ones it catches today.
 SYSTEM_KEY='kb-system-key-Vt7qL2mXc9Rw'
 SF2_KEY='kb-second-cluster-Hp3sW8dQ'
 OVIRT_PASSWORD='ovirt-pw-Zr6kN1vB4tYe'
