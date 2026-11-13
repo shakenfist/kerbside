@@ -123,6 +123,15 @@ jobs:
     # off, so ring and no aws-lc-rs, no ryll and no protoc -- and this job
     # builds no release artefact. Be explicit -- an unsized vm label defaults
     # to xs (1 core / 2 GB) in private-ci.
+    #
+    # `cargo test` is not this crate's whole gate. Its mutation check
+    # (tools/quic-bench/mutation-check.sh, or `make mutants`) breaks one
+    # tested property at a time and requires the named test to fail, so it is
+    # what says the tests would notice a regression. It stays deliberately
+    # manual: it rewrites src/ in place and restores it afterwards, which is
+    # also why the crate's Makefile runs it on the host rather than in the
+    # container with its other targets. Run it by hand after changing src/ or
+    # the tests.
     runs-on: [self-hosted, vm, debian-13, s]
     defaults:
       run:

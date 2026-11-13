@@ -227,12 +227,16 @@ class CollectTestCase(testtools.TestCase):
             with open(os.path.join(casedir, f'{arm}.json'), 'w') as handle:
                 json.dump(_RESULT, handle)
 
+    def write_host_facts(self, line='repeats: 5 duration: 45s warmup: 5s'):
+        with open(os.path.join(self.workdir, 'host.txt'), 'w') as handle:
+            handle.write(f'kernel: 6.12.0\nprofiles: 20:50\n{line}\nchannels: 4\n')
+
     def test_a_repeat_whose_file_never_arrived_is_still_counted(self):
         # The second repeat's QUIC arm died before writing its result, as a
         # kill or a full disk leaves it. read_run() returns nothing for it,
         # so only the attempt count carries the fact that it ran.
-        self.write_repeat('20ms-50mbit-0pct-cubic', '1', ('tcp', 'quic'))
-        self.write_repeat('20ms-50mbit-0pct-cubic', '2', ('tcp',))
+        self.write_repeat('20ms-50mbit-0pct-cubic', 'rep1', ('tcp', 'quic'))
+        self.write_repeat('20ms-50mbit-0pct-cubic', 'rep2', ('tcp',))
         with open(os.path.join(self.workdir, '20ms-50mbit-0pct-cubic', 'notes.txt'), 'w') as handle:
             handle.write('not a repeat\n')
         os.makedirs(os.path.join(self.workdir, 'logs'))
@@ -244,9 +248,28 @@ class CollectTestCase(testtools.TestCase):
         self.assertEqual(2, len(cell['runs']['tcp']))
         self.assertEqual(1, len(cell['runs']['quic']))
 
+    def test_a_directory_in_a_cell_that_is_not_a_repeat_is_not_counted_as_one(self):
+        # Anything but the harness's own rep<N> directories -- somewhere to
+        # put logs or a capture, an editor's scratch directory -- is not a
+        # repeat, and counting one would report a run that lost nothing as
+        # having lost data.
+        self.write_repeat('20ms-50mbit-0pct-cubic', 'rep1', ('tcp', 'quic'))
+        self.write_repeat('20ms-50mbit-0pct-cubic', 'rep2', ('tcp', 'quic'))
+        os.makedirs(os.path.join(self.workdir, '20ms-50mbit-0pct-cubic', 'logs'))
+        os.makedirs(os.path.join(self.workdir, '20ms-50mbit-0pct-cubic', '.rep3.swp'))
+        os.makedirs(os.path.join(self.workdir, '20ms-50mbit-0pct-cubic', 'rep2.orig'))
+
+        cells = summarise.collect(self.workdir)
+        cell = cells['20ms-50mbit-0pct-cubic']
+        self.assertEqual({'tcp': 2, 'quic': 2}, cell['attempted'])
+        self.assertEqual(2, cell['repeat_dirs'])
+        summary = summarise.report(cells, [], headline_cc='cubic', out=io.StringIO())
+        self.assertEqual(0, summary['cells']['20ms-50mbit-0pct-cubic']['quic']['absent_repeats'])
+        self.assertEqual([], [line for line in summary['warnings'] if 'repeats' in line])
+
     def test_the_report_warns_about_a_repeat_whose_file_never_arrived(self):
-        self.write_repeat('20ms-50mbit-0pct-cubic', '1', ('tcp', 'quic'))
-        self.write_repeat('20ms-50mbit-0pct-cubic', '2', ('tcp',))
+        self.write_repeat('20ms-50mbit-0pct-cubic', 'rep1', ('tcp', 'quic'))
+        self.write_repeat('20ms-50mbit-0pct-cubic', 'rep2', ('tcp',))
         summary = summarise.report(summarise.collect(self.workdir), [], headline_cc='cubic',
                                    out=io.StringIO())
         self.assertEqual(1, summary['cells']['20ms-50mbit-0pct-cubic']['quic']['absent_repeats'])
@@ -255,13 +278,69 @@ class CollectTestCase(testtools.TestCase):
             'them reaches the medians or the spread',
             summary['warnings'])
 
+    def test_a_repeat_that_never_got_a_directory_is_counted_from_host_txt(self):
+        # A run killed part way through a cell leaves no directory at all for
+        # the repeats it never reached, so the directories on their own
+        # present a two-repeat spread as the five-repeat one asked for.
+        self.write_host_facts()
+        self.write_repeat('20ms-50mbit-0pct-cubic', 'rep1', ('tcp', 'quic'))
+        self.write_repeat('20ms-50mbit-0pct-cubic', 'rep2', ('tcp', 'quic'))
 
-def _cell(cc, runs, attempted=None):
+        cell = summarise.collect(self.workdir)['20ms-50mbit-0pct-cubic']
+        self.assertEqual(5, cell['requested_repeats'])
+        self.assertEqual(2, cell['repeat_dirs'])
+        self.assertEqual({'tcp': 5, 'quic': 5}, cell['attempted'])
+
+    def test_more_directories_than_host_txt_asked_for_are_all_counted(self):
+        # The larger of the two records wins in both directions: a work
+        # directory holding more repeats than host.txt asked for has them.
+        self.write_host_facts('repeats: 1 duration: 45s warmup: 5s')
+        self.write_repeat('20ms-50mbit-0pct-cubic', 'rep1', ('tcp', 'quic'))
+        self.write_repeat('20ms-50mbit-0pct-cubic', 'rep2', ('tcp', 'quic'))
+
+        cell = summarise.collect(self.workdir)['20ms-50mbit-0pct-cubic']
+        self.assertEqual({'tcp': 2, 'quic': 2}, cell['attempted'])
+
+    def test_a_work_directory_with_no_host_txt_counts_the_directories(self):
+        # The hand-assembled case: nothing records what was asked for, which
+        # is not a reason to refuse to summarise what is there.
+        self.write_repeat('20ms-50mbit-0pct-cubic', 'rep1', ('tcp', 'quic'))
+        self.write_repeat('20ms-50mbit-0pct-cubic', 'rep2', ('tcp', 'quic'))
+
+        cell = summarise.collect(self.workdir)['20ms-50mbit-0pct-cubic']
+        self.assertIsNone(cell['requested_repeats'])
+        self.assertEqual({'tcp': 2, 'quic': 2}, cell['attempted'])
+        summary = summarise.report({'20ms-50mbit-0pct-cubic': cell}, [], headline_cc='cubic',
+                                   out=io.StringIO())
+        self.assertEqual([], [line for line in summary['warnings'] if 'repeats' in line])
+
+    def test_a_host_txt_with_no_repeat_count_to_read_counts_the_directories(self):
+        for line in ('repeats: many duration: 45s', 'repeats:', 'repeat: 5'):
+            self.write_host_facts(line)
+            self.assertIsNone(summarise.read_requested_repeats(self.workdir))
+
+    def test_the_report_warns_when_a_cell_was_cut_short_of_what_was_asked_for(self):
+        self.write_host_facts()
+        self.write_repeat('20ms-50mbit-0pct-cubic', 'rep1', ('tcp', 'quic'))
+        self.write_repeat('20ms-50mbit-0pct-cubic', 'rep2', ('tcp', 'quic'))
+        summary = summarise.report(summarise.collect(self.workdir), [], headline_cc='cubic',
+                                   out=io.StringIO())
+        self.assertEqual(3, summary['cells']['20ms-50mbit-0pct-cubic']['quic']['absent_repeats'])
+        self.assertIn(
+            '20ms-50mbit-0pct-cubic: the harness was asked for 5 repeats and 2 got as far as a '
+            'directory, so this cell was cut short and every figure in it is taken over fewer '
+            'repeats than were asked for',
+            summary['warnings'])
+
+
+def _cell(cc, runs, attempted=None, requested_repeats=None):
+    attempted = attempted if attempted is not None else len(runs)
     return {
         'fields': {'rtt': '20', 'rate': '50', 'loss': '0', 'cc': cc},
         'runs': {arm: list(runs) for arm in summarise.ARMS},
-        'attempted': {arm: attempted if attempted is not None else len(runs)
-                      for arm in summarise.ARMS},
+        'attempted': {arm: attempted for arm in summarise.ARMS},
+        'repeat_dirs': attempted,
+        'requested_repeats': requested_repeats,
     }
 
 
@@ -285,6 +364,40 @@ class HeadlineControllerTestCase(testtools.TestCase):
         self.assertRaises(
             summarise.AmbiguousHeadlineCc, summarise.resolve_headline_cc, 'reno',
             ['bbr', 'cubic'])
+
+    def test_the_controller_cells_txt_recorded_is_used_when_the_caller_named_none(self):
+        self.assertEqual(
+            'cubic', summarise.resolve_headline_cc(None, ['bbr', 'cubic'], detected='cubic'))
+
+    def test_the_caller_outranks_the_controller_cells_txt_recorded(self):
+        self.assertEqual(
+            'bbr', summarise.resolve_headline_cc('bbr', ['bbr', 'cubic'], detected='cubic'))
+
+    def test_a_detected_controller_the_matrix_does_not_have_blames_cells_txt(self):
+        # An interrupted run lands here: cells.txt is appended before the
+        # repeat directory is made, so it can name a controller no surviving
+        # cell ran. The caller supplied nothing, so nothing may say they did.
+        error = self.assertRaises(
+            summarise.AmbiguousHeadlineCc, summarise.resolve_headline_cc, None, ['bbr', 'reno'],
+            'cubic')
+        self.assertIn('cells.txt', str(error))
+        self.assertIn('cubic', str(error))
+        self.assertIn('bbr', str(error))
+        self.assertIn('--headline-cc', str(error))
+        self.assertNotIn('asked for', str(error))
+
+    def test_a_detected_controller_does_not_make_the_only_surviving_one_the_gate(self):
+        # One controller in the matrix settles nothing here: cells.txt is the
+        # only record of which arm the gate was, and it says this is not it.
+        self.assertRaises(
+            summarise.AmbiguousHeadlineCc, summarise.resolve_headline_cc, None, ['bbr'], 'cubic')
+
+    def test_a_caller_the_matrix_does_not_have_is_still_blamed_for_their_own_value(self):
+        error = self.assertRaises(
+            summarise.AmbiguousHeadlineCc, summarise.resolve_headline_cc, 'reno', ['cubic'],
+            'cubic')
+        self.assertIn("asked for 'reno'", str(error))
+        self.assertNotIn('cells.txt', str(error))
 
     def test_a_requested_controller_is_not_silently_replaced_by_the_only_one(self):
         # One controller in the matrix is unambiguous only when the caller

@@ -23,7 +23,11 @@
 # Usage: run-bench.sh
 #
 # Inputs (environment):
-#   WORKDIR     results and scratch (default ./quic-bench-results)
+#   WORKDIR     results and scratch (default ./quic-bench-results).
+#               Created mode 700, because the run generates its TLS keys
+#               in a subdirectory of it and the run refuses a work
+#               directory anybody else can write. chmod it afterwards if
+#               the results are to be shared
 #   BENCH_BIN   quic-bench binary (default: release build in-tree)
 #   PROFILES    "rtt_ms:rate_mbit ..." (default "80:10 150:2")
 #   LOSSES      "pct ..." applied per direction (default "0 1 2"). 0 means no
@@ -93,10 +97,12 @@ normalise_loss() {
 }
 
 # Refuse a directory the keys must not be written into or under: one this user
-# does not own, or one any other local user can write. `openssl req -nodes`
-# writes the keys unencrypted, and both mkdir -p and chmod accept whatever is
-# already at the path, so under a writable parent another local user can
-# pre-create the directory as a symlink and read the keys where it points.
+# does not own, or one anybody but this user can write -- the group counts,
+# because a shared measurement host has a shared group and group write is the
+# same pre-creation and symlink exposure as world write. `openssl req -nodes`
+# writes the keys unencrypted, and mkdir -p accepts whatever is already at the
+# path, so under a writable parent another local user can pre-create the
+# directory as a symlink and read the keys where it points.
 #
 # Only the two directories the run writes into are checked, not every ancestor:
 # a measurement host keeps its checkout under a shared, sometimes mode-777
@@ -120,19 +126,43 @@ require_private_dir() {
     fi
     # Read the mode through stat and check stat's exit status: a `find -perm`
     # probe that errors prints nothing, which is indistinguishable from a pass.
-    # The last octal digit holds the other bits, so 2, 3, 6 and 7 are writable.
     if ! mode="$(stat -c '%a' "${dir}" 2>/dev/null)"; then
         echo "ERROR: cannot read the permissions of ${dir}; refusing to run there." >&2
         exit 1
     fi
-    case "${mode}" in
-        *[2367])
-            echo "ERROR: ${dir} is writable by any local user; refusing to put the run's" >&2
-            echo "       TLS material there. Remove the write bit, or set WORKDIR to a" >&2
-            echo "       private path." >&2
-            exit 1
-            ;;
-    esac
+    # stat prints three digits for a plain directory and four for a setgid one,
+    # so pad to four before indexing rather than matching the end of the string:
+    # the group bits are then always the third digit and the other bits the
+    # fourth. 2, 3, 6 and 7 all carry write in an octal digit.
+    while [ "${#mode}" -lt 4 ]; do
+        mode="0${mode}"
+    done
+    local writers=''
+    [[ "${mode:2:1}" =~ [2367] ]] && writers='its group'
+    [[ "${mode:3:1}" =~ [2367] ]] && writers="${writers:+${writers} and }any local user"
+    if [ -n "${writers}" ]; then
+        echo "ERROR: ${dir} (mode ${mode}) is writable by ${writers}; refusing to put the" >&2
+        echo "       run's TLS material there. Remove the write bits, or set WORKDIR to a" >&2
+        echo "       private path." >&2
+        exit 1
+    fi
+}
+
+# Create a directory and its mode in one step, then check the result again.
+# mkdir -p accepts whatever is already at the path, so on its own it writes
+# through a symlink planted between require_private_dir above and this call;
+# and a mkdir at the umask followed by a chmod leaves the directory wide for
+# the length of that gap. mkdir -m closes the gap for a directory this run
+# creates, and the second check refuses a path that was substituted anyway,
+# before openssl writes a key into it. A directory that already exists is left
+# as it is, so a second run into the same work directory still works.
+make_private_dir() {
+    local dir="$1" mode="$2"
+    # shellcheck disable=SC2174  # deliberate: the deepest directory is the one
+    # holding the keys, and any ancestor this creates is already out of scope
+    # for the same reason require_private_dir does not walk them.
+    mkdir -m "${mode}" -p "${dir}"
+    require_private_dir "${dir}"
 }
 
 # ── Outer half: check the inputs, then re-execute in a namespace ─────────────
@@ -166,7 +196,7 @@ if [ -z "${QUIC_BENCH_INNER:-}" ]; then
     # written into.
     require_private_dir "${WORKDIR}"
     require_private_dir "${TLS_DIR}"
-    mkdir -p "${WORKDIR}"
+    make_private_dir "${WORKDIR}" 700
     export QUIC_BENCH_INNER=1 WORKDIR BENCH_BIN PROFILES LOSSES CCS REPEATS \
         DURATION WARMUP CHANNELS INTERVAL_MS GSO_CONTROL BUFFER_BDP QUIC_FLAGS
     exec unshare --user --map-root-user --net -- "${BASH_SOURCE[0]}" "$@"
@@ -203,8 +233,12 @@ ip link set lo up
 # already capped at DURATION + 120 seconds by its own timeout; there are two
 # arms per repeat of every cell plus the single GSO control run, and 300
 # seconds covers link setup, TLS generation and per-run server startup. The
-# doubling means a host slow enough to take twice that extends the run instead
-# of losing its namespace mid-measurement.
+# budget is fixed, not extended: a host slow enough to exceed even the doubled
+# estimate does lose the namespace mid-matrix. What the doubling buys is
+# headroom, and what run_arm's liveness check buys is that exceeding the budget
+# stops the run with an error instead of filling the remaining cells with empty
+# repeats, because every client command runs through nsenter into this
+# namespace and the matrix loop swallows a failed arm.
 # shellcheck disable=SC2086  # deliberate splitting: these are space-separated lists
 CELLS=$(( $(count_words ${PROFILES}) * $(count_words ${LOSSES}) * $(count_words ${CCS}) ))
 NS_TTL=$(( 2 * (300 + (CELLS * REPEATS * 2 + 1) * (DURATION + 120)) ))
@@ -273,18 +307,18 @@ cat "${WORKDIR}/host.txt" >&2
 # explicitly because `openssl x509 -req` emits a v1 certificate when a
 # certificate carries none, and webpki rejects v1 outright.
 
-# The directory is narrowed before anything is written into it, not after:
-# `openssl req -nodes` writes the keys unencrypted, so a chmod afterwards
-# leaves a window at the default umask. The material is a throwaway CA used
-# only inside the namespace, but the results directory is what a reader is
-# invited to keep.
+# The directory is narrowed as it is created, not after: `openssl req -nodes`
+# writes the keys unencrypted, so a chmod afterwards leaves a window at the
+# default umask. The material is a throwaway CA used only inside the namespace,
+# but the results directory is what a reader is invited to keep.
 #
 # The ownership check runs again here, not only in the outer half: WORKDIR did
 # not necessarily exist then, so a writable parent left a window in which the
-# tls directory could be pre-created between the two.
+# tls directory could be pre-created between the two. make_private_dir checks
+# it once more after the mkdir, which is the last moment before a key is
+# written.
 require_private_dir "${TLS_DIR}"
-mkdir -p "${TLS_DIR}"
-chmod 700 "${TLS_DIR}"
+make_private_dir "${TLS_DIR}" 700
 
 # Regenerate when the leaf is missing, or when it would expire inside this
 # run: the certificates are issued for two days, and a work directory reused
@@ -377,6 +411,18 @@ run_arm() {
     local arm="$1" casedir="$2" cc="$3" label="$4"
     shift 4
     local extra=("$@")
+    # The namespace holder's sleep is bounded, so stop here if it has already
+    # run out: every client command goes through nsenter into that namespace,
+    # and the matrix loop swallows a failed arm with `|| true`, so without this
+    # the run would carry on to the last cell and leave a directory of empty
+    # repeats that look like a measurement. Checked at the top of the arm,
+    # where no cell can skip it, rather than in the loop.
+    if ! kill -0 "${CLIENT_NS_PID}" 2>/dev/null; then
+        echo "ERROR: the client namespace holder (pid ${CLIENT_NS_PID}) is gone; this run has" >&2
+        echo "       outlived its ${NS_TTL}s namespace budget and nothing further can be" >&2
+        echo "       measured. Reduce the matrix, or raise the budget in NS_TTL." >&2
+        exit 1
+    fi
     if [ "${arm}" = quic ] && [ -n "${QUIC_FLAGS}" ]; then
         # shellcheck disable=SC2206  # a flag list carries no whitespace
         extra+=(${QUIC_FLAGS})

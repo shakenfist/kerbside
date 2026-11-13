@@ -24,6 +24,10 @@
 # Files are restored from a pristine copy, never with `git checkout <dir>`,
 # which would discard uncommitted work in that directory. Each mutant runs
 # under timeout, and a timeout counts as killed.
+#
+# Every mutation is an exact source match, so reformatting src/ turns a mutant
+# into one that cannot be applied. An unappliable mutant is unverified, not
+# killed, so skips are counted and fail the run alongside survivors.
 set -u
 
 CRATE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,7 +49,7 @@ restore() {
 }
 trap 'restore; rm -rf "${SAFE}"' EXIT
 
-killed=0 survived=0
+killed=0 survived=0 skipped=0
 mutate() {
     local name="$1" expect="$2" file="$3" from="$4" to="$5"
     restore
@@ -58,19 +62,35 @@ if text.count(old) != 1:
 open(path, 'w').write(text.replace(old, new))
 MUTATE
     then
-        echo "SKIP  ${name}: could not apply"
+        echo "SKIPPED  ${name}: could not apply"
+        skipped=$((skipped+1))
         return
     fi
-    out="$(cd "${CRATE}" && timeout 600 make test 2>&1)"
+    # Keep the test run's exit status: a mutant that hangs by design is killed
+    # when timeout cuts it off, and that is 124 from timeout rather than silence
+    # on stdout. Scoring the kill on empty output instead would score anything
+    # that stopped the suite from running at all -- an absent docker daemon, a
+    # missing image, a bad make invocation -- as a kill, which is the same
+    # vacuous pass as a mutant that would not apply.
+    local test_rc=0
+    if out="$(cd "${CRATE}" && timeout 600 make test 2>&1)"; then
+        test_rc=0
+    else
+        test_rc=$?
+    fi
     if printf '%s' "${out}" | grep -qE "^test tests::${expect} \.\.\. FAILED|panicked"; then
         echo "KILLED   ${name} -> ${expect}"
         killed=$((killed+1))
     elif printf '%s' "${out}" | grep -q 'error\[E'; then
         echo "KILLED   ${name} -> would not compile"
         killed=$((killed+1))
-    elif [ -z "${out}" ]; then
+    elif [ "${test_rc}" -eq 124 ]; then
         echo "KILLED   ${name} -> timed out"
         killed=$((killed+1))
+    elif [ -z "${out}" ]; then
+        echo "SKIPPED  ${name}: the test run printed nothing and exited ${test_rc}, so the"
+        echo "         property was never exercised; unverified, not killed"
+        skipped=$((skipped+1))
     else
         echo "SURVIVED ${name}: expected ${expect} to fail"
         printf '%s\n' "${out}" | grep -E '^test result|^test tests' | head -12
@@ -206,5 +226,5 @@ mutate 'a missing private key becomes an empty one' \
 
 
 echo
-echo "killed ${killed}, survived ${survived}"
-[ "${survived}" -eq 0 ]
+echo "killed ${killed}, survived ${survived}, skipped ${skipped}"
+[ "${survived}" -eq 0 ] && [ "${skipped}" -eq 0 ]

@@ -264,9 +264,10 @@ channel message formats:
   including SpiceLinkMess/SpiceLinkReply formats, RSA key exchange, and
   authentication flow
 
-- [Capabilities](spice/capabilities.md) - Channel capability negotiation, what Kerbside offers and forwards on each leg, and why the reply mask is not a security boundary
+- [Capabilities](spice/capabilities.md) - Channel capability negotiation
   including common, display, audio, and input capabilities with recommended
-  settings
+  settings, what Kerbside offers and forwards on each leg of a proxied
+  channel, and why the reply mask is not a security boundary
 
 - [Channel Protocols](spice/channel-protocols.md) - Detailed message formats
   for each SPICE channel:

@@ -378,7 +378,10 @@ async fn main() -> Result<(), BoxError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::hash_map::RandomState;
+    use std::hash::{BuildHasher, Hasher};
     use std::path::Path;
+    use std::process;
 
     use crate::workload::{Bulk, Interactive, Sample, ROLE_BULK, ROLE_IDLE, ROLE_INTERACTIVE};
 
@@ -681,8 +684,9 @@ mod tests {
     fn a_certificate_file_is_read_whole_and_one_with_no_certificate_is_refused() {
         // rustls_pemfile parses PEM without looking inside the DER, so these
         // stand in for a chain and a key without needing a real one.
-        let chain = temp_file("chain.pem", &format!("{PEM_CERT}{PEM_CERT}"));
-        let not_a_cert = temp_file("notacert.pem", PEM_KEY);
+        let dir = TempDir::new();
+        let chain = dir.file("chain.pem", &format!("{PEM_CERT}{PEM_CERT}"));
+        let not_a_cert = dir.file("notacert.pem", PEM_KEY);
 
         let certs = quic::load_certs(&chain).unwrap();
         // The whole chain, not just the leaf: an intermediate dropped here
@@ -693,15 +697,13 @@ mod tests {
         // rather than becoming an empty chain that fails at handshake time.
         assert!(quic::load_certs(&not_a_cert).is_err());
         assert!(quic::load_certs(Path::new("/nonexistent/quic-bench-cert")).is_err());
-
-        std::fs::remove_file(chain).unwrap();
-        std::fs::remove_file(not_a_cert).unwrap();
     }
 
     #[test]
     fn a_key_file_is_read_and_one_with_no_private_key_is_refused() {
-        let key = temp_file("key.pem", PEM_KEY);
-        let not_a_key = temp_file("notakey.pem", PEM_CERT);
+        let dir = TempDir::new();
+        let key = dir.file("key.pem", PEM_KEY);
+        let not_a_key = dir.file("notakey.pem", PEM_CERT);
 
         assert_eq!(
             quic::load_key(&key).unwrap().secret_der().to_vec(),
@@ -710,17 +712,42 @@ mod tests {
         // Not an empty key: the server would otherwise start with a key
         // nothing can complete a handshake with.
         assert!(quic::load_key(&not_a_key).is_err());
-
-        std::fs::remove_file(key).unwrap();
-        std::fs::remove_file(not_a_key).unwrap();
     }
 
     const PEM_CERT: &str = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n";
     const PEM_KEY: &str = "-----BEGIN PRIVATE KEY-----\nAQID\n-----END PRIVATE KEY-----\n";
 
-    fn temp_file(name: &str, contents: &str) -> PathBuf {
-        let path = std::env::temp_dir().join(format!("quic-bench-{}-{name}", std::process::id()));
-        std::fs::write(&path, contents).unwrap();
-        path
+    /// A directory of this test's own, holding its fixture files.
+    ///
+    /// The name is unpredictable -- `RandomState`'s keys are seeded by the
+    /// operating system -- and `create_dir` fails rather than follows a
+    /// symlink if the path somehow already exists, so a fixture cannot be
+    /// written through something another user left waiting on a shared /tmp.
+    /// Removal is the guard's `Drop`, so a failed assertion part way through a
+    /// test does not leak the directory.
+    struct TempDir {
+        path: PathBuf,
+    }
+
+    impl TempDir {
+        fn new() -> Self {
+            let token = RandomState::new().build_hasher().finish();
+            let path =
+                std::env::temp_dir().join(format!("quic-bench-{}-{token:016x}", process::id()));
+            std::fs::create_dir(&path).unwrap();
+            Self { path }
+        }
+
+        fn file(&self, name: &str, contents: &str) -> PathBuf {
+            let path = self.path.join(name);
+            std::fs::write(&path, contents).unwrap();
+            path
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
     }
 }
