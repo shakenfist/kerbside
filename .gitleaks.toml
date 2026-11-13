@@ -63,4 +63,12 @@ regexes = [
   # the role's output for each to prove none leaks; this one is the only
   # value generic-api-key's entropy threshold catches.
   '''ovirt-pw-Zr6kN1vB4tYe''',
+  # tools/quic-bench/src/main.rs's PEM fixture for the certificate and
+  # key readers' tests. rustls_pemfile parses the base64 body without
+  # inspecting the DER inside it, so the fixture's body is the three
+  # bytes 0x01 0x02 0x03 and there is no key here to deal with
+  # anywhere. Keyed on that body as well as the header -- the escaped
+  # newlines are the Rust string literal's, not real ones -- so a
+  # genuine key pasted into the same file is still reported.
+  '''BEGIN PRIVATE KEY-----\\nAQID\\n-----END PRIVATE KEY''',
 ]
