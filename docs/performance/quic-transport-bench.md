@@ -181,6 +181,21 @@ threshold applied to a cell is the wider of its two arms' spreads.
 A difference smaller than that spread is a difference this bench cannot
 resolve, and saying so is a result.
 
+Because the spread is what the threshold is read against, a repeat that
+went missing has to be visible rather than quietly absent. A repeat
+whose results file never arrived is counted and warned about rather than
+dropped, and a cell the harness did not finish -- fewer repeats than
+`REPEATS` asked for -- says so, so a narrowed spread cannot be mistaken
+for a tight one. The two are reported separately, because a repeat that
+started and produced nothing is a different failure from one that never
+started.
+
+`summarise.py` also refuses to guess which arm the gate was. It reads
+that from `cells.txt`, which the harness writes as it goes; summarising
+a directory that has no `cells.txt` and holds more than one congestion
+controller needs `--headline-cc`, because labelling a sensitivity run as
+the gate would invert the scope of every row in the report.
+
 ## Host state
 
 | | |

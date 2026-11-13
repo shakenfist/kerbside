@@ -125,6 +125,11 @@ def read_requested_repeats(workdir):
     cannot have truncated. A hand-assembled work directory has no host.txt and
     a summary of it is still worth having, so an absent or unparseable file is
     not an error.
+
+    One count is read and applied to every cell, so a work directory is assumed
+    to hold one run. run-bench.sh overwrites host.txt but only truncates
+    cells.txt, so summarising a directory two runs with different REPEATS wrote
+    into would attribute the later count to the earlier run's cells.
     """
     try:
         with open(os.path.join(workdir, 'host.txt')) as handle:
@@ -323,11 +328,17 @@ def report(cells, controls, headline_cc=None, out=sys.stdout):
                 runs, attempted = cell['runs'][arm], cell['attempted'][arm]
                 agg = aggregate(runs, attempted)
                 summary.setdefault(name, {})[arm] = agg
-                absent = attempted - len(runs)
-                if absent:
+                # Only the repeats that got a directory and then produced no
+                # results file: a repeat that never got a directory is the
+                # cut-short case the cell-level warning above reports, and
+                # naming it here too would describe it as a different failure
+                # from the one that happened.
+                started = cell['repeat_dirs']
+                no_results = started - len(runs)
+                if no_results:
                     warnings.append(
-                        f'{name} {arm}: {absent} of {attempted} repeats left no results file, so '
-                        'nothing from them reaches the medians or the spread')
+                        f'{name} {arm}: {no_results} of the {started} repeats that started left no '
+                        'results file, so nothing from them reaches the medians or the spread')
                 if agg is None:
                     print(f"| {profile} | {fields['loss']}% | {arm} | missing ||||||||", file=out)
                     warnings.append(f'{name} {arm}: no repeat produced a measurement')

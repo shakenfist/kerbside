@@ -53,7 +53,7 @@ killed=0 survived=0 skipped=0
 mutate() {
     local name="$1" expect="$2" file="$3" from="$4" to="$5"
     restore
-    if ! python3 - "$CRATE/src/$file" "$from" "$to" <<'MUTATE'
+    if ! python3 -I - "$CRATE/src/$file" "$from" "$to" <<'MUTATE'
 import sys
 path, old, new = sys.argv[1], sys.argv[2], sys.argv[3]
 text = open(path).read()
@@ -78,12 +78,23 @@ MUTATE
     else
         test_rc=$?
     fi
-    if printf '%s' "${out}" | grep -qE "^test tests::${expect} \.\.\. FAILED|panicked"; then
+    # The kill has to be the named test failing. A panic anywhere else in the
+    # suite, and a mutant that stops the crate compiling, both end the run
+    # without showing that this property is defended, so they are unverified
+    # rather than killed -- which fails the gate, as a skip does. Every mutant
+    # here is killed by its named test today, so nothing relies on the looser
+    # reading; a future mutant that cannot be expressed without breaking the
+    # build is a mutant to rewrite, not to credit.
+    if printf '%s' "${out}" | grep -qE "^test tests::${expect} \.\.\. FAILED" \
+        || printf '%s' "${out}" | grep -qE "thread 'tests::${expect}' panicked"; then
         echo "KILLED   ${name} -> ${expect}"
         killed=$((killed+1))
     elif printf '%s' "${out}" | grep -q 'error\[E'; then
-        echo "KILLED   ${name} -> would not compile"
-        killed=$((killed+1))
+        echo "SKIPPED  ${name}: would not compile, so ${expect} never ran; unverified"
+        skipped=$((skipped+1))
+    elif printf '%s' "${out}" | grep -q 'panicked'; then
+        echo "SKIPPED  ${name}: something panicked, but not ${expect}; unverified"
+        skipped=$((skipped+1))
     elif [ "${test_rc}" -eq 124 ]; then
         echo "KILLED   ${name} -> timed out"
         killed=$((killed+1))

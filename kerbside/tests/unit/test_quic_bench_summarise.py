@@ -274,8 +274,8 @@ class CollectTestCase(testtools.TestCase):
                                    out=io.StringIO())
         self.assertEqual(1, summary['cells']['20ms-50mbit-0pct-cubic']['quic']['absent_repeats'])
         self.assertIn(
-            '20ms-50mbit-0pct-cubic quic: 1 of 2 repeats left no results file, so nothing from '
-            'them reaches the medians or the spread',
+            '20ms-50mbit-0pct-cubic quic: 1 of the 2 repeats that started left no results '
+            'file, so nothing from them reaches the medians or the spread',
             summary['warnings'])
 
     def test_a_repeat_that_never_got_a_directory_is_counted_from_host_txt(self):
@@ -331,6 +331,30 @@ class CollectTestCase(testtools.TestCase):
             'directory, so this cell was cut short and every figure in it is taken over fewer '
             'repeats than were asked for',
             summary['warnings'])
+        # And only that warning: the three repeats that never started left no
+        # directory either, so describing them as having left no results file
+        # would name a different failure from the one that happened.
+        self.assertEqual([], [line for line in summary['warnings'] if 'left no results file' in line])
+
+    def test_a_cut_short_cell_reports_its_two_failures_separately(self):
+        # Asked for five; three never started, and of the two that did, one
+        # left no quic results. Each warning counts only what it names.
+        self.write_host_facts()
+        self.write_repeat('20ms-50mbit-0pct-cubic', 'rep1', ('tcp', 'quic'))
+        self.write_repeat('20ms-50mbit-0pct-cubic', 'rep2', ('tcp',))
+        summary = summarise.report(summarise.collect(self.workdir), [], headline_cc='cubic',
+                                   out=io.StringIO())
+        self.assertIn(
+            '20ms-50mbit-0pct-cubic: the harness was asked for 5 repeats and 2 got as far as a '
+            'directory, so this cell was cut short and every figure in it is taken over fewer '
+            'repeats than were asked for',
+            summary['warnings'])
+        self.assertIn(
+            '20ms-50mbit-0pct-cubic quic: 1 of the 2 repeats that started left no results '
+            'file, so nothing from them reaches the medians or the spread',
+            summary['warnings'])
+        self.assertEqual(
+            [], [line for line in summary['warnings'] if 'tcp: ' in line and 'results file' in line])
 
 
 def _cell(cc, runs, attempted=None, requested_repeats=None):

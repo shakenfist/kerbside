@@ -25,9 +25,16 @@
 # Inputs (environment):
 #   WORKDIR     results and scratch (default ./quic-bench-results).
 #               Created mode 700, because the run generates its TLS keys
-#               in a subdirectory of it and the run refuses a work
-#               directory anybody else can write. chmod it afterwards if
-#               the results are to be shared
+#               in a subdirectory of it, and refused outright if anybody
+#               else can write it. That check is on the work and TLS
+#               directories themselves and not on their ancestors, so
+#               WORKDIR should not sit under a directory other local
+#               users can write. chmod it afterwards if the results are
+#               to be shared
+#   NS_TTL      seconds the client namespace's holder lives (default: the
+#               matrix's own worst case, doubled). The run aborts rather
+#               than measuring a dead link once it elapses, so raise it
+#               on a host slower than the estimate allows for
 #   BENCH_BIN   quic-bench binary (default: release build in-tree)
 #   PROFILES    "rtt_ms:rate_mbit ..." (default "80:10 150:2")
 #   LOSSES      "pct ..." applied per direction (default "0 1 2"). 0 means no
@@ -241,7 +248,7 @@ ip link set lo up
 # namespace and the matrix loop swallows a failed arm.
 # shellcheck disable=SC2086  # deliberate splitting: these are space-separated lists
 CELLS=$(( $(count_words ${PROFILES}) * $(count_words ${LOSSES}) * $(count_words ${CCS}) ))
-NS_TTL=$(( 2 * (300 + (CELLS * REPEATS * 2 + 1) * (DURATION + 120)) ))
+NS_TTL="${NS_TTL:-$(( 2 * (300 + (CELLS * REPEATS * 2 + 1) * (DURATION + 120)) ))}"
 unshare --net sleep "${NS_TTL}" &
 CLIENT_NS_PID=$!
 sleep 0.5
@@ -417,10 +424,14 @@ run_arm() {
     # the run would carry on to the last cell and leave a directory of empty
     # repeats that look like a measurement. Checked at the top of the arm,
     # where no cell can skip it, rather than in the loop.
-    if ! kill -0 "${CLIENT_NS_PID}" 2>/dev/null; then
-        echo "ERROR: the client namespace holder (pid ${CLIENT_NS_PID}) is gone; this run has" >&2
-        echo "       outlived its ${NS_TTL}s namespace budget and nothing further can be" >&2
-        echo "       measured. Reduce the matrix, or raise the budget in NS_TTL." >&2
+    # The namespace itself is what is tested, not the holder's pid: `kill -0`
+    # answers for a zombie that has not been reaped, and for a pid the kernel
+    # has recycled to another of this user's processes, which is the hazard
+    # cleanup() already names. Entering the namespace fails in all three cases.
+    if ! in_client true 2>/dev/null; then
+        echo "ERROR: the client network namespace is gone (holder pid ${CLIENT_NS_PID}); this" >&2
+        echo "       run has outlived its ${NS_TTL}s namespace budget and nothing further" >&2
+        echo "       can be measured. Reduce the matrix, or set NS_TTL higher." >&2
         exit 1
     fi
     if [ "${arm}" = quic ] && [ -n "${QUIC_FLAGS}" ]; then
