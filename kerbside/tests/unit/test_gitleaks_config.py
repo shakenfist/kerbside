@@ -15,13 +15,16 @@ _CONFIG = '.gitleaks.toml'
 _ROLE_TEST = os.path.join('tools', 'ci-test-ansible-role.sh')
 
 # Allowlist entries which are not one of the role test's planted
-# fixtures. Empty, and meant to stay that way: an entry here is a claim
-# that gitleaks reports something which is not a credential, and the
-# claim should be argued for in a comment beside the entry in
-# .gitleaks.toml and named here. Keeping the two in step is what makes
-# widening the allowlist a deliberate act rather than the easiest way
-# to make a red lane green.
-_NOT_A_FIXTURE = frozenset()
+# fixtures. Each is a claim that gitleaks reports something which is not
+# a credential, and the claim should be argued for in a comment beside
+# the entry in .gitleaks.toml and named here. Keeping the two in step is
+# what makes widening the allowlist a deliberate act rather than the
+# easiest way to make a red lane green.
+_NOT_A_FIXTURE = frozenset({
+    # tools/quic-bench/src/main.rs's PEM fixture, whose body is the three
+    # bytes 0x01 0x02 0x03: no key at all.
+    r'BEGIN PRIVATE KEY-----\\nAQID\\n-----END PRIVATE KEY',
+})
 
 
 def _allowlist_regexes(text):
