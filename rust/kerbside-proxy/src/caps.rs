@@ -1,5 +1,12 @@
 //! SPICE link capabilities on both legs of a proxied channel.
 //!
+//! `docs/spice/capabilities.md` ("Capabilities Through the Proxy") is the
+//! human-facing home for all of this: the two legs, what the reply table
+//! offers, what is forwarded verbatim, and why the reply mask is not a
+//! security boundary. What follows is the same account and the same
+//! argument, kept here because this is the code they constrain; keep the
+//! two in step.
+//!
 //! The proxy answers the client's link itself, before it knows which
 //! backend the client will be authorized to reach: the reply carries the
 //! RSA key the client encrypts its ticket to, so it cannot wait for the
@@ -64,6 +71,12 @@
 //! *not* to widen a verdict so the traffic passes, which `AGENTS.md`
 //! forbids, and not to clamp the forwarded caps, which would break the
 //! clients above.
+//!
+//! One cost sits on neither axis above: because the forwarded set is the
+//! client's, a capability Kerbside never offered can still turn on
+//! spice-server work the proxy did not advertise -- a video encoder, for
+//! instance -- so what a session costs the hypervisor is set by what the
+//! client asks for.
 
 use shakenfist_spice_protocol::constants::capabilities;
 use shakenfist_spice_protocol::ChannelType;

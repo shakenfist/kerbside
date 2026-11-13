@@ -1,9 +1,16 @@
 name: Rust proxy
 
-# Lint, test, and build the kerbside-proxy Rust crate. Scoped to the Rust crate
-# and the gRPC proto it generates from, so Python-only changes don't trigger
-# it. The full ryll-driven direct-qemu integration of the proxy is a separate
-# lane.
+# Lint, test, and build this repository's Rust: the kerbside-proxy crate, and
+# the standalone tools/quic-bench crate in a second job. Scoped to the Rust
+# crates and the gRPC proto the proxy generates from, so Python-only changes
+# don't trigger it. The full ryll-driven direct-qemu integration of the proxy
+# is a separate lane.
+#
+# Path filters are per-workflow, not per-job, so a quic-bench-only change also
+# starts the proxy job, and the reverse. Accepted: the alternative is a
+# path-filter action choosing jobs at runtime, and with the cargo cache warm
+# the extra job is cheap. The workflow keeps the name `Rust proxy` because
+# branch protection names its checks after it.
 permissions:
   contents: read
 
@@ -12,6 +19,7 @@ on:
     branches: [develop]
     paths:
       - 'rust/**'
+      - 'tools/quic-bench/**'
       - 'kerbside/rpc/kerbside.proto'
       - 'tools/build-proxy-wheel.sh'
       - 'tools/stamp-proxy-version.sh'
@@ -22,6 +30,7 @@ on:
     branches: [develop]
     paths:
       - 'rust/**'
+      - 'tools/quic-bench/**'
       - 'kerbside/rpc/kerbside.proto'
       - 'tools/build-proxy-wheel.sh'
       - 'tools/stamp-proxy-version.sh'
@@ -106,3 +115,55 @@ jobs:
       - name: Verify wheel stamping (dev + release modes)
         working-directory: .
         run: tools/verify-wheel-stamping.sh
+
+  quic-bench:
+    name: quic-bench fmt / clippy / test
+    # s (2 cores, 4 GB), smaller than the proxy job: this crate's dependency
+    # chain is a subset of the proxy's -- quinn and rustls with their defaults
+    # off, so ring and no aws-lc-rs, no ryll and no protoc -- and this job
+    # builds no release artefact. Be explicit -- an unsized vm label defaults
+    # to xs (1 core / 2 GB) in private-ci.
+    #
+    # `cargo test` is not this crate's whole gate. Its mutation check
+    # (tools/quic-bench/mutation-check.sh, or `make mutants`) breaks one
+    # tested property at a time and requires the named test to fail, so it is
+    # what says the tests would notice a regression. It stays deliberately
+    # manual: it rewrites src/ in place and restores it afterwards, which is
+    # also why the crate's Makefile runs it on the host rather than in the
+    # container with its other targets. Run it by hand after changing src/ or
+    # the tests.
+    runs-on: [self-hosted, vm, debian-13, s]
+    defaults:
+      run:
+        # A standalone cargo project, not a workspace member (its Cargo.toml
+        # has an empty [workspace] table to keep it that way), with its own
+        # Cargo.lock, so cargo runs from the crate dir. It has no path
+        # dependency outside itself and needs no proto or protoc.
+        working-directory: tools/quic-bench
+    steps:
+      - uses: actions/checkout@v7
+
+      # ring compiles C and assembly, so a host compiler is needed; nothing
+      # here wants pkg-config, python or OpenSSL.
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      # Keyed on this crate's own lockfile, separately from the proxy's.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tools/quic-bench
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test

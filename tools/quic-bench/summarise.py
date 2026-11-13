@@ -26,12 +26,20 @@ import sys
 
 
 CELL_RE = re.compile(r'^(?P<rtt>\d+)ms-(?P<rate>\d+)mbit-(?P<loss>[\d.]+)pct-(?P<cc>\w+)$')
+# The harness's own name for a repeat directory. Nothing else under a cell is
+# a repeat, and counting something else as one would warn about data that was
+# never lost.
+REPEAT_RE = re.compile(r'^rep\d+$')
 ARMS = ('tcp', 'quic')
 
 # A netem slot holds one packet. Below this many packets in the queue the
 # bytes-per-slot ratio is dominated by whichever small ack happened to be in
 # flight, so those samples say nothing about the sender's write size.
 MIN_QUEUE_PACKETS = 2
+
+
+class AmbiguousHeadlineCc(Exception):
+    """The matrix spans several controllers and nothing names the gate's."""
 
 
 def backlog_bytes_per_slot(path):
@@ -107,8 +115,35 @@ def collect_gso_control(workdir):
     return controls
 
 
+def read_requested_repeats(workdir):
+    """How many repeats the harness was asked for, from its own host.txt.
+
+    The directories under a cell record only the repeats that got as far as
+    being created, so a run killed part way through a cell presents a short
+    spread as a complete one. run-bench.sh writes what it was asked for into
+    host.txt before it starts, which is the one record an interrupted run
+    cannot have truncated. A hand-assembled work directory has no host.txt and
+    a summary of it is still worth having, so an absent or unparseable file is
+    not an error.
+
+    One count is read and applied to every cell, so a work directory is assumed
+    to hold one run. run-bench.sh overwrites host.txt but only truncates
+    cells.txt, so summarising a directory two runs with different REPEATS wrote
+    into would attribute the later count to the earlier run's cells.
+    """
+    try:
+        with open(os.path.join(workdir, 'host.txt')) as handle:
+            for line in handle:
+                if line.startswith('repeats:'):
+                    return int(line.split()[1])
+    except (OSError, IndexError, ValueError):
+        return None
+    return None
+
+
 def collect(workdir):
-    """Walk the work directory into {cell: {arm: [run, ...]}}."""
+    """Walk the work directory into {cell: {fields, runs, attempted, ...}}."""
+    requested = read_requested_repeats(workdir)
     cells = {}
     for name in sorted(os.listdir(workdir)):
         match = CELL_RE.match(name)
@@ -118,20 +153,38 @@ def collect(workdir):
         if not os.path.isdir(celldir):
             continue
         runs = {arm: [] for arm in ARMS}
+        walked = 0
         for rep in sorted(os.listdir(celldir)):
             casedir = os.path.join(celldir, rep)
-            if not os.path.isdir(casedir):
+            if not REPEAT_RE.match(rep) or not os.path.isdir(casedir):
                 continue
+            walked += 1
             for arm in ARMS:
                 run = read_run(casedir, arm)
                 if run is not None:
                     runs[arm].append(run)
-        cells[name] = {'fields': match.groupdict(), 'runs': runs}
+        # How many repeats each arm was asked for. A repeat the harness lost
+        # after creating its directory -- a crash, a kill, a full disk --
+        # leaves no results file and so nothing in runs; one killed before it
+        # got that far leaves no directory either. Both narrow the spread the
+        # gate's threshold is taken from, so believe whichever of the two
+        # records is the larger rather than only the directories in hand.
+        attempted = max(walked, requested or 0)
+        cells[name] = {'fields': match.groupdict(), 'runs': runs,
+                       'attempted': {arm: attempted for arm in ARMS},
+                       'repeat_dirs': walked, 'requested_repeats': requested}
     return cells
 
 
-def aggregate(runs):
-    """Median and spread across repeats for one arm of one cell."""
+def aggregate(runs, attempted):
+    """Median and spread across repeats for one arm of one cell.
+
+    `runs` is the repeats that produced a results file and `attempted` how
+    many were walked, so their difference is the repeats whose file never
+    arrived. Those cannot be excluded on their merits the way a repeat with
+    no steady-state samples can, since nothing about them is known, so they
+    are counted and reported rather than passed over.
+    """
     if not runs:
         return None
     # A repeat that produced no steady-state samples has no percentile to
@@ -146,6 +199,7 @@ def aggregate(runs):
     return {
         'repeats': len(measured),
         'unmeasured_repeats': unmeasured,
+        'absent_repeats': attempted - len(runs),
         'p50_ms': statistics.median(run['p50_ms'] for run in measured),
         'p95_ms': statistics.median(p95),
         'p99_ms': statistics.median(run['p99_ms'] for run in measured),
@@ -196,15 +250,63 @@ def detect_headline_cc(workdir):
     return None
 
 
+def controllers(cells):
+    """The congestion controllers the matrix covers, sorted."""
+    return sorted({cell['fields']['cc'] for cell in cells.values()})
+
+
+def resolve_headline_cc(requested, ccs, detected=None):
+    """The controller the gate's rows are, or an error rather than a guess.
+
+    Reading a sensitivity arm as the gate inverts the scope of every row in
+    the report, and the controllers sort in no meaningful order -- `bbr`
+    before `cubic` -- so a first-alphabetically default is as likely to name
+    the sensitivity arm as the gate. A matrix on one controller is the only
+    case with nothing to choose; anything else the caller has to say. A
+    controller the caller asked for and the matrix does not have is an error
+    too, rather than the one controller it does have: the answer would be
+    about an arm the caller did not ask about.
+
+    `requested` is what the caller passed and `detected` what cells.txt says
+    the harness started with. They fail differently and are kept apart: the
+    caller can be told they asked for something that is not there, while
+    cells.txt naming a controller no surviving cell ran means the run itself
+    was cut short, which is not the caller's doing and must not be reported as
+    though it were. Neither is guessed past, including when exactly one
+    controller survives: calling that one the gate would contradict the only
+    record there is of which arm the gate was.
+    """
+    if requested in ccs:
+        return requested
+    if requested is not None:
+        raise AmbiguousHeadlineCc(
+            f"asked for '{requested}', which no cell under this directory ran; its controllers "
+            f"are {', '.join(ccs) or 'none at all'}")
+    if detected in ccs:
+        return detected
+    if detected is not None:
+        names = ', '.join(ccs) or 'none at all'
+        raise AmbiguousHeadlineCc(
+            f"cells.txt names '{detected}' as the controller the harness started with, but no "
+            f'cell under this directory ran it; its controllers are {names}, so this run was cut '
+            "short and none of these rows can be read as the gate's verdict; pass --headline-cc "
+            'to say what they are')
+    if len(ccs) == 1:
+        return ccs[0]
+    raise AmbiguousHeadlineCc(
+        f"cells on {', '.join(ccs) or 'no controller at all'} and nothing names the controller "
+        'the harness ran first, so which rows are the gate and which are sensitivity runs is '
+        'unknown; pass --headline-cc')
+
+
 def report(cells, controls, headline_cc=None, out=sys.stdout):
     summary = {}
     warnings = []
-    ccs = sorted({cell['fields']['cc'] for cell in cells.values()})
     # The gate is defined against one controller on both sides. Any other arm
     # is a labelled sensitivity run, so its rows must not be quotable as the
-    # gate's verdict.
-    if headline_cc not in ccs:
-        headline_cc = ccs[0] if ccs else None
+    # gate's verdict. Which controller that is has already been settled by
+    # resolve_headline_cc(); nothing here may fall back to a guess.
+    ccs = controllers(cells)
 
     for cc in ccs:
         print(f'\n## Congestion controller: {cc}\n', file=out)
@@ -216,9 +318,27 @@ def report(cells, controls, headline_cc=None, out=sys.stdout):
             if fields['cc'] != cc:
                 continue
             profile = f"{fields['rtt']} ms / {fields['rate']} Mbit"
+            requested = cell['requested_repeats']
+            if requested is not None and cell['repeat_dirs'] < requested:
+                warnings.append(
+                    f'{name}: the harness was asked for {requested} repeats and '
+                    f"{cell['repeat_dirs']} got as far as a directory, so this cell was cut short "
+                    'and every figure in it is taken over fewer repeats than were asked for')
             for arm in ARMS:
-                agg = aggregate(cell['runs'][arm])
+                runs, attempted = cell['runs'][arm], cell['attempted'][arm]
+                agg = aggregate(runs, attempted)
                 summary.setdefault(name, {})[arm] = agg
+                # Only the repeats that got a directory and then produced no
+                # results file: a repeat that never got a directory is the
+                # cut-short case the cell-level warning above reports, and
+                # naming it here too would describe it as a different failure
+                # from the one that happened.
+                started = cell['repeat_dirs']
+                no_results = started - len(runs)
+                if no_results:
+                    warnings.append(
+                        f'{name} {arm}: {no_results} of the {started} repeats that started left no '
+                        'results file, so nothing from them reaches the medians or the spread')
                 if agg is None:
                     print(f"| {profile} | {fields['loss']}% | {arm} | missing ||||||||", file=out)
                     warnings.append(f'{name} {arm}: no repeat produced a measurement')
@@ -320,15 +440,21 @@ def main():
     parser.add_argument('--json', dest='json_out', help='also write the summary as JSON')
     parser.add_argument('--headline-cc', default=None,
                         help='the congestion controller the gate is defined against; defaults to '
-                             'the first cell the harness ran, else the first alphabetically')
+                             'the first cell cells.txt records, and is required when that file is '
+                             'absent and the matrix spans more than one controller')
     args = parser.parse_args()
 
     cells = collect(args.workdir)
     if not cells:
         print(f'No cells found under {args.workdir}', file=sys.stderr)
         return 1
-    summary = report(cells, collect_gso_control(args.workdir),
-                     headline_cc=args.headline_cc or detect_headline_cc(args.workdir))
+    try:
+        headline_cc = resolve_headline_cc(args.headline_cc, controllers(cells),
+                                          detected=detect_headline_cc(args.workdir))
+    except AmbiguousHeadlineCc as exc:
+        print(f'{args.workdir}: {exc}', file=sys.stderr)
+        return 1
+    summary = report(cells, collect_gso_control(args.workdir), headline_cc=headline_cc)
     if args.json_out:
         with open(args.json_out, 'w') as handle:
             json.dump(summary, handle, indent=1, sort_keys=True)
