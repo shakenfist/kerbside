@@ -882,13 +882,21 @@ class NovaToken(sf_api.Resource):
 
                 # Configure the console, given OpenStack does not do instance
                 # scraping in advance.
-                db.add_console(
-                    uuid=instance_uuid,
-                    source=source['source'],
-                    hypervisor=details['host'],
-                    insecure_port=details['port'],
-                    secure_port=details['tls_port']
-                )
+                try:
+                    db.add_console(
+                        uuid=instance_uuid,
+                        source=source['source'],
+                        hypervisor=details['host'],
+                        insecure_port=details['port'],
+                        secure_port=details['tls_port']
+                    )
+                except db.InvalidConsole as e:
+                    LOG.with_fields({
+                        'source': source['source'],
+                        'uuid': instance_uuid,
+                        'field': e.field
+                        }).error('Nova returned an invalid connect target')
+                    return sf_api.error(502, 'invalid console details from source')
                 token = consoletoken.create_token(
                     source['source'], instance_uuid)
                 return _proxy_vv_response(token, instance_uuid, ca_cert)

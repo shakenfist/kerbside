@@ -1116,6 +1116,25 @@ class NovaTokenInterfaceTestCase(testtools.TestCase):
         self.assertEqual(500, resp.status_code)
         self.openstack.connection.Connection.assert_not_called()
 
+    @mock.patch('kerbside.api.consoletoken.create_token')
+    @mock.patch('kerbside.api.db.add_console',
+                side_effect=db.InvalidConsole('hypervisor'))
+    def test_an_invalid_connect_target_is_a_502(
+            self, mock_add_console, mock_create_token):
+        self._sources()
+        patch = mock.patch.object(api.config, 'CACERT_PATH', None)
+        patch.start()
+        self.addCleanup(patch.stop)
+        details = mock.MagicMock(instance_uuid='instance-1')
+        self.openstack.connection.Connection.return_value.compute.\
+            validate_console_auth_token.return_value = details
+
+        resp = self.client.get('/nova-console.vv?token=abc')
+
+        self.assertEqual(502, resp.status_code)
+        mock_add_console.assert_called_once()
+        mock_create_token.assert_not_called()
+
 
 class AuthAdminClaimTestCase(testtools.TestCase):
     """Login stamps kerbside_admin into the session JWT from membership of
