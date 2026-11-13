@@ -113,6 +113,18 @@ def usable(keys_json):
     Shaken Fist anything: the active kid must be among the document's own
     keys, carrying a public key to verify with. None when there is no
     document at all, which is "not fetched yet" rather than a verdict.
+
+    This is stricter than Kerbside's verifier, which matches a token's own
+    kid against the keys and never reads active_kid, on purpose: Shaken Fist
+    signs every new token with its active kid, so only a document which
+    names that kid and carries its key shows that the next token will
+    verify. Whatever else it holds proves only that some earlier token
+    would. The shape -- an active_kid, and keys each with a kid and a
+    public_pem -- is Shaken Fist's /admin/vditokenpubkey response as its
+    external_api/admin.py documents it and util/vdi_tokens.py builds it,
+    read at Shaken Fist develop 3d93fde425 (after v0.8.0-rc4). A Shaken
+    Fist which changed it would block the deploy here with keys_usable
+    false, and this is the place to look.
     """
     if keys_json is None:
         return None

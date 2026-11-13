@@ -129,8 +129,54 @@
         kerbside_extra_settings_null: >-
           {{ kerbside_extra_settings | dict2items
              | selectattr('value', 'none') | map(attribute='key')
-             | sort | list }}
+             | map('string') | sort | list }}
 
+    # Each value is written as the text of one INI line, so it has to be
+    # something with one line of text to write, for the same reason as
+    # null above. A list or a mapping renders as its Python repr --
+    # firewall_permitted_channels: [main, display] would be written as
+    # ['main', 'display'], which a text setting accepts and the firewall
+    # then cannot parse -- and a line break ends the setting and starts
+    # another, or continues it, in a file configparser reads. The check
+    # on the host cannot see either: the name is real and the rendering
+    # is a well-formed INI file. A vault-encrypted value is text; ansible
+    # older than 2.19 types an inline !vault value as neither a string nor
+    # a number, so it is accepted by name, and the line break test reads
+    # every value as it renders rather than only the ones typed as strings.
+    - name: Refuse an extra setting whose value is not one line of text
+      ansible.builtin.assert:
+        that:
+          - kerbside_extra_settings_not_scalar | length == 0
+          - kerbside_extra_settings_multiline | length == 0
+        fail_msg: >-
+          kerbside_extra_settings on {{ inventory_hostname }} sets
+          {{ kerbside_extra_settings_not_one_line | join(', ') }}
+          to something other than one line of text, a number or a boolean: a
+          list or a mapping, which would be written into kerbside.ini as its
+          Python repr, or text with a line break in it, which would be
+          written as more than one INI line. Write the value as Kerbside's
+          configuration reference spells it, as a single line.
+        quiet: true
+      vars:
+        kerbside_extra_settings_not_scalar: >-
+          {{ kerbside_extra_settings | dict2items
+             | rejectattr('value', 'none') | rejectattr('value', 'string')
+             | rejectattr('value', 'number') | rejectattr('value', 'boolean')
+             | rejectattr('value', 'vault_encrypted')
+             | map(attribute='key') | map('string') | sort | list }}
+        kerbside_extra_settings_multiline: >-
+          {{ kerbside_extra_settings | dict2items | map(attribute='key')
+             | zip(kerbside_extra_settings | dict2items
+                   | map(attribute='value') | map('string'))
+             | selectattr('1', 'search', '[\r\n]') | map('first')
+             | map('string') | sort | list }}
+        kerbside_extra_settings_not_one_line: >-
+          {{ kerbside_extra_settings_not_scalar
+             | union(kerbside_extra_settings_multiline) | sort | list }}
+
+    # The keys are read as text, since YAML makes 80 a number and an
+    # unquoted on or true a boolean, and matching either would fail with a
+    # Jinja error rather than this message.
     - name: Refuse an extra setting which is not an INI key
       ansible.builtin.assert:
         that: kerbside_extra_settings_malformed | length == 0
@@ -145,8 +191,8 @@
         quiet: true
       vars:
         kerbside_extra_settings_malformed: >-
-          {{ kerbside_extra_settings | reject('match', '^[a-z][a-z0-9_]*$')
-             | sort | list }}
+          {{ kerbside_extra_settings | map('string')
+             | reject('match', '^[a-z][a-z0-9_]*$') | sort | list }}
 
     # bootstrap installs the client libraries the configured source types
     # need by looking each type up in these two mappings, so a type missing
@@ -164,16 +210,19 @@
               kerbside_source_build_packages.keys() | list) | length == 0
         fail_msg: >-
           kerbside_sources on {{ inventory_hostname }} has sources of
-          type(s) {{ (kerbside_source_types | difference(
-            kerbside_source_client_packages.keys() | list)
-            | union(kerbside_source_types | difference(
-              kerbside_source_build_packages.keys() | list)))
-            | sort | join(', ') }}, which
+          type(s) {{ kerbside_source_types_unlisted | join(', ') }}, which
           kerbside_source_client_packages or kerbside_source_build_packages
           does not list. Kerbside supports the type, so this is the role
           catching up with it: add the client libraries that type's driver
           imports, or an empty list where it imports none.
         quiet: true
+      vars:
+        kerbside_source_types_unlisted: >-
+          {{ kerbside_source_types | difference(
+               kerbside_source_client_packages.keys() | list)
+             | union(kerbside_source_types | difference(
+               kerbside_source_build_packages.keys() | list))
+             | sort | list }}
 
     # bootstrap reads package and directory off every entry with
     # map(attribute=...), so an entry missing either -- or a type mapped to
@@ -182,13 +231,15 @@
     # kerbside_login_client_packages is a list, so argument_specs holds its
     # entries to this shape already; a mapping keyed by type cannot be
     # described there, so these are checked here, for the configured types.
-    # A string or a non-empty mapping fails the count, since none of what it
-    # iterates is a mapping; the first two conditions are for what the count
-    # cannot see, a value which is not iterable at all, and {}.
+    # A non-empty string or mapping fails the count, since none of what it
+    # iterates is a mapping; the other conditions are for what the count
+    # cannot see, since each iterates nothing: a value which is not iterable
+    # at all, the empty string, and {}.
     - name: Refuse a client library entry without a package and a directory
       ansible.builtin.assert:
         that:
           - kerbside_client_entries is sequence
+          - kerbside_client_entries is not string
           - kerbside_client_entries is not mapping
           - >-
             kerbside_client_entries | select('mapping')

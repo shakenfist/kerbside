@@ -83,7 +83,7 @@ regexes = [
   '''spice-ticket-Gw5jR8nT3hKo''',
   '''keystone-pw-Tn4bX7sQ2vHe''',
   '''seed-Jk4pW8zN2bQ6vT1yH5cR9mD3fL7''',
-  '''Xq8Tz3LmPw''',
+  '''sql-pw-Xq8Tz3LmPw''',
   # tools/quic-bench/src/main.rs's PEM fixture for the certificate and
   # key readers' tests. rustls_pemfile parses the base64 body without
   # inspecting the DER inside it, so the fixture's body is the three

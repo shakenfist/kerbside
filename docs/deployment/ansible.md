@@ -148,11 +148,20 @@ and `kerbside.ini` is `root:kerbside` 0640 as always. `no_log` redacts
 a value wherever it appears, so a short one — `true`, a port, a
 duration — can make an unrelated line of ansible's output read
 `VALUE_SPECIFIED_IN_NO_LOG_PARAMETER`. That is cosmetic, and the
-alternative is printing a service password. A name Kerbside
-has no setting for is refused before the rendered file replaces the
-one Kerbside is running with, because Kerbside ignores an unknown
-setting rather than refusing it: a misspelled name would otherwise do
-nothing, and say nothing.
+alternative is printing a service password. A name Kerbside has no
+setting for is refused before the rendered file replaces the one
+Kerbside is running with, because Kerbside ignores an unknown setting
+rather than refusing it: a misspelled name would otherwise do nothing,
+and say nothing.
+
+Each value is written as one INI line, so it must be one line of
+text, a number or a boolean. `validate` refuses a null (usually a
+vault variable which did not resolve), a list or a mapping (which
+would be written as its Python repr), and text with a line break in
+it (which would be written as more than one line). A setting which
+takes several values, such as `firewall_permitted_channels`, takes
+them as one line, the way [configuration.md](../configuration.md)
+spells it.
 
 `kerbside.ini` is one of the files whose contents decide whether
 Kerbside restarts, so changing a setting here restarts Kerbside on the

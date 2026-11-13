@@ -195,7 +195,7 @@ PROXMOX_TOKEN_SECRET='pve-token-Qv7mB2sX9jLd'
 STATIC_TICKET='spice-ticket-Gw5jR8nT3hKo'
 KEYSTONE_PASSWORD='keystone-pw-Tn4bX7sQ2vHe'
 SEED='seed-Jk4pW8zN2bQ6vT1yH5cR9mD3fL7'
-SQL_SECRET='Xq8Tz3LmPw'
+SQL_SECRET='sql-pw-Xq8Tz3LmPw'
 SQL_URL="mysql+pymysql://kerbside:pw%25${SQL_SECRET}@db.example.com/kerbside"
 [ "${#SEED}" -eq 32 ] || fail "the test seed is ${#SEED} characters, not 32"
 SECRETS=("${SYSTEM_KEY}" "${SF2_KEY}" "${OVIRT_PASSWORD}" "${OPENSTACK_PASSWORD}"
@@ -557,7 +557,7 @@ case_2_valid() {
     # and reads package and directory off each entry, so each of these
     # would otherwise be a Jinja error in the middle of a deploy (#602).
     CURRENT_CASE='case 2: validate refuses a source type the role has no client libraries for'
-    validate_fails 'has sources of type\(s\) shakenfist, which' \
+    validate_fails 'has sources of type\(s\) shakenfist, which kerbside_source_client_packages or' \
         "$(write_vars clients-missing-type '{"kerbside_source_client_packages": {
           "ovirt": [], "openstack": [], "proxmox": [], "static": []}}')"
     assert_validate_refused
@@ -573,6 +573,15 @@ case_2_valid() {
     validate_fails 'maps the source type shakenfist, which kerbside_sources uses' \
         "$(write_vars clients-string '{"kerbside_source_client_packages": {
           "shakenfist": "shakenfist-client",
+          "ovirt": [], "openstack": [], "proxmox": [], "static": []}}')"
+    assert_validate_refused
+
+    # The empty string iterates nothing, so the count of entries with a
+    # package and a directory agrees with it: refused by type instead.
+    CURRENT_CASE='case 2: validate refuses a source type mapped to an empty string'
+    validate_fails 'maps the source type shakenfist, which kerbside_sources uses' \
+        "$(write_vars clients-empty-string '{"kerbside_source_client_packages": {
+          "shakenfist": "",
           "ovirt": [], "openstack": [], "proxmox": [], "static": []}}')"
     assert_validate_refused
 
@@ -1741,10 +1750,35 @@ case_18_extra_settings() {
           "log-verbose": true, "KEYSTONE_AUTH_URL": "https://k.example.com"}}')"
     assert_validate_refused
 
+    # YAML, not JSON, whose keys are always strings: an unquoted 80 is a
+    # number and an unquoted true a boolean, which reached the name check
+    # as themselves and failed it with a Jinja error, not its message.
+    CURRENT_CASE='case 18: validate refuses an extra setting whose name is not text'
+    validate_fails 'name\(s\) 80, True, which are not Kerbside INI keys' \
+        "$(write_vars extra-not-text-key '{kerbside_extra_settings: {
+          80: x, true: x, log_verbose: true}}')"
+    assert_validate_refused
+
     CURRENT_CASE='case 18: validate refuses an extra setting with no value'
     validate_fails 'sets keystone_auth_url to nothing at all' \
         "$(write_vars extra-null '{"kerbside_extra_settings": {
           "keystone_auth_url": null, "log_verbose": true}}')"
+    assert_validate_refused
+
+    # Rendered, each would be one well-formed INI line naming a real
+    # setting, or more than one, so only validate can refuse them.
+    CURRENT_CASE='case 18: validate refuses an extra setting which is a list or a mapping'
+    validate_fails 'sets firewall_permitted_channels, log_verbose to something other than one line of text' \
+        "$(write_vars extra-not-scalar '{"kerbside_extra_settings": {
+          "firewall_permitted_channels": ["main", "display"],
+          "log_verbose": {"on": true}, "console_token_duration": 120}}')"
+    assert_validate_refused
+
+    CURRENT_CASE='case 18: validate refuses an extra setting with a line break in it'
+    validate_fails 'sets firewall_mode, log_verbose to something other than one line of text' \
+        "$(write_vars extra-multiline '{"kerbside_extra_settings": {
+          "firewall_mode": "permissive\nlog_verbose = true",
+          "log_verbose": "true\r", "console_token_duration": 120}}')"
     assert_validate_refused
 
     CURRENT_CASE='case 18: validate passes settings Kerbside has'

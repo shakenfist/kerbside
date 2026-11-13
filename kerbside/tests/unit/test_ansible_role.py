@@ -750,7 +750,11 @@ def _lazily_imported_modules():
     Kerbside's cloud clients are all imported this way, because none of
     them is a dependency: a deployment installs the ones its sources
     need. So this is the list of client libraries a deployment may have
-    to install, read off the code that imports them.
+    to install, read off the code that imports them. A call whose module
+    is not a literal first argument cannot be read this way -- a variable,
+    or name= -- so it is returned as its
+    location instead, which no declared directory can equal: passing it
+    over would let a client imported that way go unnoticed.
     """
     modules = set()
     for path in sorted(_KERBSIDE.rglob('*.py')):
@@ -762,12 +766,15 @@ def _lazily_imported_modules():
             function = node.func
             name = (function.attr if isinstance(function, ast.Attribute)
                     else getattr(function, 'id', None))
-            if name != 'import_module' or not node.args:
+            if name != 'import_module':
                 continue
-            argument = node.args[0]
+            argument = node.args[0] if node.args else None
             if isinstance(argument, ast.Constant) and isinstance(
                     argument.value, str):
                 modules.add(argument.value.split('.')[0])
+            else:
+                modules.add('<not a literal at %s:%d>' % (
+                    path.relative_to(_KERBSIDE.parent), node.lineno))
     return modules
 
 
@@ -854,7 +861,10 @@ class RoleClientLibrariesTestCase(testtools.TestCase):
         # The directories, because that is what Kerbside imports and
         # what bootstrap hashes to prove the client landed. A client
         # library Kerbside learns to import must be added to the role
-        # here, or no deploy will ever install it.
+        # here, or no deploy will ever install it. The login mapping is
+        # not counted: the openstack source's Nova token route imports
+        # the Keystone clients too (api.py), so they must be in its entry
+        # whether or not a login is configured.
         declared = {entry['directory']
                     for entries in self.clients.values()
                     for entry in entries}
@@ -990,3 +1000,73 @@ class IniTemplateTestCase(testtools.TestCase):
              for entry in defaults['kerbside_login_client_packages']},
             'the role installs other libraries for an interactive login '
             'than docs/installation.md names')
+
+
+def _stray_message_newlines(text):
+    """Where a folded message in a task file keeps a line break.
+
+    YAML's >- folds a line break into a space, except next to a line
+    indented further than the block's first, where it keeps it. A Jinja
+    expression wrapped over several lines is usually indented that way,
+    which is harmless inside {{ }}, where a line break is whitespace, but
+    after the }} it lands in the message: "sets a, b\\nto something".
+    Returns (line number, line) for each such break, the line being the
+    one before it.
+    """
+    lines = text.split('\n')
+    found = []
+    for index, line in enumerate(lines):
+        match = re.match(r'^(\s*)(fail_msg|msg|success_msg): >-\s*$', line)
+        if not match:
+            continue
+        key_indent = len(match.group(1))
+        body = []
+        for number in range(index + 1, len(lines)):
+            candidate = lines[number]
+            indent = len(candidate) - len(candidate.lstrip())
+            if candidate.strip() and indent <= key_indent:
+                break
+            body.append((number + 1, candidate, indent))
+        body = [entry for entry in body if entry[1].strip()]
+        if not body:
+            continue
+        base = body[0][2]
+        depth = 0
+        for (number, line, indent), (_, _, next_indent) in zip(body, body[1:]):
+            depth += line.count('{{') - line.count('}}')
+            if (indent > base or next_indent > base) and depth == 0:
+                found.append((number, line.strip()))
+    return found
+
+
+class RoleMessagesTestCase(testtools.TestCase):
+    def test_the_finder_sees_a_break_after_an_expression(self):
+        text = '\n'.join([
+            '      ansible.builtin.assert:',
+            '        fail_msg: >-',
+            '          sets {{ a',
+            '              | join(", ") }}',
+            '          to something.',
+            '        quiet: true',
+        ])
+        self.assertEqual([(4, '| join(", ") }}')],
+                         _stray_message_newlines(text))
+
+    def test_the_finder_passes_a_break_inside_an_expression(self):
+        text = '\n'.join([
+            '        msg: >-',
+            '          {{ a if b',
+            '             else c }}',
+        ])
+        self.assertEqual([], _stray_message_newlines(text))
+
+    def test_no_task_message_keeps_a_line_break(self):
+        # The role test matches a refusal's message against a pattern on
+        # one line, so a break it keeps fails that case -- but only where
+        # the pattern spans the break, which is luck.
+        found = []
+        for path in sorted((_ROLE / 'tasks').glob('*.yml')):
+            found.extend('%s:%d: %s' % (path.name, number, line)
+                         for number, line
+                         in _stray_message_newlines(path.read_text()))
+        self.assertEqual([], found)

@@ -265,14 +265,16 @@ argument_specs:
             or anything else in Kerbside's configuration reference. Without
             these the role could configure only the settings it knows about.
           - >-
-            validate refuses a name the role writes itself, and the check the
-            rendered file is held to on the host refuses a name Kerbside has
-            no setting for -- Kerbside ignores an unknown setting rather than
-            refusing it, so a misspelling would otherwise do nothing at all
-            and say nothing. The values are no_log, since a login carries a
-            service password, and kerbside.ini is 0640 root:kerbside either
-            way. It is one of the files whose contents decide whether Kerbside
-            restarts, so a change here restarts it on the next deploy.
+            validate refuses a name the role writes itself and a value which
+            would not render as one INI line (null, a list, a mapping, or text
+            with a line break), and the check the rendered file is held to on
+            the host refuses a name Kerbside has no setting for -- Kerbside
+            ignores an unknown setting rather than refusing it, so a
+            misspelling would otherwise do nothing at all and say nothing. The
+            values are no_log, since a login carries a service password, and
+            kerbside.ini is 0640 root:kerbside either way. It is one of the
+            files whose contents decide whether Kerbside restarts, so a change
+            here restarts it on the next deploy.
       kerbside_login_client_packages:
         type: list
         elements: dict
@@ -561,9 +563,10 @@ argument_specs:
         lists a file which is not on the control node, or is not a kerbside or
         kerbside_proxy wheel, or two wheels for one package; when
         kerbside_extra_settings sets a name the role writes itself, a name
-        which is not an INI key, or a value of null; when a configured source
-        type is missing from kerbside_source_client_packages or
-        kerbside_source_build_packages, or its client entries lack a package
+        which is not an INI key, a value of null, or a value which is not one
+        line of text (a list, a mapping, or text with a line break); when a
+        configured source type is missing from kerbside_source_client_packages
+        or kerbside_source_build_packages, or its client entries lack a package
         or a directory; or when kerbside_client_package, which the role no
         longer reads, is set. No message includes a secret.
     options: *kerbside_options

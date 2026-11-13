@@ -10,10 +10,11 @@ units, runs its database migrations and waits for it to be ready.
 The role validates and renders all five console source types, and installs
 the client libraries each configured type's driver imports (`proxmox` and
 `static` sources need none). It knows nothing about your inventory: you map
-your hosts onto `kerbside_hosts` and your consoles onto `kerbside_sources`. A collection release deploys the Kerbside
-release of the same version by default, so collection 0.8.0 installs Kerbside
-0.8.0. An install from a git checkout reports `unreleased` as its
-`kerbside_collection_version` and floors Kerbside at 0.7.0.
+your hosts onto `kerbside_hosts` and your consoles onto `kerbside_sources`.
+A collection release deploys the Kerbside release of the same version by
+default, so collection 0.8.0 installs Kerbside 0.8.0. An install from a git
+checkout reports `unreleased` as its `kerbside_collection_version` and floors
+Kerbside at 0.7.0.
 
 ## Installing
 
