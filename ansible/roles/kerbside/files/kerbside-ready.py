@@ -10,13 +10,21 @@ point, with the name of every type shakenfist source in sources.yaml, and
 polled until fetched_at is later than the time it recorded before restarting
 Kerbside. Prints exactly one JSON object on stdout, for all the sources named:
 
-    {"errored": false, "fetched_at": 1791234567.123}
+    {"errored": false, "fetched_at": 1791234567.123, "keys_usable": true}
 
 * errored is true when any source's errored flag is set, null when any source
   has no row (and none is errored), and false otherwise. It is reported for
   diagnosis only: a new source is created with errored false before it has
   ever been scraped, and a failed key fetch deliberately does not set it, so
   it does not mean a source works.
+* keys_usable is whether every source's stored key set could verify a token
+  minted now: the document Shaken Fist published names the kid it is signing
+  with, and that kid has to be among the keys in the same document, with a
+  public key. It is null when any source has never stored a set (so there is
+  nothing to judge), and false when a stored set is not a document of that
+  shape. A fetch proves the CA matched and the credential authenticated; this
+  is the part a fetch does not prove, and a deploy used to pass without it
+  (#620). Only the verdict is printed, never a kid or a key.
 * fetched_at is the oldest of the times Kerbside last stored each source's
   console token signing keys (a time.time() float), or null when it never has
   for at least one of them. So it is later than a given time only once every
@@ -31,8 +39,9 @@ Kerbside. Prints exactly one JSON object on stdout, for all the sources named:
 
 This reads Kerbside's internals, not a stable interface, and relies on these
 identifiers in kerbside.db: the module-level ENGINE; the Source model's name
-and errored columns; and the SfTokenKeys model's source and fetched_at
-columns. They were checked against Kerbside v0.6.0 and develop at d0963ff. A
+and errored columns; and the SfTokenKeys model's source, fetched_at and
+keys_json columns. They were checked against Kerbside v0.6.0 and develop at
+d0963ff, and keys_json against develop at b329233. A
 Kerbside which renamed or removed one fails the import or the query with an
 AttributeError (or an ImportError, for a module which moved), and either is
 reported as error, naming the type, like any other failure to read the
@@ -62,8 +71,9 @@ import json
 import sys
 
 
-def report(errored=None, fetched_at=None, error=None):
-    out = {'errored': errored, 'fetched_at': fetched_at}
+def report(errored=None, fetched_at=None, keys_usable=None, error=None):
+    out = {'errored': errored, 'fetched_at': fetched_at,
+           'keys_usable': keys_usable}
     if error:
         out['error'] = error
     # sys.stdout.write rather than print(), as kerbside-host-subject.py
@@ -95,25 +105,68 @@ def load_db():
         return None, 'importing kerbside.db failed: %s' % type(e).__name__
 
 
+def usable(keys_json):
+    """Could the stored key set verify a token minted now?
+
+    Shaken Fist's published document names its active kid, and Kerbside
+    caches the document verbatim, so this is answerable without asking
+    Shaken Fist anything: the active kid must be among the document's own
+    keys, carrying a public key to verify with. None when there is no
+    document at all, which is "not fetched yet" rather than a verdict.
+
+    This is stricter than Kerbside's verifier, which matches a token's own
+    kid against the keys and never reads active_kid, on purpose: Shaken Fist
+    signs every new token with its active kid, so only a document which
+    names that kid and carries its key shows that the next token will
+    verify. Whatever else it holds proves only that some earlier token
+    would. The shape -- an active_kid, and keys each with a kid and a
+    public_pem -- is Shaken Fist's /admin/vditokenpubkey response as its
+    external_api/admin.py documents it and util/vdi_tokens.py builds it,
+    read at Shaken Fist develop 3d93fde425 (after v0.8.0-rc4). A Shaken
+    Fist which changed it would block the deploy here with keys_usable
+    false, and this is the place to look.
+    """
+    if keys_json is None:
+        return None
+    try:
+        document = json.loads(keys_json)
+    except (ValueError, TypeError):
+        return False
+    if not isinstance(document, dict):
+        return False
+    active = document.get('active_kid')
+    keys = document.get('keys')
+    if not active or not isinstance(keys, list):
+        return False
+    return any(isinstance(key, dict) and key.get('kid') == active
+               and key.get('public_pem') for key in keys)
+
+
 def read_state(db, source_name):
-    """Return one source's errored flag and its keys' fetched_at, or None."""
+    """Return one source's errored flag, keys' fetched_at and usability."""
     from sqlalchemy.orm import Session
 
     with Session(db.ENGINE) as session:
         source = session.query(db.Source.errored).filter(
             db.Source.name == source_name).one_or_none()
-        keys = session.query(db.SfTokenKeys.fetched_at).filter(
-            db.SfTokenKeys.source == source_name).one_or_none()
+        keys = session.query(
+            db.SfTokenKeys.fetched_at, db.SfTokenKeys.keys_json).filter(
+                db.SfTokenKeys.source == source_name).one_or_none()
 
     errored = None if source is None or source[0] is None else bool(source[0])
     fetched_at = None if keys is None or keys[0] is None else float(keys[0])
-    return errored, fetched_at
+    return errored, fetched_at, usable(None if keys is None else keys[1])
 
 
 def combine(states):
-    """Return the errored flag and fetched_at reported for several sources."""
-    flags = [errored for errored, _ in states]
-    times = [fetched_at for _, fetched_at in states]
+    """Return what is reported for several sources, as the worst of each.
+
+    A deploy is ready when every source is, so the oldest fetch, any
+    errored flag, and the least usable key set are what is reported.
+    """
+    flags = [errored for errored, _, _ in states]
+    times = [fetched_at for _, fetched_at, _ in states]
+    verdicts = [keys_usable for _, _, keys_usable in states]
     if True in flags:
         errored = True
     elif None in flags:
@@ -121,7 +174,13 @@ def combine(states):
     else:
         errored = False
     fetched_at = None if None in times else min(times)
-    return errored, fetched_at
+    if None in verdicts:
+        keys_usable = None
+    elif False in verdicts:
+        keys_usable = False
+    else:
+        keys_usable = True
+    return errored, fetched_at, keys_usable
 
 
 def main(argv):
@@ -135,13 +194,13 @@ def main(argv):
         return 0
 
     try:
-        errored, fetched_at = combine(
+        errored, fetched_at, keys_usable = combine(
             [read_state(db, name) for name in argv[1:]])
     except Exception as e:
         report(error='reading the database failed: %s' % type(e).__name__)
         return 0
 
-    report(errored=errored, fetched_at=fetched_at)
+    report(errored=errored, fetched_at=fetched_at, keys_usable=keys_usable)
     return 0
 
 

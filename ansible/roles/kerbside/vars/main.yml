@@ -28,6 +28,64 @@ kerbside_shakenfist_sources: >-
      | selectattr('type', 'equalto', 'shakenfist')
      | map(attribute='source') | map('string') | list }}
 
+# The types of the configured sources, and what each type needs installed:
+# the client requirements bootstrap passes to uv, the site-packages
+# directories those clients install into (which bootstrap hashes, so a client
+# which did not land fails the deploy), and the apt packages needed to build
+# them, with Kerbside's own. Every type is looked up in
+# kerbside_source_client_packages and kerbside_source_build_packages, so a
+# type missing from either is an error rather than a silently empty list --
+# validate says so before anything is installed.
+kerbside_source_types: >-
+  {{ kerbside_sources | selectattr('type', 'defined') | map(attribute='type')
+     | map('string') | unique | sort | list }}
+kerbside_source_clients: >-
+  {{ (kerbside_source_types | map('extract', kerbside_source_client_packages)
+      | flatten | list)
+     + (kerbside_login_client_packages
+        if kerbside_keystone_login | bool else []) }}
+kerbside_client_requirements: >-
+  {{ kerbside_source_clients | map(attribute='package') | unique | sort | list }}
+kerbside_client_directories: >-
+  {{ kerbside_source_clients | map(attribute='directory') | unique | sort | list }}
+kerbside_build_packages: >-
+  {{ (['build-essential', 'pkg-config', 'python3-dev', 'python3-venv',
+        'libmariadb-dev-compat', 'libxml2-dev', 'libxslt1-dev']
+      + (kerbside_source_types | map('extract', kerbside_source_build_packages)
+         | flatten | list)) | unique | list }}
+
+# The settings the role writes into kerbside.ini from its own variables, which
+# the template renders in this order. kerbside_extra_settings is written after
+# them, so validate refuses one of these among it: the file would carry the
+# name twice and configparser would silently keep the last. The names are here
+# rather than read out of the template because validate runs on the control
+# node, before anything renders, and a unit test holds the two together.
+kerbside_owned_ini_settings:
+  - sql_url
+  - auth_secret_seed
+  - sources_path
+  - public_fqdn
+  - cacert_path
+  - proxy_host_cert_path
+  - proxy_host_cert_key_path
+  - proxy_host_subject
+  - sf_console_token_audience
+  - public_secure_port
+  - public_insecure_port
+  - vdi_secure_port
+  - vdi_insecure_port
+  - prometheus_metrics_port
+  - node_name
+
+# Whether kerbside_extra_settings configures Kerbside's interactive login,
+# which imports its own client libraries (kerbside_login_client_packages).
+# Any keystone_* setting means a login is being configured: Kerbside reads
+# them only there, and an OpenStack source carries its own credentials in
+# sources.yaml.
+kerbside_keystone_login: >-
+  {{ kerbside_extra_settings | select('match', '^keystone_')
+     | list | length > 0 }}
+
 # Where bootstrap copies kerbside_local_wheels on the Kerbside host, and the
 # package each replaces. A wheel is installed from a fixed path named by its
 # file name alone, so the same wheel copied from anywhere on the control node
@@ -69,17 +127,28 @@ kerbside_deployed_state_file: "{{ kerbside_state_dir }}/.deployed-state.sha256"
 # would fail the task rather than count as not ready. The pattern admits only
 # what the script's json.dumps() can produce, and no backslash, so every match
 # parses. kerbside_ready_fetched_at is the parsed fetched_at as a string, or
-# 'null' when the keys were never fetched or the output was anything else.
+# 'null' when the keys were never fetched or the output was anything else, and
+# kerbside_ready_keys_usable the parsed keys_usable as 'True', 'False', or
+# 'null' for a set which is not there or an output which is not the object.
+# That one is ternary's none_val rather than default('null', true), which
+# would turn false into 'null' as well: the one answer the assert in register
+# exists to report. fetched_at keeps default, since only 0.0 is a falsy one
+# and no key set was fetched at the epoch.
 # Evaluated lazily, so each reads the latest kerbside_ready the wait registered.
 kerbside_ready_pattern: >-
   ^[{]"errored": (true|false|null),
-  "fetched_at": (null|-?[0-9]+([.][0-9]+)?([eE][-+]?[0-9]+)?)(,
+  "fetched_at": (null|-?[0-9]+([.][0-9]+)?([eE][-+]?[0-9]+)?),
+  "keys_usable": (true|false|null)(,
   "error": "[A-Za-z0-9 .:_-]*")?[}]$
 kerbside_ready_output: "{{ kerbside_ready.stdout | default('') | trim }}"
 kerbside_ready_fetched_at: >-
   {{ (((kerbside_ready_output | from_json).fetched_at
        if kerbside_ready_output is match(kerbside_ready_pattern) else none)
       | default('null', true)) | string }}
+kerbside_ready_keys_usable: >-
+  {{ ((kerbside_ready_output | from_json).keys_usable
+      if kerbside_ready_output is match(kerbside_ready_pattern) else none)
+     | ternary('True', 'False', 'null') }}
 
 # The version of this collection. The committed value is the marker
 # `unreleased`, and an install from a checkout reports it. The release build

@@ -190,11 +190,19 @@ class RoleDefaultsTestCase(testtools.TestCase):
             'argument_specs.yml documents a default other than '
             'defaults/main.yml sets: %s' % ', '.join(drifted))
 
-    # Rows whose default is prose rather than one literal, because it
-    # depends on something outside defaults/main.yml: both of these
-    # differ between a checkout and a release. Pinned rather than
-    # skipped on shape, so a new prose default is a deliberate edit.
-    PROSE_DEFAULTS = ('kerbside_collection_version', 'kerbside_package')
+    # Rows whose default is prose rather than one literal. Two depend on
+    # something outside defaults/main.yml, and differ between a checkout
+    # and a release; the rest are package lists, too long for one
+    # literal in a table cell, which PACKAGE_LIST_DEFAULTS checks
+    # instead. Pinned rather than skipped on shape, so a new prose
+    # default is a deliberate edit.
+    PACKAGE_LIST_DEFAULTS = (
+        'kerbside_login_client_packages',
+        'kerbside_source_build_packages',
+        'kerbside_source_client_packages')
+    PROSE_DEFAULTS = (
+        ('kerbside_collection_version', 'kerbside_package')
+        + PACKAGE_LIST_DEFAULTS)
     # Rows for variables defaults/main.yml does not set. Pinned for the
     # same reason: a row left behind by a renamed or deleted variable is
     # drift in the other direction, and must fail rather than be skipped.
@@ -254,6 +262,24 @@ class RoleDefaultsTestCase(testtools.TestCase):
                          'only %d of %d comparable role defaults were '
                          'compared: %r' % (compared, expected, documented))
 
+    def test_the_readme_names_every_default_package(self):
+        # A package-list default is prose in the README, so it cannot be
+        # compared as one literal; what an operator reads it for is which
+        # packages a deploy installs, so the row must name each of them.
+        documented = _documented_defaults()
+        defaults = _rendered_defaults()
+        unnamed = []
+        for name in self.PACKAGE_LIST_DEFAULTS:
+            named = set(re.findall(r'`([^`]+)`', documented[name]))
+            packages = _default_packages(defaults[name])
+            self.assertNotEqual(set(), packages, name)
+            unnamed.extend('%s: %s' % (name, package)
+                           for package in sorted(packages - named))
+        self.assertEqual(
+            [], unnamed,
+            'ansible/README.md does not name a package the role installs '
+            'by default: %s' % ', '.join(unnamed))
+
 
 # A row of one of ansible/README.md's variable tables: the variable, the
 # default it documents, and the prose, which is not read here.
@@ -278,6 +304,20 @@ def _documented_defaults():
             if match:
                 rows[match.group(1)] = match.group(2)
     return rows
+
+
+def _default_packages(value):
+    """Every package a package-list default names, at any depth.
+
+    A list holds apt package names, or entries whose package is a pip
+    requirement; a mapping holds such lists by source type.
+    """
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, dict) and 'package' in value:
+        return {value['package']}
+    items = value.values() if isinstance(value, dict) else value
+    return set().union(*(_default_packages(item) for item in items))
 
 
 def _rendered_defaults():
@@ -480,24 +520,74 @@ class CheckSourcesScriptTestCase(testtools.TestCase):
         self.assertIn('line', errors[0])
 
 
+def _published(active_kid='kid-1', kids=('kid-1',), pem='-----PUBLIC-----'):
+    """Shaken Fist's /admin/vditokenpubkey document, as Kerbside caches it."""
+    return json.dumps({
+        'active_kid': active_kid,
+        'keys': [{'kid': kid, 'public_pem': pem} for kid in kids]})
+
+
 class ReadyScriptTestCase(testtools.TestCase):
     def test_combine_reports_the_oldest_fetch(self):
         self.assertEqual(
-            (False, 100.0),
-            ready.combine([(False, 300.0), (False, 100.0), (False, 200.0)]))
+            (False, 100.0, True),
+            ready.combine([(False, 300.0, True), (False, 100.0, True),
+                           (False, 200.0, True)]))
 
     def test_combine_reports_null_until_every_source_fetched(self):
         self.assertEqual(
-            (False, None), ready.combine([(False, 300.0), (False, None)]))
+            (False, None, True),
+            ready.combine([(False, 300.0, True), (False, None, True)]))
 
     def test_combine_reports_any_error_and_any_missing_source(self):
         self.assertEqual(
-            (True, None), ready.combine([(None, None), (True, 1.0)]))
+            (True, None, True),
+            ready.combine([(None, None, True), (True, 1.0, True)]))
         self.assertEqual(
-            (None, 1.0), ready.combine([(None, 1.0), (False, 2.0)]))
+            (None, 1.0, True),
+            ready.combine([(None, 1.0, True), (False, 2.0, True)]))
+
+    def test_combine_reports_the_least_usable_key_set(self):
+        # One source whose keys cannot verify a token is enough: the
+        # deploy is ready only when every source is.
+        self.assertEqual(
+            (False, 1.0, False),
+            ready.combine([(False, 1.0, True), (False, 2.0, False)]))
+        self.assertEqual(
+            (False, 1.0, None),
+            ready.combine([(False, 1.0, None), (False, 2.0, True)]))
+        # Unjudgeable beats unusable: a set which is not there yet is
+        # what the wait is for, and says nothing about the one stored.
+        self.assertEqual(
+            (False, 1.0, None),
+            ready.combine([(False, 1.0, None), (False, 2.0, False)]))
+
+    def test_a_set_whose_active_kid_is_present_is_usable(self):
+        self.assertIs(True, ready.usable(_published()))
+        self.assertIs(
+            True, ready.usable(_published(kids=('kid-0', 'kid-1'))))
+
+    def test_a_set_which_cannot_verify_a_token_is_not_usable(self):
+        # Shaken Fist's own tests treat each of these as a corrupt
+        # document, and Kerbside caches whatever it is served.
+        for document in (_published(kids=('kid-0',)),
+                         _published(active_kid=''),
+                         _published(pem=''),
+                         json.dumps({'active_kid': 'kid-1', 'keys': []}),
+                         json.dumps({'active_kid': 'kid-1'}),
+                         json.dumps({'keys': []}),
+                         json.dumps(['kid-1']),
+                         json.dumps('kid-1'),
+                         'not json at all'):
+            self.assertIs(
+                False, ready.usable(document),
+                'this document was judged usable: %r' % document)
+
+    def test_no_stored_set_is_not_a_verdict(self):
+        self.assertIsNone(ready.usable(None))
 
     def test_main_reads_every_source_named(self):
-        states = {'sf': (False, 200.0), 'sf2': (False, 150.0)}
+        states = {'sf': (False, 200.0, True), 'sf2': (False, 150.0, True)}
         stdout = io.StringIO()
         with mock.patch.object(ready, 'load_db',
                                return_value=(object(), None)), \
@@ -507,7 +597,7 @@ class ReadyScriptTestCase(testtools.TestCase):
             rc = ready.main(['kerbside-ready.py', 'sf', 'sf2'])
         self.assertEqual(0, rc)
         self.assertEqual(
-            {'errored': False, 'fetched_at': 150.0},
+            {'errored': False, 'fetched_at': 150.0, 'keys_usable': True},
             json.loads(stdout.getvalue()))
 
     def test_main_needs_a_source_name(self):
@@ -556,10 +646,11 @@ class ReadyScriptTestCase(testtools.TestCase):
             pattern = yaml.safe_load(f)['kerbside_ready_pattern']
 
         cases = (
-            {'errored': False, 'fetched_at': 150.0},
-            {'errored': None, 'fetched_at': None},
-            {'errored': True, 'fetched_at': 1791234567.123},
-            {'errored': None, 'fetched_at': None,
+            {'errored': False, 'fetched_at': 150.0, 'keys_usable': True},
+            {'errored': None, 'fetched_at': None, 'keys_usable': None},
+            {'errored': True, 'fetched_at': 1791234567.123,
+             'keys_usable': False},
+            {'errored': None, 'fetched_at': None, 'keys_usable': None,
              'error': 'usage: kerbside-ready.py SOURCE_NAME...'},
         )
         for case in cases:
@@ -623,6 +714,359 @@ class CheckIniScriptTestCase(testtools.TestCase):
     def test_no_message_quotes_a_value(self):
         for text in ('sql_url = secret-value\n',
                      '[kerbside]\nsql_url = secret-value\n  more\n',
-                     '[kerbside]\nsql_url = a\nsql_url = secret-value\n'):
+                     '[kerbside]\nsql_url = a\nsql_url = secret-value\n',
+                     '[kerbside]\nnot_a_setting = secret-value\n'):
             for reason in self._check(text):
                 self.assertNotIn('secret-value', reason)
+
+    def test_an_option_kerbside_has_no_setting_for_is_refused(self):
+        # Kerbside ignores an unknown KERBSIDE_* variable rather than
+        # refusing it, so a misspelled setting in kerbside_extra_settings
+        # would otherwise be written, read, ignored, and never mentioned
+        # by anything (#629).
+        errors = self._check(
+            '[kerbside]\nlog_verbose = true\nlog_verbos = true\n')
+        self.assertEqual(1, len(errors))
+        self.assertIn('log_verbos ', errors[0])
+
+    def test_the_settings_it_knows_are_the_ones_kerbside_has(self):
+        # Read out of config.py by parsing it, because importing it
+        # reads the kerbside.ini Kerbside is running with. That reading
+        # is what this holds to the class itself.
+        self.assertEqual(
+            {name.lower() for name in config.Config.model_fields},
+            check_ini.kerbside_settings())
+
+
+# The heading of the table in docs/installation.md that says which client
+# library each kind of deployment needs. The guide is written for someone
+# installing by hand, so it is the statement of what the role automates.
+_CLIENT_SECTION = 'Client libraries for console sources'
+
+
+def _lazily_imported_modules():
+    """Every top-level module Kerbside imports with importlib.
+
+    Kerbside's cloud clients are all imported this way, because none of
+    them is a dependency: a deployment installs the ones its sources
+    need. So this is the list of client libraries a deployment may have
+    to install, read off the code that imports them. A call whose module
+    is not a literal first argument cannot be read this way -- a variable,
+    or name= -- so it is returned as its
+    location instead, which no declared directory can equal: passing it
+    over would let a client imported that way go unnoticed.
+    """
+    modules = set()
+    for path in sorted(_KERBSIDE.rglob('*.py')):
+        if 'tests' in path.parts:
+            continue
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(node, ast.Call):
+                continue
+            function = node.func
+            name = (function.attr if isinstance(function, ast.Attribute)
+                    else getattr(function, 'id', None))
+            if name != 'import_module':
+                continue
+            argument = node.args[0] if node.args else None
+            if isinstance(argument, ast.Constant) and isinstance(
+                    argument.value, str):
+                modules.add(argument.value.split('.')[0])
+            else:
+                modules.add('<not a literal at %s:%d>' % (
+                    path.relative_to(_KERBSIDE.parent), node.lineno))
+    return modules
+
+
+def _documented_client_libraries():
+    """The client libraries docs/installation.md names, by source type.
+
+    The table's rows read "A `<type>` source", with the libraries as the
+    backticked names of the second column -- except where that column
+    begins with "Nothing", which means none, whatever it goes on to
+    mention. A row naming no source type (interactive login, which is
+    not a property of the sources) is returned under None.
+    """
+    rows = []
+    section = False
+    with open(_ROOT / 'docs' / 'installation.md') as f:
+        for line in f:
+            if line.startswith('#'):
+                section = line.strip('#').strip() == _CLIENT_SECTION
+                continue
+            if not section or not line.startswith('|'):
+                continue
+            cells = [cell.strip()
+                     for cell in line.strip().strip('|').split('|')]
+            if len(cells) < 2 or set(cells[0]) <= set('- '):
+                continue
+            rows.append(cells)
+    if not rows:
+        raise AssertionError(
+            'docs/installation.md has no "%s" table' % _CLIENT_SECTION)
+    documented = {}
+    floors = {}
+    for used, install in ((row[0], row[1]) for row in rows):
+        names = re.findall(r'`([^`]+)`', used)
+        kind = next((name for name in names
+                     if name in check_sources.TYPE_REQUIRED), None)
+        if install.startswith('Nothing'):
+            libraries = []
+        else:
+            libraries = re.findall(r'`([^`]+)`', install)
+        documented.setdefault(kind, set()).update(libraries)
+        for library in libraries:
+            floor = re.search(
+                r'`%s`\s+([0-9][0-9.]*) or later' % re.escape(library),
+                install)
+            if floor:
+                floors[library] = floor.group(1)
+    return documented, floors
+
+
+class RoleClientLibrariesTestCase(testtools.TestCase):
+    """The role installs the client libraries its sources need.
+
+    Kerbside imports every cloud client lazily and depends on none of
+    them, so a missing client is not a failed install: the source is
+    marked errored and ignored, or token exchange answers 500. The role
+    installed shakenfist-client and nothing else, so a role-deployed
+    Kerbside accepted an ovirt or openstack source it could never serve
+    and said nothing (#602). These hold the role's mapping to the two
+    things that decide what it should be: the imports in the code, and
+    the table operators installing by hand follow.
+    """
+
+    def setUp(self):
+        super().setUp()
+        with open(_DEFAULTS) as f:
+            self.defaults = yaml.safe_load(f)
+        self.clients = self.defaults['kerbside_source_client_packages']
+        self.build = self.defaults['kerbside_source_build_packages']
+
+    def _requirements(self):
+        """Every client requirement the role can install, by distribution."""
+        return {re.split(r'[><=!~\[]', entry['package'])[0]: entry['package']
+                for entries in self.clients.values() for entry in entries}
+
+    def test_every_source_type_has_a_decision(self):
+        # Including the types which need nothing: an empty list says so,
+        # where a missing key would leave validate to refuse the deploy.
+        self.assertEqual(
+            set(check_sources.TYPE_REQUIRED), set(self.clients))
+        self.assertEqual(
+            set(check_sources.TYPE_REQUIRED), set(self.build))
+
+    def test_every_client_kerbside_imports_is_installable(self):
+        # The directories, because that is what Kerbside imports and
+        # what bootstrap hashes to prove the client landed. A client
+        # library Kerbside learns to import must be added to the role
+        # here, or no deploy will ever install it. The login mapping is
+        # not counted: the openstack source's Nova token route imports
+        # the Keystone clients too (api.py), so they must be in its entry
+        # whether or not a login is configured.
+        declared = {entry['directory']
+                    for entries in self.clients.values()
+                    for entry in entries}
+        self.assertEqual(_lazily_imported_modules(), declared)
+
+    def test_the_installed_clients_are_the_documented_ones(self):
+        documented, _ = _documented_client_libraries()
+        for kind in sorted(kind for kind in documented if kind):
+            libraries = documented[kind]
+            installed = {re.split(r'[><=!~\[]', entry['package'])[0]
+                         for entry in self.clients[kind]}
+            self.assertEqual(
+                libraries, installed,
+                'the role installs %s for a %s source, but '
+                'docs/installation.md documents %s'
+                % (sorted(installed), kind, sorted(libraries)))
+
+    def test_every_source_type_is_in_the_documented_table(self):
+        documented, _ = _documented_client_libraries()
+        self.assertEqual(
+            set(check_sources.TYPE_REQUIRED),
+            set(documented) - {None},
+            'docs/installation.md does not name every source type, so the '
+            'comparison above passed over one')
+        # Interactive login is the one row that is not about a source
+        # type: the role installs those libraries when
+        # kerbside_extra_settings configures a login, which
+        # IniTemplateTestCase holds to the same row.
+        self.assertNotEqual(set(), documented[None])
+
+    def test_a_documented_version_floor_is_installed(self):
+        _, floors = _documented_client_libraries()
+        self.assertNotEqual({}, floors)
+        requirements = self._requirements()
+        for library, floor in sorted(floors.items()):
+            self.assertEqual(
+                '%s>=%s' % (library, floor), requirements.get(library),
+                'docs/installation.md says %s %s or later, so that is what '
+                'the role must install: an older one leaves the source '
+                'errored, which is not a failed deploy' % (library, floor))
+        # And the other way: a floor the role installs which the guide
+        # does not state is one an operator installing by hand never
+        # hears about, so the two installs quietly differ.
+        for library, requirement in sorted(requirements.items()):
+            floor = re.search(r'>=([0-9][0-9.]*)$', requirement)
+            if floor:
+                self.assertEqual(
+                    floor.group(1), floors.get(library),
+                    'the role installs %s, but docs/installation.md does not '
+                    'say "`%s` %s or later"'
+                    % (requirement, library, floor.group(1)))
+
+    def test_the_build_packages_are_documented(self):
+        # One direction only: the guide names what a C extension needs
+        # on each distribution, and the role installs the Debian ones.
+        guide = (_ROOT / 'docs' / 'installation.md').read_text()
+        for kind, packages in sorted(self.build.items()):
+            for package in packages:
+                self.assertIn(
+                    '`%s`' % package, guide,
+                    'the role installs %s for a %s source, but '
+                    'docs/installation.md does not say why it is needed'
+                    % (package, kind))
+
+
+class IniTemplateTestCase(testtools.TestCase):
+    """The settings the role owns are named in one place.
+
+    validate refuses a kerbside_extra_settings which sets a name the
+    role writes itself, from kerbside_owned_ini_settings. It cannot ask
+    the template for that list, because it runs on the control node
+    before anything renders -- so the list and the template are held
+    together here, and both to the guide an operator reads (#629).
+    """
+
+    def setUp(self):
+        super().setUp()
+        with open(_ROLE / 'vars' / 'main.yml') as f:
+            self.vars = yaml.safe_load(f)
+        self.owned = self.vars['kerbside_owned_ini_settings']
+        self.template = (
+            _ROLE / 'templates' / 'kerbside.ini').read_text(encoding='utf-8')
+        self.guide = (
+            _ROOT / 'docs' / 'deployment' / 'ansible.md').read_text(
+                encoding='utf-8')
+
+    def test_the_template_renders_exactly_those_settings(self):
+        block = re.search(
+            r'\{%\s*set kerbside_ini_settings = \{(.*?)\}\s*%\}',
+            self.template, re.S)
+        self.assertIsNotNone(
+            block, 'the template no longer sets kerbside_ini_settings to a '
+            'literal mapping, so this test cannot read what it writes')
+        self.assertEqual(
+            self.owned, re.findall(r"'([a-z0-9_]+)':", block.group(1)))
+
+    def test_they_are_all_kerbside_settings(self):
+        self.assertEqual(
+            set(), set(self.owned) - check_ini.kerbside_settings())
+
+    def test_the_extra_settings_come_after_them(self):
+        # Later in the file wins in configparser, so the order is what
+        # makes refusing a collision in validate the whole guard.
+        self.assertLess(
+            self.template.index('kerbside_ini_settings.items()'),
+            self.template.index('kerbside_extra_settings | dictsort'))
+
+    def test_the_guide_lists_the_settings_the_role_writes(self):
+        section = self.guide.split('### Settings the role writes')[1]
+        section = section.split('```')[0]
+        listed = set()
+        for line in section.splitlines():
+            if line.startswith(('-', ' ')):
+                listed.update(re.findall(r'`([a-z0-9_]+)`', line))
+        self.assertEqual(
+            set(self.owned), listed,
+            'docs/deployment/ansible.md names settings the role writes '
+            'which are not kerbside_owned_ini_settings, or the reverse')
+
+    def test_a_keystone_setting_asks_for_the_login_libraries(self):
+        # The condition vars/main.yml puts on installing them, read as
+        # the rule it is: any keystone_* setting means a login.
+        self.assertIn(
+            "select('match', '^keystone_')", self.vars['kerbside_keystone_login'])
+
+    def test_the_login_libraries_are_the_documented_ones(self):
+        with open(_DEFAULTS) as f:
+            defaults = yaml.safe_load(f)
+        documented, _ = _documented_client_libraries()
+        self.assertEqual(
+            documented[None],
+            {re.split(r'[><=!~\[]', entry['package'])[0]
+             for entry in defaults['kerbside_login_client_packages']},
+            'the role installs other libraries for an interactive login '
+            'than docs/installation.md names')
+
+
+def _stray_message_newlines(text):
+    """Where a folded message in a task file keeps a line break.
+
+    YAML's >- folds a line break into a space, except next to a line
+    indented further than the block's first, where it keeps it. A Jinja
+    expression wrapped over several lines is usually indented that way,
+    which is harmless inside {{ }}, where a line break is whitespace, but
+    after the }} it lands in the message: "sets a, b\\nto something".
+    Returns (line number, line) for each such break, the line being the
+    one before it.
+    """
+    lines = text.split('\n')
+    found = []
+    for index, line in enumerate(lines):
+        match = re.match(r'^(\s*)(fail_msg|msg|success_msg): >-\s*$', line)
+        if not match:
+            continue
+        key_indent = len(match.group(1))
+        body = []
+        for number in range(index + 1, len(lines)):
+            candidate = lines[number]
+            indent = len(candidate) - len(candidate.lstrip())
+            if candidate.strip() and indent <= key_indent:
+                break
+            body.append((number + 1, candidate, indent))
+        body = [entry for entry in body if entry[1].strip()]
+        if not body:
+            continue
+        base = body[0][2]
+        depth = 0
+        for (number, line, indent), (_, _, next_indent) in zip(body, body[1:]):
+            depth += line.count('{{') - line.count('}}')
+            if (indent > base or next_indent > base) and depth == 0:
+                found.append((number, line.strip()))
+    return found
+
+
+class RoleMessagesTestCase(testtools.TestCase):
+    def test_the_finder_sees_a_break_after_an_expression(self):
+        text = '\n'.join([
+            '      ansible.builtin.assert:',
+            '        fail_msg: >-',
+            '          sets {{ a',
+            '              | join(", ") }}',
+            '          to something.',
+            '        quiet: true',
+        ])
+        self.assertEqual([(4, '| join(", ") }}')],
+                         _stray_message_newlines(text))
+
+    def test_the_finder_passes_a_break_inside_an_expression(self):
+        text = '\n'.join([
+            '        msg: >-',
+            '          {{ a if b',
+            '             else c }}',
+        ])
+        self.assertEqual([], _stray_message_newlines(text))
+
+    def test_no_task_message_keeps_a_line_break(self):
+        # The role test matches a refusal's message against a pattern on
+        # one line, so a break it keeps fails that case -- but only where
+        # the pattern spans the break, which is luck.
+        found = []
+        for path in sorted((_ROLE / 'tasks').glob('*.yml')):
+            found.extend('%s:%d: %s' % (path.name, number, line)
+                         for number, line
+                         in _stray_message_newlines(path.read_text()))
+        self.assertEqual([], found)

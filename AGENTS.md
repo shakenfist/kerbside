@@ -209,8 +209,11 @@ https://www.spice-space.org/spice-protocol.html.
   fails on a credential-shaped string in a code sample as readily as
   on a real key. Do not silence one by widening `.gitleaks.toml`;
   suppression has two mechanisms and picking the wrong one blinds the
-  scanner to future leaks. See "The credential scan" in
-  [`docs/testing.md`](docs/testing.md).
+  scanner to future leaks. Its allowlist holds nothing but the
+  invented secrets `tools/ci-test-ansible-role.sh` plants, and
+  `kerbside/tests/unit/test_gitleaks_config.py` holds the two in step:
+  a new fixture needs an allowlist entry in the same commit. See "The
+  credential scan" in [`docs/testing.md`](docs/testing.md).
 
 - **`REVIEWS.md` is generated; never edit it by hand.** Commits that
   add review marks must be signed, but the signing configuration

@@ -7,16 +7,14 @@ hosts you choose. It carries one role, `shakenfist.kerbside.kerbside`, which
 installs Kerbside into a virtualenv, writes its configuration and systemd
 units, runs its database migrations and waits for it to be ready.
 
-The role validates and renders all five console source types, but installs
-only the Shaken Fist client library. `proxmox` and `static` sources need no
-client library, but `ovirt` and `openstack` sources do not work until theirs
-are installed as well
-([kerbside#602](https://github.com/shakenfist/kerbside/issues/602)). It knows
-nothing about your inventory: you map your hosts onto `kerbside_hosts` and your
-consoles onto `kerbside_sources`. A collection release deploys the Kerbside
-release of the same version by default, so collection 0.8.0 installs Kerbside
-0.8.0. An install from a git checkout reports `unreleased` as its
-`kerbside_collection_version` and floors Kerbside at 0.7.0.
+The role validates and renders all five console source types, and installs
+the client libraries each configured type's driver imports (`proxmox` and
+`static` sources need none). It knows nothing about your inventory: you map
+your hosts onto `kerbside_hosts` and your consoles onto `kerbside_sources`.
+A collection release deploys the Kerbside release of the same version by
+default, so collection 0.8.0 installs Kerbside 0.8.0. An install from a git
+checkout reports `unreleased` as its `kerbside_collection_version` and floors
+Kerbside at 0.7.0.
 
 ## Installing
 
@@ -98,6 +96,17 @@ console sources below, and other tasks read only the source names.
 | `kerbside_sources` | `[]` | Kerbside's console sources. Each source's `password` and each static console's `ticket` are secrets. See below. |
 | `kerbside_url` | `""` | Kerbside's base URL, rendered as the console token audience. Required when a source is of type `shakenfist`, where it must equal the cluster's `KERBSIDE_URL` byte for byte. Otherwise optional. |
 
+### Other Kerbside settings
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `kerbside_extra_settings` | `{}` | Settings written into `kerbside.ini` after the ones the role writes from its own variables, as a mapping of INI key to value: a Keystone login, `firewall_mode`, `log_verbose`, the token durations, or anything else in Kerbside's [configuration reference](https://github.com/shakenfist/kerbside/blob/develop/docs/configuration.md). The values are `no_log`. `validate` refuses a name the role writes itself, and the check `kerbside.ini` is held to on the host refuses a name Kerbside has no setting for, since Kerbside ignores an unknown setting rather than refusing it. |
+| `kerbside_login_client_packages` | `keystoneauth1` and `python-keystoneclient` | The client libraries interactive login imports, installed when `kerbside_extra_settings` carries any `keystone_*` setting. |
+
+A change to a setting here restarts Kerbside on the next deploy, like
+any other change to a file Kerbside runs with, which ends the SPICE
+sessions on that host.
+
 ### Console sources
 
 `kerbside_sources` is written to `sources.yaml` as given, in the form
@@ -160,8 +169,9 @@ kerbside_sources:
         ticket: "{{ vault_lab_vm_1_ticket }}"
 ```
 
-For every source of type `shakenfist`, `bootstrap` installs
-`kerbside_client_package`, `validate` requires `kerbside_url`, and `register`
+`bootstrap` installs the client libraries the configured source types need
+(`kerbside_source_client_packages`), and for every source of type
+`shakenfist`, `validate` requires `kerbside_url` and `register`
 waits for Kerbside to fetch that cluster's console token signing keys. For the
 Shaken Fist side of that (the cluster's `KERBSIDE_URL`, the `kerbside` key and
 the signing key), see the
@@ -173,7 +183,8 @@ the signing key), see the
 |----------|---------|---------|
 | `kerbside_package` | `kerbside>=0.7.0` in a checkout, `kerbside==<version>` in a release | What is installed into the virtualenv: a requirement or a wheel path. The floor is the first release which stopped returning source passwords from its API. |
 | `kerbside_proxy_package` | `""` | The `kerbside-proxy` package. Empty installs whichever version `kerbside_package` requires, which a Kerbside release pins exactly. |
-| `kerbside_client_package` | `shakenfist-client` | The Shaken Fist client Kerbside's Shaken Fist source driver imports. Installed only when a source is of type `shakenfist`. |
+| `kerbside_source_client_packages` | `shakenfist-client>=0.8.3`, `ovirt-engine-sdk-python>=4.6.1`, and `openstacksdk`, `keystoneauth1` and `python-keystoneclient`, by source type | The client libraries each source type's driver imports, with the site-packages directory each installs. Kerbside depends on none of them, so only the ones your sources need are installed; `proxmox` and `static` need none. A type missing from this mapping, or an entry without a `package` and a `directory`, fails `validate`, and a client that does not install fails `bootstrap`. It replaces `kerbside_client_package`, which `validate` now refuses: move a pinned Shaken Fist client into the `shakenfist` entry here. |
+| `kerbside_source_build_packages` | `libcurl4-openssl-dev` and `libssl-dev` for `ovirt` | The apt packages a type's client libraries need in order to build, installed with Kerbside's own. |
 | `kerbside_local_wheels` | `[]` | Wheels on the control node to install in place of the package specs. See below. |
 | `kerbside_pip_extra` | `""` | Extra arguments for both pip (installing uv) and `uv pip install`, for example `--index-url`; use flags both accept. |
 | `kerbside_collection_version` | `unreleased` in a checkout | Read-only: the release this collection was built as. Not a setting. |
@@ -238,7 +249,7 @@ refuses anything in between.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `kerbside_ready_retries` | `60` | How many times, three seconds apart, `register` checks that Kerbside fetched each Shaken Fist source's signing keys during this deploy. The default allows three of Kerbside's 60 second scrape passes. Unused without a Shaken Fist source. |
+| `kerbside_ready_retries` | `60` | How many times, three seconds apart, `register` checks that Kerbside fetched each Shaken Fist source's signing keys during this deploy. The default allows three of Kerbside's 60 second scrape passes. Unused without a Shaken Fist source. Once a set has been fetched, `register` also requires it to carry the kid its cluster signs with, since a fetch proves the CA and the credential but not that a token would verify. |
 
 ### Layout and ownership
 

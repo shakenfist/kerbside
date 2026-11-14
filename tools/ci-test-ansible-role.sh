@@ -11,23 +11,29 @@
 # port in kerbside_reserved_ports is refused, as a single port or in a range;
 # that bootstrap's code hash follows every package version in the virtualenv
 # and the installed files, but not pip's, uv's, __pycache__ or the freeze
-# order, and installs and hashes the Shaken Fist client only for a Shaken
-# Fist source; that local wheels are copied, installed in place of the
+# order, and that bootstrap installs and hashes the client libraries the
+# configured source types need and no others, and fails when one of them did
+# not land (#602); that local wheels are copied, installed in place of the
 # package they are named for, and give the same hash for the same bytes;
 # that config renders a kerbside.ini which configparser reads back, as
 # Kerbside does with interpolation off, to exactly the values given (a % in
 # kerbside_sql_url included, never doubled), whose token audience is
 # kerbside_url byte for byte, and a sources.yaml which loads back as
-# kerbside_sources exactly; that a Shaken Fist deployment renders both files
-# as the role did before it took any source; that a render either checker
+# kerbside_sources exactly; that kerbside_extra_settings reaches that file
+# and a name the role owns, a name which is not an INI key, or a name
+# Kerbside has no setting for is refused instead (#629); that a Shaken Fist
+# deployment renders both files as the role did before it took any source; that a render either checker
 # refuses leaves the running file in place and nothing behind; that the
 # desired-state hash is stable across reruns, follows every file Kerbside
 # runs with, and returns to its first value when they are restored; that
 # register waits on exactly the Shaken Fist sources, and on none without
-# one; that the multi-source fixture below carries a source of every type
-# the role's checker accepts, so a new type cannot ship without coverage
-# here (#643); and that no source's password, no console ticket, nor any
-# other secret reaches the ansible output.
+# one, and refuses a fetched key set which could not verify a token (#620);
+# that register decides a restart from the state it recorded last time, and
+# records it only once the readiness wait has passed (#625); that the
+# multi-source fixture below carries a source of every type the role's
+# checker accepts, so a new type cannot ship without coverage here (#643);
+# and that no source's password, no console ticket, nor any other
+# secret reaches the ansible output.
 #
 # register runs without its migration and its units, which need MariaDB and
 # systemd, and with a stub runuser which records how the readiness check
@@ -112,9 +118,13 @@ mkdir -p "${PKI}" "${VENV}/bin" "${UNITS}" "${OVERRIDE}" "${WORK}/certs"
 
 # The virtualenv's Python. A wrapper rather than a symlink: a symlink to a
 # virtualenv's python, from outside it, loses that virtualenv's packages.
+# PYTHONPATH carries this checkout's kerbside package, because a real
+# Kerbside virtualenv has Kerbside installed in it and the checks the role
+# runs with this Python read it: kerbside-check-ini.py asks the installed
+# config.py which settings exist, and passes over the names it cannot read.
 cat > "${VENV}/bin/python" << EOF
 #!/bin/sh
-exec '${PY}' "\$@"
+PYTHONPATH='${REPO_ROOT}' exec '${PY}' "\$@"
 EOF
 chmod +x "${VENV}/bin/python"
 
@@ -171,18 +181,25 @@ FQDN='console.example.com'
 # 32 characters, validate's minimum. The SQL URL's password carries a %,
 # which the INI keeps as written; its distinctive part is what the output is
 # searched for, so that a doubled copy is found too.
+#
+# Each of these is credential shaped on purpose, so each is a finding for
+# the credential scan: add one here and add it to .gitleaks.toml's
+# allowlist too, which kerbside/tests/unit/test_gitleaks_config.py checks.
+# Whether gitleaks reports a given value is not something reading it tells
+# you, so the rule is every value rather than the ones it catches today.
 SYSTEM_KEY='kb-system-key-Vt7qL2mXc9Rw'
 SF2_KEY='kb-second-cluster-Hp3sW8dQ'
 OVIRT_PASSWORD='ovirt-pw-Zr6kN1vB4tYe'
 OPENSTACK_PASSWORD='openstack-pw-Ld9xF2cM7qUa'
 PROXMOX_TOKEN_SECRET='pve-token-Qv7mB2sX9jLd'
 STATIC_TICKET='spice-ticket-Gw5jR8nT3hKo'
+KEYSTONE_PASSWORD='keystone-pw-Tn4bX7sQ2vHe'
 SEED='seed-Jk4pW8zN2bQ6vT1yH5cR9mD3fL7'
-SQL_SECRET='Xq8Tz3LmPw'
+SQL_SECRET='sql-pw-Xq8Tz3LmPw'
 SQL_URL="mysql+pymysql://kerbside:pw%25${SQL_SECRET}@db.example.com/kerbside"
 [ "${#SEED}" -eq 32 ] || fail "the test seed is ${#SEED} characters, not 32"
 SECRETS=("${SYSTEM_KEY}" "${SF2_KEY}" "${OVIRT_PASSWORD}" "${OPENSTACK_PASSWORD}"
-    "${PROXMOX_TOKEN_SECRET}" "${STATIC_TICKET}" "${SEED}" "${SEED:0:31}"
+    "${PROXMOX_TOKEN_SECRET}" "${STATIC_TICKET}" "${KEYSTONE_PASSWORD}" "${SEED}" "${SEED:0:31}"
     "${SQL_SECRET}")
 
 SF_CA_FILE="${WORK}/certs/sf-ca-cert.pem"
@@ -306,6 +323,16 @@ files = {
         'kerbside_url': '',
         'kerbside_sources': [ovirt, static],
     },
+    # One source of a single type, to see which client libraries bootstrap
+    # installs for it.
+    'ovirt-only.json': {
+        'kerbside_url': '',
+        'kerbside_sources': [ovirt],
+    },
+    'openstack-only.json': {
+        'kerbside_url': '',
+        'kerbside_sources': [openstack],
+    },
     'shakenfist.json': {
         'kerbside_sources': [sf_source(
             'sf', 'http://localhost:13000', env['SYSTEM_KEY'],
@@ -346,6 +373,8 @@ for name, content in files.items():
 PYEOF
 MULTI_VARS="${WORK}/vars/multi.json"
 NO_SF_VARS="${WORK}/vars/no-sf.json"
+OVIRT_ONLY_VARS="${WORK}/vars/ovirt-only.json"
+OPENSTACK_ONLY_VARS="${WORK}/vars/openstack-only.json"
 SF_VARS="${WORK}/vars/shakenfist.json"
 
 # role_playbook NAME ENTRY_POINT [REPORT...]: a playbook which runs one of
@@ -524,6 +553,50 @@ case_2_valid() {
         "$(write_vars sources-undeclared-key '{"kerbside_sources": [
           {"source": "s", "type": "static", "surprise": "x", "consoles": []}]}')"
 
+    # bootstrap looks every configured type up in the two client mappings
+    # and reads package and directory off each entry, so each of these
+    # would otherwise be a Jinja error in the middle of a deploy (#602).
+    CURRENT_CASE='case 2: validate refuses a source type the role has no client libraries for'
+    validate_fails 'has sources of type\(s\) shakenfist, which kerbside_source_client_packages or' \
+        "$(write_vars clients-missing-type '{"kerbside_source_client_packages": {
+          "ovirt": [], "openstack": [], "proxmox": [], "static": []}}')"
+    assert_validate_refused
+
+    CURRENT_CASE='case 2: validate refuses a client library entry without a directory'
+    validate_fails 'maps the source type shakenfist, which kerbside_sources uses' \
+        "$(write_vars clients-no-directory '{"kerbside_source_client_packages": {
+          "shakenfist": [{"package": "shakenfist-client"}],
+          "ovirt": [], "openstack": [], "proxmox": [], "static": []}}')"
+    assert_validate_refused
+
+    CURRENT_CASE='case 2: validate refuses a source type mapped to a string'
+    validate_fails 'maps the source type shakenfist, which kerbside_sources uses' \
+        "$(write_vars clients-string '{"kerbside_source_client_packages": {
+          "shakenfist": "shakenfist-client",
+          "ovirt": [], "openstack": [], "proxmox": [], "static": []}}')"
+    assert_validate_refused
+
+    # The empty string iterates nothing, so the count of entries with a
+    # package and a directory agrees with it: refused by type instead.
+    CURRENT_CASE='case 2: validate refuses a source type mapped to an empty string'
+    validate_fails 'maps the source type shakenfist, which kerbside_sources uses' \
+        "$(write_vars clients-empty-string '{"kerbside_source_client_packages": {
+          "shakenfist": "",
+          "ovirt": [], "openstack": [], "proxmox": [], "static": []}}')"
+    assert_validate_refused
+
+    CURRENT_CASE='case 2: validate refuses a login client library entry without a directory'
+    validate_fails 'kerbside_login_client_packages.*directory' \
+        "$(write_vars login-no-directory '{"kerbside_login_client_packages": [
+          {"package": "keystoneauth1"}]}')"
+
+    # The variable the per-type mapping replaced: set, it would be ignored,
+    # and the deploy would install a client the operator did not ask for.
+    CURRENT_CASE='case 2: validate refuses kerbside_client_package, which the role no longer reads'
+    validate_fails 'kerbside_client_package is set on localhost, but the role no longer reads it' \
+        "$(write_vars client-package-removed '{"kerbside_client_package": "shakenfist-client==0.8.3"}')"
+    assert_validate_refused
+
     CURRENT_CASE='case 2: validate passes no kerbside_url without a Shaken Fist source'
     VERBOSITY=-vvv validate_passes "${NO_SF_VARS}"
 }
@@ -631,7 +704,7 @@ case_6_partial_overrides() {
 
 case_7_sources() {
     # Every type's required fields, each source lacking all of them, so each
-    # is named. The values are not secrets; case 18 searches for those. Each
+    # is named. The values are not secrets; case 19 searches for those. Each
     # case records its type in field_types, checked against the role's own
     # list below rather than trusted to this comment.
     local field_types=()
@@ -693,7 +766,7 @@ case_7_sources() {
 
     # The argument specs declare consoles a list of mappings, so that a
     # ticket can be no_log alone, and refuse any other shape before the
-    # checker sees it, without printing it (case 18).
+    # checker sees it, without printing it (case 19).
     CURRENT_CASE="case 7a: validate refuses a static source's consoles which is not a list"
     VERBOSITY=-vvv validate_fails "argument 'consoles' is of type dict found in 'kerbside_sources'" \
         "$(write_vars consoles-mapping "{\"kerbside_sources\": [{\"source\": \"b\",
@@ -716,7 +789,7 @@ case_7_sources() {
         'source 1: type is missing, or is not non-empty text'
 
     # The argument specs refuse an entry which is not a mapping, before the
-    # checker sees it, and without printing it (case 18).
+    # checker sees it, and without printing it (case 19).
     CURRENT_CASE='case 7b: validate refuses a source which is not a mapping'
     VERBOSITY=-vvv validate_fails "Elements value for option 'kerbside_sources' is of type str" \
         "$(write_vars not-mapping "{\"kerbside_sources\": [\"ticket ${STATIC_TICKET}\"]}")"
@@ -757,7 +830,7 @@ case_7_sources() {
         'source 0: password is not text' 'source 1 console 0: ticket is not text'
 
     # The same checks, with secrets in every other source and at -vvv, for
-    # case 18: a refusal must name positions, never print a value.
+    # case 19: a refusal must name positions, never print a value.
     CURRENT_CASE='case 7g: a refusal among secret-bearing sources names only positions'
     local multi_plus_dup
     multi_plus_dup="$("${PY}" -c '
@@ -1031,7 +1104,7 @@ case_12_refused_render() {
     CURRENT_CASE='case 12b: a sources.yaml the checker refuses is not written'
     # config does not run validate's checks, so the write is the last line of
     # defence. The other sources carry secrets, which the refusal must not
-    # print (case 18).
+    # print (case 19).
     # The static source is the one corrupted, as it was before the fixture
     # grew: it is the only one with no source-level password, though its
     # console ticket is still one of SECRETS, so the refusal is held to
@@ -1265,6 +1338,12 @@ with open(sys.argv[1], 'w') as f:
         'kerbside_file_group': env['GROUP_NAME'],
     }, f, indent=2)
 PYEOF2
+EXTRA_SETTINGS_VARS="$(write_vars extra-settings "{\"kerbside_extra_settings\": {
+  \"log_verbose\": true, \"console_token_duration\": 120,
+  \"keystone_auth_url\": \"https://keystone.example.com:5000/v3\",
+  \"keystone_service_auth_user\": \"kerbside\",
+  \"keystone_service_auth_password\": \"${KEYSTONE_PASSWORD}\"}}")"
+
 STATIC_ONLY_VARS="$(write_vars static-only \
     '{"kerbside_sources": [{"source": "lab", "type": "static", "consoles": []}]}')"
 
@@ -1290,6 +1369,15 @@ installed_lacks() {
     if grep -qxF -- "$1" "${WORK}/uv-install-args"; then
         fail "bootstrap installed $1"
     fi
+}
+
+# restart_decision: what register's own report said about restarting on the
+# last run, lower cased, or the empty string if it did not report.
+restart_decision() {
+    local decision
+    decision="$(sed -n 's/.*restart_needed=\([A-Za-z]*\) .*/\1/p' \
+        "${LAST_LOG}" | tail -1)"
+    printf '%s' "${decision,,}"
 }
 
 # code_hash_step DESCRIPTION same|new EDIT...: run the command EDIT, then
@@ -1328,7 +1416,7 @@ case_15_bootstrap_code_hash() {
     SEEN_CODE_HASHES=("${CODE_HASH}")
     installed_has 'kerbside>=0.7.0'
     installed_has gunicorn
-    installed_has shakenfist-client
+    installed_has 'shakenfist-client>=0.8.3'
 
     code_hash_step 'a rerun' same :
     code_hash_step 'uv listing packages in another order' same \
@@ -1380,13 +1468,48 @@ case_15_bootstrap_code_hash() {
     CURRENT_CASE="case 15: bootstrap neither installs nor needs the client without a Shaken Fist source"
     run_bootstrap "${STATIC_ONLY_VARS}" || fail 'bootstrap failed without shakenfist_client'
     [ -n "${CODE_HASH}" ] || fail 'bootstrap did not report a code hash'
-    installed_lacks shakenfist-client
+    installed_lacks 'shakenfist-client>=0.8.3'
     installed_has 'kerbside>=0.7.0'
     local without_client="${CODE_HASH}"
     mv "${WORK}/shakenfist_client.moved" "${BSITE}/shakenfist_client"
     run_bootstrap "${STATIC_ONLY_VARS}" || fail 'bootstrap failed'
     [ "${CODE_HASH}" = "${without_client}" ] \
         || fail 'an installed client changed the hash although no source needs it'
+
+    # Each source type's own client libraries, and only those: a deployment
+    # which serves no oVirt does not build its SDK (#602). The stub
+    # virtualenv has to carry each client's directory, because bootstrap
+    # hashes it -- which is what proves the client landed.
+    local client
+    for client in ovirtsdk4 openstack keystoneauth1 keystoneclient; do
+        mkdir -p "${BSITE}/${client}"
+        echo "${client} stub" > "${BSITE}/${client}/__init__.py"
+    done
+
+    CURRENT_CASE="case 15: bootstrap installs an oVirt source's client"
+    run_bootstrap "${OVIRT_ONLY_VARS}" || fail 'bootstrap failed for an oVirt source'
+    [ -n "${CODE_HASH}" ] || fail 'bootstrap did not report a code hash'
+    installed_has 'ovirt-engine-sdk-python>=4.6.1'
+    installed_lacks 'shakenfist-client>=0.8.3'
+    installed_lacks openstacksdk
+
+    CURRENT_CASE="case 15: bootstrap installs an OpenStack source's clients"
+    run_bootstrap "${OPENSTACK_ONLY_VARS}" || fail 'bootstrap failed for an OpenStack source'
+    [ -n "${CODE_HASH}" ] || fail 'bootstrap did not report a code hash'
+    installed_has openstacksdk
+    installed_has keystoneauth1
+    installed_has python-keystoneclient
+    installed_lacks 'ovirt-engine-sdk-python>=4.6.1'
+    installed_lacks 'shakenfist-client>=0.8.3'
+
+    CURRENT_CASE="case 15: bootstrap fails when an oVirt source's client is missing"
+    mv "${BSITE}/ovirtsdk4" "${WORK}/ovirtsdk4.moved"
+    if run_bootstrap "${OVIRT_ONLY_VARS}"; then
+        fail 'bootstrap succeeded although ovirtsdk4 is not installed'
+    fi
+    mv "${WORK}/ovirtsdk4.moved" "${BSITE}/ovirtsdk4"
+    [ -z "${CODE_HASH}" ] \
+        || fail 'bootstrap reported a code hash although a client is missing'
 }
 
 # make_wheel PATH CONTENT: a stand-in wheel at PATH, a zip file holding the
@@ -1435,7 +1558,7 @@ case_16_local_wheels() {
     done
     installed_lacks 'kerbside>=0.7.0'
     installed_has gunicorn
-    installed_has shakenfist-client
+    installed_has 'shakenfist-client>=0.8.3'
     grep -qx 'kerbside wheel 1' "${BSITE}/kerbside/db.py" \
         || fail 'the kerbside wheel was not installed'
     grep -qx 'kerbside-proxy wheel 1' "${BVENV}/bin/kerbside-proxy" \
@@ -1474,20 +1597,30 @@ case_16_local_wheels() {
 
 # The readiness check's runuser, a stub on PATH: it records its arguments,
 # one a line, and answers as kerbside-ready.py would for keys fetched a
-# minute from now, so the first check passes.
+# minute from now whose set can verify a token, so the first check passes.
+# A case which wants another answer writes it to ${WORK}/ready-output, one
+# line, and removes it afterwards.
 STUB_BIN="${WORK}/stub-bin"
 mkdir -p "${STUB_BIN}"
 cat > "${STUB_BIN}/runuser" << EOF
 #!/bin/sh
 printf '%s\n' "\$@" > '${WORK}/runuser-args'
-echo "{\"errored\": false, \"fetched_at\": \$((\$(date +%s) + 60))}"
+if [ -f '${WORK}/ready-output' ]; then
+    cat '${WORK}/ready-output'
+else
+    echo "{\"errored\": false, \"fetched_at\": \$((\$(date +%s) + 60)), \"keys_usable\": true}"
+fi
 EOF
 chmod +x "${STUB_BIN}/runuser"
 
 # run_register [extra vars file...]: register without the migration and the
-# units, against the stub runuser. Returns its status.
+# units, against the stub runuser. Returns its status. The deployed-state
+# marker is removed first, so each case starts from a host which has never
+# reached readiness; KEEP_STATE=1 leaves it, which is how the restart
+# decision and the marker itself are exercised.
 run_register() {
-    rm -f "${WORK}/runuser-args" "${STATE}/.deployed-state.sha256"
+    [ -n "${KEEP_STATE:-}" ] || rm -f "${STATE}/.deployed-state.sha256"
+    rm -f "${WORK}/runuser-args"
     local rc=0
     PATH="${STUB_BIN}:${PATH}" ANSIBLE_SKIP_TAGS=kerbside-database,kerbside-services \
         run_ansible "${WORK}/register.yml" \
@@ -1514,10 +1647,206 @@ case_17_readiness() {
     assert_output_has 'No source is of type shakenfist, so there are no console token signing'
     grep -qx 'desired-state-1' "${STATE}/.deployed-state.sha256" \
         || fail 'register did not record the desired state once ready'
+
+    # A fetch is not proof that the fetched keys could verify a token: the
+    # document Shaken Fist published may not carry the kid it signs with,
+    # and then every console token is rejected while the deploy passes
+    # (#620). Each of these is a fetch this deploy would have accepted.
+    local fetched
+    fetched="$(($(date +%s) + 60))"
+
+    CURRENT_CASE='case 17: register refuses a fetched key set which cannot verify a token'
+    echo "{\"errored\": false, \"fetched_at\": ${fetched}, \"keys_usable\": false}" \
+        > "${WORK}/ready-output"
+    if run_register "${MULTI_VARS}"; then
+        fail 'register succeeded although a stored key set cannot verify a token'
+    fi
+    assert_output_has 'cannot verify a console token minted now'
+    # And says false, not null: the two have different remedies, and a
+    # default which forgave every falsy value once made them one.
+    assert_output_has 'keys_usable=False'
+    [ ! -e "${STATE}/.deployed-state.sha256" ] \
+        || fail 'register recorded the desired state although the keys are unusable'
+
+    CURRENT_CASE='case 17: register refuses a key set it could not judge'
+    echo "{\"errored\": false, \"fetched_at\": ${fetched}, \"keys_usable\": null}" \
+        > "${WORK}/ready-output"
+    if run_register "${MULTI_VARS}"; then
+        fail 'register succeeded although no key set was judged'
+    fi
+    assert_output_has 'keys_usable=null'
+
+    # The restart decision, and the marker it reads, were exercised by no
+    # rootless case: every run started by deleting the marker and the
+    # services tag was skipped, so register was only ever seen deciding to
+    # restart a host which had never deployed (#625). The services
+    # themselves still need the nightly lane; what is covered here is the
+    # decision and the record it rests on.
+    CURRENT_CASE='case 17: register restarts a host which has never reached readiness'
+    rm -f "${WORK}/ready-output"
+    run_register "${MULTI_VARS}" || fail 'register failed'
+    [ "$(restart_decision)" = true ] \
+        || fail "register decided restart_needed=$(restart_decision) with no recorded state"
+    grep -qx 'desired-state-1' "${STATE}/.deployed-state.sha256" \
+        || fail 'register did not record the desired state once ready'
+
+    CURRENT_CASE='case 17: register restarts nothing when the recorded state is the desired one'
+    KEEP_STATE=1 run_register "${MULTI_VARS}" || fail 'register failed'
+    [ "$(restart_decision)" = false ] \
+        || fail "register decided restart_needed=$(restart_decision) for an unchanged deployment"
+    grep -qx 'desired-state-1' "${STATE}/.deployed-state.sha256" \
+        || fail 'register changed the recorded state although nothing changed'
+
+    CURRENT_CASE='case 17: register restarts when the desired state has changed'
+    KEEP_STATE=1 run_register "${MULTI_VARS}" \
+        "$(write_vars register-changed '{"kerbside_desired_state": "desired-state-2"}')" \
+        || fail 'register failed'
+    [ "$(restart_decision)" = true ] \
+        || fail "register decided restart_needed=$(restart_decision) for a changed desired state"
+    grep -qx 'desired-state-2' "${STATE}/.deployed-state.sha256" \
+        || fail 'register did not record the new desired state'
+
+    # The marker is what the decision rests on, so a deploy which never
+    # reaches readiness must leave it alone: otherwise the next deploy reads
+    # it, decides nothing changed, and leaves Kerbside running old code.
+    CURRENT_CASE='case 17: register records nothing when the readiness wait fails'
+    echo '{"errored": false, "fetched_at": 1.0, "keys_usable": true}' \
+        > "${WORK}/ready-output"
+    if KEEP_STATE=1 run_register "${MULTI_VARS}" \
+        "$(write_vars register-unreached '{"kerbside_desired_state": "desired-state-3"}')"
+    then
+        fail 'register succeeded although the keys were never fetched'
+    fi
+    grep -qx 'desired-state-2' "${STATE}/.deployed-state.sha256" \
+        || fail 'register recorded a desired state it never reached readiness for'
+    rm -f "${WORK}/ready-output"
+
+    CURRENT_CASE='case 17: register reads a readiness answer it cannot parse as not ready'
+    echo '{"errored": false, "fetched_at": 1, "keys_usable": true, "unexpected": 1}' \
+        > "${WORK}/ready-output"
+    if run_register "${MULTI_VARS}"; then
+        fail 'register succeeded although the readiness check answered something else'
+    fi
+    assert_output_has 'did not fetch the console token signing keys'
+    rm -f "${WORK}/ready-output"
 }
 
-case_18_secrets() {
-    CURRENT_CASE='case 18: no secret reaches the ansible output'
+case_18_extra_settings() {
+    # kerbside.ini carried the fifteen settings the role writes from its own
+    # variables and nothing else, so a role-deployed Kerbside could not be
+    # given a Keystone login, a firewall mode or verbose logging at all
+    # (#629). kerbside_extra_settings carries the rest, and each way of
+    # getting one wrong is refused somewhere.
+    CURRENT_CASE='case 18: validate refuses an extra setting the role writes itself'
+    validate_fails 'sets public_fqdn, sql_url, which the role writes into kerbside.ini itself' \
+        "$(write_vars extra-owned '{"kerbside_extra_settings": {
+          "sql_url": "mysql://x/y", "public_fqdn": "elsewhere.example.com",
+          "log_verbose": true}}')"
+    assert_validate_refused
+
+    CURRENT_CASE='case 18: validate refuses an extra setting which is not an INI key'
+    validate_fails 'name\(s\) KEYSTONE_AUTH_URL, log-verbose, which are not Kerbside INI keys' \
+        "$(write_vars extra-malformed '{"kerbside_extra_settings": {
+          "log-verbose": true, "KEYSTONE_AUTH_URL": "https://k.example.com"}}')"
+    assert_validate_refused
+
+    # YAML, not JSON, whose keys are always strings: an unquoted 80 is a
+    # number and an unquoted true a boolean, which reached the name check
+    # as themselves and failed it with a Jinja error, not its message.
+    CURRENT_CASE='case 18: validate refuses an extra setting whose name is not text'
+    validate_fails 'name\(s\) 80, True, which are not Kerbside INI keys' \
+        "$(write_vars extra-not-text-key '{kerbside_extra_settings: {
+          80: x, true: x, log_verbose: true}}')"
+    assert_validate_refused
+
+    CURRENT_CASE='case 18: validate refuses an extra setting with no value'
+    validate_fails 'sets keystone_auth_url to nothing at all' \
+        "$(write_vars extra-null '{"kerbside_extra_settings": {
+          "keystone_auth_url": null, "log_verbose": true}}')"
+    assert_validate_refused
+
+    # Rendered, each would be one well-formed INI line naming a real
+    # setting, or more than one, so only validate can refuse them.
+    CURRENT_CASE='case 18: validate refuses an extra setting which is a list or a mapping'
+    validate_fails 'sets firewall_permitted_channels, log_verbose to something other than one line of text' \
+        "$(write_vars extra-not-scalar '{"kerbside_extra_settings": {
+          "firewall_permitted_channels": ["main", "display"],
+          "log_verbose": {"on": true}, "console_token_duration": 120}}')"
+    assert_validate_refused
+
+    CURRENT_CASE='case 18: validate refuses an extra setting with a line break in it'
+    validate_fails 'sets firewall_mode, log_verbose to something other than one line of text' \
+        "$(write_vars extra-multiline '{"kerbside_extra_settings": {
+          "firewall_mode": "permissive\nlog_verbose = true",
+          "log_verbose": "true\r", "console_token_duration": 120}}')"
+    assert_validate_refused
+
+    CURRENT_CASE='case 18: validate passes settings Kerbside has'
+    VERBOSITY=-vvv validate_passes "${EXTRA_SETTINGS_VARS}"
+
+    CURRENT_CASE='case 18: config writes them after its own settings'
+    VERBOSITY=-vvv config_passes "${EXTRA_SETTINGS_VARS}"
+    local out
+    out="$(KEYSTONE_PASSWORD="${KEYSTONE_PASSWORD}" "${PY}" - "${CONF}/kerbside.ini" << 'INNER_EOF' 2>&1
+import configparser
+import os
+import sys
+
+path = sys.argv[1]
+parser = configparser.ConfigParser(interpolation=None)
+if parser.read(path) != [path]:
+    sys.exit('kerbside.ini could not be read')
+options = parser.options('kerbside')
+values = {k: parser.get('kerbside', k) for k in options}
+expected = {
+    'log_verbose': 'True',
+    'console_token_duration': '120',
+    'keystone_auth_url': 'https://keystone.example.com:5000/v3',
+    'keystone_service_auth_user': 'kerbside',
+    'keystone_service_auth_password': os.environ['KEYSTONE_PASSWORD'],
+}
+for key, want in expected.items():
+    if values.get(key) != want:
+        sys.exit(f'{key} reads back as {values.get(key)!r}, not {want!r}')
+# The role's own settings are still there, and still first: later wins in
+# configparser, so an extra setting must not be able to shadow one.
+if 'sql_url' not in values:
+    sys.exit('the role stopped writing its own settings')
+if options.index('sql_url') > options.index('log_verbose'):
+    sys.exit("the extra settings are written before the role's own")
+if len(options) != len(set(options)):
+    sys.exit('kerbside.ini writes an option twice')
+INNER_EOF
+)" || fail "${out}"
+
+    CURRENT_CASE='case 18: config refuses a setting Kerbside does not have'
+    # Rendered, then refused by the check kerbside.ini is held to, so the
+    # running file stays: Kerbside ignores an unknown setting rather than
+    # refusing it, which would make a misspelling do nothing in silence.
+    config_fails 'kerbside.ini refused: log_verbos is not one of' \
+        "$(write_vars extra-unknown '{"kerbside_extra_settings": {
+          "log_verbos": true}}')"
+
+    CURRENT_CASE='case 18: bootstrap installs the login clients for a Keystone login'
+    local client
+    for client in keystoneauth1 keystoneclient; do
+        mkdir -p "${BSITE}/${client}"
+        echo "${client} stub" > "${BSITE}/${client}/__init__.py"
+    done
+    install_stub_code
+    run_bootstrap "${EXTRA_SETTINGS_VARS}" || fail 'bootstrap failed with a Keystone login'
+    installed_has keystoneauth1
+    installed_has python-keystoneclient
+    installed_lacks openstacksdk
+
+    CURRENT_CASE='case 18: bootstrap installs no login client without one'
+    run_bootstrap || fail 'bootstrap failed'
+    installed_lacks keystoneauth1
+    installed_lacks python-keystoneclient
+}
+
+case_19_secrets() {
+    CURRENT_CASE='case 19: no secret reaches the ansible output'
     LAST_LOG=''
     # Prove the verbose runs happened, with every source type, or their
     # absence of secrets proves nothing.
@@ -1552,6 +1881,7 @@ case_14_shakenfist_deployment
 case_15_bootstrap_code_hash
 case_16_local_wheels
 case_17_readiness
-case_18_secrets
+case_18_extra_settings
+case_19_secrets
 
-echo "kerbside role: all eighteen cases passed (${RUNS} ansible runs, $((SECONDS - START))s)"
+echo "kerbside role: all nineteen cases passed (${RUNS} ansible runs, $((SECONDS - START))s)"

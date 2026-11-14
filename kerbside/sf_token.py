@@ -88,10 +88,16 @@ def expected_audience():
     """The 'aud' claim value this kerbside deployment accepts.
 
     SF_CONSOLE_TOKEN_AUDIENCE overrides; empty derives it from PUBLIC_FQDN.
-    Must equal Shaken Fist's KERBSIDE_URL.
+    Must equal Shaken Fist's KERBSIDE_URL, which Shaken Fist normalises
+    before it mints: external_api/instance.py builds both the proxy URL
+    and the audience from KERBSIDE_URL.rstrip('/'), because the audience
+    is compared here as a string. A trailing slash is therefore not a
+    difference Shaken Fist can express, and it is not one here either --
+    comparing verbatim meant a deployment configured with one accepted no
+    token at all, while every check a deploy makes still passed (#620).
     """
     if config.SF_CONSOLE_TOKEN_AUDIENCE:
-        return config.SF_CONSOLE_TOKEN_AUDIENCE
+        return config.SF_CONSOLE_TOKEN_AUDIENCE.rstrip('/')
     return 'https://%s' % config.PUBLIC_FQDN
 
 

@@ -89,6 +89,197 @@
           | default('The check printed no reason.', true) }}
         quiet: true
 
+    # kerbside_extra_settings is written into kerbside.ini after the settings
+    # the role writes from its own variables, so a name in both would be
+    # written twice and configparser would silently keep the last. A name
+    # Kerbside has no setting for is refused on the host instead, by the
+    # check the render is held to: which settings exist is Kerbside's to say,
+    # and the control node may not have Kerbside installed (#629).
+    - name: Refuse an extra setting the role writes itself
+      ansible.builtin.assert:
+        that: kerbside_extra_settings_owned | length == 0
+        fail_msg: >-
+          kerbside_extra_settings on {{ inventory_hostname }} sets
+          {{ kerbside_extra_settings_owned | join(', ') }}, which the role
+          writes into kerbside.ini itself. Set {{ 'those' if
+          kerbside_extra_settings_owned | length > 1 else 'it' }} through the
+          role's own variables, listed in ansible/README.md, so that the rest
+          of the role sees the same value: the ports it opens, the certificate
+          it renders a subject from, and the audience it requires on a Shaken
+          Fist console token are all read from those variables too.
+        quiet: true
+      vars:
+        kerbside_extra_settings_owned: >-
+          {{ kerbside_extra_settings | select('in', kerbside_owned_ini_settings)
+             | sort | list }}
+
+    - name: Refuse an extra setting with no value
+      ansible.builtin.assert:
+        that: kerbside_extra_settings_null | length == 0
+        fail_msg: >-
+          kerbside_extra_settings on {{ inventory_hostname }} sets
+          {{ kerbside_extra_settings_null | join(', ') }} to nothing at all.
+          An undefined variable renders as the text None, which Kerbside
+          would read as the value of that setting, so this is refused rather
+          than written: it is almost always a vault variable or a lookup
+          which did not resolve. An empty string is allowed, for the
+          settings whose default is one.
+        quiet: true
+      vars:
+        kerbside_extra_settings_null: >-
+          {{ kerbside_extra_settings | dict2items
+             | selectattr('value', 'none') | map(attribute='key')
+             | map('string') | sort | list }}
+
+    # Each value is written as the text of one INI line, so it has to be
+    # something with one line of text to write, for the same reason as
+    # null above. A list or a mapping renders as its Python repr --
+    # firewall_permitted_channels: [main, display] would be written as
+    # ['main', 'display'], which a text setting accepts and the firewall
+    # then cannot parse -- and a line break ends the setting and starts
+    # another, or continues it, in a file configparser reads. The check
+    # on the host cannot see either: the name is real and the rendering
+    # is a well-formed INI file. A vault-encrypted value is text; ansible
+    # older than 2.19 types an inline !vault value as neither a string nor
+    # a number, so it is accepted by name, and the line break test reads
+    # every value as it renders rather than only the ones typed as strings.
+    - name: Refuse an extra setting whose value is not one line of text
+      ansible.builtin.assert:
+        that:
+          - kerbside_extra_settings_not_scalar | length == 0
+          - kerbside_extra_settings_multiline | length == 0
+        fail_msg: >-
+          kerbside_extra_settings on {{ inventory_hostname }} sets
+          {{ kerbside_extra_settings_not_one_line | join(', ') }}
+          to something other than one line of text, a number or a boolean: a
+          list or a mapping, which would be written into kerbside.ini as its
+          Python repr, or text with a line break in it, which would be
+          written as more than one INI line. Write the value as Kerbside's
+          configuration reference spells it, as a single line.
+        quiet: true
+      vars:
+        kerbside_extra_settings_not_scalar: >-
+          {{ kerbside_extra_settings | dict2items
+             | rejectattr('value', 'none') | rejectattr('value', 'string')
+             | rejectattr('value', 'number') | rejectattr('value', 'boolean')
+             | rejectattr('value', 'vault_encrypted')
+             | map(attribute='key') | map('string') | sort | list }}
+        kerbside_extra_settings_multiline: >-
+          {{ kerbside_extra_settings | dict2items | map(attribute='key')
+             | zip(kerbside_extra_settings | dict2items
+                   | map(attribute='value') | map('string'))
+             | selectattr('1', 'search', '[\r\n]') | map('first')
+             | map('string') | sort | list }}
+        kerbside_extra_settings_not_one_line: >-
+          {{ kerbside_extra_settings_not_scalar
+             | union(kerbside_extra_settings_multiline) | sort | list }}
+
+    # The keys are read as text, since YAML makes 80 a number and an
+    # unquoted on or true a boolean, and matching either would fail with a
+    # Jinja error rather than this message.
+    - name: Refuse an extra setting which is not an INI key
+      ansible.builtin.assert:
+        that: kerbside_extra_settings_malformed | length == 0
+        fail_msg: >-
+          kerbside_extra_settings on {{ inventory_hostname }} has the
+          name(s) {{ kerbside_extra_settings_malformed | join(', ') }}, which
+          are not Kerbside INI keys. A key is lower case, starts with a
+          letter, and holds only letters, digits and underscores: Kerbside
+          maps it to an environment variable by upper-casing it, so an upper
+          case name here is the same setting written twice, and configparser
+          would keep one of them.
+        quiet: true
+      vars:
+        kerbside_extra_settings_malformed: >-
+          {{ kerbside_extra_settings | map('string')
+             | reject('match', '^[a-z][a-z0-9_]*$') | sort | list }}
+
+    # bootstrap installs the client libraries the configured source types
+    # need by looking each type up in these two mappings, so a type missing
+    # from either would fail the lookup in the middle of a deploy, with a
+    # Jinja error naming neither the type nor what to do about it. Said here
+    # instead, on the control node, before any host is touched. A type which
+    # needs no client library is an empty list, which is a decision; absence
+    # is not (#602).
+    - name: Refuse a source type the role has no client libraries for
+      ansible.builtin.assert:
+        that:
+          - kerbside_source_types | difference(
+              kerbside_source_client_packages.keys() | list) | length == 0
+          - kerbside_source_types | difference(
+              kerbside_source_build_packages.keys() | list) | length == 0
+        fail_msg: >-
+          kerbside_sources on {{ inventory_hostname }} has sources of
+          type(s) {{ kerbside_source_types_unlisted | join(', ') }}, which
+          kerbside_source_client_packages or kerbside_source_build_packages
+          does not list. Kerbside supports the type, so this is the role
+          catching up with it: add the client libraries that type's driver
+          imports, or an empty list where it imports none.
+        quiet: true
+      vars:
+        kerbside_source_types_unlisted: >-
+          {{ kerbside_source_types | difference(
+               kerbside_source_client_packages.keys() | list)
+             | union(kerbside_source_types | difference(
+               kerbside_source_build_packages.keys() | list))
+             | sort | list }}
+
+    # bootstrap reads package and directory off every entry with
+    # map(attribute=...), so an entry missing either -- or a type mapped to
+    # something other than a list of them -- fails there, mid-deploy, with
+    # the same unhelpful Jinja error the check above exists to avoid.
+    # kerbside_login_client_packages is a list, so argument_specs holds its
+    # entries to this shape already; a mapping keyed by type cannot be
+    # described there, so these are checked here, for the configured types.
+    # A non-empty string or mapping fails the count, since none of what it
+    # iterates is a mapping; the other conditions are for what the count
+    # cannot see, since each iterates nothing: a value which is not iterable
+    # at all, the empty string, and {}.
+    - name: Refuse a client library entry without a package and a directory
+      ansible.builtin.assert:
+        that:
+          - kerbside_client_entries is sequence
+          - kerbside_client_entries is not string
+          - kerbside_client_entries is not mapping
+          - >-
+            kerbside_client_entries | select('mapping')
+            | selectattr('package', 'defined') | selectattr('package', 'string')
+            | selectattr('directory', 'defined') | selectattr('directory', 'string')
+            | list | length == kerbside_client_entries | length
+        fail_msg: >-
+          kerbside_source_client_packages on {{ inventory_hostname }} maps
+          the source type {{ item }}, which kerbside_sources uses, to
+          something other than a list of mappings each with a package (a
+          requirement or a wheel path) and a directory (the top-level
+          package it installs under site-packages, which bootstrap hashes to
+          prove it landed). Use an empty list for a type which needs no
+          client library.
+        quiet: true
+      loop: >-
+        {{ kerbside_source_types
+           | intersect(kerbside_source_client_packages.keys() | list) }}
+      vars:
+        kerbside_client_entries: "{{ kerbside_source_client_packages[item] }}"
+
+    # kerbside_client_package was the role's only client library variable
+    # until the libraries became per source type. Ansible does not refuse a
+    # variable nothing declares, so a deployment which pinned or redirected
+    # the Shaken Fist client with it would now get the default from PyPI and
+    # never be told: the deploy not doing what was asked, and not saying so.
+    - name: Refuse kerbside_client_package, which the role no longer reads
+      ansible.builtin.assert:
+        that: kerbside_client_package is not defined
+        fail_msg: >-
+          kerbside_client_package is set on {{ inventory_hostname }}, but the
+          role no longer reads it, so the Shaken Fist client it names would
+          not be the one installed. Move it into
+          kerbside_source_client_packages, as the package of the shakenfist
+          entry (whose directory is shakenfist_client), and remove it. That
+          variable replaces the whole default mapping, so copy the other
+          source types your kerbside_sources uses from the role's defaults
+          along with it.
+        quiet: true
+
     # A Shaken Fist cluster mints console tokens for the Kerbside at its
     # KERBSIDE_URL, and config renders kerbside_url as the audience Kerbside
     # accepts. Without a Shaken Fist source Kerbside verifies no such token,
