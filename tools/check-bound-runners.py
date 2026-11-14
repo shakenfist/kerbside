@@ -47,6 +47,17 @@ BIND_TOKEN_RE = re.compile(r'^bind-[0-9]+-[0-9]+-[a-z0-9-]+$')
 
 EXPRESSION_RE = re.compile(r'\$\{\{(.+?)\}\}')
 
+# The labels GitHub's runner adds of its own accord. config.sh is not
+# passed --no-default-labels, so every runner in the fleet advertises
+# these on top of what the provisioner asked for: confirmed against the
+# live org runner list, where each one reads
+# "self-hosted,Linux,X64,<configured labels>". They are part of what a
+# bound runner advertises, so a job asking only for them -- the likeliest
+# copy-paste out of GitHub's own documentation -- matches every bound
+# runner in the fleet. No arm64 runner exists; adding one means adding
+# its architecture label here.
+IMPLICIT_LABELS = {'self-hosted', 'linux', 'x64'}
+
 # Stand-ins for the two run-scoped values, which are digits at run time
 # and need no more than that for any check here.
 RUN_ID = '1'
@@ -70,8 +81,13 @@ def matrix_rows(job):
     then just the run-scoped ones.
     """
     matrix = (job.get('strategy') or {}).get('matrix') or {}
-    axes = {k: v for k, v in matrix.items()
-            if isinstance(v, list) and k not in ('include', 'exclude')}
+    for key in ('include', 'exclude'):
+        if key in matrix:
+            raise Unresolvable(
+                'matrix %s changes which rows exist and by how much '
+                'strategy.job-index moves, which this script does not '
+                'model' % key)
+    axes = {k: v for k, v in matrix.items() if isinstance(v, list)}
     if not axes:
         return [{}]
     if len(axes) > 1:
@@ -125,7 +141,11 @@ def labels_of(job):
 def read_jobs(workflow_dir):
     """Every job in every workflow, as (path, job_id, job) tuples."""
     jobs = []
-    for path in sorted(pathlib.Path(workflow_dir).glob('*.yml')):
+    directory = pathlib.Path(workflow_dir)
+    # GitHub honours both extensions, so a .yaml workflow must not be
+    # able to hold a bound job this script never reads.
+    paths = sorted(list(directory.glob('*.yml')) + list(directory.glob('*.yaml')))
+    for path in paths:
         document = yaml.safe_load(path.read_text()) or {}
         for job_id, job in (document.get('jobs') or {}).items():
             if isinstance(job, dict):
@@ -138,7 +158,7 @@ def declared_labels(actionlint_path):
     document = yaml.safe_load(
         pathlib.Path(actionlint_path).read_text()) or {}
     runner = document.get('self-hosted-runner') or {}
-    return set(runner.get('labels') or [])
+    return _casefold(runner.get('labels') or [])
 
 
 def check(workflow_dir, actionlint_path):
@@ -170,26 +190,30 @@ def check(workflow_dir, actionlint_path):
 
     for where in bound:
         tokens = [label for label in written[where]
-                  if label.startswith(BIND_PREFIX)]
+                  if label.casefold().startswith(BIND_PREFIX)]
         if len(tokens) != 1:
             problems.append(
                 '%s: a bound job needs exactly one bind- label, not %d. '
                 'Without it the job matches every runner in its pool and '
                 'is not bound at all.' % (where, len(tokens)))
-        if 'self-hosted' not in written[where]:
+        if 'self-hosted' not in _casefold(written[where]):
             problems.append(
                 '%s: a bound job must still name self-hosted.' % where)
         for label in sorted(written[where]):
-            if (label.startswith(BOUND_PREFIX)
+            if (label.casefold().startswith(BOUND_PREFIX)
                     and not EXPRESSION_RE.search(label)
-                    and label not in declared):
+                    and label.casefold() not in declared):
                 problems.append(
                     '%s: label %r is not declared in %s, so actionlint '
                     'fails the workflow.'
                     % (where, label, pathlib.Path(actionlint_path).name))
         for row in rendered[where] or []:
             for label in sorted(row):
-                if (label.startswith(BIND_PREFIX)
+                # Matched as written, not casefolded: the provisioner's
+                # grammar is case-sensitive even though GitHub's
+                # scheduling is not, so Bind-1-1-lane is a malformed
+                # binding rather than a working one.
+                if (label.casefold().startswith(BIND_PREFIX)
                         and not BIND_TOKEN_RE.match(label)):
                     problems.append(
                         '%s: token %r is not bind-<run_id>-<attempt>-'
@@ -202,11 +226,12 @@ def check(workflow_dir, actionlint_path):
     # tokens collide, which the next check covers.
     for where in bound:
         for row in rendered[where] or []:
+            advertised = {label.casefold() for label in row} | IMPLICIT_LABELS
             for other in sorted(written):
                 if other == where or not written[other]:
                     continue
                 if rendered[other] is None:
-                    if _static(written[other]) <= row:
+                    if _casefold(_static(written[other])) <= advertised:
                         problems.append(
                             '%s names an expression this script cannot '
                             'expand, and the labels it does name are a '
@@ -215,7 +240,7 @@ def check(workflow_dir, actionlint_path):
                             'expression.' % (other, where))
                     continue
                 for other_row in rendered[other]:
-                    if other_row <= row:
+                    if _casefold(other_row) <= advertised:
                         problems.append(
                             '%s: labels %s are a subset of bound job '
                             '%s\'s, so GitHub can give it that job\'s '
@@ -229,7 +254,7 @@ def check(workflow_dir, actionlint_path):
         path = where.split(':', 1)[0]
         for row in rendered[where] or []:
             for label in sorted(row):
-                if not label.startswith(BIND_PREFIX):
+                if not label.casefold().startswith(BIND_PREFIX):
                     continue
                 owner = owners.setdefault((path, label), where)
                 if owner != where:
@@ -237,18 +262,30 @@ def check(workflow_dir, actionlint_path):
                         '%s and %s can both render token %r in one run, so '
                         'they compete for one runner and one of them '
                         'queues forever.' % (owner, where, label))
-    return problems
+    # A bound job with several matrix rows would otherwise report the
+    # same thief once per row.
+    return sorted(set(problems))
 
 
 def _is_bound(labels):
-    """Whether a job is asking to be bound, however badly."""
-    return any(label.startswith((BOUND_PREFIX, BIND_PREFIX))
+    """Whether a job is asking to be bound, however badly.
+
+    Case-insensitively, because GitHub matches labels that way: a job
+    naming Bound-Debian-13 and Bind-... is bound as far as scheduling is
+    concerned, and must not escape these checks over its spelling.
+    """
+    return any(label.casefold().startswith((BOUND_PREFIX, BIND_PREFIX))
                for label in labels)
 
 
 def _static(labels):
     """The labels that carry no expression, so are known as written."""
     return {label for label in labels if not EXPRESSION_RE.search(label)}
+
+
+def _casefold(labels):
+    """Labels as GitHub compares them, which is without regard to case."""
+    return {label.casefold() for label in labels}
 
 
 def main():

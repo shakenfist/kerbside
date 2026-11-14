@@ -162,6 +162,130 @@ jobs:
         self.assertEqual(1, len(problems), problems)
         self.assertIn('not an expression this script expands', problems[0])
 
+    def test_an_implicit_os_label_job_steals_the_runner(self):
+        # A self-hosted runner advertises self-hosted, Linux and X64
+        # whether or not the provisioner asked for them, so a job naming
+        # only those matches every bound runner in the fleet. This is the
+        # likeliest copy-paste out of GitHub's own documentation.
+        self._workflow('a.yml',
+                       'jobs:\n  lane:\n    runs-on: %s\n'
+                       '  thief:\n    runs-on: [self-hosted, Linux]\n'
+                       % BOUND)
+        problems = self._check()
+        self.assertEqual(1, len(problems), problems)
+        self.assertIn('a.yml:thief', problems[0])
+        self.assertIn('subset of bound job', problems[0])
+
+    def test_label_matching_ignores_case(self):
+        self._workflow('a.yml',
+                       'jobs:\n  lane:\n    runs-on: %s\n'
+                       '  thief:\n    runs-on: [Self-Hosted, X64]\n'
+                       % BOUND)
+        problems = self._check()
+        self.assertEqual(1, len(problems), problems)
+        self.assertIn('a.yml:thief', problems[0])
+
+    def test_a_mixed_case_bound_job_is_still_checked(self):
+        # GitHub matches labels without regard to case, so a bound job
+        # spelled with capitals is bound as far as scheduling goes. It
+        # must not escape the checks over its spelling: here it has
+        # forgotten its token, which makes it a thief of every runner in
+        # its own pool.
+        self._workflow('a.yml',
+                       'jobs:\n  lane:\n    runs-on: %s\n'
+                       '  copied:\n'
+                       '    runs-on: [Self-Hosted, Bound-Debian-13, Bound-L]\n'
+                       % BOUND)
+        problems = '\n'.join(self._check())
+        self.assertIn('exactly one bind- label, not 0', problems)
+        self.assertIn('subset of bound job', problems)
+
+    def test_a_mixed_case_token_is_a_malformed_binding(self):
+        # The provisioner's grammar is case-sensitive even though
+        # GitHub's scheduling is not, so this job would be given a
+        # runner's labels to match and then never get one.
+        self._workflow('a.yml',
+                       'jobs:\n  lane:\n'
+                       '    runs-on: [self-hosted, bound-debian-13, bound-l,'
+                       ' "Bind-${{ github.run_id }}-'
+                       '${{ github.run_attempt }}-lane"]\n')
+        problems = self._check()
+        self.assertEqual(1, len(problems), problems)
+        self.assertIn('lowercase slug', problems[0])
+
+    def test_a_bound_job_with_capitals_is_protected_too(self):
+        # The other side of the same rule: when the bound job carries
+        # the capitals, a lowercase job that forgot its token is still a
+        # subset of what that runner advertises. A job carrying its own
+        # token is not, which is why this one has none -- two properly
+        # bound jobs never steal from each other.
+        self._workflow('a.yml',
+                       'jobs:\n  lane:\n'
+                       '    runs-on: [self-hosted, Bound-Debian-13, Bound-L,'
+                       ' "bind-${{ github.run_id }}-'
+                       '${{ github.run_attempt }}-lane"]\n'
+                       '  copied:\n'
+                       '    runs-on: [self-hosted, bound-debian-13,'
+                       ' bound-l]\n')
+        self.assertIn('subset of bound job', '\n'.join(self._check()))
+
+    def test_a_bound_job_must_still_name_self_hosted(self):
+        # A self-hosted runner advertises self-hosted whether the job
+        # asks for it or not, so omitting it still matches -- but it also
+        # stops being a statement that the job needs our fleet, and
+        # every other job here names it.
+        self._workflow('a.yml',
+                       'jobs:\n  lane:\n'
+                       '    runs-on: [bound-debian-13, bound-l,'
+                       ' "bind-${{ github.run_id }}-'
+                       '${{ github.run_attempt }}-lane"]\n')
+        problems = self._check()
+        self.assertEqual(1, len(problems), problems)
+        self.assertIn('must still name self-hosted', problems[0])
+
+    def test_a_yaml_workflow_is_read_too(self):
+        # GitHub honours both extensions, so a bound job in a .yaml file
+        # must not escape the checks.
+        self._workflow('a.yaml',
+                       'jobs:\n  lane:\n    runs-on: %s\n'
+                       '  thief:\n    runs-on: [self-hosted]\n' % BOUND)
+        self.assertIn('subset of bound job', '\n'.join(self._check()))
+
+    def test_matrix_include_is_reported_not_ignored(self):
+        self._workflow('a.yml', """
+jobs:
+  lane:
+    strategy:
+      matrix:
+        test: [{'name': 'alpha'}]
+        include:
+          - test: {'name': 'beta'}
+    runs-on: [self-hosted, bound-debian-13, bound-l, "bind-${{ github.run_id
+      }}-${{ github.run_attempt }}-${{ matrix.test.name }}-${{
+      strategy.job-index }}"]
+""")
+        problems = self._check()
+        self.assertEqual(1, len(problems), problems)
+        self.assertIn('matrix include', problems[0])
+
+    def test_one_thief_is_reported_once_per_bound_job(self):
+        # The theft check walks matrix rows, so a multi-row bound job
+        # would otherwise name the same thief once per row.
+        self._workflow('a.yml', """
+jobs:
+  lane:
+    strategy:
+      matrix:
+        test: [{'name': 'alpha'}, {'name': 'beta'}]
+    runs-on: [self-hosted, bound-debian-13, bound-l, "bind-${{ github.run_id
+      }}-${{ github.run_attempt }}-${{ matrix.test.name }}-${{
+      strategy.job-index }}"]
+  thief:
+    runs-on: [self-hosted]
+""")
+        problems = self._check()
+        self.assertEqual(1, len(problems), problems)
+
     def test_a_tree_with_no_bound_job_is_clean(self):
         self._workflow('a.yml',
                        'jobs:\n  pool:\n'
@@ -179,6 +303,13 @@ class RealTreeCase(testtools.TestCase):
         self.assertEqual([], problems)
 
     def test_the_bound_jobs_are_the_three_we_expect(self):
+        """A tripwire, not a rule.
+
+        Binding a fourth job is a fine thing to do; this test exists so
+        that doing it is a deliberate edit here, with docs/testing.md
+        and the actionlint declarations updated in the same change,
+        rather than something that happens by copy-paste.
+        """
         jobs = check_bound_runners.read_jobs(_ROOT / '.github' / 'workflows')
         bound = sorted(
             '%s:%s' % (path, job_id) for path, job_id, job in jobs

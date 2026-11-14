@@ -233,7 +233,18 @@ token that is rejected and a job that never gets a runner.
 `tools/check-bound-runners.py` asserts both invariants, along with the
 token grammar and the actionlint declarations, over every workflow in
 the tree; it runs as a unit test, so `tox -epy3` and the `sanity_checks`
-gate both enforce it.
+gate both enforce it. It compares labels the way GitHub schedules them
+— without regard to case, and counting the `self-hosted`, `Linux` and
+`X64` labels every self-hosted runner advertises whether or not it was
+asked to — because a job naming only those is a subset of every bound
+runner in the fleet.
+
+The token grammar in that script is a copy of the provisioner's, in
+private-ci's `conductor/binding.py`, and nothing detects drift between
+the two: if the provisioner's grammar changes without this one
+following, the checker passes tokens the provisioner now rejects and
+the symptom is a job queued for a day. A change to either is a change
+to both, in the same window.
 
 Adding a bound job means declaring its `bound-` labels in
 `.github/actionlint.yaml`, which actionlint requires of any

@@ -132,9 +132,13 @@ repos:
         # ansible/ and the host-subject fixture are here because
         # kerbside/tests/unit/test_ansible_role.py reads the role's
         # defaults, argument specs and host subject script, and the
-        # fixture it holds that script to.
+        # fixture it holds that script to. The workflows, the actionlint
+        # config and tools/check-bound-runners.py are here because
+        # kerbside/tests/unit/test_bound_runners.py reads all three, and
+        # a workflow edit is exactly when the bound-runner invariants
+        # break.
         files: >-
-          ^(kerbside/|tempest-plugin/|ansible/|tests/fixtures/host-subject-renderings\.json$)
+          ^(kerbside/|tempest-plugin/|ansible/|\.github/workflows/|\.github/actionlint\.yaml$|tools/check-bound-runners\.py$|tests/fixtures/host-subject-renderings\.json$)
         pass_filenames: false
         types_or: [python, yaml, json]
 
