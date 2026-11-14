@@ -932,3 +932,104 @@ class ConsoleTokenSecretsTestCase(testtools.TestCase):
             secret = set(row.export(include_secrets=True))
 
         self.assertEqual(set(db.CONSOLE_TOKEN_SECRET_FIELDS), secret - public)
+
+
+class AuditEventEscapingTestCase(testtools.TestCase):
+    """An audit message cannot forge a second event (issue #138).
+
+    The auditevents table cannot be created under sqlite, so the row is
+    captured at its constructor rather than read back.
+    """
+
+    @mock.patch.object(db, 'LOG')
+    @mock.patch.object(db, 'Session')
+    @mock.patch.object(db, 'AuditEvent')
+    def test_message_is_stored_and_logged_escaped(
+            self, mock_event, mock_session, mock_log):
+        db.add_audit_event(
+            'src', 'uuid', 'sess', 'main', 'node', 'pid',
+            'Authenticated as mikal\nAudit: Issued token to admin')
+
+        escaped = 'Authenticated as mikal\\nAudit: Issued token to admin'
+        mock_event.assert_called_once_with(
+            'src', 'uuid', 'sess', 'main', 'node', 'pid', escaped)
+        mock_log.info.assert_called_once_with('Audit: %s' % escaped)
+
+
+class AddConsoleTargetValidationTestCase(testtools.TestCase):
+    """add_console() refuses a connect target the proxy could not dial.
+
+    The values come from a source's management plane and become what the
+    proxy dials and the subject it checks the backend against (issue
+    #138), so they are checked before they are stored.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.engine = create_engine('sqlite://')
+        db.Base.metadata.create_all(
+            self.engine, tables=[db.Console.__table__])
+        engine_patch = mock.patch.object(db, 'ENGINE', self.engine)
+        engine_patch.start()
+        self.addCleanup(engine_patch.stop)
+
+    def _add(self, **overrides):
+        kwargs = {
+            'source': 'lab', 'uuid': 'console-1', 'hypervisor': 'hv1',
+            'hypervisor_ip': '10.0.0.1', 'insecure_port': 5900,
+            'secure_port': 5901, 'name': 'desktop', 'host_subject': 'CN=hv1',
+        }
+        kwargs.update(overrides)
+        return db.add_console(**kwargs)
+
+    def _stored(self):
+        with Session(self.engine) as session:
+            return session.query(db.Console).count()
+
+    def test_each_source_shape_is_accepted(self):
+        # What each driver yields today: oVirt leaves hypervisor empty,
+        # Proxmox leaves the address and ports out, a Shaken Fist
+        # instance may have no TLS port, and oVirt's display address
+        # override may put a name where an address usually is.
+        for i, overrides in enumerate([
+                {'hypervisor': ''},
+                {'hypervisor_ip': '', 'insecure_port': None, 'secure_port': None},
+                {'secure_port': None, 'host_subject': None},
+                {'hypervisor_ip': 'display.ovirt.example.com.'},
+                {'hypervisor_ip': 'fd00::1', 'hypervisor': 'node_7.lab'},
+                {'host_subject': 'OU=PVE Cluster Node,O=Proxmox Virtual Environment,CN=pve1'},
+                {'insecure_port': 1, 'secure_port': 65535}]):
+            self._add(uuid='console-%d' % i, **overrides)
+        self.assertEqual(7, self._stored())
+
+    def test_an_invalid_target_is_refused_and_not_stored(self):
+        for field, value in [
+                ('hypervisor', 'hv1\nhost=attacker.example.com'),
+                ('hypervisor', 'hv1 extra'),
+                ('hypervisor', '-hv1'),
+                ('hypervisor', 'a' * 64),
+                ('hypervisor_ip', '10.0.0.1:22'),
+                ('hypervisor_ip', 'http://attacker.example.com'),
+                ('hypervisor_ip', 5900),
+                ('insecure_port', 0),
+                ('insecure_port', 65536),
+                ('insecure_port', '5900'),
+                ('secure_port', -1),
+                ('secure_port', True),
+                ('host_subject', 'CN=hv1\nhost=attacker.example.com'),
+                ('host_subject', 'CN=hv1\x00'),
+                ('host_subject', 'CN=hv1 ')]:
+            e = self.assertRaises(
+                db.InvalidConsole, self._add, **{field: value})
+            self.assertEqual(field, e.field, repr(value))
+            # The message names the field, never the value.
+            self.assertNotIn(str(value), str(e))
+        self.assertEqual(0, self._stored())
+
+    def test_an_update_to_an_invalid_target_leaves_the_row(self):
+        self._add()
+        self.assertRaises(
+            db.InvalidConsole, self._add, hypervisor_ip='10.0.0.2\n')
+        with Session(self.engine) as session:
+            self.assertEqual(
+                '10.0.0.1', session.query(db.Console).one().hypervisor_ip)

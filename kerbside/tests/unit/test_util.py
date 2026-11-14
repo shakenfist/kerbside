@@ -91,3 +91,37 @@ class YAMLStringTestCase(testtools.TestCase):
             e = self.assertRaises(util.YAMLScalarError, util.yaml_string,
                                   value)
             self.assertNotIn('hunter2', str(e))
+
+
+class EscapeControlCharactersTestCase(testtools.TestCase):
+    """util.escape_control_characters() keeps one record to a line."""
+
+    def test_printable_text_is_unchanged(self):
+        for text in ['Discovered new console', 'Issued token to mikal',
+                     'Résumé — 日本語', '']:
+            self.assertEqual(text, util.escape_control_characters(text))
+
+    def test_line_breaks_are_escaped(self):
+        self.assertEqual(
+            'a\\nAudit: forged\\r\\tb',
+            util.escape_control_characters('a\nAudit: forged\r\tb'))
+
+    def test_other_control_characters_are_escaped(self):
+        self.assertEqual(
+            'nul\\x00 esc\\x1b del\\x7f nel\\x85',
+            util.escape_control_characters('nul\x00 esc\x1b del\x7f nel\x85'))
+
+    def test_unicode_line_separators_are_escaped(self):
+        self.assertEqual(
+            'a\\u2028b\\u2029c',
+            util.escape_control_characters('a b c'))
+
+    def test_a_literal_escape_is_not_mistaken_for_one(self):
+        # Without escaping the backslash, a message which arrived as the
+        # four characters a\nb would read back identically to one which
+        # arrived with a newline in it.
+        self.assertEqual(
+            'a\\\\nb', util.escape_control_characters('a\\nb'))
+        self.assertNotEqual(
+            util.escape_control_characters('a\\nb'),
+            util.escape_control_characters('a\nb'))

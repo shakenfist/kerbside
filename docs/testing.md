@@ -19,6 +19,14 @@ tox -e bindep   # OS dependency check
 `py3`, `flake8` and `cover` are the default `envlist`, so a bare `tox`
 runs all three.
 
+The `.vv` escaping is checked against a model of GKeyFile, the parser
+virt-viewer reads it with, everywhere. One test also checks it against
+GKeyFile itself, and skips unless the GLib introspection bindings
+(PyGObject) are importable. They are not a test dependency and the CI
+unit lane does not have them, so CI skips it. The `py3` tox environment
+uses system site packages, so installing the distribution's `python3-gi`
+is enough to run it locally.
+
 Test locations:
 
 - Unit tests: `kerbside/tests/unit/`

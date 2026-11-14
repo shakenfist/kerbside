@@ -6,6 +6,7 @@ import sys
 import tempfile
 import threading
 import time
+import unittest
 from unittest import mock
 import testtools
 
@@ -16,6 +17,14 @@ from kerbside import sf_token
 from kerbside.sources import base as source_base
 from kerbside.sources import minting
 from kerbside.sources import proxmox
+
+
+try:
+    import gi
+    gi.require_version('GLib', '2.0')
+    from gi.repository import GLib
+except (ImportError, ValueError):
+    GLib = None
 
 
 # A console uuid as the Proxmox VE driver gives one.
@@ -236,7 +245,7 @@ class SfTokenApiTestCase(testtools.TestCase):
         api.app.config['TESTING'] = True
         self.client = api.app.test_client()
 
-        # SfToken.get() unconditionally reads config.CACERT_PATH to embed in
+        # SfToken.get() reads config.CACERT_PATH when it is set, to embed in
         # the .vv; point it at a temp file so that read succeeds.
         cacert_file = tempfile.NamedTemporaryFile(
             mode='w', suffix='.pem', delete=False)
@@ -643,8 +652,8 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
         config_patch.start()
         self.addCleanup(config_patch.stop)
 
-        # The proxy handler reads the CA unconditionally, so it needs a
-        # real file where the direct handler is happy with None.
+        # A real file, for the tests which set CACERT_PATH; setUp leaves
+        # it unset, which every .vv handler tolerates.
         cacert = tempfile.NamedTemporaryFile(suffix='.pem', delete=False)
         cacert.write(b'CA-CERT-MARKER\n')
         cacert.close()
@@ -675,6 +684,21 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
                 ...
 
         return RecordingLog()
+
+    @mock.patch('kerbside.consoletoken.create_token',
+                return_value={'token': 'a-proxy-token', 'session_id': 'sess'})
+    def test_proxy_vv_without_a_configured_ca_has_no_ca_key(
+            self, mock_create_token):
+        # setUp leaves CACERT_PATH unset. The direct handler always
+        # tolerated that and the proxy handlers opened it regardless
+        # (issue #411), so the same deployment issued one kind of .vv
+        # and failed the other with a 500.
+        resp = self.client.get('/console/proxy/sf1/console-1/console.vv')
+
+        self.assertEqual(200, resp.status_code)
+        body = resp.get_data(as_text=True)
+        self.assertIn('password=a-proxy-token', body)
+        self.assertNotIn('\nca=', body)
 
     def test_direct_vv_does_not_log_the_password(self):
         resp = self.client.get('/console/direct/sf1/console-1/console.vv')
@@ -1012,6 +1036,51 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
         self.assertNotIn('late-ticket', resp.get_data(as_text=True))
 
     @mock.patch('kerbside.sources.ovirt.oVirtSource')
+    def test_ovirt_direct_vv_unreadable_ca_mints_nothing(self, mock_ovirt):
+        # Minting replaces the console's SPICE password, so the CA is read
+        # first: a deployment whose CA file is broken fails the request
+        # without having changed the password a session may be using.
+        self._ovirt_direct_console()
+        mock_ovirt.MINTS_TICKETS = True
+        mock_ovirt.return_value.errored = False
+        mock_ovirt.return_value.mint_console_ticket.return_value = (
+            source_base.MintedTicket('a-ticket', 0))
+
+        with mock.patch.object(
+                api.config, 'CACERT_PATH', '/nonexistent/ca-cert.pem'):
+            resp = self.client.get(
+                '/console/direct/ovirt1/console-2/console.vv')
+
+        self.assertEqual(500, resp.status_code)
+        mock_ovirt.return_value.mint_console_ticket.assert_not_called()
+
+    @mock.patch('kerbside.consoletoken.create_token',
+                return_value={'token': 'a-proxy-token', 'session_id': 'sess'})
+    def test_a_hostile_stored_name_adds_no_key_to_either_vv(
+            self, mock_create_token):
+        # A console's name is not a connect target, so add_console()
+        # stores it as its source reported it; the .vv routes' escaping
+        # is the only thing keeping it from adding a key (issue #661).
+        db.add_console(
+            source='sf1', uuid='console-9', hypervisor='hv1',
+            hypervisor_ip='10.0.0.1', insecure_port=5900, secure_port=5901,
+            name='desktop\nproxy=http://attacker.example.com:3128',
+            host_subject='CN=hv1')
+
+        for route in ('direct', 'proxy'):
+            resp = self.client.get(
+                '/console/%s/sf1/console-9/console.vv' % route)
+
+            self.assertEqual(200, resp.status_code, route)
+            values = VirtViewerFileTestCase._gkeyfile_values(
+                resp.get_data(as_text=True))
+            self.assertNotIn('proxy', values, route)
+            self.assertTrue(
+                values['title'].startswith(
+                    'desktop\nproxy=http://attacker.example.com:3128'),
+                route)
+
+    @mock.patch('kerbside.sources.ovirt.oVirtSource')
     def test_ovirt_direct_vv_errored_source_is_closed(self, mock_ovirt):
         self._ovirt_direct_console()
         mock_ovirt.MINTS_TICKETS = True
@@ -1091,6 +1160,25 @@ class NovaTokenInterfaceTestCase(testtools.TestCase):
         resp = self.client.get('/nova-console.vv?token=abc')
         self.assertEqual(500, resp.status_code)
         self.openstack.connection.Connection.assert_not_called()
+
+    @mock.patch('kerbside.api.consoletoken.create_token')
+    @mock.patch('kerbside.api.db.add_console',
+                side_effect=db.InvalidConsole('hypervisor'))
+    def test_an_invalid_connect_target_is_a_502(
+            self, mock_add_console, mock_create_token):
+        self._sources()
+        patch = mock.patch.object(api.config, 'CACERT_PATH', None)
+        patch.start()
+        self.addCleanup(patch.stop)
+        details = mock.MagicMock(instance_uuid='instance-1')
+        self.openstack.connection.Connection.return_value.compute.\
+            validate_console_auth_token.return_value = details
+
+        resp = self.client.get('/nova-console.vv?token=abc')
+
+        self.assertEqual(502, resp.status_code)
+        mock_add_console.assert_called_once()
+        mock_create_token.assert_not_called()
 
 
 class AuthAdminClaimTestCase(testtools.TestCase):
@@ -1544,3 +1632,182 @@ class KeystoneAuthVerifyTestCase(testtools.TestCase):
         resp = self._login()
         self.assertEqual(500, resp.status_code)
         self.assertIn('Keystone SSL error', resp.get_data(as_text=True))
+
+
+class VirtViewerFileTestCase(testtools.TestCase):
+    """Every .vv this API issues is rendered in one place (issue #411)."""
+
+    def setUp(self):
+        super().setUp()
+        for name, value in [
+                ('PUBLIC_FQDN', 'kerbside.example.com'),
+                ('PUBLIC_INSECURE_PORT', 5898),
+                ('PUBLIC_SECURE_PORT', 5899),
+                ('PROXY_HOST_SUBJECT', 'C=AU,O=Example,CN=Kerbside Proxy')]:
+            patch = mock.patch.object(api.config, name, value)
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def test_proxy_vv(self):
+        resp = api._proxy_vv_response(
+            {'token': 'a-token', 'session_id': 'sess-1'}, 'a desktop',
+            '-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n')
+
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual(
+            'application/x-virt-viewer;charset=UTF-8', resp.content_type)
+        self.assertEqual(
+            '[virt-viewer]\n'
+            'type=spice\n'
+            'host=kerbside.example.com\n'
+            'port=5898\n'
+            'tls-port=5899\n'
+            'password=a-token\n'
+            'delete-this-file=1\n'
+            'fullscreen=0\n'
+            'title=a desktop via proxy session ID sess-1\n'
+            'toggle-fullscreen=shift+f11\n'
+            'release-cursor=shift+f12\n'
+            'secure-attention=ctrl+alt+end\n'
+            'enable-smartcard=1\n'
+            'enable-usb-autoshare=1\n'
+            'usb-filter=-1,-1,-1,-1,0\n'
+            'tls-ciphers=DEFAULT\n'
+            'ca=-----BEGIN CERTIFICATE-----\\nAAAA\\n'
+            '-----END CERTIFICATE-----\\n\n'
+            'host-subject=C=AU,O=Example,CN=Kerbside Proxy\n',
+            resp.get_data(as_text=True))
+
+    def test_absent_values_leave_their_keys_out(self):
+        resp = api._vv_response(
+            'hv1', 5900, None, '', None, 'a desktop direct connection', '')
+
+        body = resp.get_data(as_text=True)
+        keys = [line.split('=', 1)[0] for line in body.splitlines()[1:]]
+        self.assertNotIn('tls-port', keys)
+        self.assertNotIn('ca', keys)
+        self.assertNotIn('host-subject', keys)
+        # An empty password is a value, not an absence: a source with no
+        # ticket still has the key, as it always has.
+        self.assertIn('password=\n', body)
+
+    def test_an_unknown_key_is_refused(self):
+        self.assertRaises(
+            ValueError, api._render_vv, {'proxy': 'http://elsewhere'})
+
+    # What a source's management plane may call a console, and so what
+    # reaches a .vv's title (issue #661). Each would have ended the value,
+    # started another key, or been read as an escape.
+    HOSTILE_NAMES = [
+        'desktop\nproxy=http://attacker.example.com:3128',
+        'desktop\r\nhost=attacker.example.com',
+        'C:\\Users\\desktop',
+        'trailing backslash \\',
+        ' leading space',
+        'tab\there',
+        'nul\x00and\x1bescape',
+    ]
+
+    @staticmethod
+    def _gkeyfile_values(body):
+        """Read a .vv the way GKeyFile does, without needing GLib.
+
+        Split into lines first, then unescape each value, refusing an
+        escape GKeyFile would refuse.
+        """
+        lines = body.split('\n')
+        assert lines[0] == '[virt-viewer]'
+        assert lines[-1] == ''
+        values = {}
+        for line in lines[1:-1]:
+            key, raw = line.split('=', 1)
+            assert key not in values, 'duplicate key %s' % key
+            # GKeyFile drops the whitespace which leads a value.
+            raw = raw.lstrip(' \t')
+            out = []
+            i = 0
+            while i < len(raw):
+                if raw[i] == '\\':
+                    escape = raw[i + 1:i + 2]
+                    out.append({'s': ' ', 'n': '\n', 't': '\t', 'r': '\r',
+                                '\\': '\\'}[escape])
+                    i += 2
+                else:
+                    out.append(raw[i])
+                    i += 1
+            values[key] = ''.join(out)
+        return values
+
+    def _vv_titled(self, title):
+        return api._vv_response(
+            'hv1', 5900, 5901, 'a-ticket', None, title, 'CN=hv1'
+            ).get_data(as_text=True)
+
+    def test_no_name_adds_a_key(self):
+        for name in self.HOSTILE_NAMES:
+            body = api._proxy_vv_response(
+                {'token': 'a-token', 'session_id': 'sess-1'}, name, None
+                ).get_data(as_text=True)
+            values = self._gkeyfile_values(body)
+
+            self.assertEqual(
+                [k for k in api.VIRTVIEWER_KEYS if k != 'ca'],
+                list(values), repr(name))
+            self.assertEqual('kerbside.example.com', values['host'])
+            self.assertEqual('a-token', values['password'])
+
+    def test_printable_names_survive_intact(self):
+        for name in ['C:\\Users\\desktop', 'trailing backslash \\',
+                     ' leading space', 'tab\there', 'line\nbreak',
+                     'carriage\rreturn']:
+            values = self._gkeyfile_values(self._vv_titled(name))
+            self.assertEqual(name, values['title'])
+
+    def test_other_control_characters_are_replaced(self):
+        values = self._gkeyfile_values(self._vv_titled('nul\x00and\x1bescape'))
+        self.assertEqual('nul\ufffdand\ufffdescape', values['title'])
+
+    def test_a_replaced_control_character_is_logged_by_key(self):
+        # A password which loses a byte is a credential the client will
+        # fail with, so the replacement is logged, naming the key and
+        # never the value.
+        with mock.patch.object(api, 'LOG') as mock_log:
+            api._vv_response(
+                'hv1', 5900, None, 'sekrit\x07ticket', None, 'a desktop',
+                None)
+
+        mock_log.with_fields.assert_called_once_with({'key': 'password'})
+        self.assertNotIn('sekrit', repr(mock_log.mock_calls))
+
+    def test_a_clean_file_logs_nothing(self):
+        # A name which already carries U+FFFD lost nothing to escaping.
+        with mock.patch.object(api, 'LOG') as mock_log:
+            self._vv_titled('a \ufffd desktop')
+
+        mock_log.with_fields.assert_not_called()
+
+    def test_the_ca_still_reads_back_as_the_pem(self):
+        pem = '-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n'
+        body = api._vv_response(
+            'hv1', 5900, 5901, 'a-ticket', pem, 'a desktop', None
+            ).get_data(as_text=True)
+        self.assertEqual(pem, self._gkeyfile_values(body)['ca'])
+
+    @unittest.skipUnless(GLib, 'needs the GLib introspection bindings')
+    def test_glib_reads_back_what_was_written(self):
+        # The test above reads with a model of GKeyFile. This reads with
+        # GKeyFile itself, which is what virt-viewer uses, where the
+        # bindings are installed.
+        for name in self.HOSTILE_NAMES:
+            keyfile = GLib.KeyFile()
+            body = self._vv_titled(name)
+            keyfile.load_from_data(
+                body, len(body.encode()), GLib.KeyFileFlags.NONE)
+
+            self.assertEqual(
+                [k for k in api.VIRTVIEWER_KEYS if k != 'ca'],
+                keyfile.get_keys('virt-viewer')[0], repr(name))
+            self.assertEqual('hv1', keyfile.get_string('virt-viewer', 'host'))
+            self.assertEqual(
+                name.replace('\x00', '\ufffd').replace('\x1b', '\ufffd'),
+                keyfile.get_string('virt-viewer', 'title'))

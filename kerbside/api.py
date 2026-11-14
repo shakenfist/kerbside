@@ -17,6 +17,7 @@ import importlib
 import json
 import os
 import requests
+import unicodedata
 from webargs import fields
 from webargs.flaskparser import use_kwargs
 
@@ -460,22 +461,132 @@ class ConsolesAudit(sf_api.Resource):
 # The best documentation I can find for the format of this file and the various
 # fields is this source code:
 # https://gitlab.com/virt-viewer/virt-viewer/-/blob/master/src/virt-viewer-file.c
-VIRTVIEWER_TEMPLATE = """[virt-viewer]
-type=spice
-host=%(node)s
-port=%(port)d%(tls_port)s
-password=%(token)s
-delete-this-file=1
-fullscreen=0
-title=%(name)s
-toggle-fullscreen=shift+f11
-release-cursor=shift+f12
-secure-attention=ctrl+alt+end
-enable-smartcard=1
-enable-usb-autoshare=1
-usb-filter=-1,-1,-1,-1,0
-tls-ciphers=DEFAULT%(ca_cert)s%(host_subject)s
-"""
+#
+# Every .vv this API issues is rendered by _vv_response() from these keys, in
+# this order. A key whose value is None is left out of the file.
+VIRTVIEWER_KEYS = (
+    'type', 'host', 'port', 'tls-port', 'password', 'delete-this-file',
+    'fullscreen', 'title', 'toggle-fullscreen', 'release-cursor',
+    'secure-attention', 'enable-smartcard', 'enable-usb-autoshare',
+    'usb-filter', 'tls-ciphers', 'ca', 'host-subject')
+
+VIRTVIEWER_FIXED = {
+    'type': 'spice',
+    'delete-this-file': 1,
+    'fullscreen': 0,
+    'toggle-fullscreen': 'shift+f11',
+    'release-cursor': 'shift+f12',
+    'secure-attention': 'ctrl+alt+end',
+    'enable-smartcard': 1,
+    'enable-usb-autoshare': 1,
+    'usb-filter': '-1,-1,-1,-1,0',
+    'tls-ciphers': 'DEFAULT',
+}
+
+
+def _vv_ca_cert():
+    """Return this deployment's CA certificate for a .vv, or None.
+
+    None means no CA is configured, and the .vv then carries no ca= key,
+    leaving the client to its own trust store. Read it before minting
+    anything for the request: a failure here must not leave a console
+    token or a spent single-use jti behind it.
+    """
+    if not config.CACERT_PATH:
+        return None
+    with open(config.CACERT_PATH) as f:
+        return f.read()
+
+
+# GKeyFile's escapes for a string value. Anything else after a backslash is
+# an invalid escape, which makes g_key_file_get_string() fail outright.
+_GKEYFILE_ESCAPES = {'\\': '\\\\', '\n': '\\n', '\r': '\\r', '\t': '\\t'}
+
+
+def _vv_escape(value):
+    """Escape a value for a .vv file.
+
+    virt-viewer reads a .vv with GKeyFile, which splits the file into
+    lines before it reads any value, and then unescapes each value it is
+    asked for as a string. So a newline in a value would end it and start
+    another key, and a backslash is the start of an escape sequence, not a
+    character. Every value is escaped as GKeyFile expects, which keeps the
+    file's structure ours whatever a value holds: a console name is
+    whatever its source's management plane says it is (issue #661).
+    GKeyFile also strips leading whitespace from a value, which \\s keeps,
+    and has no escape for any other control character, so those are
+    replaced: they have no business in any value this file carries.
+    """
+    out = []
+    for i, ch in enumerate(str(value)):
+        if ch in _GKEYFILE_ESCAPES:
+            out.append(_GKEYFILE_ESCAPES[ch])
+        elif ch == ' ' and i == 0:
+            out.append('\\s')
+        elif unicodedata.category(ch) == 'Cc':
+            out.append('\ufffd')
+        else:
+            out.append(ch)
+    return ''.join(out)
+
+
+def _render_vv(values):
+    """Render a .vv file from a dict of the variable keys' values.
+
+    This is the only place a value enters the file, so it is the only
+    place one is escaped; callers pass values as they are. A value which
+    loses a control character to escaping is logged by key, never by
+    value: for the password, it is a credential the client will now fail
+    to authenticate with.
+    """
+    merged = dict(VIRTVIEWER_FIXED)
+    merged.update(values)
+    unknown = set(merged) - set(VIRTVIEWER_KEYS)
+    if unknown:
+        raise ValueError('unknown virt-viewer keys: %s' % sorted(unknown))
+
+    lines = ['[virt-viewer]']
+    for key in VIRTVIEWER_KEYS:
+        value = merged.get(key)
+        if value is None:
+            continue
+        escaped = _vv_escape(value)
+        if escaped.count('\ufffd') > str(value).count('\ufffd'):
+            LOG.with_fields({'key': key}).warning(
+                'Replaced control characters in a virt-viewer value')
+        lines.append('%s=%s' % (key, escaped))
+    return '\n'.join(lines) + '\n'
+
+
+def _vv_response(host, port, tls_port, password, ca_cert, title,
+                 host_subject):
+    """Build the HTTP response carrying a .vv file."""
+    vv = _render_vv({
+        'host': host,
+        'port': port,
+        'tls-port': tls_port,
+        'password': password,
+        'title': title,
+        'ca': ca_cert,
+        'host-subject': host_subject or None,
+    })
+    resp = flask.Response(vv, mimetype='application/x-virt-viewer;charset=UTF-8')
+    resp.status_code = 200
+    return resp
+
+
+def _proxy_vv_response(token_row, display_name, ca_cert):
+    """The .vv for a session through this deployment's proxy.
+
+    Every route which issues a proxied console -- the web UI, Nova's token
+    exchange and Shaken Fist's -- answers with this, so the file is the
+    same whichever route minted the session.
+    """
+    return _vv_response(
+        config.PUBLIC_FQDN, config.PUBLIC_INSECURE_PORT,
+        config.PUBLIC_SECURE_PORT, token_row['token'], ca_cert,
+        '%s via proxy session ID %s' % (display_name, token_row['session_id']),
+        config.PROXY_HOST_SUBJECT)
 
 
 class ConsolesDirectVirtViewer(sf_api.Resource):
@@ -543,6 +654,10 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
             return sf_api.error(
                 409, 'this source offers proxied consoles only')
 
+        # Before the mint below: minting replaces the console's SPICE
+        # password, so a CA read failing after it would not be harmless.
+        ca_cert = _vv_ca_cert()
+
         if s['type'] == 'static':
             # The persisted ticket is this console's SPICE password, so
             # it is read in the one branch which puts it in the .vv file
@@ -595,20 +710,6 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
         if not node:
             node = vv_console['hypervisor_ip']
 
-        tls_port = ''
-        if vv_console['secure_port']:
-            tls_port = '\ntls-port=%s' % vv_console['secure_port']
-
-        host_subject = ''
-        if vv_console['host_subject']:
-            host_subject = '\nhost-subject=%s' % vv_console['host_subject']
-
-        ca_cert = ''
-        if config.CACERT_PATH:
-            with open(config.CACERT_PATH) as f:
-                ca_cert_data = f.read().replace('\n', '\\n')
-            ca_cert = f'\nca={ca_cert_data}'
-
         # Both dicts are public, so either could be splatted here
         # without disclosing a credential. They are not, for a reason
         # which outlives this change: s carries ca_cert, a multi
@@ -627,20 +728,10 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
             'Issued direct hypervisor credential, bypassing the proxy, to %s'
             % session_username())
 
-        vv = VIRTVIEWER_TEMPLATE % {
-            'node': node,
-            'port': vv_console['insecure_port'],
-            'tls_port': tls_port,
-            'token': ticket,
-            'ca_cert': ca_cert,
-            'name': '%s direct connection' % vv_console['name'],
-            'host_subject': host_subject
-        }
-
-        resp = flask.Response(
-            vv, mimetype='application/x-virt-viewer;charset=UTF-8')
-        resp.status_code = 200
-        return resp
+        return _vv_response(
+            node, vv_console['insecure_port'], vv_console['secure_port'] or None,
+            ticket, ca_cert, '%s direct connection' % vv_console['name'],
+            vv_console['host_subject'])
 
 
 class ConsolesProxyVirtViewer(sf_api.Resource):
@@ -654,15 +745,7 @@ class ConsolesProxyVirtViewer(sf_api.Resource):
         if not c:
             return sf_api.error(404, 'console not found')
 
-        cacert = ''
-        with open(config.CACERT_PATH) as f:
-            cacert = f.read()
-        cacert = cacert.replace('\n', '\\n')
-
-        if config.PROXY_HOST_SUBJECT:
-            host_subject = '\nhost-subject=%s' % config.PROXY_HOST_SUBJECT
-        else:
-            host_subject = ''
+        ca_cert = _vv_ca_cert()
 
         # A proxied .vv carries a console token, never a hypervisor
         # ticket, so this handler neither reads nor writes a ticket for
@@ -673,19 +756,7 @@ class ConsolesProxyVirtViewer(sf_api.Resource):
         # session's first channel (AuthorizeConnection in
         # kerbside/rpc/servicer.py).
         token = consoletoken.create_token(source, uuid)
-        vv = VIRTVIEWER_TEMPLATE % {
-            'node': config.PUBLIC_FQDN,
-            'port': config.PUBLIC_INSECURE_PORT,
-            'tls_port': '\ntls-port=%s' % config.PUBLIC_SECURE_PORT,
-            'token': token['token'],
-            'ca_cert': '\nca=%s' % cacert,
-            'name': '%s via proxy session ID %s' % (c['name'], token['session_id']),
-            'host_subject': host_subject
-        }
-
-        resp = flask.Response(vv, mimetype='application/x-virt-viewer;charset=UTF-8')
-        resp.status_code = 200
-        return resp
+        return _proxy_vv_response(token, c['name'], ca_cert)
 
 
 class ConsolesTerminate(sf_api.Resource):
@@ -816,42 +887,28 @@ class NovaToken(sf_api.Resource):
                     continue
 
                 instance_uuid = details.instance_uuid
+                ca_cert = _vv_ca_cert()
 
                 # Configure the console, given OpenStack does not do instance
                 # scraping in advance.
-                db.add_console(
-                    uuid=instance_uuid,
-                    source=source['source'],
-                    hypervisor=details['host'],
-                    insecure_port=details['port'],
-                    secure_port=details['tls_port']
-                )
+                try:
+                    db.add_console(
+                        uuid=instance_uuid,
+                        source=source['source'],
+                        hypervisor=details['host'],
+                        insecure_port=details['port'],
+                        secure_port=details['tls_port']
+                    )
+                except db.InvalidConsole as e:
+                    LOG.with_fields({
+                        'source': source['source'],
+                        'uuid': instance_uuid,
+                        'field': e.field
+                        }).error('Nova returned an invalid connect target')
+                    return sf_api.error(502, 'invalid console details from source')
                 token = consoletoken.create_token(
                     source['source'], instance_uuid)
-
-                cacert = ''
-                with open(config.CACERT_PATH) as f:
-                    cacert = f.read()
-                cacert = cacert.replace('\n', '\\n')
-
-                if config.PROXY_HOST_SUBJECT:
-                    host_subject = '\nhost-subject=%s' % config.PROXY_HOST_SUBJECT
-                else:
-                    host_subject = ''
-
-                vv = VIRTVIEWER_TEMPLATE % {
-                    'node': config.PUBLIC_FQDN,
-                    'port': config.PUBLIC_INSECURE_PORT,
-                    'tls_port': '\ntls-port=%s' % config.PUBLIC_SECURE_PORT,
-                    'token': token['token'],
-                    'ca_cert': '\nca=%s' % cacert,
-                    'name': '%s via proxy session ID %s' % (instance_uuid, token['session_id']),
-                    'host_subject': host_subject
-                }
-
-                resp = flask.Response(vv, mimetype='application/x-virt-viewer;charset=UTF-8')
-                resp.status_code = 200
-                return resp
+                return _proxy_vv_response(token, instance_uuid, ca_cert)
 
         return sf_api.error(404, 'nova token not found')
 
@@ -954,10 +1011,7 @@ class SfToken(sf_api.Resource):
         # reason the console lookup comes first: a failure here must leave
         # the token unspent, or the retry after the fault is fixed is
         # refused as a replay.
-        cacert = ''
-        with open(config.CACERT_PATH) as f:
-            cacert = f.read()
-        cacert = cacert.replace('\n', '\\n')
+        ca_cert = _vv_ca_cert()
 
         # Now that there is a console to issue for, consume the jti. The
         # insert's ReusedJti (primary-key collision) is the authoritative
@@ -974,29 +1028,10 @@ class SfToken(sf_api.Resource):
         # build the proxy .vv from kerbside config, never from the token.
         token_row = consoletoken.create_token(claims['source'], claims['sub'])
 
-        if config.PROXY_HOST_SUBJECT:
-            host_subject = '\nhost-subject=%s' % config.PROXY_HOST_SUBJECT
-        else:
-            host_subject = ''
-
-        vv = VIRTVIEWER_TEMPLATE % {
-            'node': config.PUBLIC_FQDN,
-            'port': config.PUBLIC_INSECURE_PORT,
-            'tls_port': '\ntls-port=%s' % config.PUBLIC_SECURE_PORT,
-            'token': token_row['token'],
-            'ca_cert': '\nca=%s' % cacert,
-            'name': '%s via proxy session ID %s' % (
-                claims['sub'], token_row['session_id']),
-            'host_subject': host_subject
-        }
-
         db.add_audit_event(
             claims['source'], claims['sub'], token_row['session_id'],
             None, None, None, 'Shaken Fist console token exchanged')
-
-        resp = flask.Response(vv, mimetype='application/x-virt-viewer;charset=UTF-8')
-        resp.status_code = 200
-        return resp
+        return _proxy_vv_response(token_row, claims['sub'], ca_cert)
 
 
 class Sessions(sf_api.Resource):

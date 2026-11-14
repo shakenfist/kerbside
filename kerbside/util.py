@@ -1,4 +1,5 @@
 import os
+import unicodedata
 import yaml
 
 from .config import config
@@ -92,3 +93,31 @@ def yaml_port(value):
     if not 1 <= value <= 65535:
         raise YAMLScalarError('must be a port number from 1 to 65535')
     return value
+
+
+# Unicode's line and paragraph separators are not control characters, but
+# a log viewer may still break a line at one.
+_LINE_BREAKING_CATEGORIES = ('Cc', 'Zl', 'Zp')
+_NAMED_ESCAPES = {'\\': '\\\\', '\n': '\\n', '\r': '\\r', '\t': '\\t'}
+
+
+def escape_control_characters(value):
+    """Return value with every control character written as an escape.
+
+    For text which is stored or logged one record to a line, where a
+    newline in a value would let whoever chose that value write what
+    looks like a record of its own. Backslash is escaped too, so an
+    escape this wrote cannot be confused with the same characters
+    arriving literally. Printable text, including any non-ASCII, is
+    left as it is.
+    """
+    out = []
+    for ch in value:
+        if ch in _NAMED_ESCAPES:
+            out.append(_NAMED_ESCAPES[ch])
+        elif unicodedata.category(ch) in _LINE_BREAKING_CATEGORIES:
+            code = ord(ch)
+            out.append('\\x%02x' % code if code < 0x100 else '\\u%04x' % code)
+        else:
+            out.append(ch)
+    return ''.join(out)
