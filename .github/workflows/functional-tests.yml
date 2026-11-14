@@ -491,11 +491,19 @@ jobs:
             'ovirt_username': 'admin@ovirt@internalsso'
           },
         ]
-    # l: this job now also builds the Rust proxy wheel, builds ryll from
-    # source, and runs MariaDB plus kerbside on the runner itself, which
-    # is heavier than the environment-provisioning work the m runner was
-    # sized for.
-    runs-on: [self-hosted, vm, debian-13, l]
+    # Runner size l: this job now also builds the Rust proxy wheel, builds
+    # ryll from source, and runs MariaDB plus kerbside on the runner
+    # itself, which is heavier than the environment-provisioning work the
+    # m runner was sized for.
+    #
+    # The job is bound to its own runner. The labels are prefixed
+    # "bound-" and carry no plain "vm", image or size element, because
+    # GitHub gives a job to any runner whose labels are a superset of
+    # the job's: an unbound [self-hosted, debian-13, l] job could
+    # otherwise take this runner. The "bind-" token is unique per run
+    # and attempt, and per matrix row. See shakenfist/private-ci
+    # docs/capacity-claims.md, "Binding a job to its runner".
+    runs-on: [self-hosted, bound-debian-13, bound-l, "bind-${{ github.run_id }}-${{ github.run_attempt }}-ovirt-45-rocky-8-${{ strategy.job-index }}"]
     needs: [sanity_checks, check_paths]
     timeout-minutes: 120
     # The runner image exports http_proxy/https_proxy pointing at an
@@ -1033,7 +1041,16 @@ jobs:
             'baseuser': 'debian'
           },
         ]
-    runs-on: [self-hosted, vm, debian-13, m]
+    # Runner size m.
+    #
+    # The job is bound to its own runner. The labels are prefixed
+    # "bound-" and carry no plain "vm", image or size element, because
+    # GitHub gives a job to any runner whose labels are a superset of
+    # the job's: an unbound [self-hosted, debian-13, m] job could
+    # otherwise take this runner. The "bind-" token is unique per run
+    # and attempt, and per matrix row. See shakenfist/private-ci
+    # docs/capacity-claims.md, "Binding a job to its runner".
+    runs-on: [self-hosted, bound-debian-13, bound-m, "bind-${{ github.run_id }}-${{ github.run_attempt }}-kolla-ansible-master-debian-13-${{ strategy.job-index }}"]
     needs: [sanity_checks, check_paths]
     timeout-minutes: 120
     # Keyed on the event for the same reason as ovirt_matrix's.
