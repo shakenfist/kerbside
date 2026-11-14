@@ -245,7 +245,7 @@ class SfTokenApiTestCase(testtools.TestCase):
         api.app.config['TESTING'] = True
         self.client = api.app.test_client()
 
-        # SfToken.get() unconditionally reads config.CACERT_PATH to embed in
+        # SfToken.get() reads config.CACERT_PATH when it is set, to embed in
         # the .vv; point it at a temp file so that read succeeds.
         cacert_file = tempfile.NamedTemporaryFile(
             mode='w', suffix='.pem', delete=False)
@@ -652,8 +652,8 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
         config_patch.start()
         self.addCleanup(config_patch.stop)
 
-        # The proxy handler reads the CA unconditionally, so it needs a
-        # real file where the direct handler is happy with None.
+        # A real file, for the tests which set CACERT_PATH; setUp leaves
+        # it unset, which every .vv handler tolerates.
         cacert = tempfile.NamedTemporaryFile(suffix='.pem', delete=False)
         cacert.write(b'CA-CERT-MARKER\n')
         cacert.close()
@@ -1034,6 +1034,51 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
         self.assertFalse(workers[0].is_alive())
         mock_ovirt.return_value.close.assert_called_once_with()
         self.assertNotIn('late-ticket', resp.get_data(as_text=True))
+
+    @mock.patch('kerbside.sources.ovirt.oVirtSource')
+    def test_ovirt_direct_vv_unreadable_ca_mints_nothing(self, mock_ovirt):
+        # Minting replaces the console's SPICE password, so the CA is read
+        # first: a deployment whose CA file is broken fails the request
+        # without having changed the password a session may be using.
+        self._ovirt_direct_console()
+        mock_ovirt.MINTS_TICKETS = True
+        mock_ovirt.return_value.errored = False
+        mock_ovirt.return_value.mint_console_ticket.return_value = (
+            source_base.MintedTicket('a-ticket', 0))
+
+        with mock.patch.object(
+                api.config, 'CACERT_PATH', '/nonexistent/ca-cert.pem'):
+            resp = self.client.get(
+                '/console/direct/ovirt1/console-2/console.vv')
+
+        self.assertEqual(500, resp.status_code)
+        mock_ovirt.return_value.mint_console_ticket.assert_not_called()
+
+    @mock.patch('kerbside.consoletoken.create_token',
+                return_value={'token': 'a-proxy-token', 'session_id': 'sess'})
+    def test_a_hostile_stored_name_adds_no_key_to_either_vv(
+            self, mock_create_token):
+        # A console's name is not a connect target, so add_console()
+        # stores it as its source reported it; the .vv routes' escaping
+        # is the only thing keeping it from adding a key (issue #661).
+        db.add_console(
+            source='sf1', uuid='console-9', hypervisor='hv1',
+            hypervisor_ip='10.0.0.1', insecure_port=5900, secure_port=5901,
+            name='desktop\nproxy=http://attacker.example.com:3128',
+            host_subject='CN=hv1')
+
+        for route in ('direct', 'proxy'):
+            resp = self.client.get(
+                '/console/%s/sf1/console-9/console.vv' % route)
+
+            self.assertEqual(200, resp.status_code, route)
+            values = VirtViewerFileTestCase._gkeyfile_values(
+                resp.get_data(as_text=True))
+            self.assertNotIn('proxy', values, route)
+            self.assertTrue(
+                values['title'].startswith(
+                    'desktop\nproxy=http://attacker.example.com:3128'),
+                route)
 
     @mock.patch('kerbside.sources.ovirt.oVirtSource')
     def test_ovirt_direct_vv_errored_source_is_closed(self, mock_ovirt):
@@ -1721,6 +1766,25 @@ class VirtViewerFileTestCase(testtools.TestCase):
     def test_other_control_characters_are_replaced(self):
         values = self._gkeyfile_values(self._vv_titled('nul\x00and\x1bescape'))
         self.assertEqual('nul\ufffdand\ufffdescape', values['title'])
+
+    def test_a_replaced_control_character_is_logged_by_key(self):
+        # A password which loses a byte is a credential the client will
+        # fail with, so the replacement is logged, naming the key and
+        # never the value.
+        with mock.patch.object(api, 'LOG') as mock_log:
+            api._vv_response(
+                'hv1', 5900, None, 'sekrit\x07ticket', None, 'a desktop',
+                None)
+
+        mock_log.with_fields.assert_called_once_with({'key': 'password'})
+        self.assertNotIn('sekrit', repr(mock_log.mock_calls))
+
+    def test_a_clean_file_logs_nothing(self):
+        # A name which already carries U+FFFD lost nothing to escaping.
+        with mock.patch.object(api, 'LOG') as mock_log:
+            self._vv_titled('a \ufffd desktop')
+
+        mock_log.with_fields.assert_not_called()
 
     def test_the_ca_still_reads_back_as_the_pem(self):
         pem = '-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n'

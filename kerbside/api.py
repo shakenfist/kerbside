@@ -534,7 +534,10 @@ def _render_vv(values):
     """Render a .vv file from a dict of the variable keys' values.
 
     This is the only place a value enters the file, so it is the only
-    place one is escaped; callers pass values as they are.
+    place one is escaped; callers pass values as they are. A value which
+    loses a control character to escaping is logged by key, never by
+    value: for the password, it is a credential the client will now fail
+    to authenticate with.
     """
     merged = dict(VIRTVIEWER_FIXED)
     merged.update(values)
@@ -547,7 +550,11 @@ def _render_vv(values):
         value = merged.get(key)
         if value is None:
             continue
-        lines.append('%s=%s' % (key, _vv_escape(value)))
+        escaped = _vv_escape(value)
+        if escaped.count('\ufffd') > str(value).count('\ufffd'):
+            LOG.with_fields({'key': key}).warning(
+                'Replaced control characters in a virt-viewer value')
+        lines.append('%s=%s' % (key, escaped))
     return '\n'.join(lines) + '\n'
 
 
@@ -647,6 +654,10 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
             return sf_api.error(
                 409, 'this source offers proxied consoles only')
 
+        # Before the mint below: minting replaces the console's SPICE
+        # password, so a CA read failing after it would not be harmless.
+        ca_cert = _vv_ca_cert()
+
         if s['type'] == 'static':
             # The persisted ticket is this console's SPICE password, so
             # it is read in the one branch which puts it in the .vv file
@@ -698,8 +709,6 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
         node = vv_console['hypervisor']
         if not node:
             node = vv_console['hypervisor_ip']
-
-        ca_cert = _vv_ca_cert()
 
         # Both dicts are public, so either could be splatted here
         # without disclosing a credential. They are not, for a reason

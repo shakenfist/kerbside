@@ -137,8 +137,13 @@ class oVirtSource(base.BaseSource):
                 except (TypeError, ValueError):
                     log.warning('Ignoring instance whose host id is not a UUID')
                     continue
-                host = hosts_service.list(search='id=%s' % host_id)[0]
-                host_cache[vm.host.id] = host.certificate.subject
+                # A host can go between the VM list and this search, and
+                # one VM is skipped for it rather than the source errored.
+                hosts = hosts_service.list(search='id=%s' % host_id)
+                if not hosts:
+                    log.warning('Ignoring instance whose host could not be found')
+                    continue
+                host_cache[vm.host.id] = hosts[0].certificate.subject
 
             console, _, _ = self.get_console_for_vm(vm.id, connection=connection)
             if not console:

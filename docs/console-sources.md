@@ -480,7 +480,10 @@ target checked before it is stored: `hypervisor` and `hypervisor_ip`
 must each be an IP address or a DNS name, the ports integers from 1 to
 65535, and `host_subject` free of control characters. A console which
 fails is skipped with a warning naming the field, and its source's other
-consoles are stored as usual.
+consoles are stored as usual. A console's `name` and `ticket` are not
+checked, because neither is a connect target: they are escaped where
+they enter a structured format (the `.vv` file and the audit log), so a
+source may report them verbatim.
 
 Kerbside reads every unquoted number in `sources.yaml` exactly as it is
 written. A text field such as `ticket: 012345` is the text `012345`, not

@@ -217,6 +217,24 @@ class TestOVirtSourceDiscovery(unittest.TestCase):
         # text the engine sent.
         self.assertEqual(['id=%s' % HOST_1], connection.searches)
 
+    def test_a_host_which_cannot_be_found_skips_only_its_vm(self):
+        """A host can go between the VM list and the host search.
+
+        Its VM is skipped, and the rest of the scrape goes on, rather than
+        the source being marked errored.
+        """
+        missing = '5b6c1f0e-8d1a-4c2b-9e3f-0a1b2c3d4e5f'
+        vms = [
+            _Vm('vm-1', 'desktop-1', host_id=missing,
+                consoles=[_Console('spice')]),
+            _Vm('vm-2', 'desktop-2', consoles=[_Console('spice')]),
+        ]
+        hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
+
+        results = self._scrape(vms, hosts)
+
+        self.assertEqual(['vm-2'], [r['uuid'] for r in results])
+
     def test_scrape_closes_the_connection_it_opened(self):
         vms = [_Vm('vm-1', 'desktop-1', consoles=[_Console('spice')])]
         connection = _FakeConnection(vms, [_Host(HOST_1, 'CN=h')])
