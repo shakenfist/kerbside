@@ -95,14 +95,15 @@ jobs:
       && needs.check_paths.outputs.code_changed != 'false'
     # Runner size l.
     #
-    # The job is bound to its own runner. The labels are prefixed
-    # "bound-" and carry no plain "vm", image or size element, because
-    # GitHub gives a job to any runner whose labels are a superset of
-    # the job's: an unbound [self-hosted, debian-13, l] job could
-    # otherwise take this runner. The "bind-" token is unique per run
-    # and attempt. See shakenfist/private-ci
-    # docs/capacity-claims.md, "Binding a job to its runner".
-    runs-on: [self-hosted, bound-debian-13, bound-l, "bind-${{ github.run_id }}-${{ github.run_attempt }}-sf-e2e"]
+    # Bound to its own runner: the labels carry no plain "vm", image
+    # or size element on purpose, because GitHub gives a job to any
+    # runner whose labels are a superset of the job's. See "Bound
+    # runners" in docs/testing.md.
+    runs-on:
+      - self-hosted
+      - bound-debian-13
+      - bound-l
+      - "bind-${{ github.run_id }}-${{ github.run_attempt }}-sf-e2e"
     timeout-minutes: 120
 
     # The single-node SF API and kerbside both live on the primary and are

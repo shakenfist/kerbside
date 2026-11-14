@@ -176,6 +176,41 @@ skips cleanly via a job-level `if:` (it does not report red), and
 instance readiness in the `shakenfist/actions` provisioning playbook
 gates on cloud-init completion, not just an open SSH port.
 
+### Bound runners
+
+Three jobs are bound to a runner of their own: `sf-e2e` in
+`sf-e2e-functional.yml`, and `ovirt_matrix` and `openstack_matrix` in
+`functional-tests.yml`. Each of them builds a nested instance larger
+than the smallest capacity claim its runner pool can produce, so a
+runner claimed for a smaller lane sharing that pool is not big enough
+to hold it.
+
+A bound job names `bound-<image>`, `bound-<size>` and a `bind-` token
+unique to its run, attempt and matrix row, and **no plain `vm`, image
+or size label**. That omission is the whole mechanism. GitHub gives a
+job to any runner whose label set is a *superset* of the job's, so a
+bound runner that also carried `vm`, `debian-13` and `l` could still
+be taken by an unbound `[self-hosted, vm, debian-13, l]` job — and
+three of those exist, in `direct-qemu-functional.yml`,
+`proxmox-functional.yml` and `demo-compose.yml`. With the pool labels
+dropped, no unbound job's labels are a subset of a bound runner's, so
+nothing else can be scheduled onto it.
+
+The `bind-` token is what the provisioner keys the capacity claim off.
+It sizes the claim for that one job rather than for the largest job
+pending in a shared pool, and it is unique per run and attempt, so a
+re-run of failed jobs claims afresh instead of colliding with the dead
+attempt's. A runner whose bound job never arrives — cancelled while
+the runner was still booting, or superseded by `cancel-in-progress` —
+is surplus for its own token and is reaped like any other idle runner.
+
+Adding a bound job means declaring its `bound-` labels in
+`.github/actionlint.yaml`, which actionlint requires of any
+self-hosted label; the `bind-` token is a `${{ }}` expression, which
+actionlint does not check. The provisioning side of the mechanism is
+in `shakenfist/private-ci`, in `docs/capacity-claims.md` under
+"Binding a job to its runner".
+
 ### Gate jobs and required checks
 
 Branch protection cannot require "whatever ran"; it requires named
