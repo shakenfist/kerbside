@@ -204,6 +204,37 @@ attempt's. A runner whose bound job never arrives — cancelled while
 the runner was still booting, or superseded by `cancel-in-progress` —
 is surplus for its own token and is reaped like any other idle runner.
 
+Binding trades a scheduling delay for a hard dependency on the
+provisioner, and that is the operational cost of it. A bound job whose
+runner never appears does not fail — it sits in queue, because
+`timeout-minutes` bounds execution once a runner picks the job up and
+not the wait beforehand, so GitHub holds it pending for about 24 hours
+and then cancels it. For the two nightly matrices that is a quiet
+non-run. For `sf-e2e` it blocks merges, because `Can enqueue: sf-e2e`
+is one of the required checks on the `develop` ruleset and a required
+check that never reports blocks the pull request forever — the same
+trap the `check_paths` filter jobs exist to avoid. The causes are a
+provisioner that has not been deployed, a label spelled differently on
+the two sides, a claim that could not be satisfied, or two bound jobs
+rendering one token. Diagnose it in that order: check that the run's
+`bind-` token appears as a registered runner label on the repository,
+then the claim log in private-ci. The provisioning side must be
+deployed before a new bound job merges, not after.
+
+Two invariants hold the mechanism up, and both are invisible in a
+workflow file: no job's label set may be a subset of a bound runner's,
+and no two bound jobs may render the same token in one run — which,
+because the token carries the matrix entry name rather than the job id,
+means bound matrix entries must be named distinctly across bound jobs.
+The job id is not available for this: GitHub job ids conventionally
+carry underscores and the provisioner's token grammar admits only
+lowercase letters, digits and hyphens, so `${{ github.job }}` yields a
+token that is rejected and a job that never gets a runner.
+`tools/check-bound-runners.py` asserts both invariants, along with the
+token grammar and the actionlint declarations, over every workflow in
+the tree; it runs as a unit test, so `tox -epy3` and the `sanity_checks`
+gate both enforce it.
+
 Adding a bound job means declaring its `bound-` labels in
 `.github/actionlint.yaml`, which actionlint requires of any
 self-hosted label; the `bind-` token is a `${{ }}` expression, which
