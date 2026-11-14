@@ -312,10 +312,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/actionlint.yaml",
-      "author": "mikal"
-    },
-    {
       "path": "demo/spice-target/Dockerfile",
       "author": "mikal"
     },

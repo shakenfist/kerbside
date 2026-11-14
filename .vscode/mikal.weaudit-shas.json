@@ -5,10 +5,6 @@
       "sha": "16f2c1db4f57ad49772cfb806e19df2708f3176c",
       "date": "2026-09-18"
     },
-    ".github/actionlint.yaml": {
-      "sha": "51ca7aeb826114754b7c00811695bd9772dad18a",
-      "date": "2026-09-27"
-    },
     ".github/workflows/export-repo-config.yml": {
       "sha": "b9b3936053b8685ef0ae47f656b2f35aa62ba637",
       "date": "2026-10-05"
