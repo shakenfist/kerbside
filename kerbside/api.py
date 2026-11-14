@@ -654,6 +654,16 @@ class ConsolesDirectVirtViewer(sf_api.Resource):
             return sf_api.error(
                 409, 'this source offers proxied consoles only')
 
+        # A .vv naming no host or no port is one virt-viewer can only fail
+        # on, on the client, where the operator sees nothing. A console may
+        # lack either port -- an oVirt console can be TLS only -- but not
+        # both. Refuse before a ticket is minted for it.
+        if not (c['hypervisor'] or c['hypervisor_ip']) or \
+                not (c['insecure_port'] or c['secure_port']):
+            LOG.with_fields({'source': source, 'uuid': uuid}).warning(
+                'Refused direct console with no connect target')
+            return sf_api.error(409, 'console has no direct connect target')
+
         # Before the mint below: minting replaces the console's SPICE
         # password, so a CA read failing after it would not be harmless.
         ca_cert = _vv_ca_cert()

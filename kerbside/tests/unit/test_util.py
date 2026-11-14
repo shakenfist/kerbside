@@ -114,7 +114,7 @@ class EscapeControlCharactersTestCase(testtools.TestCase):
     def test_unicode_line_separators_are_escaped(self):
         self.assertEqual(
             'a\\u2028b\\u2029c',
-            util.escape_control_characters('a b c'))
+            util.escape_control_characters('a\u2028b\u2029c'))
 
     def test_a_literal_escape_is_not_mistaken_for_one(self):
         # Without escaping the backslash, a message which arrived as the

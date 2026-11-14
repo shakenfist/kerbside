@@ -1018,7 +1018,7 @@ class AddConsoleTargetValidationTestCase(testtools.TestCase):
                 ('secure_port', True),
                 ('host_subject', 'CN=hv1\nhost=attacker.example.com'),
                 ('host_subject', 'CN=hv1\x00'),
-                ('host_subject', 'CN=hv1 ')]:
+                ('host_subject', 'CN=hv1\u2028')]:
             e = self.assertRaises(
                 db.InvalidConsole, self._add, **{field: value})
             self.assertEqual(field, e.field, repr(value))

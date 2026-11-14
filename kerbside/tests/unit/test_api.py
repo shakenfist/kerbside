@@ -1080,6 +1080,46 @@ class VirtViewerSecretsTestCase(testtools.TestCase):
                     'desktop\nproxy=http://attacker.example.com:3128'),
                 route)
 
+    def test_direct_vv_for_a_tls_only_console_has_no_plain_port(self):
+        # A console may have only a TLS port, and virt-viewer connects to
+        # one named by tls-port alone.
+        db.add_console(
+            source='sf1', uuid='console-tls', hypervisor='hv1',
+            hypervisor_ip='10.0.0.1', insecure_port=None, secure_port=5901,
+            name='a tls console', host_subject='CN=hv1')
+
+        resp = self.client.get('/console/direct/sf1/console-tls/console.vv')
+
+        self.assertEqual(200, resp.status_code)
+        values = VirtViewerFileTestCase._gkeyfile_values(
+            resp.get_data(as_text=True))
+        self.assertEqual('5901', values['tls-port'])
+        self.assertNotIn('port', values)
+
+    @mock.patch('kerbside.sources.ovirt.oVirtSource')
+    def test_direct_vv_with_nothing_to_dial_is_refused_before_minting(
+            self, mock_ovirt):
+        # Once a .vv with no port, which virt-viewer fails on where the
+        # operator cannot see it; the template it replaced raised instead.
+        self._ovirt_direct_console()
+        mock_ovirt.MINTS_TICKETS = True
+        mock_ovirt.return_value.errored = False
+        mock_ovirt.return_value.mint_console_ticket.return_value = (
+            source_base.MintedTicket('a-ticket', 0))
+
+        for uuid, fields in (
+                ('no-ports', {'hypervisor': 'hv2', 'hypervisor_ip': '10.0.0.2',
+                              'insecure_port': None, 'secure_port': None}),
+                ('no-host', {'hypervisor': '', 'hypervisor_ip': '',
+                             'insecure_port': 5900, 'secure_port': 5901})):
+            db.add_console(source='ovirt1', uuid=uuid, name=uuid, **fields)
+
+            resp = self.client.get(
+                '/console/direct/ovirt1/%s/console.vv' % uuid)
+
+            self.assertEqual(409, resp.status_code, uuid)
+        mock_ovirt.return_value.mint_console_ticket.assert_not_called()
+
     @mock.patch('kerbside.sources.ovirt.oVirtSource')
     def test_ovirt_direct_vv_errored_source_is_closed(self, mock_ovirt):
         self._ovirt_direct_console()

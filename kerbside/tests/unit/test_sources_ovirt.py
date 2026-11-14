@@ -11,6 +11,9 @@ from kerbside.sources import ovirt as ovirt_source
 
 # oVirt's ids are UUIDs.
 HOST_1 = '6f1a3c2e-8d4b-4e7a-9b1c-2d3e4f5a6b7c'
+VM_1 = '0a6e9c55-3f2b-4d8e-a1c7-5e4f3d2c1b01'
+VM_2 = '0a6e9c55-3f2b-4d8e-a1c7-5e4f3d2c1b02'
+VM_3 = '0a6e9c55-3f2b-4d8e-a1c7-5e4f3d2c1b03'
 
 
 class _Status(object):
@@ -57,6 +60,7 @@ class _FakeConnection(object):
         self.hosts = hosts
         self.closed = False
         self.searches = []
+        self.vm_lookups = []
 
     # -- SDK surface ------------------------------------------------
     def system_service(self):
@@ -76,7 +80,9 @@ class _FakeConnection(object):
         return [h for h in self.hosts if h.id == wanted]
 
     def vm_service(self, id):
-        vm = next(v for v in self.vms if v.id == id)
+        # The engine finds a VM by its id whatever case it is written in.
+        self.vm_lookups.append(id)
+        vm = next(v for v in self.vms if v.id.lower() == id)
         return mock.Mock(
             graphics_consoles_service=lambda: mock.Mock(
                 list=lambda current: vm.consoles))
@@ -117,7 +123,7 @@ class TestOVirtSourceDiscovery(unittest.TestCase):
             return list(src())
 
     def test_spice_console_is_yielded(self):
-        vms = [_Vm('vm-1', 'desktop-1',
+        vms = [_Vm(VM_1, 'desktop-1',
                    consoles=[_Console('spice')])]
         hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
 
@@ -126,7 +132,7 @@ class TestOVirtSourceDiscovery(unittest.TestCase):
         self.assertEqual(1, len(results))
         self.assertEqual(
             {
-                'uuid': 'vm-1',
+                'uuid': VM_1,
                 'source': 'test-ovirt',
                 'hypervisor': '',
                 'hypervisor_ip': '10.0.0.1',
@@ -138,7 +144,7 @@ class TestOVirtSourceDiscovery(unittest.TestCase):
             results[0])
 
     def test_vm_which_is_not_up_is_skipped(self):
-        vms = [_Vm('vm-1', 'stopped-1', status='down',
+        vms = [_Vm(VM_1, 'stopped-1', status='down',
                    consoles=[_Console('spice')])]
         hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
 
@@ -146,13 +152,13 @@ class TestOVirtSourceDiscovery(unittest.TestCase):
 
     def test_vm_with_no_spice_console_is_skipped(self):
         """A VNC-only VM has no SPICE console to broker."""
-        vms = [_Vm('vm-1', 'vnc-only', consoles=[_Console('vnc')])]
+        vms = [_Vm(VM_1, 'vnc-only', consoles=[_Console('vnc')])]
         hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
 
         self.assertEqual([], self._scrape(vms, hosts))
 
     def test_vm_with_no_consoles_at_all_is_skipped(self):
-        vms = [_Vm('vm-1', 'headless', consoles=[])]
+        vms = [_Vm(VM_1, 'headless', consoles=[])]
         hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
 
         self.assertEqual([], self._scrape(vms, hosts))
@@ -169,20 +175,20 @@ class TestOVirtSourceDiscovery(unittest.TestCase):
         available -- every scrape, once a minute.
         """
         vms = [
-            _Vm('vm-1', 'desktop-1', consoles=[_Console('spice')]),
-            _Vm('vm-2', 'vnc-only', consoles=[_Console('vnc')]),
-            _Vm('vm-3', 'desktop-2', consoles=[_Console('spice')]),
+            _Vm(VM_1, 'desktop-1', consoles=[_Console('spice')]),
+            _Vm(VM_2, 'vnc-only', consoles=[_Console('vnc')]),
+            _Vm(VM_3, 'desktop-2', consoles=[_Console('spice')]),
         ]
         hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
 
         results = self._scrape(vms, hosts)
 
-        self.assertEqual(['vm-1', 'vm-3'], [r['uuid'] for r in results])
+        self.assertEqual([VM_1, VM_3], [r['uuid'] for r in results])
 
     def test_host_subject_is_cached_across_vms(self):
         vms = [
-            _Vm('vm-1', 'desktop-1', consoles=[_Console('spice')]),
-            _Vm('vm-2', 'desktop-2', consoles=[_Console('spice')]),
+            _Vm(VM_1, 'desktop-1', consoles=[_Console('spice')]),
+            _Vm(VM_2, 'desktop-2', consoles=[_Console('spice')]),
         ]
         hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
 
@@ -199,9 +205,9 @@ class TestOVirtSourceDiscovery(unittest.TestCase):
         searched for, and the rest of the scrape goes on (issue #138).
         """
         vms = [
-            _Vm('vm-1', 'desktop-1', host_id='x or name=*',
+            _Vm(VM_1, 'desktop-1', host_id='x or name=*',
                 consoles=[_Console('spice')]),
-            _Vm('vm-2', 'desktop-2', host_id=HOST_1.upper(),
+            _Vm(VM_2, 'desktop-2', host_id=HOST_1.upper(),
                 consoles=[_Console('spice')]),
         ]
         hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
@@ -211,11 +217,34 @@ class TestOVirtSourceDiscovery(unittest.TestCase):
                 mock.patch.object(ovirt_source, 'OVIRT_SDK_TYPES', types):
             results = list(src())
 
-        self.assertEqual(['vm-2'], [r['uuid'] for r in results])
+        self.assertEqual([VM_2], [r['uuid'] for r in results])
         self.assertEqual('O=local,CN=ovirt.local', results[0]['host_subject'])
         # What was searched for is the UUID's canonical form, not the
         # text the engine sent.
         self.assertEqual(['id=%s' % HOST_1], connection.searches)
+
+    def test_a_vm_id_which_is_not_a_uuid_is_never_looked_up(self):
+        """The VM id is put into the path of the SDK's console lookup.
+
+        So a VM whose id is not a UUID is skipped rather than looked up,
+        and the rest of the scrape goes on. What is looked up, and yielded
+        as the console's uuid, is the canonical form, not the text the
+        engine sent.
+        """
+        vms = [
+            _Vm('../hosts/%s' % HOST_1, 'desktop-1',
+                consoles=[_Console('spice')]),
+            _Vm(VM_2.upper(), 'desktop-2', consoles=[_Console('spice')]),
+        ]
+        hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
+        connection = _FakeConnection(vms, hosts)
+        src, sdk, types = _make_source(connection)
+        with mock.patch.object(ovirt_source, 'OVIRT_SDK', sdk), \
+                mock.patch.object(ovirt_source, 'OVIRT_SDK_TYPES', types):
+            results = list(src())
+
+        self.assertEqual([VM_2], [r['uuid'] for r in results])
+        self.assertEqual([VM_2], connection.vm_lookups)
 
     def test_a_host_which_cannot_be_found_skips_only_its_vm(self):
         """A host can go between the VM list and the host search.
@@ -225,18 +254,18 @@ class TestOVirtSourceDiscovery(unittest.TestCase):
         """
         missing = '5b6c1f0e-8d1a-4c2b-9e3f-0a1b2c3d4e5f'
         vms = [
-            _Vm('vm-1', 'desktop-1', host_id=missing,
+            _Vm(VM_1, 'desktop-1', host_id=missing,
                 consoles=[_Console('spice')]),
-            _Vm('vm-2', 'desktop-2', consoles=[_Console('spice')]),
+            _Vm(VM_2, 'desktop-2', consoles=[_Console('spice')]),
         ]
         hosts = [_Host(HOST_1, 'O=local,CN=ovirt.local')]
 
         results = self._scrape(vms, hosts)
 
-        self.assertEqual(['vm-2'], [r['uuid'] for r in results])
+        self.assertEqual([VM_2], [r['uuid'] for r in results])
 
     def test_scrape_closes_the_connection_it_opened(self):
-        vms = [_Vm('vm-1', 'desktop-1', consoles=[_Console('spice')])]
+        vms = [_Vm(VM_1, 'desktop-1', consoles=[_Console('spice')])]
         connection = _FakeConnection(vms, [_Host(HOST_1, 'CN=h')])
         src, sdk, types = _make_source(connection)
         with mock.patch.object(ovirt_source, 'OVIRT_SDK', sdk), \
@@ -290,7 +319,7 @@ class TestOVirtTicketMinting(unittest.TestCase):
                 mock.patch.object(ovirt_source, 'OVIRT_SDK_TYPES', types), \
                 mock.patch.object(ovirt_source.time, 'time',
                                   return_value=self.NOW):
-            return src.mint_console_ticket('vm-1', lifetime)
+            return src.mint_console_ticket(VM_1, lifetime)
 
     def _source(self, consoles=None, granted=None, ticket_error=None,
                 ca_status=200):
@@ -325,7 +354,7 @@ class TestOVirtTicketMinting(unittest.TestCase):
         with mock.patch.object(ovirt_source, 'OVIRT_SDK', sdk), \
                 mock.patch.object(ovirt_source, 'OVIRT_SDK_TYPES', types):
             console, ticket, ttl = src.get_console_for_vm(
-                'vm-1', ticket_lifetime=75.9)
+                VM_1, ticket_lifetime=75.9)
 
         self.assertEqual('console-spice', console.id)
         self.assertEqual('a-ticket', ticket)
@@ -339,7 +368,7 @@ class TestOVirtTicketMinting(unittest.TestCase):
 
         with mock.patch.object(ovirt_source, 'OVIRT_SDK', sdk), \
                 mock.patch.object(ovirt_source, 'OVIRT_SDK_TYPES', types):
-            console, ticket, ttl = src.get_console_for_vm('vm-1')
+            console, ticket, ttl = src.get_console_for_vm(VM_1)
 
         self.assertEqual('console-spice', console.id)
         self.assertIsNone(ticket)
@@ -353,7 +382,7 @@ class TestOVirtTicketMinting(unittest.TestCase):
         with mock.patch.object(ovirt_source, 'OVIRT_SDK', sdk), \
                 mock.patch.object(ovirt_source, 'OVIRT_SDK_TYPES', types):
             src.get_console_for_vm(
-                'vm-1', connection=connection, ticket_lifetime=90)
+                VM_1, connection=connection, ticket_lifetime=90)
 
         connection.close.assert_not_called()
         sdk.Connection.assert_not_called()
@@ -401,6 +430,48 @@ class TestOVirtTicketMinting(unittest.TestCase):
         with self.assertRaises(base.ConsoleTicketUnavailable):
             self._mint(src, sdk, types)
         sdk.Connection.assert_not_called()
+
+    def test_mint_never_looks_up_a_uuid_which_is_not_a_uuid(self):
+        """The stored uuid is put into the path of the SDK's console lookup.
+
+        So one which is not a UUID is refused before any connection is
+        opened, and the refusal does not quote it.
+        """
+        src, sdk, types, connection, _ = self._source(
+            granted=_Granted('a-ticket', 90))
+
+        with mock.patch.object(ovirt_source, 'OVIRT_SDK', sdk), \
+                mock.patch.object(ovirt_source, 'OVIRT_SDK_TYPES', types):
+            with self.assertRaises(base.ConsoleTicketUnavailable) as cm:
+                src.mint_console_ticket('../hosts?search=x', 90)
+
+        self.assertNotIn('hosts', str(cm.exception))
+        sdk.Connection.assert_not_called()
+
+    def test_mint_looks_up_the_canonical_form_of_the_uuid(self):
+        src, sdk, types, connection, _ = self._source(
+            granted=_Granted('a-ticket', 90))
+
+        with mock.patch.object(ovirt_source, 'OVIRT_SDK', sdk), \
+                mock.patch.object(ovirt_source, 'OVIRT_SDK_TYPES', types):
+            src.mint_console_ticket(VM_1.upper(), 90)
+
+        (connection.system_service.return_value.vms_service.return_value
+         .vm_service.assert_called_once_with(VM_1))
+
+    def test_get_console_for_vm_refuses_an_id_which_is_not_canonical(self):
+        """The SDK puts the id into a URL path, so only a canonical UUID
+        is passed on, whichever caller supplied it."""
+        src, sdk, types, connection, _ = self._source()
+
+        for bad in ('../hosts', VM_1.upper(), None):
+            with mock.patch.object(ovirt_source, 'OVIRT_SDK', sdk), \
+                    mock.patch.object(ovirt_source, 'OVIRT_SDK_TYPES', types):
+                with self.assertRaises(ValueError):
+                    src.get_console_for_vm(bad, connection=connection)
+
+        (connection.system_service.return_value.vms_service.return_value
+         .vm_service.assert_not_called())
 
     def test_mint_raises_without_a_spice_console(self):
         src, sdk, types, connection, console_service = self._source(
@@ -453,7 +524,7 @@ class TestOVirtTimeouts(unittest.TestCase):
 
         with mock.patch.object(ovirt_source, 'OVIRT_SDK', sdk), \
                 mock.patch.object(ovirt_source, 'OVIRT_SDK_TYPES', types):
-            src.mint_console_ticket('vm-1', 90)
+            src.mint_console_ticket(VM_1, 90)
 
         self.assertEqual(
             ovirt_source.MINT_TIMEOUT,
