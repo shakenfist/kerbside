@@ -1,6 +1,9 @@
 from collections import defaultdict
 import datetime
+import ipaddress
+import re
 import time
+import unicodedata
 
 from sqlalchemy import create_engine, text
 from sqlalchemy import Boolean, Column, DateTime, Double, Integer, String, Text
@@ -49,6 +52,18 @@ class UnknownChannel(Exception):
 
 class ReusedJti(Exception):
     ...
+
+
+class InvalidConsole(ValueError):
+    """A console's connect target is not one the proxy could dial.
+
+    It names the field, never the value: the value came from a source's
+    management plane, and is not ours to repeat into a log.
+    """
+
+    def __init__(self, field):
+        super().__init__('console field %s is not valid' % field)
+        self.field = field
 
 
 class UnknownSession(Exception):
@@ -316,6 +331,66 @@ CONSOLE_ADDED = 'added'
 CONSOLE_UPDATED = 'updated'
 
 
+# A DNS name, as a host field may carry one: dot-separated labels of
+# letters, digits, hyphens and (as many internal names have them)
+# underscores, with an optional trailing dot.
+_HOSTNAME = re.compile(
+    r'(?=.{1,253}\.?$)'
+    r'[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?'
+    r'(?:\.[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?)*\.?')
+
+
+def _check_host(field, value):
+    if value is None or value == '':
+        return
+    if not isinstance(value, str):
+        raise InvalidConsole(field)
+    try:
+        ipaddress.ip_address(value)
+        return
+    except ValueError:
+        pass
+    if not _HOSTNAME.fullmatch(value):
+        raise InvalidConsole(field)
+
+
+def _check_port(field, value):
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 65535:
+        raise InvalidConsole(field)
+
+
+def _check_text(field, value):
+    if value is None:
+        return
+    if not isinstance(value, str) or any(
+            unicodedata.category(ch) in ('Cc', 'Zl', 'Zp') for ch in value):
+        raise InvalidConsole(field)
+
+
+def check_console_target(hypervisor=None, hypervisor_ip=None, insecure_port=None, secure_port=None,
+                         host_subject=None):
+    """Refuse a connect target the proxy should never be asked to dial.
+
+    These values come from a source's management plane, and become the
+    address and certificate subject the proxy uses for the backend, so
+    they are checked before they are stored rather than trusted. A host
+    is an IP address or a DNS name: hypervisor_ip is usually an address,
+    but oVirt's display address override may set it to a name, and the
+    proxy resolves either. A port is an integer from 1 to 65535. A host
+    subject is free text, but has no business carrying a control
+    character. Any of them may be absent, as each source leaves out the
+    ones it does not use. Raises InvalidConsole naming the first field
+    which fails.
+    """
+    _check_host('hypervisor', hypervisor)
+    _check_host('hypervisor_ip', hypervisor_ip)
+    _check_port('insecure_port', insecure_port)
+    _check_port('secure_port', secure_port)
+    _check_text('host_subject', host_subject)
+
+
 def add_console(source=None, uuid=None, hypervisor=None, hypervisor_ip=None,
                 insecure_port=None, secure_port=None, name=None, host_subject=None,
                 ticket=None, **kwargs):
@@ -333,7 +408,11 @@ def add_console(source=None, uuid=None, hypervisor=None, hypervisor_ip=None,
     names of the fields an update changed, which is empty when the
     console is as it was. Only names are returned, so the caller can
     log them without ever handling the ticket's value.
+
+    Raises InvalidConsole, storing nothing, when the connect target
+    fails check_console_target().
     """
+    check_console_target(hypervisor, hypervisor_ip, insecure_port, secure_port, host_subject)
     fields = {
         'hypervisor': hypervisor,
         'hypervisor_ip': hypervisor_ip,
@@ -1004,6 +1083,15 @@ class AuditEvent(Base):
 
 
 def add_audit_event(source, uuid, session_id, channel, node, pid, message):
+    """Record an audit event, and log it.
+
+    The message is stored and logged with its control characters
+    escaped. Some messages carry a value from outside Kerbside -- a
+    username, or whatever the proxy reports over RecordAuditEvent -- and
+    the audit trail is one event to a row and one to a log line, so a
+    newline in that value must not be able to forge another.
+    """
+    message = util.escape_control_characters(message)
     with Session(ENGINE) as session:
         event = AuditEvent(source, uuid, session_id, channel, node, pid, message)
         session.add(event)

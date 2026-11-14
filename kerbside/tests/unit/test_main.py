@@ -360,6 +360,67 @@ class ParseSourcesTestCase(testtools.TestCase):
             # Should log audit event for new console
             self.mock_db_add_audit_event.assert_called()
 
+    def test_parse_sources_skips_an_invalid_console_only(self):
+        from kerbside import main
+
+        with self._create_sources_yaml([{
+            'source': 'test-sf',
+            'type': 'shakenfist',
+            'url': 'http://localhost:13000',
+            'username': 'admin',
+            'password': 'secret'
+        }]):
+            bad = {'source': 'test-sf', 'uuid': 'bad', 'hypervisor_ip': '10.0.0.1:22'}
+            good = {'source': 'test-sf', 'uuid': 'good', 'hypervisor_ip': '10.0.0.1'}
+            self.mock_db_get_source.return_value = None
+            self.mock_shakenfist_source.return_value = self._mock_source_lookup(
+                consoles=[bad, good])
+            self.mock_db_add_console.side_effect = [
+                db.InvalidConsole('hypervisor_ip'), (db.CONSOLE_ADDED, [])]
+
+            main._parse_sources()
+
+            self.assertEqual(2, self.mock_db_add_console.call_count)
+            # The source's other consoles were still stored, and the
+            # source is not marked errored for one bad console.
+            self.assertNotIn(
+                mock.call('test-sf', True),
+                self.mock_db_set_source_error_state.call_args_list)
+            self.mock_db_add_audit_event.assert_called_once_with(
+                'test-sf', 'good', None, None, None, None, 'Discovered new console')
+
+    def test_a_console_whose_target_goes_bad_has_its_row_removed(self):
+        """A console which fails validation is not re-seen.
+
+        So a row stored while its target was good is removed, rather than
+        left for the proxy to dial at a target the source no longer
+        reports. Its source's other consoles are kept.
+        """
+        from kerbside import main
+
+        with self._create_sources_yaml([{
+            'source': 'test-sf',
+            'type': 'shakenfist',
+            'url': 'http://localhost:13000',
+            'username': 'admin',
+            'password': 'secret'
+        }]):
+            bad = {'source': 'test-sf', 'uuid': 'bad', 'hypervisor_ip': '10.0.0.1:22'}
+            good = {'source': 'test-sf', 'uuid': 'good', 'hypervisor_ip': '10.0.0.1'}
+            self.mock_db_get_source.return_value = None
+            self.mock_shakenfist_source.return_value = self._mock_source_lookup(
+                consoles=[bad, good])
+            self.mock_db_add_console.side_effect = [
+                db.InvalidConsole('hypervisor_ip'), (db.CONSOLE_UPDATED, [])]
+            self.mock_db_get_consoles.return_value = [
+                {'source': 'test-sf', 'uuid': 'bad', 'name': 'was good'},
+                {'source': 'test-sf', 'uuid': 'good', 'name': 'still good'}]
+
+            main._parse_sources()
+
+            self.mock_db_remove_console.assert_called_once_with(
+                source='test-sf', uuid='bad')
+
     def test_parse_sources_unknown_type(self):
         from kerbside import main
 

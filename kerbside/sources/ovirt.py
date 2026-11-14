@@ -4,6 +4,7 @@ import requests
 from shakenfist_utilities import logs
 import tempfile
 import time
+import uuid
 
 from . import base
 from .. import util
@@ -20,6 +21,22 @@ OVIRT_SDK_TYPES = None
 # client waits to connect, so a stalled engine has to fail the request rather
 # than hold it indefinitely.
 MINT_TIMEOUT = 15
+
+
+def canonical_id(value):
+    """An oVirt id in its canonical UUID form, or None if it is not a UUID.
+
+    oVirt's ids are UUIDs, and each one Kerbside handles is put into a
+    request to the engine: a host id into the search language, a VM id
+    into the path of the SDK's REST call. So an id is checked to be what
+    oVirt's ids always are rather than trusted to be one, and the
+    canonical form is what is sent, so nothing the engine or the database
+    supplied is interpolated as it arrived.
+    """
+    try:
+        return str(uuid.UUID(value))
+    except (AttributeError, TypeError, ValueError):
+        return None
 
 
 class oVirtSource(base.BaseSource):
@@ -125,17 +142,35 @@ class oVirtSource(base.BaseSource):
                 log.debug('Ignoring instance with incorrect status')
                 continue
 
-            if vm.host.id and vm.host.id not in host_cache:
-                host = hosts_service.list(search='id=%s' % vm.host.id)[0]
-                host_cache[host.id] = host.certificate.subject
+            # The VM id goes into the path of the console lookup, and
+            # becomes the console's uuid; see canonical_id().
+            vm_id = canonical_id(vm.id)
+            if not vm_id:
+                log.warning('Ignoring instance whose id is not a UUID')
+                continue
 
-            console, _, _ = self.get_console_for_vm(vm.id, connection=connection)
+            if vm.host.id and vm.host.id not in host_cache:
+                # The host id is interpolated into oVirt's search
+                # language; see canonical_id().
+                host_id = canonical_id(vm.host.id)
+                if not host_id:
+                    log.warning('Ignoring instance whose host id is not a UUID')
+                    continue
+                # A host can go between the VM list and this search, and
+                # one VM is skipped for it rather than the source errored.
+                hosts = hosts_service.list(search='id=%s' % host_id)
+                if not hosts:
+                    log.warning('Ignoring instance whose host could not be found')
+                    continue
+                host_cache[vm.host.id] = hosts[0].certificate.subject
+
+            console, _, _ = self.get_console_for_vm(vm_id, connection=connection)
             if not console:
                 log.debug('Ignoring instance with no SPICE console.')
                 continue
 
             yield {
-                'uuid': vm.id,
+                'uuid': vm_id,
                 'source': self.args['source'],
                 'hypervisor': '',
                 'hypervisor_ip': console.address,
@@ -152,6 +187,10 @@ class oVirtSource(base.BaseSource):
     def get_console_for_vm(self, id, connection=None, ticket_lifetime=None):
         """Find a VM's SPICE console, and optionally mint a ticket for it.
 
+        id must be a VM id in the canonical form canonical_id() gives,
+        as it is put into the path of an SDK request; any other raises
+        ValueError before a request is made.
+
         Returns (console, ticket, ticket_ttl). console is None if the VM has
         no SPICE console. If ticket_lifetime is set, a ticket valid for that
         many seconds is requested, and ticket and ticket_ttl are its value
@@ -159,6 +198,9 @@ class oVirtSource(base.BaseSource):
         None. A connection opened here is closed before returning; one passed
         in is left open for its owner.
         """
+        if id is None or canonical_id(id) != id:
+            raise ValueError('VM id is not a canonical UUID')
+
         if connection:
             return self._get_console_for_vm(id, connection, ticket_lifetime)
 
@@ -212,7 +254,12 @@ class oVirtSource(base.BaseSource):
         # The time is taken before the request, so that the expiry reported
         # is never later than the one the engine applies.
         now = int(time.time())
-        console, ticket, ttl = self.get_console_for_vm(uuid, ticket_lifetime=lifetime)
+        # The uuid is the stored console's, which discovery took from the
+        # engine; see canonical_id(). The message does not quote it.
+        vm_id = canonical_id(uuid)
+        if not vm_id:
+            raise base.ConsoleTicketUnavailable('console uuid is not a UUID')
+        console, ticket, ttl = self.get_console_for_vm(vm_id, ticket_lifetime=lifetime)
         if not console:
             raise base.ConsoleTicketUnavailable(
                 'VM %s has no SPICE console' % uuid)

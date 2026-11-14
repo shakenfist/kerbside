@@ -280,7 +280,19 @@ def _parse_sources():
                     {k: v for k, v in console.items()
                      if k not in kerbside_db.CONSOLE_SECRET_FIELDS}
                     ).info('Found console')
-                change, changed = kerbside_db.add_console(**console)
+                try:
+                    change, changed = kerbside_db.add_console(**console)
+                except kerbside_db.InvalidConsole as e:
+                    # Skip this console, not the source: the rest of
+                    # its consoles are still good. Not re-seen, so a
+                    # row stored before its target went bad is removed
+                    # below rather than left pointing somewhere stale.
+                    LOG.with_fields({
+                        'source': console['source'],
+                        'uuid': console['uuid'],
+                        'field': e.field
+                        }).warning('Ignoring console with an invalid connect target')
+                    continue
                 if change == kerbside_db.CONSOLE_ADDED:
                     kerbside_db.add_audit_event(
                         console['source'], console['uuid'], None, None, None, None,
