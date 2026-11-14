@@ -19,6 +19,12 @@ self-hosted-runner:
     - l
     - xl
     - xl-bigdisk
+    # Bound-job labels (see "Bound runners" in docs/testing.md). The
+    # per-job bind- token is a dynamic expression, so actionlint does
+    # not check it.
+    - bound-debian-13
+    - bound-l
+    - bound-m
     - claude-code
 
 # Ignore certain shellcheck rules from run: blocks in workflow files.
