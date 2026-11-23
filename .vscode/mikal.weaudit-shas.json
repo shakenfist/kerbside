@@ -381,6 +381,10 @@
       "sha": "38d6e6f49d507181ae616aabf2f06feb35c2e3df",
       "date": "2026-08-08"
     },
+    "tempest-plugin/kerbside_tempest_plugin/ryll_client.py": {
+      "sha": "3e93ec8663cb7a80325cf74e384d25e93ff36a35",
+      "date": "2026-11-24"
+    },
     "tempest-plugin/kerbside_tempest_plugin/tests/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-18"
@@ -396,6 +400,14 @@
     "tempest-plugin/kerbside_tempest_plugin/tests/scenario/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-18"
+    },
+    "tempest-plugin/kerbside_tempest_plugin/tests/scenario/test_sextant_scenario.py": {
+      "sha": "a7d4c711a302ae5d8b34f562eee91dc4472def66",
+      "date": "2026-11-24"
+    },
+    "tempest-plugin/pyproject.toml": {
+      "sha": "d8236748e9cf32128f61d8cbf6bb19780520523e",
+      "date": "2026-11-24"
     },
     "tools/check-pypi-storage.py": {
       "sha": "0b9338af495617ba437b95feda3d9519126bed7c",

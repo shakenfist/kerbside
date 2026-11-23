@@ -586,6 +586,26 @@
     {
       "path": "loadtests/latency/Dockerfile",
       "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/pyproject.toml",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests/scenario/test_sextant_scenario.py",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests/scenario",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/tests",
+      "author": "mikal"
+    },
+    {
+      "path": "tempest-plugin/kerbside_tempest_plugin/ryll_client.py",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
