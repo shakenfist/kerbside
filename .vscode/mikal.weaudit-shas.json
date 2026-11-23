@@ -5,9 +5,33 @@
       "sha": "16f2c1db4f57ad49772cfb806e19df2708f3176c",
       "date": "2026-09-18"
     },
+    ".github/actionlint.yaml": {
+      "sha": "858c7cf8bf033c7aa76dd651888af25287d02fe5",
+      "date": "2026-11-23"
+    },
+    ".github/workflows/codeql-analysis.yml": {
+      "sha": "383ef65a7f0dd0cef646300d6542edaf80795204",
+      "date": "2026-11-23"
+    },
+    ".github/workflows/demo-compose.yml": {
+      "sha": "de759456f2cb3f1f1995bbe1dd43755ccb619a3c",
+      "date": "2026-11-23"
+    },
+    ".github/workflows/dev-proxy-wheel.yml": {
+      "sha": "c9a6f7b6c258f346bbb8a6ec8328017e798a40d0",
+      "date": "2026-11-23"
+    },
+    ".github/workflows/direct-qemu-functional.yml": {
+      "sha": "7ed6ca611b51883c2498c47175d94367f159c35b",
+      "date": "2026-11-23"
+    },
     ".github/workflows/export-repo-config.yml": {
       "sha": "b9b3936053b8685ef0ae47f656b2f35aa62ba637",
       "date": "2026-10-05"
+    },
+    ".github/workflows/functional-tests.yml": {
+      "sha": "0191b51358cefdf7064953f6cf78d9cff9d30b1f",
+      "date": "2026-11-23"
     },
     ".github/workflows/pin-indirect-dependencies.yml": {
       "sha": "94e1e3a47510da8436eb629a047ba1edd4979905",
@@ -21,9 +45,25 @@
       "sha": "dab99349ea1867e984ae0e5fc73f70ec00cb519b",
       "date": "2026-10-05"
     },
+    ".github/workflows/proxmox-functional.yml": {
+      "sha": "03d8ea99b5d11517e3c2cea1361718f9836a1b18",
+      "date": "2026-11-23"
+    },
     ".github/workflows/pypi-storage-check.yml": {
       "sha": "b4ea2a75e61abba4bcfd122d9f0d8222f1b25607",
       "date": "2026-08-24"
+    },
+    ".github/workflows/release.yml": {
+      "sha": "aee7be31ca05811eab03042ffd2d4d9244b51c35",
+      "date": "2026-11-23"
+    },
+    ".github/workflows/rust.yml": {
+      "sha": "c6816b6f94d21ed3173e8829534722bb5f5ae61d",
+      "date": "2026-11-23"
+    },
+    ".github/workflows/sf-e2e-functional.yml": {
+      "sha": "b912b8635345f98d17c9a931ebfbf92ad335aadf",
+      "date": "2026-11-23"
     },
     ".skillsaw.yaml": {
       "sha": "7f2245e1fb8311d66a1aac849346283ee7441425",
