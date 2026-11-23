@@ -386,6 +386,150 @@
     {
       "path": ".github/workflows/direct-qemu-functional.yml",
       "author": "mikal"
+    },
+    {
+      "path": "ansible/meta/runtime.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/meta",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/defaults/main.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/defaults",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/files/kerbside-check-ini.py",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/files/kerbside-check-sources.py",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/files/kerbside-host-subject.py",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/files/kerbside-ready.py",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/files",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/handlers/main.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/handlers",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/meta/argument_specs.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/meta/main.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/meta",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/tasks/bootstrap.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/tasks/config_file.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/tasks/config.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/tasks/main.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/tasks/register.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/tasks/validate.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/tasks",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/templates/kerbside-api.service",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/templates/kerbside-daemon.service",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/templates/kerbside.ini",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/templates/sources.yaml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/templates",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/vars/main.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/vars",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/.ansible-lint",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/.gitignore",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/galaxy.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

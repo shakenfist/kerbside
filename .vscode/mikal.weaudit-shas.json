@@ -77,6 +77,106 @@
       "sha": "0f1d2d9085e55974a6763b7501bbe7161ef52076",
       "date": "2026-09-26"
     },
+    "ansible/.ansible-lint": {
+      "sha": "a3c66114e8ee87d147f9068a2176d87271c91f90",
+      "date": "2026-11-24"
+    },
+    "ansible/.gitignore": {
+      "sha": "16e9aad88b9806e9f15350549196dad0b28d8ec9",
+      "date": "2026-11-24"
+    },
+    "ansible/README.md": {
+      "sha": "8ec0dc0e6e589ae9ff1f4ae6649cb829e32bd0b3",
+      "date": "2026-11-24"
+    },
+    "ansible/galaxy.yml": {
+      "sha": "b4fdb7316db9c0a6045e6f652adcdf30cbf6bbb8",
+      "date": "2026-11-24"
+    },
+    "ansible/meta/runtime.yml": {
+      "sha": "898ad8ff5bb65b966bcffdd44c12e77bea2e1d56",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/README.md": {
+      "sha": "8f5a4e122fb7db92426e4dc86aa8dc78a9fed981",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/defaults/main.yml": {
+      "sha": "e3b16fcc7589def72d7cc72a38846582043f57a6",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/files/kerbside-check-ini.py": {
+      "sha": "654ab2fceff5b0d89e55b5c41cc8666e68fb344f",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/files/kerbside-check-sources.py": {
+      "sha": "231c26f175ef7a57da5b28949c52d1cf1c8b7680",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/files/kerbside-host-subject.py": {
+      "sha": "4cbdd9643cd51477cc4edf782be142c51dae92d5",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/files/kerbside-ready.py": {
+      "sha": "3fd17292b1bb98795fd420b2596a5d105d12bd02",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/handlers/main.yml": {
+      "sha": "8580b6ff7422b42141f9ad0357ffc8b8b434b04b",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/meta/argument_specs.yml": {
+      "sha": "062d11311d84911ddeffc03c2c2d2058cb94a793",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/meta/main.yml": {
+      "sha": "f7411e72d46330e00fc8896b60e6ee8813c9900a",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/tasks/bootstrap.yml": {
+      "sha": "8213b76d1b0ee60d5ec69e2ee943898d5644e7e8",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/tasks/config.yml": {
+      "sha": "acdaf9d49424f92b1868b6b177284f38df86f85e",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/tasks/config_file.yml": {
+      "sha": "3e6d53eb7547f4aa939ae2b5b898ae7ae4a06f00",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/tasks/main.yml": {
+      "sha": "49da8453eb1212a865f0025d72809ba6a0ab380c",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/tasks/register.yml": {
+      "sha": "27c8a352ef4a109cc605f42aa84f90976f51fec5",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/tasks/validate.yml": {
+      "sha": "a3b9ffbd79f4b115808848237100d3aca86d3e82",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/templates/kerbside-api.service": {
+      "sha": "cd0741e0899d2645b704b154fd1f683592060f4b",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/templates/kerbside-daemon.service": {
+      "sha": "93ae3e53adb41f3a26ec30c55340048ab513ddfc",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/templates/kerbside.ini": {
+      "sha": "42993639f54b123dae6d3d8cfb88d0d1634964ca",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/templates/sources.yaml": {
+      "sha": "70804f47e82c5cd2b903192a6602ca40cc1b0e2b",
+      "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/vars/main.yml": {
+      "sha": "b0e2b1677f19081e81b292be7010be3a121312e5",
+      "date": "2026-11-24"
+    },
     "bindep.txt": {
       "sha": "028f6e239f525fa47bc96c5c283d9774661536db",
       "date": "2026-09-26"
