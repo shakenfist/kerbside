@@ -249,6 +249,22 @@
       "sha": "558621b0e5ee59b1a61c784a96ea9f7281d3dcd1",
       "date": "2026-08-18"
     },
+    "etc/kerbside.conf.example": {
+      "sha": "54451ac19a944dde266b93b96670215f6dce150a",
+      "date": "2026-11-24"
+    },
+    "etc/kolla-ci-globals-overlay.yml": {
+      "sha": "5767de6b3958a1b4dea221cc8a2efcf8465c7129",
+      "date": "2026-11-24"
+    },
+    "etc/systemd/kerbside-api.service": {
+      "sha": "13059f8a767dd88e8f0390fc141b1db24c392889",
+      "date": "2026-11-24"
+    },
+    "etc/systemd/kerbside-daemon.service": {
+      "sha": "c2c1045d6cd9888fae202586c1d818e439051f14",
+      "date": "2026-11-24"
+    },
     "kerbside/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-06"

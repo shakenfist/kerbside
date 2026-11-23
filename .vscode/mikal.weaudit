@@ -554,6 +554,30 @@
     {
       "path": "demo",
       "author": "mikal"
+    },
+    {
+      "path": "etc/systemd/kerbside-daemon.service",
+      "author": "mikal"
+    },
+    {
+      "path": "etc/systemd/kerbside-api.service",
+      "author": "mikal"
+    },
+    {
+      "path": "etc/systemd",
+      "author": "mikal"
+    },
+    {
+      "path": "etc/kerbside.conf.example",
+      "author": "mikal"
+    },
+    {
+      "path": "etc/kolla-ci-globals-overlay.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "etc",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
