@@ -337,6 +337,10 @@
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-08"
     },
+    "loadtests/latency/Dockerfile": {
+      "sha": "680f741905fdbbbf1eef29d183362fe5082febc4",
+      "date": "2026-11-24"
+    },
     "loadtests/latency/cleanupconsoles.sh": {
       "sha": "181480700807e60a8b1ae31bbee4c175794375c6",
       "date": "2026-08-08"
@@ -344,6 +348,10 @@
     "loadtests/latency/makeconsole.sh": {
       "sha": "291f5057d4b3c808d60ca0e052975c79464e48b8",
       "date": "2026-08-08"
+    },
+    "loadtests/latency/orchestrator.py": {
+      "sha": "8ae047ea31437263d65ff33db4a1bd173bec466e",
+      "date": "2026-11-24"
     },
     "rust/kerbside-proxy/README.md": {
       "sha": "e827f685f04ba9e4f951d6203f384be5db2bf918",

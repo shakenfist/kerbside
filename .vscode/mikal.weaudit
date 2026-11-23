@@ -578,6 +578,14 @@
     {
       "path": "etc",
       "author": "mikal"
+    },
+    {
+      "path": "loadtests/latency/orchestrator.py",
+      "author": "mikal"
+    },
+    {
+      "path": "loadtests/latency/Dockerfile",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
