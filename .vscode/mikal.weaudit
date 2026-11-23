@@ -530,6 +530,30 @@
     {
       "path": "ansible",
       "author": "mikal"
+    },
+    {
+      "path": "demo/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/docker-compose.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/Dockerfile",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/entrypoint.sh",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/kerbside.ini",
+      "author": "mikal"
+    },
+    {
+      "path": "demo",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
