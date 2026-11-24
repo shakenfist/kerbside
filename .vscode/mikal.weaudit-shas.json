@@ -221,6 +221,10 @@
       "sha": "78514c2afb47e97e928655faa78dc70c92fb9f57",
       "date": "2026-09-27"
     },
+    "docs/deployment/order.yml": {
+      "sha": "8451af6e56ae2df78a6abadfa06528f734b263c9",
+      "date": "2026-11-25"
+    },
     "docs/spice/compression-protocols.md": {
       "sha": "31f502b7d486ba55d92d5acc0e2e4ae8bd4297dd",
       "date": "2026-09-18"
