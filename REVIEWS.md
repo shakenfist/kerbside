@@ -30,7 +30,6 @@ for how this works, including how to verify the attestations.
 | .github/workflows/pr-re-review.yml | mikal | 2026-10-05 | 68425cd38444 | - |
 | .github/workflows/pr-retest.yml | mikal | 2026-10-05 | dab99349ea18 | - |
 | .github/workflows/proxmox-functional.yml | mikal | 2026-11-23 | 03d8ea99b5d1 | - |
-| .github/workflows/prune-reviews.yml | mikal | 2026-11-01 | 0c0cfe362b24 | development@d8055a5e1696 |
 | .github/workflows/pypi-storage-check.yml | mikal | 2026-08-24 | b4ea2a75e61a | - |
 | .github/workflows/release.yml | mikal | 2026-11-23 | aee7be31ca05 | - |
 | .github/workflows/renovate.yml | mikal | 2026-11-08 | 4a7a3cde0179 | development@36adeb6f3a99 |
