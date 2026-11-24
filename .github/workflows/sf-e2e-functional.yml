@@ -251,8 +251,9 @@ jobs:
         run: "[ $ALL_SUCCESS == true ]"
 
   # A run against develop is load-bearing: it bounds the accepted
-  # two-tier CI risk that the merge queue never re-runs this lane
-  # against the merged tree (and catches SF-at-develop-HEAD drift),
+  # risk that the merge queue never re-runs this lane against the
+  # merged tree, and catches SF-at-develop-HEAD drift (see "Why the
+  # gates are shaped this way" in docs/testing.md),
   # and a red entry in the Actions tab alerts nobody. File or update a
   # tracking issue instead. A separate job so issues: write is never
   # granted to the lane job.

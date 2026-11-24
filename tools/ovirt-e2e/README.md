@@ -1,7 +1,7 @@
 # ovirt-e2e: oVirt end-to-end kerbside lane
 
-This directory holds the runner-side driver scripts for the oVirt half of
-the two-tier CI story (`.github/workflows/functional-tests.yml`'s
+This directory holds the runner-side driver scripts for the oVirt
+end-to-end lane (`.github/workflows/functional-tests.yml`'s
 `ovirt_matrix` job).
 
 Unlike the `direct-qemu` lane (which fakes a cloud with a `type: static`
@@ -40,6 +40,11 @@ avoid a network hop the lane actually wants to exercise. The runner
 reaches `10.0.2.2` directly because `shakenfist/actions`'
 `kerbside-single-node.yml` attaches it to the `10.0.2.0/24` test network
 as part of building the environment.
+
+A dedicated Debian instance for kerbside on the test network would be
+closer to a production deployment, and was considered. It would cost
+another instance and another provisioning path per run without
+covering any more of kerbside itself, so the lane uses the runner.
 
 Ports are confusing in logs and this is not a conflict: kerbside's
 client-facing proxy binds `5900`/`5901` on the **runner** (`127.0.0.1`),
@@ -199,6 +204,15 @@ gunicorn logs, ryll's stdio, the smoke-client logs, and `kerbside.env`
 (see the env-file contract below for the invariant it must keep to stay
 uploadable) are uploaded instead -- an errored source or a failed relay
 is fully diagnosable from those without ever needing the secret files.
+
+The engine password reaches `deploy-kerbside.sh` and `gen-sources.py`
+on the command line, where other processes on the runner can see it.
+Review has left that as it is deliberately: the password is the
+throwaway the workflow already writes in plain text
+(`--password foobar`, on every engine-facing step of the
+`ovirt_matrix` job), for an environment that lives for one run on a
+single-use runner. Hiding it from argv in these two scripts alone
+would protect nothing; change every step or none.
 
 ## Env-file contract
 
