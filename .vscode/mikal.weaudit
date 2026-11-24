@@ -606,6 +606,10 @@
     {
       "path": "tempest-plugin/kerbside_tempest_plugin/ryll_client.py",
       "author": "mikal"
+    },
+    {
+      "path": "docs/deployment/order.yml",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
