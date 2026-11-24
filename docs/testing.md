@@ -178,6 +178,18 @@ compares the published binary's `--contract-hash` with the checkout's
 proto and, when they differ, builds the proxy from the checkout and
 passes it to the image build as `KERBSIDE_PROXY`.
 
+The demo's shell scripts are linted by `tox -e shellcheck` in
+`sanity_checks`, not in the demo lane. The lane's path filter would
+leave `tools/`, which holds most of the repository's shell, unchecked
+while looking like CI shellcheck coverage. Adding a step inside
+`sanity_checks` renames no gate job, so the ruleset is unaffected.
+
+A new workflow whose only trigger is `workflow_dispatch` cannot be run
+from the pull request that adds it: GitHub offers dispatch only for
+workflows already on the default branch. The demo lane's runner probe
+was first written that way, and needed a path-filtered `pull_request`
+trigger to be run at all before merging.
+
 Two behaviours only matter when driving CI by hand: on a
 `workflow_dispatch` run of `functional-tests.yml` an unselected target
 skips cleanly via a job-level `if:` (it does not report red), and

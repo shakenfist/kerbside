@@ -10,7 +10,7 @@ sharpest form yet and adds one of its own. The sharpest form:
 static driver's options, it already contains the *framing* — an
 "Intended use-cases" list and a "Not intended for production use"
 paragraph — which is precisely what decision 2 of
-[PLAN-demo-install.md](PLAN-demo-install.md) assigns to this page.
+[PLAN-demo-install.md](https://github.com/shakenfist/kerbside/blob/b3a1a5a4272398f45e27b86c1586d221c92b90b5/docs/plans/PLAN-demo-install.md) assigns to this page.
 The new hazard: the survey found that framing is factually wrong
 about the driver's central behaviour, so this phase cannot simply
 decide what to delegate. It has to correct the thing it delegates
@@ -70,7 +70,7 @@ Out of scope, explicitly:
 
 - **The demo recipe.** `docs/installation.md:160-319` owns the
   commands, in order, with their real output, per
-  [PLAN-demo-install.md](PLAN-demo-install.md) decision 2 settled
+  [PLAN-demo-install.md](https://github.com/shakenfist/kerbside/blob/b3a1a5a4272398f45e27b86c1586d221c92b90b5/docs/plans/PLAN-demo-install.md) decision 2 settled
   2026-08-22. This page links it. It does not restate one command.
 - **`demo/README.md`.** It is the reference for the compose stack
   itself and stays that.
@@ -91,7 +91,7 @@ nothing in it needed correcting at source.** That is unusual
 enough to be worth stating. `kerbside/sources/static.py` exists
 (133 lines). `docs/installation.md` carries "Try it: the demo
 stack" at `:160`, delivered 2026-08-22 as
-[PLAN-demo-install.md](PLAN-demo-install.md)'s phase 5.
+[PLAN-demo-install.md](https://github.com/shakenfist/kerbside/blob/b3a1a5a4272398f45e27b86c1586d221c92b90b5/docs/plans/PLAN-demo-install.md)'s phase 5.
 That plan's decision 2 is settled and says exactly what the
 master plan's row says it says, including the sentence this
 phase's scope is built on: the use-case page "owns the framing —

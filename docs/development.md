@@ -12,7 +12,25 @@ Kerbside uses Alembic for database schema migrations. The migration
 files are located in the `kerbside/migrations/versions/` directory.
 They live inside the package so that they ship in the wheel and
 `kerbside db upgrade` can run them from an install with no
-repository checkout present.
+repository checkout present. Shipping a root-level `alembic/` as data
+instead was rejected: files outside the package cannot be addressed
+with `importlib.resources`, so every install would need a resolution
+hack to find them.
+
+There are two copies of `alembic.ini`. The one at the repository root
+serves the bare `alembic` CLI below, and the one in
+`kerbside/migrations/` ships in the wheel for `kerbside db`. They differ
+on purpose, and each file's header says how: most importantly, the
+packaged copy omits `prepend_sys_path = .`, which in an installed
+deployment would put the operator's working directory on `sys.path`
+for every `kerbside db upgrade`. A unit test asserts that omission. The
+root copy is kept, rather than routing developers through `kerbside db`
+as well, because `alembic revision` has no `kerbside` equivalent and
+developers would need both tools anyway.
+
+`kerbside/migrations/env.py` sets `target_metadata = None`, so
+`alembic revision --autogenerate` does not work; migrations are written
+by hand.
 
 ### Creating a new migration
 

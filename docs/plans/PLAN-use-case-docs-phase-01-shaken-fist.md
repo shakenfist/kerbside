@@ -109,7 +109,7 @@ accurate in every particular.
 
 5. **The static-source row's precondition has been met.** It
    defers the demo mechanics to `docs/installation.md` "per
-   PLAN-demo-install.md decision 2", which was still a promise
+   [PLAN-demo-install.md](https://github.com/shakenfist/kerbside/blob/b3a1a5a4272398f45e27b86c1586d221c92b90b5/docs/plans/PLAN-demo-install.md) decision 2", which was still a promise
    when written. It landed 2026-08-22: `docs/installation.md:160`
    is `## Try it: the demo stack`, and `docs/index.md`'s
    standalone row already links `installation.md#try-it-the-demo-stack`.

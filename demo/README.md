@@ -106,6 +106,26 @@ than working around. It will not mint if any configured source is not
 unconfigured. If it refuses, something about the stack is genuinely
 wrong.
 
+Three things about its shape are deliberate:
+
+- **It lives in a `demo` command group** rather than being, say,
+  `kerbside token issue`. Where the command sits is what labels it
+  demonstration-only, so the label cannot be diluted by a warning
+  string being reworded, or by a serious-sounding command being added
+  beside it later.
+- **The static-only check is whole-deployment, not per source.** A
+  session token is not scoped to a source: the API checks its signature
+  and expiry and nothing else, so a token minted "for the static source"
+  would open every console of every source. It reads `sources.yaml`
+  rather than the database, because the database can hold rows from an
+  earlier configuration, and a stale row blocking a legitimate demo is
+  how a guard ends up growing a `--force` flag.
+- **It writes no audit event**, only a warning to the log and to
+  stderr. Kerbside's audit table is console-scoped, with the source and
+  console UUID in its primary key, so a token issuance has nowhere to
+  go. Issue #301 records that a real issuance audit needs a different
+  event shape.
+
 ## Building against a checkout
 
 The image installs the released `kerbside` from PyPI, so what you
@@ -121,6 +141,43 @@ environment than the default does: it needs the repository's git
 metadata in the build context, so it must be run from an ordinary
 clone rather than a `git worktree`. `demo/Dockerfile` explains why,
 and issue #326 tracks the underlying packaging fragility.
+
+## If port 5900 is already taken
+
+The demo publishes `127.0.0.1:5900`, the conventional VNC port, so a
+desktop running a VNC server makes `docker compose up` fail with
+`failed to bind host port 127.0.0.1:5900/tcp: address already in use`.
+Docker does not say what holds the port; `sudo ss -tlnp 'sport = :5900'`
+does.
+
+If you remap it with a compose override file, note that compose merges
+`ports` by appending, so an override listing different ports still
+attempts the original bindings. Replacing the list needs the
+`!override` tag (Compose 2.24 or newer). The proxy also writes its
+port into the `.vv`, so a remapped host port needs
+`KERBSIDE_PUBLIC_SECURE_PORT` and `KERBSIDE_PUBLIC_INSECURE_PORT` set
+to match. Issue #750 tracks making this a single setting.
+
+## Why it is built this way
+
+**Compose, rather than the direct-qemu harness.**
+`tools/direct-qemu/` already brings up MariaDB, TLS, a static source
+and a real qemu on one host, and CI runs it on every pull request, so
+it would have been a demo for free. It is a CI harness, though, with
+CI's assumptions built in: it starts the host's MariaDB with systemd,
+opens up `/dev/kvm`, installs packages into the host, uses fixed
+`/tmp` paths, and builds ryll with a Rust toolchain. Pointing an
+evaluator at it asks them to make their machine look like a GitHub
+runner. The cost of compose is that the demo is new deployment
+artefacts rather than documentation, which is why it has a CI lane of
+its own (`demo-compose.yml`, see `docs/testing.md`).
+
+**A real qemu, and no guest image.** A demo proxying a fake SPICE
+server proves nothing, so `spice-target` is a real qemu. Fetching or
+building a guest image (Uncalibrated Sextant is the project's test
+guest) would give it something more interesting to show, at the price
+of exactly the friction the demo exists to remove; the firmware screen
+of a disk-less VM is a genuine SPICE display surface.
 
 ## Where to go next
 
