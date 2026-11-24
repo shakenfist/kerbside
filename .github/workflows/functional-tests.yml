@@ -400,7 +400,7 @@ jobs:
           python3 -mvenv /tmp/venv-ansible
           /tmp/venv-ansible/bin/pip3 install uv
           /tmp/venv-ansible/bin/uv pip install --python /tmp/venv-ansible/bin/python \
-              ansible-core==2.22.0 ansible-lint==26.10.1 galaxy-importer==0.4.44
+              ansible-core==2.22.0 ansible-lint==26.11.0 galaxy-importer==0.4.44
 
       # Rootless test of the kerbside role's validate, bootstrap (against
       # a stub virtualenv), config and register entry points. register
