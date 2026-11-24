@@ -45,7 +45,7 @@ dependencies = [
     # as a command (see docs/installation.md), never imported.
     "gunicorn==26.2.0",                 # mit
     "flask-request-id-middleware==1.1", # mit
-    "pyyaml==6.0.3",                    # mit
+    "pyyaml==6.0.4",                    # mit
     # not-imported: PyMySQL -- SQLAlchemy driver for the "mysql+pymysql://"
     # form of SQL_URL, which etc/kerbside.conf.example ships.
     "PyMySQL==1.2.4",                   # mit
