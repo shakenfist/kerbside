@@ -12,17 +12,6 @@
         "verified": true
       }
     },
-    ".github/workflows/prune-reviews.yml": {
-      "sha": "0c0cfe362b24e6bc67ccf1ddd09dacc722a0524f",
-      "date": "2026-11-01",
-      "imported": {
-        "repo": "shakenfist/development",
-        "reviewer": "mikal",
-        "path": ".github/workflows/prune-reviews.yml",
-        "commit": "d8055a5e16965c0780483c737cca94caeabe81d8",
-        "verified": true
-      }
-    },
     ".github/workflows/renovate.yml": {
       "sha": "4a7a3cde017918167e5cd5c7e8da171feb61338f",
       "date": "2026-11-08",
