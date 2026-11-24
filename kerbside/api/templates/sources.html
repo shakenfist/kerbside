@@ -40,8 +40,8 @@
                     {% endif %}
                 </td>
                 {# The disclosure id is derived from the source name,
-                   a unique db key, so a later polling phase can morph
-                   the table and leave an operator's open disclosure
+                   a unique db key, so the poll's morph matches it across
+                   a tick and an operator's open disclosure stays
                    open. #}
                 <td>
                     {% if source.ca_cert %}

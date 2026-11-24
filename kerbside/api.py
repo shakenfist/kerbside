@@ -94,7 +94,7 @@ app.config['JWT_SECRET_KEY'] = config.AUTH_SECRET_SEED
 # the operator on the login page.
 #
 # JWT_COOKIE_SECURE is deliberately not set: it would break the plain HTTP CI
-# lanes and local development, and is recorded as future work instead.
+# lanes and local development; making it configurable is issue #759.
 app.config['JWT_COOKIE_CSRF_PROTECT'] = True
 app.config['JWT_COOKIE_SAMESITE'] = 'Lax'
 
