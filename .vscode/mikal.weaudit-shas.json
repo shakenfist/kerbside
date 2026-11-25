@@ -21,10 +21,6 @@
       "sha": "c9a6f7b6c258f346bbb8a6ec8328017e798a40d0",
       "date": "2026-11-23"
     },
-    ".github/workflows/direct-qemu-functional.yml": {
-      "sha": "7ed6ca611b51883c2498c47175d94367f159c35b",
-      "date": "2026-11-23"
-    },
     ".github/workflows/export-repo-config.yml": {
       "sha": "b9b3936053b8685ef0ae47f656b2f35aa62ba637",
       "date": "2026-10-05"
@@ -59,10 +55,6 @@
     },
     ".github/workflows/rust.yml": {
       "sha": "c6816b6f94d21ed3173e8829534722bb5f5ae61d",
-      "date": "2026-11-23"
-    },
-    ".github/workflows/sf-e2e-functional.yml": {
-      "sha": "b912b8635345f98d17c9a931ebfbf92ad335aadf",
       "date": "2026-11-23"
     },
     ".skillsaw.yaml": {
@@ -185,17 +177,9 @@
       "sha": "a7e8106e666807fc3867b59bfe26d1ca9014ff76",
       "date": "2026-11-24"
     },
-    "demo/README.md": {
-      "sha": "679008eaf8da700a900351ba49493ac11ecc5684",
-      "date": "2026-11-24"
-    },
     "demo/demo-env.sh": {
       "sha": "a5cbc188afcbf3811142a84e55aaa423c6e0e60a",
       "date": "2026-08-18"
-    },
-    "demo/docker-compose.yml": {
-      "sha": "2f263b67a3f37305b4450cd56139365afc4ddc0d",
-      "date": "2026-11-24"
     },
     "demo/entrypoint.sh": {
       "sha": "4f1b49d76cf53079c8e7eb3a350c65c14f7410d6",

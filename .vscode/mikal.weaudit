@@ -348,10 +348,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/sf-e2e-functional.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/rust.yml",
       "author": "mikal"
     },
@@ -381,10 +377,6 @@
     },
     {
       "path": ".github/workflows/release.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/direct-qemu-functional.yml",
       "author": "mikal"
     },
     {
@@ -532,14 +524,6 @@
       "author": "mikal"
     },
     {
-      "path": "demo/README.md",
-      "author": "mikal"
-    },
-    {
-      "path": "demo/docker-compose.yml",
-      "author": "mikal"
-    },
-    {
       "path": "demo/Dockerfile",
       "author": "mikal"
     },
@@ -549,10 +533,6 @@
     },
     {
       "path": "demo/kerbside.ini",
-      "author": "mikal"
-    },
-    {
-      "path": "demo",
       "author": "mikal"
     },
     {
