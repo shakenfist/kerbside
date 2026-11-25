@@ -356,10 +356,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/workflows/functional-tests.yml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/demo-compose.yml",
       "author": "mikal"
     },

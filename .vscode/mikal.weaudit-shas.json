@@ -25,10 +25,6 @@
       "sha": "b9b3936053b8685ef0ae47f656b2f35aa62ba637",
       "date": "2026-10-05"
     },
-    ".github/workflows/functional-tests.yml": {
-      "sha": "0191b51358cefdf7064953f6cf78d9cff9d30b1f",
-      "date": "2026-11-23"
-    },
     ".github/workflows/pin-indirect-dependencies.yml": {
       "sha": "94e1e3a47510da8436eb629a047ba1edd4979905",
       "date": "2026-10-05"
