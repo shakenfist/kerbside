@@ -43,7 +43,7 @@ dependencies = [
     "flask-jwt-extended==4.7.4",        # mit
     # not-imported: gunicorn -- the WSGI server the API is served by, run
     # as a command (see docs/installation.md), never imported.
-    "gunicorn==26.2.0",                 # mit
+    "gunicorn==27.0.1",                 # mit
     "flask-request-id-middleware==1.1", # mit
     "pyyaml==6.0.4",                    # mit
     # not-imported: PyMySQL -- SQLAlchemy driver for the "mysql+pymysql://"
