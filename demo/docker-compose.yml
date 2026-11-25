@@ -56,8 +56,7 @@ services:
         # the `kerbside db upgrade` / "No such command 'db'" failure
         # that once forced this default to /src until a release
         # carried the command. A nightly run with
-        # KERBSIDE_SOURCE unset is the tracked fix; see
-        # docs/plans/PLAN-demo-install-phase-04-ci-lane.md's Future work.
+        # KERBSIDE_SOURCE unset is the tracked fix: issue #749.
         KERBSIDE_SOURCE: ${KERBSIDE_SOURCE:-kerbside}
         # What pip installs as the proxy. Leave it alone unless you are
         # building against a checkout that changes kerbside.proto; then

@@ -1,8 +1,9 @@
 <script>
     // The two-step terminate confirmation. One delegated listener
-    // rather than a listener per button: a later polling phase
-    // replaces the table rows wholesale, and delegation survives
-    // that with no re-wiring. Real <button>s, so the keyboard path
+    // rather than a listener per button: the poll morphs the rows
+    // in place, so a per-button listener added after a tick would
+    // pile up duplicates, and delegation needs no re-wiring for the
+    // rows it adds or removes. Real <button>s, so the keyboard path
     // is the click path -- Enter arms, Enter again fires, with no
     // keydown handler reimplementing what a button already does.
     var armedTerminate = null;

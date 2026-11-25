@@ -354,8 +354,9 @@ jobs:
         run: "[ $ALL_SUCCESS == true ]"
 
   # The nightly schedule is load-bearing: it bounds the accepted
-  # two-tier CI risk that the merge queue never re-runs this lane
-  # against the merged tree, and a red entry in the Actions tab alerts
+  # risk that the merge queue never re-runs this lane against the
+  # merged tree (see "Why the gates are shaped this way" in
+  # docs/testing.md), and a red entry in the Actions tab alerts
   # nobody. File or update a tracking issue instead. A separate job so
   # issues: write is never granted to the lane job, which runs PR
   # code.

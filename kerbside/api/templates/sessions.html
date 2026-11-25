@@ -7,9 +7,9 @@
 <p class="sf-empty">There are no active sessions.</p>
 {% else %}
 {% for session_id in sessions %}
-{# The id is derived from the session id, not generated, so a
-   later polling phase can morph this stack and leave an
-   operator's open panel open -- same discipline as the
+{# The id is derived from the session id, not generated, so the
+   poll's morph matches it across a tick and an operator's
+   open panel stays open -- same discipline as the
    consoles page's disclosure ids. #}
 <details class="sf-disclosure sf-disclosure--panel"
          id="session-{{ session_id }}"
