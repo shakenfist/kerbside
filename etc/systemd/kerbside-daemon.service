@@ -40,5 +40,38 @@ TimeoutStopSec=30
 Restart=always
 RestartSec=5
 
+# Sandboxing. Kerbside needs nothing beyond its own user: every port it
+# listens on is above 1024, the only file it writes is its socket in
+# RuntimeDirectory, which systemd leaves writable, and the CA files proxmox
+# and ovirt sources write go to a /tmp private to this unit. The proxy is this
+# unit's child, so all of this confines it too, and it is the process which
+# parses SPICE from the network. A LOG_OUTPUT_PATH file needs ReadWritePaths=
+# in a drop-in; docs/deployment/manual.md says how.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+# AF_NETLINK because glibc's getaddrinfo() asks the kernel for this host's
+# addresses over netlink when it resolves a hostname.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# Not MemoryDenyWriteExecute=: libraries which build callbacks at run time
+# with libffi fail under it, and which client libraries are installed depends
+# on the sources configured.
+
 [Install]
 WantedBy=multi-user.target

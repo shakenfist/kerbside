@@ -42,6 +42,16 @@ Both run as the `kerbside` user, restart five seconds after any exit
 that systemd did not ask for, and are wanted by `multi-user.target`.
 The comments in each file give the reasons behind its directives.
 
+Both are also sandboxed by systemd, because Kerbside needs nothing
+beyond its own user. They hold no capabilities and cannot gain any,
+see the filesystem read-only apart from `/run/kerbside` and a `/tmp`
+of their own, cannot see `/home` or other users' processes, and are
+limited to the address families and system calls an ordinary network
+service uses. The proxy is the daemon's child, so it is confined with
+the daemon. That matters most for the proxy, because it parses SPICE
+from the network. `systemd-analyze security kerbside-daemon` shows
+what each directive buys.
+
 Every file this page has you copy, the units included, lives in the
 repository rather than in the wheel. The links here go to `develop`,
 which is the code being worked on rather than the release you
@@ -82,8 +92,17 @@ may create, so systemd creates it for the service user. Kerbside logs
 to syslog, which on a systemd host lands in the journal, so
 `journalctl` is where its logs are. `LOG_OUTPUT_PATH` changes that
 (see
-[configuration.md](../configuration.md#logging-and-monitoring-settings)),
-and a file it names has to be writable by the `kerbside` user.
+[configuration.md](../configuration.md#logging-and-monitoring-settings)).
+`stdout` needs nothing more, because systemd sends it to the journal
+too. A file needs a directory the `kerbside` user can write, and,
+because the units make the filesystem read-only, a drop-in in each
+unit naming that directory. `systemctl edit kerbside-daemon` opens
+one, and `kerbside-api` needs the same:
+
+```ini
+[Service]
+ReadWritePaths=/var/log/kerbside
+```
 
 The role also keeps its helper scripts in `/srv/kerbside/bin` and a
 record of what it last deployed in `/srv/kerbside`. Neither is needed
@@ -104,7 +123,9 @@ What it leaves to you:
 
 ## How to use it
 
-Every command runs as root.
+Every command on this page runs as root, because it creates users,
+directories and units. Kerbside itself never runs as root: both units
+start it as the `kerbside` user.
 
 1. **Install the OS packages.** Install the build dependencies in
    [Before you install: OS packages](../installation.md#before-you-install-os-packages),
@@ -319,7 +340,8 @@ Every command runs as root.
      ExecStart=
      ExecStart=/srv/kerbside/venv/bin/gunicorn --bind ADDRESS:13002 \
          --workers 2 --timeout 300 --name kerbside-api \
-         --certfile CERTIFICATE --keyfile KEY kerbside.api:app
+         --no-control-socket --certfile CERTIFICATE --keyfile KEY \
+         kerbside.api:app
      ```
 
      The empty `ExecStart=` clears the unit's own, which systemd
@@ -401,6 +423,7 @@ are.
 | No CI lane runs these units | The units are held to the role's templates by `kerbside/tests/unit/test_systemd_units.py`, which renders the templates with the role's defaults and fails on any difference in their directives but the API's bind address. The role's units are the ones [`sf-e2e`](../testing.md#the-shaken-fist-end-to-end-lane-sf-e2e) deploys, on a Shaken Fist node, on every pull request and nightly. So the units are tested by being held to tested ones, not by being run. |
 | No lane follows these steps | The other lanes install Kerbside with their own scripts, which do not create the user, the directories or the units this page does. A mistake in a step here would not fail CI. |
 | TLS on the API is untested | Neither a reverse proxy nor gunicorn's `--certfile` and `--keyfile` is exercised anywhere, and Kerbside ships no reverse proxy configuration, because it would be a second untested file. |
+| No AppArmor or SELinux policy | The units' systemd sandboxing is the confinement Kerbside ships, and it reaches the role's units, which `sf-e2e` runs. A mandatory access control profile would be one per policy framework, would have to follow every client library a source can need, and no lane would run it. |
 | No distribution packages | There is no deb or rpm, so nothing installs Kerbside through the host's package manager or upgrades it along with the rest of the host. |
 | An upgrade ends live sessions | The proxy runs as the daemon's child, so restarting the daemon restarts the proxy and drops every session on the host. There is no handover. |
 | One host only | Splitting the API from the daemon, or running several Kerbsides, is described in [Placement topologies](../use-cases/placement.md) but not here, and no lane runs either. |

@@ -25,6 +25,20 @@ OVERRIDES = {
 
 UNITS = ('kerbside-api.service', 'kerbside-daemon.service')
 
+# Both units are sandboxed, and the proxy, as the daemon's child, is confined
+# by the daemon's. These are the directives whose loss would matter most;
+# test_examples_match_templates holds the role's units to the same set.
+SANDBOX = (
+    'NoNewPrivileges=yes',
+    'CapabilityBoundingSet=',
+    'ProtectSystem=strict',
+    'ProtectHome=yes',
+    'PrivateTmp=yes',
+    'PrivateDevices=yes',
+    'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK',
+    'SystemCallFilter=@system-service',
+)
+
 
 def _render(name, overrides):
     with open(os.path.join(_ROLE, 'defaults', 'main.yml')) as f:
@@ -94,6 +108,24 @@ class SystemdUnitTestCase(testtools.TestCase):
 
     def test_api_binds_loopback(self):
         self.assertIn(' --bind 127.0.0.1:13002 ',
+                      self._example('kerbside-api.service'))
+
+    def test_units_are_sandboxed(self):
+        for name in UNITS:
+            directives = _directives(self._example(name))
+            for directive in SANDBOX:
+                self.assertIn(('Service', directive), directives,
+                              '%s lacks %s' % (name, directive))
+            # A ReadWritePaths= here would widen the sandbox for everyone;
+            # an operator who needs one adds it in a drop-in.
+            self.assertEqual(
+                [], [d for d in directives
+                     if d[1].startswith('ReadWritePaths=')], name)
+
+    def test_api_has_no_control_socket(self):
+        # gunicorn would otherwise try to create one under the root-owned
+        # home, and Kerbside does not use gunicornc.
+        self.assertIn(' --no-control-socket ',
                       self._example('kerbside-api.service'))
 
     def test_comparison_detects_a_changed_directive(self):

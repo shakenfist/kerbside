@@ -26,12 +26,44 @@ WorkingDirectory=/srv/kerbside
 
 # The timeout matches sf-api's: an unknown signing key id makes Kerbside call
 # Shaken Fist to refresh its keys inside the request.
-ExecStart=/srv/kerbside/venv/bin/gunicorn --bind 127.0.0.1:13002 --workers 2 --timeout 300 --name kerbside-api kerbside.api:app
+# --no-control-socket because Kerbside does not use gunicornc, and gunicorn
+# would otherwise try to create its socket under the root-owned home.
+ExecStart=/srv/kerbside/venv/bin/gunicorn --bind 127.0.0.1:13002 --workers 2 --timeout 300 --name kerbside-api --no-control-socket kerbside.api:app
 
 # always rather than on-failure: Kerbside never exits on purpose, so any exit,
 # clean or not, is one to restart from.
 Restart=always
 RestartSec=5
+
+# Sandboxing. The API needs nothing beyond its own user: it writes nothing but
+# gunicorn's worker heartbeat files and the CA files proxmox and ovirt sources
+# write, and both go to a /tmp private to this unit. A LOG_OUTPUT_PATH file
+# needs ReadWritePaths= in a drop-in; docs/deployment/manual.md says how.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+# AF_NETLINK because glibc's getaddrinfo() asks the kernel for this host's
+# addresses over netlink when it resolves a hostname.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# Not MemoryDenyWriteExecute=: libraries which build callbacks at run time
+# with libffi fail under it, and which client libraries are installed depends
+# on the sources configured.
 
 [Install]
 WantedBy=multi-user.target
