@@ -526,6 +526,18 @@
     {
       "path": "docs/deployment/order.yml",
       "author": "mikal"
+    },
+    {
+      "path": "demo/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/docker-compose.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "demo",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
