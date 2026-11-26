@@ -13,9 +13,17 @@
       "sha": "de759456f2cb3f1f1995bbe1dd43755ccb619a3c",
       "date": "2026-11-23"
     },
+    ".github/workflows/direct-qemu-functional.yml": {
+      "sha": "ddfe654d68f31d4acf89b26ae3d877c992ffc37b",
+      "date": "2026-11-27"
+    },
     ".github/workflows/export-repo-config.yml": {
       "sha": "b9b3936053b8685ef0ae47f656b2f35aa62ba637",
       "date": "2026-10-05"
+    },
+    ".github/workflows/functional-tests.yml": {
+      "sha": "1704b9cfa1fe387351196f1b045d5ae6f4740ce7",
+      "date": "2026-11-27"
     },
     ".github/workflows/pin-indirect-dependencies.yml": {
       "sha": "94e1e3a47510da8436eb629a047ba1edd4979905",
@@ -40,6 +48,10 @@
     ".github/workflows/rust.yml": {
       "sha": "c6816b6f94d21ed3173e8829534722bb5f5ae61d",
       "date": "2026-11-23"
+    },
+    ".github/workflows/sf-e2e-functional.yml": {
+      "sha": "0b70191d7a0b73677131c490941dc4fa23ad1dc1",
+      "date": "2026-11-27"
     },
     ".skillsaw.yaml": {
       "sha": "7f2245e1fb8311d66a1aac849346283ee7441425",
