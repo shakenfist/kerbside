@@ -122,11 +122,27 @@ class SystemdUnitTestCase(testtools.TestCase):
                 [], [d for d in directives
                      if d[1].startswith('ReadWritePaths=')], name)
 
+    def test_daemon_has_its_runtime_directory(self):
+        # The sandbox leaves RuntimeDirectory= as the daemon's only writable
+        # path, and the gRPC socket's default lives there.
+        self.assertIn(('Service', 'RuntimeDirectory=kerbside'),
+                      _directives(self._example('kerbside-daemon.service')))
+
     def test_api_has_no_control_socket(self):
         # gunicorn would otherwise try to create one under the root-owned
         # home, and Kerbside does not use gunicornc.
         self.assertIn(' --no-control-socket ',
                       self._example('kerbside-api.service'))
+
+    def test_pinned_gunicorn_accepts_no_control_socket(self):
+        # The flag is gunicorn 25.1.0's, and gunicorn exits on an argument it
+        # does not know, so a pin below that would leave the API unit
+        # restarting forever. gunicorn is a dependency of this package, so
+        # the version under test is the pinned one.
+        from gunicorn import config
+        flags = [flag for setting in config.Config().settings.values()
+                 for flag in setting.cli or []]
+        self.assertIn('--no-control-socket', flags)
 
     def test_comparison_detects_a_changed_directive(self):
         for name in UNITS:

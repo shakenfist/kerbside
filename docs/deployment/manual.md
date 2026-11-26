@@ -44,13 +44,17 @@ The comments in each file give the reasons behind its directives.
 
 Both are also sandboxed by systemd, because Kerbside needs nothing
 beyond its own user. They hold no capabilities and cannot gain any,
-see the filesystem read-only apart from `/run/kerbside` and a `/tmp`
-of their own, cannot see `/home` or other users' processes, and are
-limited to the address families and system calls an ordinary network
-service uses. The proxy is the daemon's child, so it is confined with
-the daemon. That matters most for the proxy, because it parses SPICE
-from the network. `systemd-analyze security kerbside-daemon` shows
-what each directive buys.
+see the filesystem read-only apart from a `/tmp` of their own and,
+for the daemon, the `/run/kerbside` systemd creates for its socket,
+cannot see `/home` or other users' processes, and are limited to the
+address families and system calls an ordinary network service uses.
+The proxy is the daemon's child, so it is confined with the daemon.
+That matters most for the proxy, because it parses SPICE from the
+network. `systemd-analyze security kerbside-daemon` shows what each
+directive buys. The units assume systemd 247 or later, which every
+directive in them needs; an older systemd starts them anyway,
+ignoring the directives it does not know with a warning in the
+journal, so check there on an older host.
 
 Every file this page has you copy, the units included, lives in the
 repository rather than in the wheel. The links here go to `develop`,
@@ -103,6 +107,18 @@ one, and `kerbside-api` needs the same:
 [Service]
 ReadWritePaths=/var/log/kerbside
 ```
+
+The same applies to the daemon's `API_SOCKET_PATH`: only the default,
+under `/run/kerbside`, is writable, so a socket elsewhere needs its
+directory in a `ReadWritePaths=` drop-in on `kerbside-daemon`.
+Two other settings meet the sandbox. A listener on a
+port below 1024 needs both `CapabilityBoundingSet=CAP_NET_BIND_SERVICE`
+and `AmbientCapabilities=CAP_NET_BIND_SERVICE` in the unit's drop-in,
+because the units' empty bounding set removes the capability from the
+ambient set too. And a `SQL_URL` whose unix socket is under `/tmp`
+cannot reach it from the units' private `/tmp`; move the database's
+socket, for example to Debian's default `/run/mysqld/mysqld.sock`,
+rather than relaxing `PrivateTmp=`.
 
 The role also keeps its helper scripts in `/srv/kerbside/bin` and a
 record of what it last deployed in `/srv/kerbside`. Neither is needed

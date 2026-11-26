@@ -202,6 +202,11 @@ argument_specs:
             3c5a309 and 8294f22). Kerbside 0.6.0's GET /source/<name> returns
             the source's password.
           - >-
+            The API unit passes gunicorn --no-control-socket, which gunicorn
+            added in 25.1.0. Every Kerbside release from 0.6.0 pins gunicorn
+            exactly at 26.2.0 or later, so the floor also keeps the API from
+            failing on an unknown argument; lowering it below 0.6.0 would not.
+          - >-
             A kerbside wheel in kerbside_local_wheels is installed in its
             place.
           - >-
