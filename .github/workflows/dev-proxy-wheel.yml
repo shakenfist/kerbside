@@ -161,7 +161,7 @@ jobs:
     # run. `dry_run` is a typed boolean, so `inputs.dry_run` is a real boolean
     # here and needs no string comparison.
     if: github.event_name == 'push' || inputs.dry_run == false
-    runs-on: [self-hosted, static]
+    runs-on: [self-hosted, static, vm]
     environment: dev-release
 
     permissions:
