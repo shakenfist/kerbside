@@ -113,6 +113,10 @@
       "sha": "8580b6ff7422b42141f9ad0357ffc8b8b434b04b",
       "date": "2026-11-24"
     },
+    "ansible/roles/kerbside/meta/argument_specs.yml": {
+      "sha": "158d2b57ecc22f28adb655d1f31d9542b8d5c514",
+      "date": "2026-11-27"
+    },
     "ansible/roles/kerbside/meta/main.yml": {
       "sha": "f7411e72d46330e00fc8896b60e6ee8813c9900a",
       "date": "2026-11-24"
@@ -140,6 +144,14 @@
     "ansible/roles/kerbside/tasks/validate.yml": {
       "sha": "a3b9ffbd79f4b115808848237100d3aca86d3e82",
       "date": "2026-11-24"
+    },
+    "ansible/roles/kerbside/templates/kerbside-api.service": {
+      "sha": "1c512c5c0a2eb5acd87908b794322d851e59fd70",
+      "date": "2026-11-27"
+    },
+    "ansible/roles/kerbside/templates/kerbside-daemon.service": {
+      "sha": "854befc36f93efd3d0cbd7fac807609b2c589322",
+      "date": "2026-11-27"
     },
     "ansible/roles/kerbside/templates/kerbside.ini": {
       "sha": "42993639f54b123dae6d3d8cfb88d0d1634964ca",

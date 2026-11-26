@@ -550,6 +550,38 @@
     {
       "path": ".github/workflows/sf-e2e-functional.yml",
       "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/templates/kerbside-daemon.service",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/templates/kerbside-api.service",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/templates",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/meta/argument_specs.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/meta",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
