@@ -113,10 +113,6 @@
       "sha": "8580b6ff7422b42141f9ad0357ffc8b8b434b04b",
       "date": "2026-11-24"
     },
-    "ansible/roles/kerbside/meta/argument_specs.yml": {
-      "sha": "062d11311d84911ddeffc03c2c2d2058cb94a793",
-      "date": "2026-11-24"
-    },
     "ansible/roles/kerbside/meta/main.yml": {
       "sha": "f7411e72d46330e00fc8896b60e6ee8813c9900a",
       "date": "2026-11-24"
@@ -143,14 +139,6 @@
     },
     "ansible/roles/kerbside/tasks/validate.yml": {
       "sha": "a3b9ffbd79f4b115808848237100d3aca86d3e82",
-      "date": "2026-11-24"
-    },
-    "ansible/roles/kerbside/templates/kerbside-api.service": {
-      "sha": "cd0741e0899d2645b704b154fd1f683592060f4b",
-      "date": "2026-11-24"
-    },
-    "ansible/roles/kerbside/templates/kerbside-daemon.service": {
-      "sha": "93ae3e53adb41f3a26ec30c55340048ab513ddfc",
       "date": "2026-11-24"
     },
     "ansible/roles/kerbside/templates/kerbside.ini": {
@@ -239,14 +227,6 @@
     },
     "etc/kolla-ci-globals-overlay.yml": {
       "sha": "5767de6b3958a1b4dea221cc8a2efcf8465c7129",
-      "date": "2026-11-24"
-    },
-    "etc/systemd/kerbside-api.service": {
-      "sha": "13059f8a767dd88e8f0390fc141b1db24c392889",
-      "date": "2026-11-24"
-    },
-    "etc/systemd/kerbside-daemon.service": {
-      "sha": "c2c1045d6cd9888fae202586c1d818e439051f14",
       "date": "2026-11-24"
     },
     "kerbside/__init__.py": {

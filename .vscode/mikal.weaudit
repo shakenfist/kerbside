@@ -420,15 +420,7 @@
       "author": "mikal"
     },
     {
-      "path": "ansible/roles/kerbside/meta/argument_specs.yml",
-      "author": "mikal"
-    },
-    {
       "path": "ansible/roles/kerbside/meta/main.yml",
-      "author": "mikal"
-    },
-    {
-      "path": "ansible/roles/kerbside/meta",
       "author": "mikal"
     },
     {
@@ -460,23 +452,11 @@
       "author": "mikal"
     },
     {
-      "path": "ansible/roles/kerbside/templates/kerbside-api.service",
-      "author": "mikal"
-    },
-    {
-      "path": "ansible/roles/kerbside/templates/kerbside-daemon.service",
-      "author": "mikal"
-    },
-    {
       "path": "ansible/roles/kerbside/templates/kerbside.ini",
       "author": "mikal"
     },
     {
       "path": "ansible/roles/kerbside/templates/sources.yaml",
-      "author": "mikal"
-    },
-    {
-      "path": "ansible/roles/kerbside/templates",
       "author": "mikal"
     },
     {
@@ -489,14 +469,6 @@
     },
     {
       "path": "ansible/roles/kerbside/README.md",
-      "author": "mikal"
-    },
-    {
-      "path": "ansible/roles/kerbside",
-      "author": "mikal"
-    },
-    {
-      "path": "ansible/roles",
       "author": "mikal"
     },
     {
@@ -516,10 +488,6 @@
       "author": "mikal"
     },
     {
-      "path": "ansible",
-      "author": "mikal"
-    },
-    {
       "path": "demo/Dockerfile",
       "author": "mikal"
     },
@@ -532,27 +500,11 @@
       "author": "mikal"
     },
     {
-      "path": "etc/systemd/kerbside-daemon.service",
-      "author": "mikal"
-    },
-    {
-      "path": "etc/systemd/kerbside-api.service",
-      "author": "mikal"
-    },
-    {
-      "path": "etc/systemd",
-      "author": "mikal"
-    },
-    {
       "path": "etc/kerbside.conf.example",
       "author": "mikal"
     },
     {
       "path": "etc/kolla-ci-globals-overlay.yml",
-      "author": "mikal"
-    },
-    {
-      "path": "etc",
       "author": "mikal"
     },
     {
