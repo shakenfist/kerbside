@@ -249,6 +249,14 @@
       "sha": "5767de6b3958a1b4dea221cc8a2efcf8465c7129",
       "date": "2026-11-24"
     },
+    "etc/systemd/kerbside-api.service": {
+      "sha": "adf853c5a68ea1790bdc55f21e90e86016e1ebb0",
+      "date": "2026-11-27"
+    },
+    "etc/systemd/kerbside-daemon.service": {
+      "sha": "7dd3abcee6289e4397637be47377354f92f96f4b",
+      "date": "2026-11-27"
+    },
     "kerbside/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-06"

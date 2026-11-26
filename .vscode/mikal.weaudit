@@ -582,6 +582,22 @@
     {
       "path": "ansible",
       "author": "mikal"
+    },
+    {
+      "path": "etc/systemd/kerbside-daemon.service",
+      "author": "mikal"
+    },
+    {
+      "path": "etc/systemd/kerbside-api.service",
+      "author": "mikal"
+    },
+    {
+      "path": "etc/systemd",
+      "author": "mikal"
+    },
+    {
+      "path": "etc",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],
