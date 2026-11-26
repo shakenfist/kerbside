@@ -69,7 +69,7 @@ dependencies = [
     # rather than in the test extra because [project] dependencies is
     # the only array the undeclared direct dependency audit reads, and
     # because both are installed by an ordinary install regardless.
-    "packaging==26.3",                  # apache2/bsd
+    "packaging==26.4",                  # apache2/bsd
     "PyJWT==2.15.1",                    # mit
     "requests==2.34.2",                 # apache2
     "urllib3==2.8.0",                   # mit
