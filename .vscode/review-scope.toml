@@ -74,6 +74,16 @@
 #   which says what they show, stays in scope. Scoped to
 #   docs/performance/ so that an image arriving anywhere else, such
 #   as a web UI asset, still fails the audit until weighed.
+# - kerbside/api/templates/icons/*.svg -- Material Symbols glyphs
+#   copied from Google's icon set (the README beside them names each
+#   source), with only the root <svg> attributes edited. Each is one
+#   long path of coordinates that nobody can usefully re-read, so a
+#   review mark on one would attest to nothing. The README stays in
+#   scope. *.svg is deliberately absent from `include` rather than
+#   excluded wholesale, so that an SVG arriving anywhere else still
+#   fails the audit until somebody weighs it: these icons are pulled
+#   into pages with {% include %}, so a file of that kind can carry
+#   Jinja or <script> and would then be web surface, not artwork.
 # - AUTHORS and LICENSE -- not authored here.
 include = [
     # Executable artifacts.
@@ -110,7 +120,6 @@ include = [
     # The rendered web surface.
     '*.html',
     '*.mako',
-    '*.svg',
     # Documentation.
     '*.md',
 ]
@@ -126,6 +135,7 @@ exclude = [
     'tests/fixtures/*.qcow2',
     'docs/performance/*.png',
     'docs/performance/*.jpg',
+    'kerbside/api/templates/icons/*.svg',
     'AUTHORS',
     'LICENSE',
 ]
