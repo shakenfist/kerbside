@@ -5,20 +5,12 @@
       "sha": "16f2c1db4f57ad49772cfb806e19df2708f3176c",
       "date": "2026-09-18"
     },
-    ".github/actionlint.yaml": {
-      "sha": "858c7cf8bf033c7aa76dd651888af25287d02fe5",
-      "date": "2026-11-23"
-    },
     ".github/workflows/codeql-analysis.yml": {
       "sha": "383ef65a7f0dd0cef646300d6542edaf80795204",
       "date": "2026-11-23"
     },
     ".github/workflows/demo-compose.yml": {
       "sha": "de759456f2cb3f1f1995bbe1dd43755ccb619a3c",
-      "date": "2026-11-23"
-    },
-    ".github/workflows/dev-proxy-wheel.yml": {
-      "sha": "c9a6f7b6c258f346bbb8a6ec8328017e798a40d0",
       "date": "2026-11-23"
     },
     ".github/workflows/export-repo-config.yml": {
@@ -44,10 +36,6 @@
     ".github/workflows/pypi-storage-check.yml": {
       "sha": "b4ea2a75e61abba4bcfd122d9f0d8222f1b25607",
       "date": "2026-08-24"
-    },
-    ".github/workflows/release.yml": {
-      "sha": "aee7be31ca05811eab03042ffd2d4d9244b51c35",
-      "date": "2026-11-23"
     },
     ".github/workflows/rust.yml": {
       "sha": "c6816b6f94d21ed3173e8829534722bb5f5ae61d",

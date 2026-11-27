@@ -352,10 +352,6 @@
       "author": "mikal"
     },
     {
-      "path": ".github/actionlint.yaml",
-      "author": "mikal"
-    },
-    {
       "path": ".github/workflows/demo-compose.yml",
       "author": "mikal"
     },
@@ -365,14 +361,6 @@
     },
     {
       "path": ".github/workflows/codeql-analysis.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/dev-proxy-wheel.yml",
-      "author": "mikal"
-    },
-    {
-      "path": ".github/workflows/release.yml",
       "author": "mikal"
     },
     {
