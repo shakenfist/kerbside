@@ -161,7 +161,17 @@ jobs:
     # run. `dry_run` is a typed boolean, so `inputs.dry_run` is a real boolean
     # here and needs no string comparison.
     if: github.event_name == 'push' || inputs.dry_run == false
-    runs-on: [self-hosted, static]
+    # "persistent" is load-bearing: gh-action-pypi-publish below
+    # delegates to a Docker container action, and the self-hosted
+    # "static" pool now holds container-based runner pods with no
+    # Docker as well as persistent VMs. This label pins the job to a
+    # VM that can host a container action. It is deliberately not the
+    # throwaway "vm" pool other workflows here use: that pool does have
+    # a docker flavor, so the job could run there, but this change only
+    # keeps the job off a pod and does not re-home it. Do not drop the
+    # label to match the sibling jobs -- they run only JavaScript and
+    # composite actions, so a pod suits them.
+    runs-on: [self-hosted, static, persistent]
     environment: dev-release
 
     permissions:
