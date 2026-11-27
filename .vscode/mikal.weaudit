@@ -598,6 +598,46 @@
     {
       "path": "etc",
       "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/consoles.html",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/audit.html",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/base.html",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/login.html",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/sessions.html",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/sources.html",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/includes/poll.html",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/includes/two-step-terminate.html",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/includes",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/icons/README.md",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

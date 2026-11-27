@@ -261,6 +261,42 @@
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-06"
     },
+    "kerbside/api/templates/audit.html": {
+      "sha": "df9c49a7d8649b41d437b8fd880bc8da4500a82c",
+      "date": "2026-11-28"
+    },
+    "kerbside/api/templates/base.html": {
+      "sha": "f9d9275b30961082fbd8c4e5adb93203f20f4b85",
+      "date": "2026-11-28"
+    },
+    "kerbside/api/templates/consoles.html": {
+      "sha": "44acba841104ade6f14eff89e63c741dd4eecfb7",
+      "date": "2026-11-28"
+    },
+    "kerbside/api/templates/icons/README.md": {
+      "sha": "d3312daa6c5c4326298eae4c549cc535dd701698",
+      "date": "2026-11-28"
+    },
+    "kerbside/api/templates/includes/poll.html": {
+      "sha": "2b30e2c77d509183ae3a054341cf31484e367682",
+      "date": "2026-11-28"
+    },
+    "kerbside/api/templates/includes/two-step-terminate.html": {
+      "sha": "0e2a333fc1dde41d995e2c17eff7b825335c3f63",
+      "date": "2026-11-28"
+    },
+    "kerbside/api/templates/login.html": {
+      "sha": "c282041afbb7c80a14f71bd8d9d2bf5b28b4067a",
+      "date": "2026-11-28"
+    },
+    "kerbside/api/templates/sessions.html": {
+      "sha": "7f637e688d5db5b540873b704b1bb11271533705",
+      "date": "2026-11-28"
+    },
+    "kerbside/api/templates/sources.html": {
+      "sha": "79478e980a6105b9e5b8691c970b1561512bd92e",
+      "date": "2026-11-28"
+    },
     "kerbside/consoletoken.py": {
       "sha": "6811fdf54cb562806ab427ff9eaf826e96bedc1d",
       "date": "2026-08-06"
