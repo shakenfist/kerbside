@@ -7,8 +7,8 @@
     {
       "description": "Pick up the shellcheck-py pin in tox.ini's [testenv:shellcheck] deps. Renovate has no tox manager, so without this the pin is invisible to it -- and enabling the pre-commit manager above would then bump the hook alone, leaving CI (which runs the tox environment) and developers (who run the hook) disagreeing about what passes. The shellcheck group below lands both in one pull request.",
       "customType": "regex",
-      "fileMatch": [
-        "^tox\\.ini$"
+      "managerFilePatterns": [
+        "/^tox\\.ini$/"
       ],
       "matchStrings": [
         "shellcheck-py==(?<currentValue>[0-9.]+)"
@@ -19,8 +19,8 @@
     {
       "description": "Pick up the skillsaw pin in functional-tests.yml's sanity_checks job. The linter is installed into the test venv rather than run as stbenjam/skillsaw@v0, whose composite action pins actions/setup-python to a version with no Debian build, so Renovate's github-actions manager never sees it. Without this the pre-commit manager would bump the hook alone, leaving CI and developers disagreeing about what passes. The skillsaw group below lands both in one pull request.",
       "customType": "regex",
-      "fileMatch": [
-        "^\\.github/workflows/functional-tests\\.yml$"
+      "managerFilePatterns": [
+        "/^\\.github/workflows/functional-tests\\.yml$/"
       ],
       "matchStrings": [
         "skillsaw==(?<currentValue>[0-9.]+)"
@@ -31,9 +31,9 @@
     {
       "description": "Pick up the Ansible tool pins: ansible-core and galaxy-importer in functional-tests.yml's sanity_checks job, and ansible-core in release.yml's build and publish jobs. Renovate has no manager for a uv or pip command line in a workflow, so without this the pins would never move. They are pinned so that a new release arrives as its own pull request, which says what changed: unpinned, ansible-core 2.22.0's new output masking first failed a docs-only pull request (#686). Each tool keeps its own pull request, so a failure names the release that caused it; one depName covers every file, so ansible-core's three pins move together. ansible-lint is not pinned: galaxy-importer caps it at the release it was tested against and uv installs that cap, so a pin of its own only let Renovate propose releases above the cap that could not install (#745).",
       "customType": "regex",
-      "fileMatch": [
-        "^\\.github/workflows/functional-tests\\.yml$",
-        "^\\.github/workflows/release\\.yml$"
+      "managerFilePatterns": [
+        "/^\\.github/workflows/functional-tests\\.yml$/",
+        "/^\\.github/workflows/release\\.yml$/"
       ],
       "matchStrings": [
         "(?<depName>ansible-core|galaxy-importer)==(?<currentValue>[0-9][0-9.]*)"
