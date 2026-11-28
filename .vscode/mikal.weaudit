@@ -526,6 +526,118 @@
     {
       "path": "docs/deployment/order.yml",
       "author": "mikal"
+    },
+    {
+      "path": "demo/README.md",
+      "author": "mikal"
+    },
+    {
+      "path": "demo/docker-compose.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "demo",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/direct-qemu-functional.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/functional-tests.yml",
+      "author": "mikal"
+    },
+    {
+      "path": ".github/workflows/sf-e2e-functional.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/templates/kerbside-daemon.service",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/templates/kerbside-api.service",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/templates",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/meta/argument_specs.yml",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside/meta",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles/kerbside",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible/roles",
+      "author": "mikal"
+    },
+    {
+      "path": "ansible",
+      "author": "mikal"
+    },
+    {
+      "path": "etc/systemd/kerbside-daemon.service",
+      "author": "mikal"
+    },
+    {
+      "path": "etc/systemd/kerbside-api.service",
+      "author": "mikal"
+    },
+    {
+      "path": "etc/systemd",
+      "author": "mikal"
+    },
+    {
+      "path": "etc",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/consoles.html",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/audit.html",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/base.html",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/login.html",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/sessions.html",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/sources.html",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/includes/poll.html",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/includes/two-step-terminate.html",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/includes",
+      "author": "mikal"
+    },
+    {
+      "path": "kerbside/api/templates/icons/README.md",
+      "author": "mikal"
     }
   ],
   "partiallyAuditedFiles": [],

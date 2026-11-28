@@ -13,9 +13,17 @@
       "sha": "de759456f2cb3f1f1995bbe1dd43755ccb619a3c",
       "date": "2026-11-23"
     },
+    ".github/workflows/direct-qemu-functional.yml": {
+      "sha": "ddfe654d68f31d4acf89b26ae3d877c992ffc37b",
+      "date": "2026-11-27"
+    },
     ".github/workflows/export-repo-config.yml": {
       "sha": "b9b3936053b8685ef0ae47f656b2f35aa62ba637",
       "date": "2026-10-05"
+    },
+    ".github/workflows/functional-tests.yml": {
+      "sha": "1704b9cfa1fe387351196f1b045d5ae6f4740ce7",
+      "date": "2026-11-27"
     },
     ".github/workflows/pin-indirect-dependencies.yml": {
       "sha": "94e1e3a47510da8436eb629a047ba1edd4979905",
@@ -40,6 +48,10 @@
     ".github/workflows/rust.yml": {
       "sha": "c6816b6f94d21ed3173e8829534722bb5f5ae61d",
       "date": "2026-11-23"
+    },
+    ".github/workflows/sf-e2e-functional.yml": {
+      "sha": "0b70191d7a0b73677131c490941dc4fa23ad1dc1",
+      "date": "2026-11-27"
     },
     ".skillsaw.yaml": {
       "sha": "7f2245e1fb8311d66a1aac849346283ee7441425",
@@ -101,6 +113,10 @@
       "sha": "8580b6ff7422b42141f9ad0357ffc8b8b434b04b",
       "date": "2026-11-24"
     },
+    "ansible/roles/kerbside/meta/argument_specs.yml": {
+      "sha": "158d2b57ecc22f28adb655d1f31d9542b8d5c514",
+      "date": "2026-11-27"
+    },
     "ansible/roles/kerbside/meta/main.yml": {
       "sha": "f7411e72d46330e00fc8896b60e6ee8813c9900a",
       "date": "2026-11-24"
@@ -129,6 +145,14 @@
       "sha": "a3b9ffbd79f4b115808848237100d3aca86d3e82",
       "date": "2026-11-24"
     },
+    "ansible/roles/kerbside/templates/kerbside-api.service": {
+      "sha": "1c512c5c0a2eb5acd87908b794322d851e59fd70",
+      "date": "2026-11-27"
+    },
+    "ansible/roles/kerbside/templates/kerbside-daemon.service": {
+      "sha": "854befc36f93efd3d0cbd7fac807609b2c589322",
+      "date": "2026-11-27"
+    },
     "ansible/roles/kerbside/templates/kerbside.ini": {
       "sha": "42993639f54b123dae6d3d8cfb88d0d1634964ca",
       "date": "2026-11-24"
@@ -149,9 +173,17 @@
       "sha": "a7e8106e666807fc3867b59bfe26d1ca9014ff76",
       "date": "2026-11-24"
     },
+    "demo/README.md": {
+      "sha": "58521ae6a3d738f913b89f12c6df54e7965fcc29",
+      "date": "2026-11-26"
+    },
     "demo/demo-env.sh": {
       "sha": "a5cbc188afcbf3811142a84e55aaa423c6e0e60a",
       "date": "2026-08-18"
+    },
+    "demo/docker-compose.yml": {
+      "sha": "aaad23dcbacdb71caff66eb1d831ad6464571910",
+      "date": "2026-11-26"
     },
     "demo/entrypoint.sh": {
       "sha": "4f1b49d76cf53079c8e7eb3a350c65c14f7410d6",
@@ -217,9 +249,53 @@
       "sha": "5767de6b3958a1b4dea221cc8a2efcf8465c7129",
       "date": "2026-11-24"
     },
+    "etc/systemd/kerbside-api.service": {
+      "sha": "adf853c5a68ea1790bdc55f21e90e86016e1ebb0",
+      "date": "2026-11-27"
+    },
+    "etc/systemd/kerbside-daemon.service": {
+      "sha": "7dd3abcee6289e4397637be47377354f92f96f4b",
+      "date": "2026-11-27"
+    },
     "kerbside/__init__.py": {
       "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
       "date": "2026-08-06"
+    },
+    "kerbside/api/templates/audit.html": {
+      "sha": "df9c49a7d8649b41d437b8fd880bc8da4500a82c",
+      "date": "2026-11-28"
+    },
+    "kerbside/api/templates/base.html": {
+      "sha": "f9d9275b30961082fbd8c4e5adb93203f20f4b85",
+      "date": "2026-11-28"
+    },
+    "kerbside/api/templates/consoles.html": {
+      "sha": "44acba841104ade6f14eff89e63c741dd4eecfb7",
+      "date": "2026-11-28"
+    },
+    "kerbside/api/templates/icons/README.md": {
+      "sha": "d3312daa6c5c4326298eae4c549cc535dd701698",
+      "date": "2026-11-28"
+    },
+    "kerbside/api/templates/includes/poll.html": {
+      "sha": "2b30e2c77d509183ae3a054341cf31484e367682",
+      "date": "2026-11-28"
+    },
+    "kerbside/api/templates/includes/two-step-terminate.html": {
+      "sha": "0e2a333fc1dde41d995e2c17eff7b825335c3f63",
+      "date": "2026-11-28"
+    },
+    "kerbside/api/templates/login.html": {
+      "sha": "c282041afbb7c80a14f71bd8d9d2bf5b28b4067a",
+      "date": "2026-11-28"
+    },
+    "kerbside/api/templates/sessions.html": {
+      "sha": "7f637e688d5db5b540873b704b1bb11271533705",
+      "date": "2026-11-28"
+    },
+    "kerbside/api/templates/sources.html": {
+      "sha": "79478e980a6105b9e5b8691c970b1561512bd92e",
+      "date": "2026-11-28"
     },
     "kerbside/consoletoken.py": {
       "sha": "6811fdf54cb562806ab427ff9eaf826e96bedc1d",
