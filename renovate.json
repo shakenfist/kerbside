@@ -1,26 +1,14 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "customManagers:githubActionsVersions"
+    "local>shakenfist/development:renovate-fleet"
   ],
-  "gitAuthor": "shakenfist-bot <bot@shakenfist.com>",
-  "dependencyDashboard": true,
-  "assignees": [
-    "mikalstill"
-  ],
-  "schedule": [
-    "after 9pm"
-  ],
-  "pre-commit": {
-    "description": "Renovate's pre-commit manager is opt-in. Without this the hook revisions in .pre-commit-config.yaml are the one dependency file nobody is watching -- and those hooks are the linters gating every commit, so the thing judging everything else goes unjudged.",
-    "enabled": true
-  },
   "customManagers": [
     {
       "description": "Pick up the shellcheck-py pin in tox.ini's [testenv:shellcheck] deps. Renovate has no tox manager, so without this the pin is invisible to it -- and enabling the pre-commit manager above would then bump the hook alone, leaving CI (which runs the tox environment) and developers (who run the hook) disagreeing about what passes. The shellcheck group below lands both in one pull request.",
       "customType": "regex",
-      "fileMatch": [
-        "^tox\\.ini$"
+      "managerFilePatterns": [
+        "/^tox\\.ini$/"
       ],
       "matchStrings": [
         "shellcheck-py==(?<currentValue>[0-9.]+)"
@@ -31,8 +19,8 @@
     {
       "description": "Pick up the skillsaw pin in functional-tests.yml's sanity_checks job. The linter is installed into the test venv rather than run as stbenjam/skillsaw@v0, whose composite action pins actions/setup-python to a version with no Debian build, so Renovate's github-actions manager never sees it. Without this the pre-commit manager would bump the hook alone, leaving CI and developers disagreeing about what passes. The skillsaw group below lands both in one pull request.",
       "customType": "regex",
-      "fileMatch": [
-        "^\\.github/workflows/functional-tests\\.yml$"
+      "managerFilePatterns": [
+        "/^\\.github/workflows/functional-tests\\.yml$/"
       ],
       "matchStrings": [
         "skillsaw==(?<currentValue>[0-9.]+)"
@@ -43,9 +31,9 @@
     {
       "description": "Pick up the Ansible tool pins: ansible-core and galaxy-importer in functional-tests.yml's sanity_checks job, and ansible-core in release.yml's build and publish jobs. Renovate has no manager for a uv or pip command line in a workflow, so without this the pins would never move. They are pinned so that a new release arrives as its own pull request, which says what changed: unpinned, ansible-core 2.22.0's new output masking first failed a docs-only pull request (#686). Each tool keeps its own pull request, so a failure names the release that caused it; one depName covers every file, so ansible-core's three pins move together. ansible-lint is not pinned: galaxy-importer caps it at the release it was tested against and uv installs that cap, so a pin of its own only let Renovate propose releases above the cap that could not install (#745).",
       "customType": "regex",
-      "fileMatch": [
-        "^\\.github/workflows/functional-tests\\.yml$",
-        "^\\.github/workflows/release\\.yml$"
+      "managerFilePatterns": [
+        "/^\\.github/workflows/functional-tests\\.yml$/",
+        "/^\\.github/workflows/release\\.yml$/"
       ],
       "matchStrings": [
         "(?<depName>ansible-core|galaxy-importer)==(?<currentValue>[0-9][0-9.]*)"
@@ -55,28 +43,12 @@
   ],
   "packageRules": [
     {
-      "description": "Flag minor, patch, and digest updates for review (not auto-merged)",
-      "matchUpdateTypes": [
-        "minor",
-        "patch",
-        "digest"
-      ],
-      "automerge": false
-    },
-    {
       "description": "Group the two shellcheck pins together. The pre-commit hook revision and the tox.ini dependency must move as one: .pre-commit-config.yaml says to keep them in lockstep, and nothing enforces it if they arrive in separate pull requests. The two names differ because they come from different datasources -- a GitHub tag for the hook, a PyPI release for the tox pin.",
       "groupName": "shellcheck",
       "matchPackageNames": [
         "shellcheck-py",
         "shellcheck-py/shellcheck-py"
       ]
-    },
-    {
-      "description": "Tell Renovate how to read shellcheck-py's four-component tags. Upstream tags a fourth component -- v0.11.0.1 is shellcheck 0.11.0, packaging revision 1 -- which is not semver, so the github-tags datasource behind the pre-commit hook could not even resolve the current value and reported \"Can't find version matching v0.10.0.1\" on the dependency dashboard. The lookup failing meant the hook never got an update proposed, which silently defeated the shellcheck group above: this pull request initially carried the tox pin alone, and CI would have linted with a newer shellcheck than the hook developers run. The PyPI side needs none of this because pep440 handles four components natively. The fourth group is deliberately named build rather than revision even though it is a packaging revision: Renovate's regex versioning only appends revision to the comparison array when a build group matched too, so naming it revision would truncate every tag to three components and make v0.11.0.2 compare equal to v0.11.0.1 -- a packaging-only release, which is most of them, would never be proposed. The regex is anchored to exactly four numeric components so that v0.11.0.1-1, a re-tag with no matching PyPI release, is ignored rather than proposed as an upgrade that would break the lockstep from the other direction.",
-      "matchPackageNames": [
-        "shellcheck-py/shellcheck-py"
-      ],
-      "versioning": "regex:^v?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)\\.(?<build>\\d+)$"
     },
     {
       "description": "Group the two skillsaw pins together, for the same reason as shellcheck above. The pre-commit hook revision and the CI install must move as one: .pre-commit-config.yaml says to keep them in lockstep, and nothing enforces it if they arrive in separate pull requests. The two names differ because they come from different datasources -- a GitHub tag for the hook, a PyPI release for the CI pin.",
@@ -135,36 +107,6 @@
         "prost-build",
         "prost-types"
       ]
-    },
-    {
-      "description": "A Renovate major can raise engines.node past the node-version that .github/workflows/renovate.yml sets up, leaving every hourly run on a Node that Renovate does not support. This note reaches the reviewer of the bump.",
-      "matchDepNames": [
-        "renovate"
-      ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "prBodyNotes": [
-        ":warning: Before merging, check this version's `engines.node` (`npm view renovate@<version> engines`) against `node-version` in `.github/workflows/renovate.yml`. If it no longer accepts that Node major, raise `node-version` in the same pull request, and in shakenfist/development's `templates/renovate/renovate.yml`, which every repository copies verbatim."
-      ]
-    },
-    {
-      "description": "Renovate's github-actions manager proposes Node majors for setup-node, and .github/workflows/renovate.yml must stay on a Node that the pinned Renovate's engines.node accepts, or every hourly run fails with \"Unsupported node environment detected\". That Node is raised by hand, in the pull request for the Renovate major that needs it (see the rule above), never on its own. Node in other workflows is unaffected.",
-      "matchManagers": [
-        "github-actions"
-      ],
-      "matchFileNames": [
-        ".github/workflows/renovate.yml"
-      ],
-      "matchDepNames": [
-        "node"
-      ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "enabled": false
     }
-  ],
-  "minimumReleaseAge": "3 days",
-  "rollbackPrs": true
+  ]
 }
